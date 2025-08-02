@@ -1,0 +1,254 @@
+# app/services/inventory_stats_service.py
+
+from decimal import Decimal
+from typing import Optional
+import math
+from statistics import mean, pstdev
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.repositories.inventory_repo import InventoryRepository
+from app.repositories.inventory_lot_repo import InventoryLotRepository
+from app.repositories.inventory_usage_log_repo import InventoryUsageLogRepository
+from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
+from app.repositories.ingredients_repo import IngredientRepository
+from app.services.forecasting_engine import ForecastingEngine
+
+
+class InventoryStatsService:
+    """
+    Service layer responsible for computing inventory-related statistics such as
+    average usage, standard deviation, stock levels, shelf life, etc.
+    """
+
+    def __init__(self, db: AsyncSession, restaurant_id: int, subscription_tier: str = None):
+        """
+        Initialize the InventoryStatsService with repositories and forecasting engine.
+
+        Args:
+            db (AsyncSession): The async database session.
+            restaurant_id (int): ID of the restaurant for which data is handled.
+        """
+        self.db = db
+        self.restaurant_id = restaurant_id
+        self.subscription_tier = subscription_tier
+        self.inventory_repo = InventoryRepository(db, restaurant_id)
+        self.inventory_lot_repo = InventoryLotRepository(db, restaurant_id)
+        self.inventory_usage_log_repo = InventoryUsageLogRepository(db, restaurant_id)
+        self.ingredient_repo = IngredientRepository(db, restaurant_id)
+        self.ingredient_supplier_repo = IngredientSupplierRepository(db, restaurant_id)
+        self.forecasting_engine = ForecastingEngine(db, restaurant_id)
+
+    async def get_average_daily_usage(
+        self, ingredient_id: int, days: int = 30
+    ) -> Decimal:
+        """
+        Calculate the average daily usage of an ingredient over a given number of days.
+
+        Args:
+            ingredient_id (int): ID of the ingredient.
+            days (int, optional): Number of days to average over. Defaults to 30.
+
+        Returns:
+            Decimal: The average daily usage rounded to two decimal places.
+        """
+        usage_data = await self.inventory_usage_log_repo.get_daily_usage(
+            ingredient_id, days
+        )
+        if len(usage_data) >= 14:
+            daily_totals = [float(usage) for _, usage in usage_data]
+            print(
+                f"[AVG DAILY USAGE] Ingredient {ingredient_id}: Using inventory logs, days={days}, samples={len(daily_totals)}"
+            )
+        else:
+            print(
+                f"[AVG DAILY USAGE FALLBACK] Ingredient {ingredient_id}: Insufficient logs ({len(usage_data)}), using sales-derived usage"
+            )
+            usage_by_ingredient = (
+                await self.forecasting_engine.derive_ingredient_usage_from_sales(days)
+            )
+            ingredient_usage = usage_by_ingredient.get(ingredient_id, {})
+            daily_totals = list(ingredient_usage.values())
+
+        if not daily_totals:
+            print(
+                f"[AVG DAILY USAGE] Ingredient {ingredient_id}: No usage data available, returning 0"
+            )
+            return Decimal("0")
+
+        avg_usage = Decimal(mean(daily_totals)).quantize(Decimal("0.01"))
+        print(
+            f"[AVG DAILY USAGE] Ingredient {ingredient_id}: Average daily usage calculated as {avg_usage}"
+        )
+        return avg_usage
+
+    async def get_std_dev_usage(self, ingredient_id: int, days: int = 30) -> Decimal:
+        """
+        Calculate the standard deviation of ingredient usage over a given number of days.
+
+        Args:
+            ingredient_id (int): ID of the ingredient.
+            days (int, optional): Number of days to analyze. Defaults to 30.
+
+        Returns:
+            Decimal: Standard deviation of usage rounded to two decimal places.
+        """
+        usage_data = await self.inventory_usage_log_repo.get_daily_usage(
+            ingredient_id, days
+        )
+        if len(usage_data) >= 14:
+            daily_totals = [float(usage) for _, usage in usage_data]
+            print(
+                f"[STD DEV USAGE] Ingredient {ingredient_id}: Using inventory logs, days={days}, samples={len(daily_totals)}"
+            )
+        else:
+            print(
+                f"[STD DEV USAGE FALLBACK] Ingredient {ingredient_id}: Insufficient logs ({len(usage_data)}), using sales-derived std dev"
+            )
+            usage_by_ingredient = (
+                await self.forecasting_engine.derive_ingredient_usage_from_sales(days)
+            )
+            ingredient_usage = usage_by_ingredient.get(ingredient_id, {})
+            daily_totals = list(ingredient_usage.values())
+
+        if len(daily_totals) < 2:
+            print(
+                f"[STD DEV USAGE] Ingredient {ingredient_id}: Not enough data to calculate std dev, returning 0"
+            )
+            return Decimal("0")
+
+        std_dev = Decimal(pstdev(daily_totals)).quantize(Decimal("0.01"))
+        print(
+            f"[STD DEV USAGE] Ingredient {ingredient_id}: Standard deviation calculated as {std_dev}"
+        )
+        return std_dev
+
+    async def get_current_inventory(self, ingredient_id: int) -> tuple[Decimal, str]:
+        """
+        Retrieve the current inventory quantity and unit for a given ingredient.
+
+        Args:
+            ingredient_id (int): ID of the ingredient.
+
+        Returns:
+            tuple[Decimal, str]: Quantity on hand and unit of measure.
+        """
+        inventory = await self.inventory_repo.get_inventory_by_ingredient(ingredient_id)
+        if not inventory:
+            print(
+                f"[CURRENT INVENTORY] Ingredient {ingredient_id}: No inventory record found, returning 0"
+            )
+            return Decimal("0.00"), ""
+        qty = Decimal(inventory.quantity_on_hand or 0).quantize(Decimal("0.01"))
+        unit = inventory.unit or ""
+        print(
+            f"[CURRENT INVENTORY] Ingredient {ingredient_id}: Quantity on hand = {qty} {unit}"
+        )
+        return qty, unit
+
+    async def get_lead_time_days(self, ingredient_id: int) -> int:
+        """
+        Get the lead time (in days) from the preferred or lowest-priority supplier.
+
+        Args:
+            ingredient_id (int): ID of the ingredient.
+
+        Returns:
+            int: Number of lead time days.
+        """
+        supplier = await self.ingredient_supplier_repo.get_preferred_or_lowest_priority_supplier(
+            ingredient_id
+        )
+        lead_time = (
+            supplier.lead_time_days
+            if supplier and supplier.lead_time_days is not None
+            else 1
+        )
+        print(
+            f"[LEAD TIME] Ingredient {ingredient_id}: Lead time retrieved as {lead_time} days"
+        )
+        return lead_time
+
+    async def get_moq(self, ingredient_id: int) -> Decimal:
+        """
+        Get the minimum order quantity (MOQ) from the preferred or lowest-priority supplier.
+
+        Args:
+            ingredient_id (int): ID of the ingredient.
+
+        Returns:
+            Decimal: Minimum order quantity.
+        """
+        supplier = await self.ingredient_supplier_repo.get_preferred_or_lowest_priority_supplier(
+            ingredient_id
+        )
+        moq = (
+            Decimal(supplier.min_order_quantity)
+            if supplier and supplier.min_order_quantity is not None
+            else Decimal("1")
+        )
+        print(f"[MOQ] Ingredient {ingredient_id}: Minimum order quantity set to {moq}")
+        return moq
+
+    async def get_max_stock_level(self, ingredient_id: int) -> Optional[Decimal]:
+        """
+        Get the maximum stock level defined for the ingredient, if available.
+
+        Args:
+            ingredient_id (int): ID of the ingredient.
+
+        Returns:
+            Optional[Decimal]: Maximum stock level or None if undefined.
+        """
+        ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+        if ingredient and ingredient.max_stock_level is not None:
+            max_stock = Decimal(ingredient.max_stock_level)
+            print(
+                f"[MAX STOCK] Ingredient {ingredient_id}: Max stock level = {max_stock}"
+            )
+            return max_stock
+        print(f"[MAX STOCK] Ingredient {ingredient_id}: No max stock level defined")
+        return None
+
+    async def get_shelf_life_days(self, ingredient_id: int) -> int:
+        """
+        Retrieve the shelf life in days for the specified ingredient.
+
+        Args:
+            ingredient_id (int): ID of the ingredient.
+
+        Returns:
+            int: Shelf life in days, or default value (30) if not defined.
+        """
+        ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+        shelf_life = (
+            ingredient.shelf_life_days
+            if ingredient and ingredient.shelf_life_days is not None
+            else 30
+        )
+        print(
+            f"[SHELF LIFE] Ingredient {ingredient_id}: Shelf life = {shelf_life} days"
+        )
+        return shelf_life
+
+    async def get_total_usage_last_n_days(
+        self, ingredient_id: int, days: int = 90
+    ) -> Decimal:
+        """
+        Compute the total usage of an ingredient over the last N days.
+
+        Args:
+            ingredient_id (int): ID of the ingredient.
+            days (int, optional): Number of days to look back. Defaults to 90.
+
+        Returns:
+            Decimal: Total usage rounded to two decimal places.
+        """
+        usage_data = await self.inventory_usage_log_repo.get_daily_usage(
+            ingredient_id, days
+        )
+        total = sum(Decimal(usage) for _, usage in usage_data)
+        total = total.quantize(Decimal("0.01"))
+        print(
+            f"[TOTAL USAGE] Ingredient {ingredient_id}: Total usage over last {days} days = {total}"
+        )
+        return total
