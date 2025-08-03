@@ -2,22 +2,57 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Run Streamlit",
+            "label": "Run Backend (FastAPI)",
             "type": "shell",
-            "command": "streamlit run ui/main_page.py",
+            "command": "source .venv/bin/activate && uvicorn main:app --reload --host 0.0.0.0 --port 8000",
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
+            "isBackground": true,
+            "problemMatcher": [],
             "presentation": {
-                "panel": "dedicated",
-                "clear": true
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new",
+                "showReuseMessage": true,
+                "clear": false
             }
         },
         {
-            "label": "Run Uvicorn",
+            "label": "Run Frontend (React)",
             "type": "shell",
-            "command": "uvicorn main:app --reload",
+            "command": "cd frontend && npm start",
+            "group": "build",
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new",
+                "showReuseMessage": true,
+                "clear": false
+            }
+        },
+        {
+            "label": "Start Both Servers",
+            "dependsOrder": "parallel",
+            "dependsOn": [
+                "Run Backend (FastAPI)",
+                "Run Frontend (React)"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            }
+        },
+        {
+            "label": "Run Streamlit",
+            "type": "shell",
+            "command": "streamlit run ui/main_page.py",
+            "group": "build",
             "presentation": {
                 "panel": "dedicated",
                 "clear": true

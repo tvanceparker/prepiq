@@ -9,10 +9,10 @@ from app.core.logging import logger
 
 # Read environment variables or use defaults
 DB_USER = os.getenv("DB_USER", "root")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "Thispass.01!")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "root")
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "3306")
-DB_NAME = os.getenv("DB_NAME", "prep_iq3")
+DB_NAME = os.getenv("DB_NAME", "prepiq")
 
 # Async database URL using aiomysql
 DATABASE_URL = f"mysql+aiomysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"

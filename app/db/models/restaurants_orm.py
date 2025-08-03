@@ -1,0 +1,83 @@
+# app/db/models/restaurants_orm.py
+
+from sqlalchemy import Column, Integer, String, Text, Enum, JSON, Date, Boolean, DECIMAL
+from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.mysql import INTEGER
+from sqlalchemy.ext.declarative import declarative_base
+from app.db.session import Base
+
+
+def default_sales_channels():
+    return ["in-house", "take-out"]
+class Restaurant(Base):
+    __tablename__ = "restaurants"
+
+    restaurant_id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    phone = Column(String(20))
+    address = Column(Text)
+    city = Column(String(50))
+    state = Column(String(50))
+    zip_code = Column(String(20))
+    subscription_tier = Column(Enum('basic', 'pro', 'master'), nullable=False, default='basic')
+    email = Column(String(255))
+    subscription_status = Column(String(20), default='inactive') 
+    expiry_date = Column(Date)
+    forecast_length = Column(Integer)
+    hours_of_operation = Column(JSON)
+    tax_rate = Column(DECIMAL(5,2)) 
+    timezone = Column(String(100))
+    eod_run_when_closed = Column(Boolean, default=True) 
+    eod_run_after_close_mins = Column(INTEGER(unsigned=True), default=60)
+    sales_channels = Column(JSON, default=default_sales_channels)
+    last_eod_run_date = Column(Date, nullable=True)
+
+
+    ingredients = relationship("Ingredient", back_populates="restaurant")
+    inventory = relationship("Inventory", back_populates="restaurant")
+    recipes = relationship("Recipe", back_populates="restaurant")
+    recipe_modifiers = relationship("RecipeModifier", back_populates="restaurant")
+    menu_items = relationship("MenuItem", back_populates="restaurant")
+    employees = relationship("Employee", back_populates="restaurant")
+    sales = relationship("Sales", back_populates="restaurant")
+    forecasts = relationship("Forecast", back_populates="restaurant")
+    forecast_accuracy = relationship("ForecastAccuracy", back_populates="restaurant")
+    forecast_breakdown = relationship("ForecastBreakdown", back_populates="restaurant")
+    spoilage_data = relationship("SpoilageData", back_populates="restaurant")
+    error_logs = relationship("ErrorLog", back_populates="restaurant")
+    activity_logs = relationship("ActivityLog", back_populates="restaurant")
+    weather_data = relationship("WeatherData", back_populates="restaurant")
+    traffic_data = relationship("TrafficData", back_populates="restaurant")
+    lead_time_data = relationship("LeadTimeData", back_populates="restaurant")
+    scheduled_shifts = relationship("ScheduledShift", back_populates="restaurant")
+    clock_events = relationship("ClockEvent", back_populates="restaurant")
+    supplier = relationship("Supplier", back_populates="restaurant")
+    menu_item_recipes = relationship("MenuItemRecipe", back_populates="restaurant")
+    recipe_ingredients = relationship("RecipeIngredient", back_populates="restaurant")
+    ingredient_supplier = relationship(
+        "IngredientSupplier", back_populates="restaurant"
+    )
+    inventory_lots = relationship("InventoryLot", back_populates="restaurant")
+    purchase_orders = relationship("PurchaseOrder", back_populates="restaurant")
+    purchase_order_items = relationship(
+        "PurchaseOrderItem", back_populates="restaurant"
+    )
+    supplier_preferences = relationship(
+        "SupplierPreference", back_populates="restaurant"
+    )
+    prep_schedules = relationship("PrepSchedule", back_populates="restaurant")
+    batch_recipes = relationship("BatchRecipe", back_populates="restaurant")
+    batch_recipe_ingredients = relationship(
+        "BatchRecipeIngredient", back_populates="restaurant"
+    )
+    menu_item_batch_usage = relationship(
+        "MenuItemBatchUsage", back_populates="restaurant"
+    )
+    alerts = relationship("Alert", back_populates="restaurant")
+    daily_forecast_accuracy = relationship(
+        "DailyForecastAccuracy", back_populates="restaurant"
+    )
+    usage_logs = relationship("InventoryUsageLog", back_populates="restaurant")
+    roles = relationship("Role", back_populates="restaurant", cascade="all, delete-orphan")
+    permissions = relationship("Permission", back_populates="restaurant", cascade="all, delete-orphan")
+    role_permissions = relationship("RolePermission", back_populates="restaurant", cascade="all, delete-orphan")
