@@ -4,7 +4,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-green.svg)
 ![React](https://img.shields.io/badge/React-18.2.0-blue.svg)
 ![Status](https://img.shields.io/badge/status-private-red.svg)
-![Status](https://img.shields.io/badge/status-private-red.svg)
+
 
 PrepIQ is a comprehensive restaurant management system built to help restaurants optimize their operations through intelligent forecasting, inventory management, and team coordination.
 
