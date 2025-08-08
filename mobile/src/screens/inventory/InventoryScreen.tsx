@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
-import { Text, Card, Chip, Surface, FAB, IconButton, useTheme, Badge, SearchBar } from 'react-native-paper';
+import { Text, Card, Chip, Surface, FAB, IconButton, useTheme, Badge, Searchbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import ScreenLayout from '../../components/ScreenLayout';
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
@@ -226,7 +226,7 @@ export default function InventoryScreen() {
       )}
 
       {/* Search */}
-      <SearchBar
+      <Searchbar
         placeholder="Search inventory items..."
         onChangeText={setSearchQuery}
         value={searchQuery}
