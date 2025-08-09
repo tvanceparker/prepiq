@@ -215,3 +215,45 @@ class RoleOutDTO(BaseModel):
 class DeleteRoleResponseDTO(BaseModel):
     detail: str
     model_config = ConfigDict(from_attributes=True)
+
+# ---- Restaurants (re-export for section alignment) ----
+class RestaurantBase(BaseModel):
+    name: str
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+
+class RestaurantCreate(RestaurantBase):
+    pass
+
+class RestaurantUpdate(RestaurantBase):
+    pass
+
+class Restaurant(RestaurantBase):
+    restaurant_id: int
+    model_config = ConfigDict(from_attributes=True)
+
+# ---- Error Logs (admin-related utilities) ----
+class ErrorLogBase(BaseModel):
+    restaurant_id: int
+    employee_id: Optional[int] = None
+    message: str
+    level: Optional[str] = None
+    trace: Optional[str] = None
+    source: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class ErrorLogCreate(ErrorLogBase):
+    pass
+
+
+class ErrorLogUpdate(ErrorLogBase):
+    pass
+
+
+class ErrorLog(ErrorLogBase):
+    log_id: int
+    model_config = ConfigDict(from_attributes=True)

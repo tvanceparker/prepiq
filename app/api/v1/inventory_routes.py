@@ -3,8 +3,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from app.services.inventory_service import InventoryService
 from app.api.dependencies import get_inventory_service
-from app.schemas.inventory_dto import (InventoryByCategoryItem, InventoryAdjustmentIn, InventoryDTO,InventoryDetailsDTO, SupplierOut)
-from app.schemas.inventory_lot_dto import InventoryLotIn
+from app.schemas.inventory_dto import (
+    InventoryByCategoryItem,
+    InventoryAdjustmentIn,
+    InventoryDTO,
+    InventoryDetailsDTO,
+    SupplierOut,
+    InventoryLotIn,
+)
 from typing import Dict, List
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])

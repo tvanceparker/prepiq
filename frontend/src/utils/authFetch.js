@@ -1,4 +1,5 @@
 // src/utils/authFetch.js
+import { BASE_URL } from "../api/config";
 
 export async function authFetch(url, options = {}) {
     const token = localStorage.getItem("token");
@@ -7,14 +8,14 @@ export async function authFetch(url, options = {}) {
         ...options,
         headers: {
             ...(options.headers || {}),
-            Authorization: `Bearer ${token}`,
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         credentials: "include",
     });
 
     if (res.status === 401) {
         // Try to refresh token
-        const refreshRes = await fetch("http://127.0.0.1:8000/api/v1/auth/refresh", {
+        const refreshRes = await fetch(`${BASE_URL}/auth/refresh`, {
             method: "POST",
             credentials: "include", // Send cookies!
         });

@@ -1,13 +1,13 @@
 # app/api/v1/prep_routes.py
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
-from app.schemas.batch_recipes_dto import (
+from app.schemas.prep_dto import (
     BatchRecipeIngredientUpdate,
     BatchRecipeUpdateRequest,
     IngredientInput,
     CreateBatchRecipeRequest,
+    PrepScheduleUpdate,
 )
-from app.schemas.prep_schedule_dto import PrepScheduleUpdate
 from app.services.prep_service import PrepService
 from app.api.dependencies import get_prep_service
 from typing import Dict, List, Optional

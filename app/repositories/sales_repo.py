@@ -4,7 +4,6 @@ from datetime import  date, timedelta, datetime, time
 from app.repositories.base_repository import BaseRepository
 from typing import List, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.schemas.sales_dto import  SalesUpdate
 
 
 class SalesRepository(BaseRepository):

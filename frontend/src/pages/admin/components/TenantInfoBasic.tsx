@@ -17,8 +17,7 @@ import {
 import {
   TenantInfoResponse,
   TenantInfoUpdateRequest,
-  TenantModalProps,
-} from "../../../interfaces/adminInterfaces";
+} from "../../../interfaces/admin";
 
 type Severity = "error" | "warning" | "info" | "success";
 

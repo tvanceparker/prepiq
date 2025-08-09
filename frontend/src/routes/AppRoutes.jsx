@@ -67,7 +67,7 @@ import AccountSettings from "../pages/settings/AccountSettings";
 import Kitchen from "../pages/Kitchen";
 import Waiter from "../pages/Waiter";
 
-export default function AppRoutes() {
+export default function AppRoutes(): JSX.Element {
   return (
     <Routes>
       {/* Public Routes */}

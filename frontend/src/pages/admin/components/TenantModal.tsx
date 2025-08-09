@@ -20,7 +20,7 @@ import {
   TenantInfoUpdateRequest,
   DayHours,
   TenantModalProps,
-} from "../../../interfaces/adminInterfaces";
+} from "../../../interfaces/admin";
 import { tenantInfoSchema } from "../../../schemas/tenantSchema";
 import { formatPhoneNumber } from "../../../forms/tenantFormHelpers";
 import * as Yup from "yup";

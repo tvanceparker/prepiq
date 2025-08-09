@@ -4,10 +4,15 @@ from typing import Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Path, Body
 from app.services.menu_service import MenuService
 from app.api.dependencies import get_menu_service, get_current_user
-from app.schemas.menu_items_dto import MenuItemCreate, MenuItemUpdateRequest
-from app.schemas.ingredients_dto import IngredientCreate
-from app.schemas.recipe_ingredients_dto import RecipeWithIngredientsDTO
-from app.schemas.recipes_dto import RecipeBase, Recipe, RecipeCostingRequest
+from app.schemas.menu_dto import (
+    MenuItemCreate,
+    MenuItemUpdateRequest,
+    IngredientCreate,
+    RecipeWithIngredientsDTO,
+    RecipeBase,
+    Recipe,
+    RecipeCostingRequest,
+)
 from app.api.dependencies import get_restaurant_id
 
 router = APIRouter(prefix="/menu", tags=["Menu"])

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from app.services.alerts_service import AlertsService
-from app.schemas.alerts_dto import AlertCreate, AlertResponse, FixAlertRequest
+from app.schemas.alert_dto import AlertCreate, AlertResponse, FixAlertRequest
 from app.api.dependencies import get_alert_service, check_permissions
 import logging
 from app.core.logging import logging

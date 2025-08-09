@@ -22,7 +22,7 @@ import {
   Tooltip,
 } from "@mui/material";
 
-export default function Layout({ children, tier, accountInfo }) {
+export default function Layout({ children, tier }) {
   const { theme, setTheme, user, logout } = useContext(AuthContext);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dateTime, setDateTime] = useState(new Date());

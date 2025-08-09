@@ -3,11 +3,11 @@ import { useLocation } from "react-router-dom";
 import Layout from "./components/Layout";
 import AppRoutes from "./routes/AppRoutes";
 import { AuthContext } from "./contexts/AuthContext";
+import type { AuthContextType } from "./interfaces/auth";
 import GlobalSnackbar from "./components/GlobalSnackbar";
 
-
 export default function App(): JSX.Element {
-  const { tier, loading, accountInfo } = useContext(AuthContext);
+  const { tier, loading } = useContext(AuthContext) as AuthContextType;
   const location = useLocation();
 
   const isAuthPage = ["/login", "/register", "/forgot-password"].some((path) =>
@@ -24,10 +24,8 @@ export default function App(): JSX.Element {
 
   return (
     <>
-      {isAuthPage ? (
-        <AppRoutes />
-      ) : (
-        <Layout tier={tier} accountInfo={accountInfo}>
+      {isAuthPage ? <AppRoutes /> : (
+        <Layout tier={tier as any}>
           <AppRoutes />
         </Layout>
       )}

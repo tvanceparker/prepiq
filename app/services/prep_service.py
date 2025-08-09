@@ -14,8 +14,7 @@ from app.repositories.menu_items_repo import MenuItemRepository
 from app.repositories.prep_schedule_repo import PrepScheduleRepository
 from app.repositories.inventory_lot_repo import InventoryLotRepository
 from app.repositories.inventory_repo import InventoryRepository
-from app.schemas.batch_recipe_ingredients_dto import BatchRecipeIngredientCreate
-from app.schemas.prep_schedule_dto import PrepScheduleUpdate
+from app.schemas.prep_dto import BatchRecipeIngredientCreate, PrepScheduleUpdate
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Optional
 from decimal import Decimal

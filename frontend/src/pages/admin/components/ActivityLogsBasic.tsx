@@ -10,7 +10,7 @@ import {
   Tooltip,
   Skeleton,
 } from "@mui/material";
-import { ActivityLogResponse } from "../../../interfaces/adminInterfaces";
+import { ActivityLogResponse } from "../../../interfaces/admin";
 
 export default function ActivityLogsBasic() {
   const theme = useTheme();

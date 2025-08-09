@@ -17,13 +17,18 @@ from app.repositories.activity_logs_repo import ActivityLogRepository
 from app.repositories.error_logs_repo import ErrorLogRepository
 from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
 from app.repositories.supplier_repo import SupplierRepository
-from app.schemas.menu_items_dto import MenuItemCreate, MenuItemUpdate
-from app.schemas.menu_item_recipes_dto import MenuItemRecipeCreate
-from app.schemas.recipes_dto import RecipeCreate, RecipeUpdate
-from app.schemas.recipe_ingredients_dto import RecipeIngredientCreate
-from app.schemas.ingredients_dto import IngredientCreate, IngredientUpdate
-from app.schemas.ingredient_supplier_dto import IngredientSupplierUpdate
-from app.schemas.error_logs_dto import ErrorLogCreate
+from app.schemas.menu_dto import (
+    MenuItemCreate,
+    MenuItemUpdate,
+    MenuItemRecipeCreate,
+    RecipeCreate,
+    RecipeUpdate,
+    RecipeIngredientCreate,
+    IngredientCreate,
+    IngredientUpdate,
+    IngredientSupplierUpdate,
+)
+from app.schemas.admin_dto import ErrorLogCreate
 from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
 import traceback

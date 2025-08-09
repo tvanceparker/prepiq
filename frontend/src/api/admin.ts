@@ -3,7 +3,7 @@ import type {
   TenantInfoResponse,
   TenantInfoUpdateRequest,
   ActivityLogResponse,
-} from "../interfaces/adminInterfaces";
+} from "../interfaces/admin";
 
 // ========== Tenant Info ==========
 // Get tenant info

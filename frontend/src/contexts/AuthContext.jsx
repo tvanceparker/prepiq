@@ -2,29 +2,43 @@ import React, { createContext, useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BASE_URL } from "../api/config";
 import useApplyTheme from "../hooks/useApplyTheme";
+import type { AuthContextType, Preferences, ThemeMode, UserInfo } from "../interfaces/auth";
 
-export const AuthContext = createContext();
+export const AuthContext = createContext<AuthContextType>({
+  user: null,
+  token: null,
+  tier: null,
+  loading: true,
+  preferences: { theme: "light", auto_logout_minutes: 30 },
+  setPreferences: () => {},
+  theme: "light",
+  setTheme: () => {},
+  login: async () => {},
+  logout: async () => {},
+  permissions: [],
+  refetchPermissions: async () => {},
+});
 
 const defaultPreferences = {
   theme: "light",
   auto_logout_minutes: 30,
 };
 
-export function AuthProvider({ children }) {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
 
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
-  const [tier, setTier] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [preferences, setPreferences] = useState(defaultPreferences);
+  const [user, setUser] = useState<UserInfo | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [tier, setTier] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
 
-  const [theme, setTheme] = useState(() => {
+  const [theme, setTheme] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem("preferences");
     if (saved) {
       try {
         const prefs = JSON.parse(saved);
-        return prefs?.theme !== "system" ? prefs.theme : "light";
+        return (prefs?.theme && prefs.theme !== "system" ? prefs.theme : "light") as ThemeMode;
       } catch {}
     }
     return "light";
@@ -91,7 +105,7 @@ export function AuthProvider({ children }) {
   });
 
   // Login logic
-  const login = async ({ token, tier, user, preferences: prefs }) => {
+  const login = async ({ token, tier, user, preferences: prefs }: { token: string; tier: string; user: UserInfo; preferences?: Preferences; }) => {
     setToken(token);
     setTier(tier);
     setUser(user);
@@ -110,7 +124,9 @@ export function AuthProvider({ children }) {
     localStorage.setItem("theme", themePref);
 
     // Refetch permissions
-    queryClient.invalidateQueries(["permissions", user.role_id]);
+    if (user?.role_id) {
+      queryClient.invalidateQueries({ queryKey: ["permissions", user.role_id] });
+    }
   };
 
   // Logout logic
@@ -139,12 +155,12 @@ export function AuthProvider({ children }) {
     queryClient.removeQueries(["permissions"]);
   };
 
-  const contextValue = useMemo(
+  const contextValue = useMemo<AuthContextType>(
     () => ({
       user,
       token,
       tier,
-      loading: loading || permissionsLoading,
+      loading: !!(loading || permissionsLoading),
       preferences,
       setPreferences,
       theme,
@@ -154,18 +170,7 @@ export function AuthProvider({ children }) {
       permissions,
       refetchPermissions,
     }),
-    [
-      user,
-      token,
-      tier,
-      loading,
-      preferences,
-      theme,
-      login,
-      logout,
-      permissions,
-      permissionsLoading,
-    ]
+    [user, token, tier, loading, preferences, theme, login, logout, permissions, permissionsLoading]
   );
 
   return (

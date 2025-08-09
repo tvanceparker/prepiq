@@ -1,6 +1,6 @@
 # app/schemas/dashboard_dto.py
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 
 class MenuItemCreate(BaseModel):
@@ -21,6 +21,4 @@ class MenuItemOut(BaseModel):
     category: Optional[str]
     price: float
     is_active: bool
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

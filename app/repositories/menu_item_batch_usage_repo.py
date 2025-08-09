@@ -3,7 +3,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db.models.menu_item_batch_usage_orm import MenuItemBatchUsage
-from app.schemas.menu_item_batch_usage_dto import (
+from app.schemas.menu_dto import (
     MenuItemBatchUsageCreate,
     MenuItemBatchUsageUpdate,
 )

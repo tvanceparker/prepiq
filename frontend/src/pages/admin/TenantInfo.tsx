@@ -1,7 +1,7 @@
 // src/pages/admin/TenantInfo.jsx
 import React, { useContext } from "react";
 import { AuthContext } from "../../contexts/AuthContext";
-import TenantInfoBasic from "./components/TenantInfoBasic.tsx";
+import TenantInfoBasic from "./components/TenantInfoBasic";
 
 export default function TenantInfo() {
   const { tier } = useContext(AuthContext);

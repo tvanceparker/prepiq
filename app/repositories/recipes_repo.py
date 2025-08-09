@@ -5,7 +5,7 @@ from sqlalchemy.future import select
 from sqlalchemy.exc import IntegrityError
 from app.repositories.base_repository import BaseRepository
 from app.db.models.recipes_orm import Recipe
-from app.schemas.recipes_dto import RecipeCreate, RecipeUpdate
+from app.schemas.menu_dto import RecipeCreate, RecipeUpdate
 from typing import List, Optional
 
 

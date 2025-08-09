@@ -1,7 +1,8 @@
 # app/schemas/inventory_dto.py
 
 from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import ConfigDict
+from typing import Optional, List, Union
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -30,6 +31,12 @@ class InventoryAdjustmentIn(BaseModel):
         None  # Optional reference ID (could be tied to a sale, batch, etc.)
     )
     notes: Optional[str] = ""  # Optional notes to describe the adjustment
+
+
+class InventoryLotIn(BaseModel):
+    ingredient_supplier_id: int
+    total_received: Union[float, int]
+    delivery_date: date
 
 
 class InventoryCreate(InventoryBase):
@@ -94,8 +101,7 @@ class LotDTO(BaseModel):
 
     
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class InventoryDTO(BaseModel):
     inventory_id: int
@@ -143,5 +149,4 @@ class SupplierOut(BaseModel):
     contract_end_date: Optional[str]
     ingredients: List[IngredientOut]
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

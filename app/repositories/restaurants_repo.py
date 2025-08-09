@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.models.restaurants_orm import Restaurant
 from app.repositories.base_repository import BaseRepository
-from app.schemas.restaurants_dto import RestaurantCreate, RestaurantUpdate
+from app.schemas.admin_dto import RestaurantCreate, RestaurantUpdate
 from typing import Optional
 
 
