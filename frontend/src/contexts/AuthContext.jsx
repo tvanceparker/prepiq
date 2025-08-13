@@ -2,9 +2,8 @@ import React, { createContext, useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BASE_URL } from "../api/config";
 import useApplyTheme from "../hooks/useApplyTheme";
-import type { AuthContextType, Preferences, ThemeMode, UserInfo } from "../interfaces/auth";
 
-export const AuthContext = createContext<AuthContextType>({
+export const AuthContext = createContext({
   user: null,
   token: null,
   tier: null,
@@ -24,21 +23,21 @@ const defaultPreferences = {
   auto_logout_minutes: 30,
 };
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({ children }) {
   const queryClient = useQueryClient();
 
-  const [user, setUser] = useState<UserInfo | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [tier, setTier] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(null);
+  const [tier, setTier] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [preferences, setPreferences] = useState(defaultPreferences);
 
-  const [theme, setTheme] = useState<ThemeMode>(() => {
+  const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem("preferences");
     if (saved) {
       try {
         const prefs = JSON.parse(saved);
-        return (prefs?.theme && prefs.theme !== "system" ? prefs.theme : "light") as ThemeMode;
+        return prefs?.theme && prefs.theme !== "system" ? prefs.theme : "light";
       } catch {}
     }
     return "light";
@@ -105,7 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   // Login logic
-  const login = async ({ token, tier, user, preferences: prefs }: { token: string; tier: string; user: UserInfo; preferences?: Preferences; }) => {
+  const login = async ({ token, tier, user, preferences: prefs }) => {
     setToken(token);
     setTier(tier);
     setUser(user);
@@ -152,10 +151,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("preferences", JSON.stringify(defaultPreferences));
     localStorage.setItem("theme", "light");
 
-    queryClient.removeQueries(["permissions"]);
+    queryClient.removeQueries({ queryKey: ["permissions"] });
   };
 
-  const contextValue = useMemo<AuthContextType>(
+  const contextValue = useMemo(
     () => ({
       user,
       token,

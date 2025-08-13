@@ -124,7 +124,7 @@ class ForecastingEngineBasic:
                 total_predicted += predicted_qty
 
                 error = mape(predicted_qty, actual_qty) 
-                abs_percentage_errors.append(error)
+                abs_percentage_errors.append(float(error))
 
                 squared_errors.append((actual_qty - predicted_qty) ** 2)
 

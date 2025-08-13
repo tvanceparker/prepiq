@@ -150,7 +150,6 @@ export default function Layout({ children, tier }) {
         {/* Header */}
         <AppBar
           position="fixed"
-          color="background.paper"
           elevation={showHeader ? 4 : 0}
           sx={{
             height: 80,

@@ -1,0 +1,15 @@
+# Minimal runtime deps to boot FastAPI server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+sqlalchemy[asyncio]==2.0.36
+aiomysql==0.2.0
+alembic==1.12.1
+python-jose[cryptography]==3.3.0
+passlib[argon2]==1.7.4
+argon2-cffi==23.1.0
+python-multipart==0.0.6
+pydantic==2.9.2
+apscheduler==3.10.4
+python-dotenv==1.0.0
+email-validator==2.2.0
+structlog==23.2.0

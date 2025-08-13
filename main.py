@@ -99,8 +99,11 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000",
-                   "http://10.0.14.5:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|10\..+|192\.168\..+|172\.(1[6-9]|2[0-9]|3[0-1])\..+):3000",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
