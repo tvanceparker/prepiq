@@ -157,6 +157,7 @@ export default function Layout({ children, tier }) {
             transform: showHeader ? "translateY(0)" : "translateY(-100%)",
             borderBottom: `1px solid ${muiTheme.palette.divider}`,
             pl: { sm: 32.5 }, // 260px sidebar + padding
+            color: "text.primary", // ensure AppBar text uses theme text color (fix light-mode visibility)
           }}
         >
           <Toolbar
@@ -175,10 +176,10 @@ export default function Layout({ children, tier }) {
               </IconButton>
 
               <Box>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="text.secondary" sx={{ color: 'text.secondary' }}>
                   {formattedDate}
                 </Typography>
-                <Typography variant="h6" fontWeight="bold" lineHeight={1}>
+                <Typography variant="h6" fontWeight="bold" lineHeight={1} sx={{ color: 'text.primary' }}>
                   {formattedTime}
                 </Typography>
               </Box>
@@ -215,7 +216,7 @@ export default function Layout({ children, tier }) {
               <Typography
                 variant="body2"
                 noWrap
-                sx={{ flexShrink: 0, display: { xs: "none", sm: "block" } }}
+                sx={{ flexShrink: 0, display: { xs: "none", sm: "block" }, color: 'text.primary' }}
               >
                 Logged in as{" "}
                 <strong>{user?.name || user?.username || "Unknown"}</strong>

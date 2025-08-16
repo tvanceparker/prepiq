@@ -6,6 +6,7 @@ from app.api.dependencies import get_dashboard_service, check_permissions
 from typing import List, Optional
 from fastapi import status
 from app.utils.logger_helpers import log_route
+from datetime import datetime
 
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -133,9 +134,15 @@ async def download_sales_upload_template(
     """Download an XLSX template file for sales data upload."""
     stream = await dashboard_service.generate_sales_upload_template_xlsx(default_date=default_date)
 
-    headers = {
-        "Content-Disposition": "attachment; filename=sales_upload_template.xlsx"
-    }
+    # Build filename using provided default_date (first 10 chars) or UTC today
+    if default_date:
+        # default_date may be like '2025-06-11T00:00:00' — take date portion
+        file_date = default_date.split("T")[0]
+    else:
+        file_date = datetime.utcnow().strftime("%Y-%m-%d")
+
+    filename = f"sale_template_{file_date}.xlsx"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
 
     return StreamingResponse(
         stream,

@@ -13,11 +13,13 @@ export function useDownloadSalesTemplate() {
             // Pass defaultDate param to API call
             const blob = await downloadSalesTemplate(defaultDate);
 
-            // Trigger file download in browser
-            const url = window.URL.createObjectURL(blob);
+            // Trigger file download in browser, use filename suggested by server when available
+            const { blob: fileBlob, filename: respFilename } = blob;
+            const filename = respFilename || (defaultDate ? `sale_template_${defaultDate.split("T")[0]}.xlsx` : `sale_template_${new Date().toISOString().slice(0,10)}.xlsx`);
+            const url = window.URL.createObjectURL(fileBlob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = "sales_upload_template.xlsx";
+            a.download = filename || "sales_upload_template.xlsx";
             document.body.appendChild(a);
             a.click();
             a.remove();

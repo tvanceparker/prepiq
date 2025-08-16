@@ -169,11 +169,12 @@ export default function BasicOverview({ data }) {
 
   const handleDownloadTemplate = useCallback(() => {
     downloadSalesTemplate(templateDate)
-      .then((blob) => {
-        const url = window.URL.createObjectURL(blob);
+      .then(({ blob: fileBlob, filename: respFilename }) => {
+        const url = window.URL.createObjectURL(fileBlob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = "sales_template.xlsx";
+        const fallbackName = `sale_template_${templateDate}.xlsx`;
+        link.download = respFilename || fallbackName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);

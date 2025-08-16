@@ -44,7 +44,30 @@ export const downloadSalesTemplate = async (defaultDate) => {
         throw new Error(`Download template failed: ${res.status} ${err}`);
     }
 
-    return res.blob();
+    // Try to read filename from Content-Disposition header, fall back to default
+    const contentDisposition = res.headers.get("content-disposition") || res.headers.get("Content-Disposition");
+    // Default filename: use provided defaultDate if available, otherwise today's date
+    const defaultFileDate = defaultDate ? defaultDate.split("T")[0] : new Date().toISOString().slice(0, 10);
+    let filename = `sale_template_${defaultFileDate}.xlsx`;
+    if (contentDisposition) {
+        // Examples:
+        // Content-Disposition: attachment; filename="sale_template_2025-08-14.xlsx"
+        // or with RFC5987 encoding: filename*=UTF-8''sale_template_2025-08-14.xlsx
+        const filenameStarMatch = contentDisposition.match(/filename\*=UTF-8''([^;\n\r]+)/i);
+        const filenameMatch = contentDisposition.match(/filename="?([^";\n\r]+)"?/i);
+        if (filenameStarMatch && filenameStarMatch[1]) {
+            try {
+                filename = decodeURIComponent(filenameStarMatch[1]);
+            } catch (e) {
+                filename = filenameStarMatch[1];
+            }
+        } else if (filenameMatch && filenameMatch[1]) {
+            filename = filenameMatch[1];
+        }
+    }
+
+    const blob = await res.blob();
+    return { blob, filename };
 };
 
 // ✅ Upload sales CSV/XLSX (FormData + authFetch)
