@@ -139,3 +139,20 @@ class ForecastBreakdownRepository(BaseRepository):
 
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+    async def delete_by_forecast(self, forecast_id: int) -> int:
+        """
+        Bulk delete all breakdown rows for the given forecast_id. Returns number of rows deleted.
+        """
+        from sqlalchemy import delete
+
+        stmt = delete(ForecastBreakdown).where(
+            ForecastBreakdown.restaurant_id == self.restaurant_id,
+            ForecastBreakdown.forecast_id == forecast_id,
+        )
+        result = await self.db.execute(stmt)
+        # result.rowcount may not be reliably populated across dialects, but return it when available
+        try:
+            return result.rowcount or 0
+        except Exception:
+            return 0

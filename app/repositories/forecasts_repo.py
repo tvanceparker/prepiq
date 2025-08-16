@@ -81,3 +81,20 @@ class ForecastRepository(BaseRepository):
         result = await self.db.execute(stmt)
         forecasts = result.scalars().all()
         return forecasts
+
+    async def get_by_period_and_menu_item(self, menu_item_id: int, start_date: date, end_date: date) -> Forecast | None:
+        """
+        Return a forecast for the exact period and menu item if it exists.
+        """
+        stmt = (
+            select(self.model)
+            .where(
+                self.model.menu_item_id == menu_item_id,
+                self.model.restaurant_id == self.restaurant_id,
+                self.model.forecast_period_start == start_date,
+                self.model.forecast_period_end == end_date,
+            )
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
