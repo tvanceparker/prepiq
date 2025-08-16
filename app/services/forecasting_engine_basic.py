@@ -6,6 +6,7 @@ from statistics import mean
 from datetime import date, timedelta
 from sklearn.linear_model import LinearRegression
 from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
 import joblib
 from app.services.utils.model_path import save_model, load_model
 from app.services.utils.metrics import smape, mape
@@ -49,7 +50,6 @@ class ForecastingEngineBasic:
             "severity": severity,
             "meta": meta or {},
         })
-        #TODO Consider putting in more metrics, we use smape, but lets use mape, and r2 possibly.
     @log_method("Evaluating and Recording Daily Forecast Accuracy")
     async def evaluate_and_record_daily_forecast_accuracy(self, evaluation_date: date):
         forecast_breakdowns = await self.forecast_breakdown_repo.get_forecasts_for_date(evaluation_date)
@@ -63,7 +63,6 @@ class ForecastingEngineBasic:
                 breakdown.menu_item_id, breakdown.forecast_date)
 
             forecast_error = predicted_quantity - actual_quantity
-            #TODO Consider changing error percentage to just a normal percentage.
             error_percentage = mape(predicted_quantity, actual_quantity)
 
             exists = await self.daily_forecast_accuracy_repo.exists_for_breakdown(breakdown.breakdown_id)
@@ -382,6 +381,15 @@ class ForecastingEngineBasic:
         daily = sales_df.groupby("date")["quantity_sold"].sum().reset_index()
         daily["date"] = pd.to_datetime(daily["date"]).dt.date
 
+        # Ensure weather data exists for the date range (backfill missing days lazily)
+        # Use the service-level helper so we can reuse it for future forecasts as well
+        try:
+            if getattr(self, 'db', None):
+                await self.ensure_weather_for_range(daily['date'].min(), daily['date'].max())
+        except Exception:
+            # best-effort only
+            pass
+
         # Try to load latest forecast breakdowns for the same date range
         # We will attempt to join on forecast_date with latest breakdown per date
         # Use repository helper get_latest_by_date_range on forecast_breakdown
@@ -425,6 +433,70 @@ class ForecastingEngineBasic:
                 daily['prev_error_percentage'] = pd.NA
         else:
             daily['prev_error_percentage'] = pd.NA
+
+        # Merge weather data (if available) to avoid calling external API on every run
+        try:
+            from app.repositories.weather_data_repo import WeatherDataRepository
+            weather_repo = WeatherDataRepository(self.db, self.restaurant_id)
+            w_rows = []
+            try:
+                w_rows = await weather_repo.get_range(self.restaurant_id, daily['date'].min(), daily['date'].max())
+            except Exception:
+                w_rows = []
+
+            if w_rows:
+                wdf = pd.DataFrame([{
+                    'date': w.weather_date,
+                    'temperature': float(w.temperature) if w.temperature is not None else None,
+                    'precipitation_mm': float(w.precipitation_mm) if getattr(w, 'precipitation_mm', None) is not None else None,
+                } for w in w_rows])
+                wdf['date'] = pd.to_datetime(wdf['date']).dt.date
+                daily = pd.merge(daily, wdf, on='date', how='left')
+            else:
+                daily['temperature'] = pd.NA
+                daily['precipitation_mm'] = pd.NA
+        except Exception:
+            daily['temperature'] = pd.NA
+            daily['precipitation_mm'] = pd.NA
+
+        # create flags and simple imputation for weather
+        daily['has_weather'] = daily['temperature'].notna().astype(int)
+        if 'temperature' in daily.columns:
+            try:
+                daily['temperature'] = pd.to_numeric(daily['temperature']).astype(float)
+                daily['temperature'] = daily['temperature'].fillna(daily['temperature'].mean())
+            except Exception:
+                daily['temperature'] = daily['temperature'].fillna(0.0)
+        if 'precipitation_mm' in daily.columns:
+            try:
+                daily['precipitation_mm'] = pd.to_numeric(daily['precipitation_mm']).astype(float)
+                daily['precipitation_mm'] = daily['precipitation_mm'].fillna(0.0)
+            except Exception:
+                daily['precipitation_mm'] = daily['precipitation_mm'].fillna(0.0)
+
+        # Weather-derived features: only include if we have enough exogenous coverage
+        MIN_EXOG_DAYS = 30
+        try:
+            num_with_weather = int(daily['has_weather'].sum())
+        except Exception:
+            num_with_weather = 0
+
+        include_weather_features = num_with_weather >= MIN_EXOG_DAYS
+        if include_weather_features:
+            # Simple lags/rolling aggregates for temperature and precipitation
+            try:
+                daily['temp_lag_1'] = daily['temperature'].shift(1).fillna(method='bfill').astype(float)
+                daily['temp_roll_7'] = daily['temperature'].rolling(window=7, min_periods=1).mean().fillna(method='bfill').astype(float)
+                daily['precip_lag_1'] = daily['precipitation_mm'].shift(1).fillna(0.0).astype(float)
+            except Exception:
+                daily['temp_lag_1'] = 0.0
+                daily['temp_roll_7'] = 0.0
+                daily['precip_lag_1'] = 0.0
+        else:
+            # Ensure columns exist for downstream model code but keep zeros
+            daily['temp_lag_1'] = 0.0
+            daily['temp_roll_7'] = 0.0
+            daily['precip_lag_1'] = 0.0
 
         # Create simple lags and additional engineered features
         daily = daily.sort_values('date').reset_index(drop=True)
@@ -488,6 +560,71 @@ class ForecastingEngineBasic:
         if model is not None:
             try:
                 # Convert to H2O frame and predict
+                # Ensure we have weather for the forecast horizon (best-effort). This will
+                # populate `weather_data` for these future dates so downstream feature
+                # assembly (if using exogenous features) can pick them up and models
+                # can benefit from forecasts of exogenous variables.
+                # Strategy: observed weather (stored in DB) is used for training and
+                # for historical features. For the future horizon we fetch forecasted
+                # weather but DO NOT persist it to the DB (memory-only). The observed
+                # weather in the DB remains the ground-truth used for training.
+                try:
+                    # fetch future forecasted weather (memory-only)
+                    future_weather_map = {}
+                    if getattr(self, 'db', None):
+                        from app.integrations.weather.open_meteo_adapter import fetch_forecast_for_range
+                        rest = await self.restaurant_repo.get_by_id(self.restaurant_id)
+                        if rest and getattr(rest, 'latitude', None) is not None and getattr(rest, 'longitude', None) is not None:
+                            start_dt = date.today()
+                            end_dt = date.today() + timedelta(days=horizon_days - 1)
+                            future_weather_map = await fetch_forecast_for_range(float(rest.latitude), float(rest.longitude), start_dt, end_dt)
+                except Exception:
+                    future_weather_map = {}
+
+                # If weather-derived features are included in training, create matching
+                # in-memory features for the future horizon by seeding from the last
+                # observed values in DB and combining with forecasted temps.
+                try:
+                    from app.repositories.weather_data_repo import WeatherDataRepository
+                    weather_repo = WeatherDataRepository(self.db, self.restaurant_id)
+                    obs_start = date.today() - timedelta(days=7)
+                    obs_end = date.today()
+                    observed_rows = await weather_repo.get_range(self.restaurant_id, obs_start, obs_end)
+                    observed_rows = sorted([r for r in observed_rows], key=lambda r: r.weather_date)
+                    past_temps = [float(r.temperature) for r in observed_rows if getattr(r, 'temperature', None) is not None]
+                    past_precips = [float(r.precipitation_mm) for r in observed_rows if getattr(r, 'precipitation_mm', None) is not None]
+                except Exception:
+                    past_temps = []
+                    past_precips = []
+
+                # Build series for future temps/precips
+                future_temps = [future_weather_map.get(d, {}).get('temperature') if future_weather_map else None for d in future_dates]
+                future_precips = [future_weather_map.get(d, {}).get('precipitation_mm') if future_weather_map else 0.0 for d in future_dates]
+
+                combined_temps = list(past_temps) if past_temps else [0.0]
+                temp_lag_1_list = []
+                temp_roll_7_list = []
+                for i, ft in enumerate(future_temps):
+                    prev_temp = combined_temps[-1] if combined_temps else 0.0
+                    temp_lag_1_list.append(prev_temp)
+                    window = (combined_temps + [t for t in future_temps[:i] if t is not None])[-7:]
+                    temp_roll_7_list.append(float(sum(window) / len(window)) if window else 0.0)
+                    combined_temps.append(ft if ft is not None else prev_temp)
+
+                combined_precips = list(past_precips) if past_precips else [0.0]
+                precip_lag_1_list = []
+                for i, fp in enumerate(future_precips):
+                    prev_prec = combined_precips[-1] if combined_precips else 0.0
+                    precip_lag_1_list.append(prev_prec)
+                    combined_precips.append(fp if fp is not None else 0.0)
+
+                # attach weather features into features_df for prediction if present
+                if 'temp_lag_1' in features_df.columns or True:
+                    features_df = features_df.reset_index(drop=True)
+                    features_df['temp_lag_1'] = temp_lag_1_list[:len(features_df)]
+                    features_df['temp_roll_7'] = temp_roll_7_list[:len(features_df)]
+                    features_df['precip_lag_1'] = precip_lag_1_list[:len(features_df)]
+
                 h2o_frame = h2o.H2OFrame(features_df)
                 preds = model.predict(h2o_frame).as_data_frame().values.flatten()
                 result = [
@@ -532,6 +669,55 @@ class ForecastingEngineBasic:
 
         logger.info(f"[EOD] Forecast Result (fallback): {fallback_result}")
         return fallback_result
+
+    @log_method("Ensure Weather For Range")
+    async def ensure_weather_for_range(self, start_date: date, end_date: date, concurrency: int = 4):
+        """Ensure weather_data rows exist for this restaurant between start_date and end_date.
+        This method is best-effort and will not raise on failures. It will only attempt
+        to fetch weather when `restaurants.latitude`/`longitude` are present.
+        """
+        try:
+            from app.repositories.weather_data_repo import WeatherDataRepository
+            from app.integrations.weather.open_meteo_adapter import fetch_weather_for_date
+
+            rest = await self.restaurant_repo.get_by_id(self.restaurant_id)
+            if not rest:
+                return
+            lat = getattr(rest, 'latitude', None)
+            lon = getattr(rest, 'longitude', None)
+            if lat is None or lon is None:
+                return
+
+            weather_repo = WeatherDataRepository(self.db, self.restaurant_id)
+            existing = await weather_repo.get_range(self.restaurant_id, start_date, end_date)
+            existing_dates = set([w.weather_date for w in existing])
+            missing = [d for d in pd.date_range(start_date, end_date).date if d not in existing_dates]
+
+            if not missing:
+                return
+
+            sema = asyncio.Semaphore(concurrency)
+            tasks = []
+
+            for d in missing:
+                async def _task(dts):
+                    async with sema:
+                        try:
+                            payload = await fetch_weather_for_date(float(lat), float(lon), dts)
+                            if payload:
+                                await weather_repo.upsert_for_restaurant_date(self.restaurant_id, dts, payload)
+                                if getattr(self.db, 'commit', None):
+                                    await self.db.commit()
+                        except Exception:
+                            return
+
+                tasks.append(asyncio.create_task(_task(d)))
+
+            if tasks:
+                await asyncio.gather(*tasks)
+
+        except Exception:
+            return
     @log_method("Write Forecast Results")
     async def write_forecast_results(self, menu_item_id: int, forecast_data: List[Dict], confidence_score: float | None):
         """

@@ -17,18 +17,18 @@ Purpose: capture a clear, actionable plan to finish and ship the Basic tier of P
 ---
 
 ### 2) Hardening & Reliability (highest priority)
-- [ ] Add deterministic fallback forecasting in `forecasting_engine_basic.py` (moving average / last-N mean) when training is skipped or fails
+- [x] Add deterministic fallback forecasting in `forecasting_engine_basic.py` (moving average / last-N mean) when training is skipped or fails
   - Why: prevents EOD from producing holes and avoids H2O failures on tiny datasets
   - Where: `app/services/forecasting_engine_basic.py::train_model` and `generate_forecast` path where `model is None`
 
-- [ ] Catch-and-log all training errors and ensure `run` returns per-item results instead of raising
+- [x] Catch-and-log all training errors and ensure `run` returns per-item results instead of raising
   - Ensure logs include menu_item_id, restaurant_id, reason (insufficient rows / exception)
 
-- [ ] Add a lightweight `should_retrain_model` guard (already present) and centralize the MIN_ROWS threshold in a config constant
+- [x] Add a lightweight `should_retrain_model` guard (already present) and centralize the MIN_ROWS threshold in a config constant (guard present; centralizing MIN_ROWS into a single config constant remains)
 
-- [ ] Add unit tests for forecasting service
+- [x] Add unit tests for forecasting service
   - Tests: small-dataset returns fallback and metrics; normal dataset returns model or predictions
-  - Place: `tests/services/test_forecasting_engine_basic.py`
+  - Place: `tests/services/test_forecasting_engine_basic.py` (basic forecasting tests exist and pass locally)
 
 - [ ] Add an integration smoke test for EOD flow (using seeded DB)
   - Run a small E2E that runs `eod_service.finalize(eod_date, restaurant_id=2)` and asserts forecast rows created
@@ -37,10 +37,11 @@ Purpose: capture a clear, actionable plan to finish and ship the Basic tier of P
   - Make sure repeated runs don't double-insert forecasts for same date/version
 
 - [ ] Integrate external signals: weather & traffic into forecasting pipeline
-  - Add DB tables: `weather_data` and `traffic_data` (indexed by `restaurant_id, date`)
-  - Create repositories `WeatherRepository` and `TrafficRepository` and simple ingestion adapters under `app/integrations/weather` and `app/integrations/traffic`
-  - Add a nightly/seed ingestion job to backfill historical weather & traffic for seeded restaurants
-  - Where used: merge these signals into `train_model` feature set and `generate_forecast` feature engineering
+  - [x] Add DB table & migration for `weather_data` (weather persistence implemented)
+  - [x] Create `WeatherRepository` and Open-Meteo adapter under `app/integrations/weather` (adapter + retry/backoff implemented)
+  - [x] Add backfill/ingestion scripts and service wiring for weather (`scripts/backfill_one_restaurant.py`, `scripts/backfill_weather.py`, `ensure_weather_for_range`)
+  - [ ] Add DB table & ingestion for `traffic_data` (pending)
+  - Where used: merge these signals into `train_model` feature set and `generate_forecast` feature engineering (weather merged; traffic pending)
 
 
 ---

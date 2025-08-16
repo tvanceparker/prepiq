@@ -13,3 +13,4 @@ apscheduler==3.10.4
 python-dotenv==1.0.0
 email-validator==2.2.0
 structlog==23.2.0
+aiohttp
