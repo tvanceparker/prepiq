@@ -239,7 +239,8 @@ class ForecastingEngineBasic:
         )
         item_sales = [s for s in sales if s.menu_item_id == menu_item_id]
         if not item_sales:
-            return None  # no data to train
+            # No data to train: return (None, metrics) to keep caller code stable
+            return None, {"mape": None, "r2": None}
 
         df = pd.DataFrame({
             "date": [s.sale_timestamp.date() for s in item_sales],
@@ -249,6 +250,14 @@ class ForecastingEngineBasic:
         daily_sales = df.groupby("date").sum().reset_index()
         daily_sales['date'] = pd.to_datetime(daily_sales['date'])
         daily_sales = daily_sales.sort_values("date").reset_index(drop=True)
+
+        # Defensive: if the dataset is too small for H2O GBM training, skip and return
+        # a safe sentinel so EOD can continue without raising H2O errors.
+        MIN_ROWS_FOR_H2O = 20
+        if len(daily_sales) < MIN_ROWS_FOR_H2O:
+            logger.warning(f"Insufficient data to train H2O model for menu_item {menu_item_id}: "
+                           f"{len(daily_sales)} rows < {MIN_ROWS_FOR_H2O}. Skipping H2O training.")
+            return None, {"mape": None, "r2": None}
 
         # Features
         daily_sales['day_of_week'] = daily_sales['date'].dt.dayofweek.astype(int)
@@ -296,7 +305,12 @@ class ForecastingEngineBasic:
             seed=42
         )
 
-        model.train(x=features, y=target, training_frame=train_h2o, validation_frame=valid_h2o)
+        try:
+            model.train(x=features, y=target, training_frame=train_h2o, validation_frame=valid_h2o)
+        except Exception as e:
+            # Catch H2O training errors and return safely so EOD doesn't crash.
+            logger.error(f"Error training H2O model for menu_item {menu_item_id}: {e}")
+            return None, {"mape": None, "r2": None}
 
         preds = model.predict(valid_h2o).as_data_frame().values.flatten()
         true_y = valid_h2o[target].as_data_frame().values.flatten()

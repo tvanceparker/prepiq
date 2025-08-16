@@ -1,4 +1,5 @@
 {
+
   "python.envFile": "${workspaceFolder}/.env",
   "python.testing.pytestArgs": [
     "tests"
@@ -22,5 +23,19 @@
   "cSpell.words": [
     "Toastify",
     "Uncategorized"
-  ]
+  ],
+
+  // Auto-activate .venv for every new integrated terminal via a custom profile
+  "terminal.integrated.profiles.linux": {
+    "Python (workspace .venv)": {
+      "path": "/bin/zsh",
+      "args": ["-l"],
+      "env": {
+        "VIRTUAL_ENV": "${workspaceFolder}/.venv",
+        "PATH": "${workspaceFolder}/.venv/bin:${env:PATH}"
+      },
+      "icon": "python"
+    }
+  },
+  "terminal.integrated.defaultProfile.linux": "Python (workspace .venv)"
 }
