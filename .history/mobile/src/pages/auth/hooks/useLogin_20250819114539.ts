@@ -11,8 +11,8 @@ export function useLogin() {
   const handleLogin = async (username: string, password: string) => {
     setLoading(true); setError('');
     try {
-  const normUser = username.trim();
-  const normPass = password; // do not trim or alter password to preserve exact characters
+      const normUser = username.trim().toLowerCase();
+      const normPass = password.trim();
       // Basic debug log (will show in Metro console) – remove for prod
       console.log('[login] Attempt', { BASE_URL, username: normUser });
       const data = await apiLogin(normUser, normPass);

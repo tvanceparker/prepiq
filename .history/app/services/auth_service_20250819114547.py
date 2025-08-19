@@ -35,19 +35,8 @@ class AuthService:
             logger.warning("Login attempt with empty username (after trim)")
             return None, None, None
         user = await self.employees_repo.get_by_username(username)
-        if not user:
-            logger.warning(f"Failed login attempt (no user) for username: {username} (raw input: '{raw_username}')")
-            return None, None, None
-        # Debug instrumentation (remove later): indicate password hash match result length & first chars
-        try:
-            valid = verify_password(password, user.password_hash)
-        except Exception as e:
-            logger.error(f"Password verification error for {username}: {e}")
-            return None, None, None
-        if not valid:
-            logger.warning(
-                f"Failed login password mismatch for {username}. Provided length={len(password)}, hash_prefix={user.password_hash[:12]}"
-            )
+        if not user or not verify_password(password, user.password_hash):
+            logger.warning(f"Failed login attempt for username: {username} (raw input: '{raw_username}')")
             return None, None, None
         
 
