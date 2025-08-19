@@ -1,0 +1,35 @@
+{
+  "name": "mobile",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "EXPO_NO_MONOREPO=1 expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.1.2",
+    "@react-navigation/native": "^7.0.0",
+    "@react-navigation/native-stack": "^7.0.0",
+    "@tanstack/react-query": "^5.85.5",
+    "axios": "^1.11.0",
+    "expo": "~53.0.20",
+    "expo-status-bar": "~2.2.3",
+    "react": "18.2.0",
+    "react-hook-form": "^7.62.0",
+    "react-native": "0.74.5",
+    "react-native-gesture-handler": "~2.24.0",
+    "react-native-screens": "^4.8.0",
+    "react-native-paper": "^5.14.5",
+    "react-native-reanimated": "~3.17.4",
+    "react-native-safe-area-context": "5.4.0",
+    "yup": "^1.7.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/react": "~18.2.45",
+    "typescript": "~5.4.0"
+  },
+  "private": true
+}
