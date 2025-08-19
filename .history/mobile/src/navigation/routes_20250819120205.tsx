@@ -12,12 +12,10 @@ import SalesPatterns from '../pages/sales/SalesPatterns';
 import AccountSettings from '../pages/settings/AccountSettings';
 import RestaurantSettings from '../pages/settings/RestaurantSettings';
 import ActivityLogs from '../pages/admin/ActivityLogs';
-import { TenantInfoBasic, SystemHealthBasic, RolesPermissionsBasic, UserManagementBasic, SystemAlertsBasic } from '../pages/admin/components'; // still used elsewhere if needed
-import TenantInfo from '../pages/admin/TenantInfo';
-import RolesAccess from '../pages/admin/RolesAccess';
-import SystemHealth from '../pages/admin/SystemHealth';
-import SystemAlerts from '../pages/admin/SystemAlerts';
-import UserManagement from '../pages/admin/UserManagement';
+import TenantInfoBasic from '../pages/admin/components/TenantInfoBasic';
+import SystemHealthBasic from '../pages/admin/components/SystemHealthBasic';
+import RolesPermissionsBasic from '../pages/admin/components/RolesPermissionsBasic';
+import UserManagementBasic from '../pages/admin/components/UserManagementBasic';
 import IngredientTrends from '../pages/analytics/IngredientTrends';
 import DishProfitability from '../pages/analytics/DishProfitability';
 import WasteDashboard from '../pages/analytics/WasteDashboard';
@@ -32,7 +30,6 @@ const routePermissions: Record<string, string | undefined> = {
   'admin_system-health': 'system_check',
   'admin_users': 'employees',
   'admin_roles': 'roles',
-  'admin_system-alerts': 'system_alerts',
 };
 
 const Stack = createNativeStackNavigator();
@@ -49,12 +46,11 @@ const routeComponents: Record<string, React.ComponentType<any>> = {
   'sales_explorer': SalesExplorer,
   'sales_menu-mix': MenuMixInsights,
   // inventory & other domains not yet implemented in mobile basic tier omitted
-  'admin_tenant-info': TenantInfo,
+  'admin_tenant-info': TenantInfoBasic,
   'admin_activity-logs': ActivityLogs,
-  'admin_system-health': SystemHealth,
-  'admin_system-alerts': SystemAlerts,
-  'admin_users': UserManagement,
-  'admin_roles': RolesAccess,
+  'admin_system-health': SystemHealthBasic,
+  'admin_users': UserManagementBasic,
+  'admin_roles': RolesPermissionsBasic,
   'analytics_ingredient-trends': IngredientTrends,
   'analytics_dish-profitability': DishProfitability,
   'analytics_waste-dashboard': WasteDashboard,

@@ -41,7 +41,8 @@ export default function Sidebar({ tier, onNavigate }: Props) {
       <ScrollView contentContainerStyle={styles.scroll}>
         {sections.map(section => {
           const children = section.children.filter(c => !c.permission || permissions.includes(c.permission));
-          if (!children.length) return null; // hide entire section if no permitted children
+          // show Admin Panel even if permissions empty so user understands features exist
+          if (!children.length && section.label !== 'Admin Panel') return null;
           const isOpen = !!open[section.label];
           return (
             <View key={section.label} style={styles.section}>
