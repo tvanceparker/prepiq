@@ -1,7 +1,6 @@
 import React, { useState, useContext } from 'react';
-import { View, StyleSheet, useWindowDimensions, Pressable, Animated } from 'react-native';
-import { Surface, IconButton, Text } from 'react-native-paper';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, StyleSheet, useWindowDimensions, Pressable } from 'react-native';
+import { Surface, IconButton, Text, Portal, Modal } from 'react-native-paper';
 import Sidebar from './Sidebar';
 import { AuthContext } from '../contexts/AuthContext';
 
@@ -9,7 +8,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { tier, user } = useContext(AuthContext);
   const [open, setOpen] = useState(true); // desktop sidebar expanded
   const [drawerVisible, setDrawerVisible] = useState(false); // mobile drawer
-  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isMobile = width < 860;
   return (
@@ -20,7 +18,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </Surface>
       )}
       <View style={styles.main}>
-        <Surface style={[styles.header, { paddingTop: Math.max(4, insets.top * 0.25), paddingBottom:4 }] } elevation={1}>
+        <Surface style={styles.header} elevation={1}>
           {isMobile ? (
             <IconButton icon="menu" onPress={() => setDrawerVisible(true)} />
           ) : (
@@ -31,17 +29,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </Surface>
         <View style={styles.content}>{children}</View>
       </View>
-      {isMobile && drawerVisible && (
-        <View style={styles.drawerOverlay} pointerEvents="box-none">
-          <Pressable style={styles.backdrop} onPress={() => setDrawerVisible(false)} />
-          <Surface style={[styles.drawerPanel, { paddingTop: insets.top + 8 }]} elevation={4}>
+      {isMobile && (
+        <Portal>
+          <Modal visible={drawerVisible} onDismiss={() => setDrawerVisible(false)} contentContainerStyle={styles.drawerModal}>
             <View style={styles.drawerHeader}> 
               <Text variant="titleMedium" style={{ flex:1 }}>Menu</Text>
               <IconButton icon="close" onPress={() => setDrawerVisible(false)} />
             </View>
             <Sidebar tier={tier || 'basic'} onNavigate={() => setDrawerVisible(false)} />
-          </Surface>
-        </View>
+            <Pressable style={styles.dismissArea} onPress={() => setDrawerVisible(false)} />
+          </Modal>
+        </Portal>
       )}
     </View>
   );
@@ -51,10 +49,9 @@ const styles = StyleSheet.create({
   root: { flex:1, flexDirection:'row' },
   sidebar: { width:260 },
   main: { flex:1, backgroundColor:'#f5f6f7' },
-  header: { minHeight:48, flexDirection:'row', alignItems:'center', paddingHorizontal:4 },
+  header: { height:48, flexDirection:'row', alignItems:'center', paddingHorizontal:4, paddingTop:2 },
   content: { flex:1, padding:12 },
-  drawerOverlay: { position:'absolute', top:0, left:0, right:0, bottom:0, flexDirection:'row' },
-  backdrop: { flex:1, backgroundColor:'rgba(0,0,0,0.3)' },
-  drawerPanel: { width:280, backgroundColor:'#fff' },
+  drawerModal: { backgroundColor:'white', alignSelf:'flex-start', width:280, maxHeight:'90%', marginTop:40, marginLeft:4, borderRadius:12, overflow:'hidden' },
   drawerHeader: { flexDirection:'row', alignItems:'center', paddingHorizontal:8, paddingVertical:4, borderBottomWidth:StyleSheet.hairlineWidth, borderColor:'#ddd' },
+  dismissArea: { position:'absolute', top:0, left:0, right:0, bottom:0 },
 });
