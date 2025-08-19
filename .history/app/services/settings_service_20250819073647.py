@@ -134,11 +134,11 @@ class SettingsService:
         role = await self.role_repo.get_by_id(employee.role_id)
         role_name = role.name
 
-        # Fetch restaurant name and optional coords by restaurant_id
-        restaurant = await self.restaurant_repo.get_by_id(employee.restaurant_id)
-        restaurant_name = restaurant.name if restaurant else None
-        restaurant_lat = getattr(restaurant, "latitude", None) if restaurant else None
-        restaurant_lon = getattr(restaurant, "longitude", None) if restaurant else None
+    # Fetch restaurant name and optional coords by restaurant_id
+    restaurant = await self.restaurant_repo.get_by_id(employee.restaurant_id)
+    restaurant_name = restaurant.name if restaurant else None
+    restaurant_lat = getattr(restaurant, "latitude", None) if restaurant else None
+    restaurant_lon = getattr(restaurant, "longitude", None) if restaurant else None
 
         # Build preferences (JSON field) safely
         preferences = employee.preferences or {}

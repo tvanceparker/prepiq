@@ -1,40 +1,40 @@
-from typing import Optional, List, Dict, Any, Annotated
-from pydantic import BaseModel, EmailStr, Field
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, conint, condecimal, EmailStr, constr, Field
 from enum import Enum
 
 class RestaurantSettingsDTO(BaseModel):
-    forecast_length: Annotated[int, Field(ge=3, le=30)]  # 3, 7, 14
+    forecast_length: conint(ge=3, le=30)  # 3, 7, 14
     timezone: Optional[str] = None
     eod_run_when_closed: bool
-    eod_run_after_close_mins: Annotated[Optional[int], Field(ge=0)] = 60
+    eod_run_after_close_mins: Optional[conint(ge=0)] = 60
     sales_channels: Optional[List[str]] = ["in-house", "take-out"]
     # Optional geolocation for weather integrations
-    latitude: Optional[Annotated[float, Field(ge=-90, le=90)]] = None
-    longitude: Optional[Annotated[float, Field(ge=-180, le=180)]] = None
+    latitude: Optional[condecimal(max_digits=9, decimal_places=6)] = None
+    longitude: Optional[condecimal(max_digits=9, decimal_places=6)] = None
 
 class UpdateRestaurantSettingsDTO(BaseModel):
-    forecast_length: Optional[Annotated[int, Field(ge=3, le=30)]] = None
-    timezone: Optional[str] = None
-    eod_run_when_closed: Optional[bool] = None
-    eod_run_after_close_mins: Optional[Annotated[int, Field(ge=0)]] = None
-    sales_channels: Optional[List[str]] = None
-    latitude: Optional[Annotated[float, Field(ge=-90, le=90)]] = None
-    longitude: Optional[Annotated[float, Field(ge=-180, le=180)]] = None
+    forecast_length: Optional[conint(ge=3, le=30)]
+    timezone: Optional[str]
+    eod_run_when_closed: Optional[bool]
+    eod_run_after_close_mins: Optional[conint(ge=0)]
+    sales_channels: Optional[List[str]]
+    latitude: Optional[condecimal(max_digits=9, decimal_places=6)] = None
+    longitude: Optional[condecimal(max_digits=9, decimal_places=6)] = None
 
 # ---- Account Management ----
 class ChangePasswordDTO(BaseModel):
-    current_password: Annotated[str, Field(min_length=8)]
-    new_password: Annotated[str, Field(min_length=8)]
+    current_password: constr(min_length=8)
+    new_password: constr(min_length=8)
 
 
 class ChangeEmailDTO(BaseModel):
-    current_password: Annotated[str, Field(min_length=8)]
+    current_password: constr(min_length=8)
     new_email: EmailStr
 
 
 class ChangePhoneDTO(BaseModel):
-    current_password: Annotated[str, Field(min_length=8)]
-    new_phone: Annotated[str, Field(min_length=7, max_length=15)]
+    current_password: constr(min_length=8)
+    new_phone: constr(min_length=7, max_length=15)
 
 
 # ---- Preferences Management ----
@@ -64,6 +64,6 @@ class AccountInfoDTO(BaseModel):
     preferences: Optional[Dict[str, Any]] = {}
     restaurant_name: Optional[str]
     # Expose restaurant coords so UI can show location or weather availability
-    restaurant_latitude: Optional[Annotated[float, Field(ge=-90, le=90)]] = None
-    restaurant_longitude: Optional[Annotated[float, Field(ge=-180, le=180)]] = None
+    restaurant_latitude: Optional[condecimal(max_digits=9, decimal_places=6)] = None
+    restaurant_longitude: Optional[condecimal(max_digits=9, decimal_places=6)] = None
 
