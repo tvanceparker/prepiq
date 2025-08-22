@@ -70,13 +70,13 @@ export default function MenuItemModal({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target as any;
-    setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
-    setErrors((prev) => ({ ...prev, [name]: false }));
+    setForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    setErrors(prev => ({ ...prev, [name]: false }));
   };
 
   const handleCategoryChange = (_: any, newValue: any) => {
-    setForm((prev) => ({ ...prev, category: newValue || '' }));
-    setErrors((prev) => ({ ...prev, category: false }));
+    setForm(prev => ({ ...prev, category: newValue || '' }));
+    setErrors(prev => ({ ...prev, category: false }));
   };
 
   const handleSave = async () => {
@@ -94,8 +94,22 @@ export default function MenuItemModal({
     <Dialog open={isOpen} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>{seed ? 'Edit Menu Item' : 'Add Menu Item'}</DialogTitle>
       <DialogContent>
-        <Box component="form" noValidate autoComplete="off" sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <TextField label="Name" name="name" value={form.name} onChange={handleChange} required error={errors.name} helperText={errors.name && 'Name is required'} fullWidth />
+        <Box
+          component="form"
+          noValidate
+          autoComplete="off"
+          sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}
+        >
+          <TextField
+            label="Name"
+            name="name"
+            value={form.name}
+            onChange={handleChange}
+            required
+            error={errors.name}
+            helperText={errors.name && 'Name is required'}
+            fullWidth
+          />
 
           <Autocomplete
             freeSolo
@@ -103,17 +117,38 @@ export default function MenuItemModal({
             value={form.category}
             onChange={handleCategoryChange}
             onInputChange={(_, newInputValue) => {
-              setForm((prev) => ({ ...prev, category: newInputValue }));
-              setErrors((prev) => ({ ...prev, category: false }));
+              setForm(prev => ({ ...prev, category: newInputValue }));
+              setErrors(prev => ({ ...prev, category: false }));
             }}
-            renderInput={(params) => (
-              <TextField {...params} label="Category" required error={errors.category} helperText={errors.category && 'Category is required'} fullWidth />
+            renderInput={params => (
+              <TextField
+                {...params}
+                label="Category"
+                required
+                error={errors.category}
+                helperText={errors.category && 'Category is required'}
+                fullWidth
+              />
             )}
           />
 
-          <TextField label="Price" name="price" type="number" value={form.price} onChange={handleChange} required error={errors.price} helperText={errors.price && 'Valid price is required'} inputProps={{ step: '0.01', min: '0' }} fullWidth />
+          <TextField
+            label="Price"
+            name="price"
+            type="number"
+            value={form.price}
+            onChange={handleChange}
+            required
+            error={errors.price}
+            helperText={errors.price && 'Valid price is required'}
+            inputProps={{ step: '0.01', min: '0' }}
+            fullWidth
+          />
 
-          <FormControlLabel control={<Checkbox checked={form.is_active} onChange={handleChange} name="is_active" />} label="Active" />
+          <FormControlLabel
+            control={<Checkbox checked={form.is_active} onChange={handleChange} name="is_active" />}
+            label="Active"
+          />
         </Box>
       </DialogContent>
 

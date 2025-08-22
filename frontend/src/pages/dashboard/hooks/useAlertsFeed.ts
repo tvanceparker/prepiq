@@ -13,7 +13,10 @@ function normalizeAlert(alert: AnyObj) {
   return {
     ...alert,
     created_at: alert.date_created ?? alert.created_at,
-    status: typeof alert.status === 'string' ? alert.status.toLowerCase() : String(alert.status ?? '').toLowerCase(),
+    status:
+      typeof alert.status === 'string'
+        ? alert.status.toLowerCase()
+        : String(alert.status ?? '').toLowerCase(),
     is_acknowledged: alert.is_acknowledged ?? false,
     severity: alert.severity ? String(alert.severity).toLowerCase() : 'info',
   };
@@ -40,7 +43,7 @@ export default function useAlertsFeed({ pageSize = 20 } = {}) {
       const fetchFn = feedMode === 'all' ? fetchAllAlerts : fetchActiveAlerts;
       const dataRaw = await fetchFn(skip, pageSize);
       const data = (dataRaw || []).map(normalizeAlert);
-      setAlerts((prev) => (skip === 0 ? data : [...prev, ...data]));
+      setAlerts(prev => (skip === 0 ? data : [...prev, ...data]));
       setHasMore(data.length === pageSize);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to fetch alerts');
@@ -58,18 +61,18 @@ export default function useAlertsFeed({ pageSize = 20 } = {}) {
   }, [feedMode]);
 
   const loadMore = () => {
-    if (!loading && hasMore) setSkip((prev) => prev + pageSize);
+    if (!loading && hasMore) setSkip(prev => prev + pageSize);
   };
 
   const remove = (alertId: string | number) => {
-    setAlerts((prev) => prev.filter((a) => a.alert_id !== alertId));
+    setAlerts(prev => prev.filter(a => a.alert_id !== alertId));
   };
 
   const acknowledge = async (alertId: string | number) => {
     try {
       const updatedRaw = await acknowledgeAlert(alertId);
       const updated = normalizeAlert(updatedRaw);
-      setAlerts((prev) => prev.map((a) => (a.alert_id === alertId ? updated : a)));
+      setAlerts(prev => prev.map(a => (a.alert_id === alertId ? updated : a)));
     } catch (err: any) {
       setError(err?.message ?? 'Failed to acknowledge alert');
     }
@@ -79,7 +82,7 @@ export default function useAlertsFeed({ pageSize = 20 } = {}) {
     try {
       const updatedRaw = await resolveAlert(alertId);
       const updated = normalizeAlert(updatedRaw);
-      setAlerts((prev) => prev.map((a) => (a.alert_id === alertId ? updated : a)));
+      setAlerts(prev => prev.map(a => (a.alert_id === alertId ? updated : a)));
     } catch (err: any) {
       setError(err?.message ?? 'Failed to resolve alert');
     }

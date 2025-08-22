@@ -123,7 +123,14 @@ export default function MenuItemQuickEntry(): JSX.Element {
       </Paper>
       <Paper elevation={4} sx={{ p: 3 }}>
         <Stack direction="row" justifyContent="flex-end" spacing={1} mb={2}>
-          <Button variant="create" requiredPermission="edit_menu" onClick={() => { setEditingItem(null); setIsModalOpen(true); }}>
+          <Button
+            variant="create"
+            requiredPermission="edit_menu"
+            onClick={() => {
+              setEditingItem(null);
+              setIsModalOpen(true);
+            }}
+          >
             Add New Item
           </Button>
 
@@ -138,14 +145,21 @@ export default function MenuItemQuickEntry(): JSX.Element {
         ) : (
           <MenuItemTable
             items={filteredMenuItems}
-            onEdit={(m) => { setEditingItem(m); setIsModalOpen(true); }}
-            onDelete={(id) => {
-              removeItem(id).then(() => showSnackbar('Menu item deleted', 'success')).catch(() => showSnackbar('Failed to delete', 'error'));
+            onEdit={m => {
+              setEditingItem(m);
+              setIsModalOpen(true);
             }}
-            onToggleActive={(m) => {
+            onDelete={id => {
+              removeItem(id)
+                .then(() => showSnackbar('Menu item deleted', 'success'))
+                .catch(() => showSnackbar('Failed to delete', 'error'));
+            }}
+            onToggleActive={m => {
               // flip active state via edit
               editItem(m.menu_item_id as number, { ...m, is_active: !m.is_active })
-                .then(() => showSnackbar(m.is_active ? 'Item deactivated' : 'Item reactivated', 'success'))
+                .then(() =>
+                  showSnackbar(m.is_active ? 'Item deactivated' : 'Item reactivated', 'success')
+                )
                 .catch(() => showSnackbar('Failed to toggle active', 'error'));
             }}
           />
@@ -154,7 +168,10 @@ export default function MenuItemQuickEntry(): JSX.Element {
 
       <MenuItemModal
         isOpen={isModalOpen}
-        onClose={() => { setIsModalOpen(false); setEditingItem(null); }}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingItem(null);
+        }}
         initial={editingItem}
         onSave={onSubmitMenuItem}
       />

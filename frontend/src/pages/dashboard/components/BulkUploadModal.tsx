@@ -15,12 +15,15 @@ export default function BulkUploadModal({ isOpen, onClose, onUpload }: Props) {
   const [dragOver, setDragOver] = useState(false);
   const { upload: internalUpload } = useUploadSalesData();
 
-  const handleFile = React.useCallback(async (f: File | null) => {
-    if (!f) return;
-    const uploader = onUpload ?? internalUpload;
-    await uploader(f);
-    onClose();
-  }, [onUpload, internalUpload, onClose]);
+  const handleFile = React.useCallback(
+    async (f: File | null) => {
+      if (!f) return;
+      const uploader = onUpload ?? internalUpload;
+      await uploader(f);
+      onClose();
+    },
+    [onUpload, internalUpload, onClose]
+  );
 
   const handleDrop = useCallback(
     async (e: React.DragEvent) => {
@@ -56,19 +59,34 @@ export default function BulkUploadModal({ isOpen, onClose, onUpload }: Props) {
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          sx={{ border: '2px dashed', borderColor: dragOver ? 'primary.main' : 'grey.300', p: 3, mt: 2, borderRadius: 1, textAlign: 'center' }}
+          sx={{
+            border: '2px dashed',
+            borderColor: dragOver ? 'primary.main' : 'grey.300',
+            p: 3,
+            mt: 2,
+            borderRadius: 1,
+            textAlign: 'center',
+          }}
         >
           <Typography variant="body2" sx={{ mb: 1 }}>
             Drag and drop your CSV or XLSX file here, or click to select file
           </Typography>
-          <input id="file-upload" type="file" accept=".csv,.xlsx" style={{ display: 'none' }} onChange={handleChange} />
+          <input
+            id="file-upload"
+            type="file"
+            accept=".csv,.xlsx"
+            style={{ display: 'none' }}
+            onChange={handleChange}
+          />
           <label htmlFor="file-upload">
             <Button variant="create">Select File</Button>
           </label>
         </Box>
 
         <Box mt={2} display="flex" justifyContent="flex-end">
-          <Button onClick={onClose} variant="clear">Cancel</Button>
+          <Button onClick={onClose} variant="clear">
+            Cancel
+          </Button>
         </Box>
       </Box>
     </Modal>

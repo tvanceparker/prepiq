@@ -38,10 +38,19 @@ export default function MenuItemTable({ items = [], onEdit, onDelete, onToggleAc
                 <Button size="small" onClick={() => onEdit && onEdit(it)}>
                   Edit
                 </Button>
-                <Button size="small" onClick={() => onToggleActive && onToggleActive(it)} sx={{ ml: 1 }}>
+                <Button
+                  size="small"
+                  onClick={() => onToggleActive && onToggleActive(it)}
+                  sx={{ ml: 1 }}
+                >
                   {it.is_active ? 'Deactivate' : 'Reactivate'}
                 </Button>
-                <Button size="small" color="error" onClick={() => onDelete && it.menu_item_id && onDelete(it.menu_item_id)} sx={{ ml: 1 }}>
+                <Button
+                  size="small"
+                  color="error"
+                  onClick={() => onDelete && it.menu_item_id && onDelete(it.menu_item_id)}
+                  sx={{ ml: 1 }}
+                >
                   Delete
                 </Button>
               </TableCell>
