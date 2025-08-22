@@ -1,0 +1,8 @@
+node_modules
+dist
+build
+logs
+*.log
+frontend/node_modules
+mobile/node_modules
+
