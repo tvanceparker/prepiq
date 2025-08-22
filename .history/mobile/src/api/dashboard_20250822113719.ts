@@ -87,18 +87,9 @@ export const checkSalesExist = async (
   sale_date: string,
   channels?: Array<string | null>
 ): Promise<SalesConflictOutDTO> => {
-  // Build query string manually to ensure repeated 'channels' params are encoded as `channels=value` multiple times
-  const params = new URLSearchParams({ sale_date });
-  if (channels && channels.length)
-    channels.forEach(ch => params.append('channels', ch === null ? 'null' : ch));
-  const path = `/dashboard/sales-exist?${params.toString()}`;
-  try {
-    const res = await client.get<SalesConflictOutDTO>(path);
-    return res.data;
-  } catch (err: any) {
-    // If server returns 404 for this route, treat as no conflicts so submit can proceed; surface other errors
-    const status = err?.response?.status;
-    if (status === 404) return { sale_date, conflicts: {} } as SalesConflictOutDTO;
-    throw err;
-  }
+  // Use axios client and params to ensure proper encoding and include auth headers
+  const params: any = { sale_date };
+  if (channels && channels.length) params.channels = channels.map(ch => (ch === null ? 'null' : ch));
+  const res = await client.get<SalesConflictOutDTO>('/dashboard/sales-exist', { params });
+  return res.data;
 };

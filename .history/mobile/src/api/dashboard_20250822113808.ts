@@ -89,8 +89,7 @@ export const checkSalesExist = async (
 ): Promise<SalesConflictOutDTO> => {
   // Build query string manually to ensure repeated 'channels' params are encoded as `channels=value` multiple times
   const params = new URLSearchParams({ sale_date });
-  if (channels && channels.length)
-    channels.forEach(ch => params.append('channels', ch === null ? 'null' : ch));
+  if (channels && channels.length) channels.forEach(ch => params.append('channels', ch === null ? 'null' : ch));
   const path = `/dashboard/sales-exist?${params.toString()}`;
   try {
     const res = await client.get<SalesConflictOutDTO>(path);

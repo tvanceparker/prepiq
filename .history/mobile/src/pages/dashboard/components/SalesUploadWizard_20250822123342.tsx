@@ -141,11 +141,7 @@ export default function SalesUploadWizard({ navigation }: any) {
       setSubmitting(true);
       // log payload for debugging (will appear in device/emulator logs)
       // eslint-disable-next-line no-console
-      console.log('SalesUpload: submitting payload', {
-        sale_date,
-        payloadEntries,
-        overwrite: !!confirmOverwrite,
-      });
+      console.log('SalesUpload: submitting payload', { sale_date, payloadEntries, overwrite: !!confirmOverwrite });
       if (!confirmOverwrite) {
         // check conflicts by channels present
         const result = await checkConflicts(sale_date, payloadEntries);
