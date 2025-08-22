@@ -6,6 +6,8 @@ from app.schemas.dashboard_dto import (
     MenuItemUpdate,
     EodSalesEntriesIn,
     SalesConflictOut,
+    DailyOverviewOut,
+    SaleOut,
 )
 from app.services.dashboard_service import DashboardService
 from app.api.dependencies import get_dashboard_service, check_permissions
@@ -19,7 +21,7 @@ from datetime import date as _date
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 
-@router.get("/daily_overview")
+@router.get("/daily_overview", response_model=DailyOverviewOut)
 @log_route("Get daily overview data")
 async def get_daily_overview(
     dashboard_service: DashboardService = Depends(get_dashboard_service),
@@ -117,16 +119,10 @@ async def upload_sales_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error")
 
+    # Return typed DTOs
     return {
         "message": f"Successfully uploaded {len(inserted_sales)} sales records.",
-        "data": [
-            {
-                "sale_id": s.sale_id,
-                "menu_item_id": s.menu_item_id,
-                "quantity_sold": s.quantity_sold,
-            }
-            for s in inserted_sales
-        ],
+        "data": [s.model_dump() if hasattr(s, 'model_dump') else s.__dict__ for s in inserted_sales],
     }
 
 
@@ -189,14 +185,7 @@ async def upload_sales_manual(
         result = await dashboard_service.upload_sales_entries(payload)
         return {
             "message": f"Successfully uploaded {len(result)} sales records.",
-            "data": [
-                {
-                    "sale_id": s.sale_id,
-                    "menu_item_id": s.menu_item_id,
-                    "quantity_sold": s.quantity_sold,
-                }
-                for s in result
-            ],
+            "data": [s.model_dump() if hasattr(s, 'model_dump') else s.__dict__ for s in result],
         }
     except HTTPException:
         raise

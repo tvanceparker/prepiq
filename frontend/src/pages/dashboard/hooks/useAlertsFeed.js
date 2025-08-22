@@ -10,10 +10,14 @@ import {
 // Normalize alert fields for consistent UI usage
 function normalizeAlert(alert) {
     return {
-        ...alert,
-        status: alert.status.toLowerCase(),          // e.g. "Active" -> "active"
-        is_acknowledged: alert.is_acknowledged ?? false,
-        severity: alert.severity ? alert.severity.toLowerCase() : "info", // normalize severity
+    ...alert,
+    // keep original backend fields but add common aliases the UI expects
+    // backend returns `date_created` (see AlertResponse), but some UI code expects `created_at`
+    created_at: alert.date_created ?? alert.created_at,
+    // normalize status and severity safely (could be null)
+    status: typeof alert.status === 'string' ? alert.status.toLowerCase() : (alert.status ?? '').toString().toLowerCase(),
+    is_acknowledged: alert.is_acknowledged ?? false,
+    severity: alert.severity ? String(alert.severity).toLowerCase() : 'info', // normalize severity
     };
 }
 const fixableAlertTypes = [

@@ -42,5 +42,49 @@ class EodSalesEntriesIn(BaseModel):
 
 class SalesConflictOut(BaseModel):
     sale_date: str
-    conflicts: Dict[str | None, int]  # channel -> count
+    # channel -> count. Use None for unspecified channel.
+    conflicts: Dict[Optional[str], int]
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---- Dashboard output DTOs ----
+class ForecastedSalesBasic(BaseModel):
+    forecasted_quantity: int
+    forecasted_revenue: float
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TopForecastedItem(BaseModel):
+    menu_item_id: int
+    name: str
+    forecasted_quantity: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AccuracyBasicOut(BaseModel):
+    accuracy_percent: Optional[float]
+    note: str
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SaleOut(BaseModel):
+    sale_id: int
+    menu_item_id: int
+    quantity_sold: int
+    sales_channel: Optional[str] = None
+    sale_timestamp: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DailyOverviewOut(BaseModel):
+    forecasted_sales_today: Optional[ForecastedSalesBasic]
+    top_5_items_today: List[TopForecastedItem]
+    accuracy_yesterday: Optional[AccuracyBasicOut]
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EodUploadResponse(BaseModel):
+    message: str
+    data: List[SaleOut]
+    model_config = ConfigDict(from_attributes=True)
 

@@ -30,22 +30,24 @@ export function useMenuItems() {
 
   const handleCreateMenuItem = async (itemData: Partial<MenuItemDTO>) => {
     const newItem = await createMenuItem(itemData as any);
-    setMenuItems((prev) => [...prev, newItem as any]);
+    setMenuItems(prev => [...prev, newItem as any]);
   };
 
   const handleUpdateMenuItem = async (id: number, itemData: Partial<MenuItemDTO>) => {
     const updatedItem = await updateMenuItem(id, itemData as any);
-    setMenuItems((prev) => prev.map((item) => (item.menu_item_id === id ? updatedItem as any : item)));
+    setMenuItems(prev =>
+      prev.map(item => (item.menu_item_id === id ? (updatedItem as any) : item))
+    );
   };
 
   const handleDeleteMenuItem = async (id: number) => {
     await deleteMenuItem(id);
-    setMenuItems((prev) => prev.filter((item) => item.menu_item_id !== id));
+    setMenuItems(prev => prev.filter(item => item.menu_item_id !== id));
   };
 
   const handleUploadCSV = async (file: File) => {
     const uploadedItems = await uploadMenuCSV(file);
-    setMenuItems((prev) => [...prev, ...(uploadedItems as any)]);
+    setMenuItems(prev => [...prev, ...(uploadedItems as any)]);
   };
 
   return {

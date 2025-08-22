@@ -40,7 +40,10 @@ type SummaryCardProps = {
 const SummaryCard: React.FC<SummaryCardProps> = ({ title, subtitle, children, color, icon }) => {
   const theme = useTheme();
   return (
-    <Card elevation={4} sx={{ minHeight: 160, borderRadius: 2, display: 'flex', flexDirection: 'column' }}>
+    <Card
+      elevation={4}
+      sx={{ minHeight: 160, borderRadius: 2, display: 'flex', flexDirection: 'column' }}
+    >
       <CardHeader
         avatar={
           icon &&
@@ -53,26 +56,64 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ title, subtitle, children, co
           })
         }
         title={
-          <Typography variant="h6" fontWeight={700} sx={{ fontSize: '1.2rem', marginBottom: 0 }} noWrap>
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            sx={{ fontSize: '1.2rem', marginBottom: 0 }}
+            noWrap
+          >
             {title}
           </Typography>
         }
         subheader={
-          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem', marginBottom: 0 }} noWrap>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ fontSize: '0.875rem', marginBottom: 0 }}
+            noWrap
+          >
             {subtitle}
           </Typography>
         }
         sx={{ pb: 0, pt: 2, pl: 2, pr: 2 }}
       />
 
-      <CardContent sx={{ flexGrow: 1, pt: 1, minHeight: 120, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-        <Typography variant="h3" fontWeight="bold" sx={{ color: color || theme.palette.text.primary }} noWrap>
+      <CardContent
+        sx={{
+          flexGrow: 1,
+          pt: 1,
+          minHeight: 120,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+        }}
+      >
+        <Typography
+          variant="h3"
+          fontWeight="bold"
+          sx={{ color: color || theme.palette.text.primary }}
+          noWrap
+        >
           {children}
         </Typography>
 
         {title === 'Accuracy Yesterday' && (
-          <Paper variant="outlined" sx={{ mt: 2, p: 1, borderRadius: 1, backgroundColor: 'inherit', height: 20 }}>
-            <LinearProgress variant="determinate" value={children as any} sx={{ height: 10, borderRadius: 5, backgroundColor: theme.palette.grey[300], '& .MuiLinearProgress-bar': { backgroundColor: color || theme.palette.primary.main } }} />
+          <Paper
+            variant="outlined"
+            sx={{ mt: 2, p: 1, borderRadius: 1, backgroundColor: 'inherit', height: 20 }}
+          >
+            <LinearProgress
+              variant="determinate"
+              value={children as any}
+              sx={{
+                height: 10,
+                borderRadius: 5,
+                backgroundColor: theme.palette.grey[300],
+                '& .MuiLinearProgress-bar': {
+                  backgroundColor: color || theme.palette.primary.main,
+                },
+              }}
+            />
           </Paper>
         )}
       </CardContent>
@@ -80,12 +121,16 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ title, subtitle, children, co
   );
 };
 
-export default function BasicOverview({ data }: { data: DailyOverviewDTO | null }) {
+export default function BasicOverview({ data }: { data?: DailyOverviewDTO | null }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success' as 'success' | 'error',
+  });
 
   const { upload, uploading, error, result } = useUploadSalesData();
 
@@ -100,7 +145,7 @@ export default function BasicOverview({ data }: { data: DailyOverviewDTO | null 
     }
   }, [error, result]);
 
-  const closeSnackbar = useCallback(() => setSnackbar((prev) => ({ ...prev, open: false })), []);
+  const closeSnackbar = useCallback(() => setSnackbar(prev => ({ ...prev, open: false })), []);
 
   const handleDownloadTemplate = useCallback(() => {
     downloadSalesTemplate(templateDate)
@@ -115,10 +160,18 @@ export default function BasicOverview({ data }: { data: DailyOverviewDTO | null 
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
 
-        setSnackbar({ open: true, message: 'Template downloaded successfully', severity: 'success' });
+        setSnackbar({
+          open: true,
+          message: 'Template downloaded successfully',
+          severity: 'success',
+        });
       })
       .catch((err: any) => {
-        setSnackbar({ open: true, message: `Error downloading template: ${err.message}`, severity: 'error' });
+        setSnackbar({
+          open: true,
+          message: `Error downloading template: ${err.message}`,
+          severity: 'error',
+        });
       });
   }, [templateDate]);
 
@@ -131,7 +184,10 @@ export default function BasicOverview({ data }: { data: DailyOverviewDTO | null 
   if (!data) return null;
 
   const { forecasted_sales_today, top_5_items_today = [], accuracy_yesterday } = data;
-  const maxQuantity = Math.max(...(top_5_items_today.map((item) => item.forecasted_quantity) || []), 1);
+  const maxQuantity = Math.max(
+    ...(top_5_items_today.map(item => item.forecasted_quantity) || []),
+    1
+  );
 
   return (
     <>
@@ -140,46 +196,127 @@ export default function BasicOverview({ data }: { data: DailyOverviewDTO | null 
 
         <Grid container spacing={2} justifyContent="center" sx={{ mt: 2, mb: 4 }}>
           <Grid item xs={12} sm={4}>
-            <SummaryCard title="Forecasted Menu Items" subtitle="Today" icon={<BarChartIcon />}>{forecasted_sales_today?.forecasted_quantity ?? 0}</SummaryCard>
+            <SummaryCard title="Forecasted Menu Items" subtitle="Today" icon={<BarChartIcon />}>
+              {forecasted_sales_today?.forecasted_quantity ?? 0}
+            </SummaryCard>
           </Grid>
 
           <Grid item xs={12} sm={4}>
-            <SummaryCard title="Forecasted Revenue" subtitle="Today" icon={<DownloadIcon />} color={theme.palette.primary.main}>
+            <SummaryCard
+              title="Forecasted Revenue"
+              subtitle="Today"
+              icon={<DownloadIcon />}
+              color={theme.palette.primary.main}
+            >
               ${forecasted_sales_today?.forecasted_revenue?.toFixed(2) ?? '0.00'}
             </SummaryCard>
           </Grid>
 
           <Grid item xs={12} sm={4}>
-            <SummaryCard title="Accuracy Yesterday" subtitle={accuracy_yesterday?.note || 'No additional notes'} color={getAccuracyColor(accuracy_yesterday?.accuracy_percent ?? 0)} icon={<UploadFileIcon />}>
+            <SummaryCard
+              title="Accuracy Yesterday"
+              subtitle={accuracy_yesterday?.note || 'No additional notes'}
+              color={getAccuracyColor(accuracy_yesterday?.accuracy_percent ?? 0)}
+              icon={<UploadFileIcon />}
+            >
               {(accuracy_yesterday?.accuracy_percent ?? 0).toFixed(2)}
             </SummaryCard>
           </Grid>
         </Grid>
 
-        <Paper elevation={3} sx={{ position: 'static', top: 80, zIndex: 1200, backgroundColor: theme.palette.background.paper, py: 2, px: isMobile ? 2 : 4, mb: 5, borderRadius: 2, boxShadow: theme.shadows[4] }}>
-          <Stack direction={isMobile ? 'column' : 'row'} spacing={2} justifyContent="center" alignItems="center">
-            <DateSelector label="Select date for sales template" startDate={new Date(templateDate)} onStartDateChange={(date: Date) => setTemplateDate(date.toISOString().slice(0, 10))} mode="single" disableFuture />
+        <Paper
+          elevation={3}
+          sx={{
+            position: 'static',
+            top: 80,
+            zIndex: 1200,
+            backgroundColor: theme.palette.background.paper,
+            py: 2,
+            px: isMobile ? 2 : 4,
+            mb: 5,
+            borderRadius: 2,
+            boxShadow: theme.shadows[4],
+          }}
+        >
+          <Stack
+            direction={isMobile ? 'column' : 'row'}
+            spacing={2}
+            justifyContent="center"
+            alignItems="center"
+          >
+            <DateSelector
+              label="Select date for sales template"
+              startDate={new Date(templateDate)}
+              endDate={new Date(templateDate)}
+              onStartDateChange={(date: Date) => setTemplateDate(date.toISOString().slice(0, 10))}
+              onEndDateChange={() => {}}
+              mode="single"
+            />
 
             <Stack direction="row" spacing={2}>
-              <Button variant="file" onClick={handleDownloadTemplate} startIcon={<DownloadIcon />}>Download Template</Button>
-              <Button variant="file" onClick={() => setUploadModalOpen(true)} requiredPermission="upload_sales" disabled={uploading} startIcon={uploading ? <CircularProgress size={20} /> : <UploadFileIcon />}>{uploading ? 'Uploading...' : 'Upload Sales Data'}</Button>
+              <Button variant="file" onClick={handleDownloadTemplate} startIcon={<DownloadIcon />}>
+                Download Template
+              </Button>
+              <Button
+                variant="file"
+                onClick={() => setUploadModalOpen(true)}
+                requiredPermission="upload_sales"
+                disabled={uploading}
+                startIcon={uploading ? <CircularProgress size={20} /> : <UploadFileIcon />}
+              >
+                {uploading ? 'Uploading...' : 'Upload Sales Data'}
+              </Button>
             </Stack>
           </Stack>
-          <Typography variant="caption" color="text.secondary" mt={1} align="center">Select the date to download the corresponding sales template. After filling it out, upload your sales data here.</Typography>
+          <Typography variant="caption" color="text.secondary" mt={1} align="center">
+            Select the date to download the corresponding sales template. After filling it out,
+            upload your sales data here.
+          </Typography>
         </Paper>
 
-        <Typography variant="h6" fontWeight="medium" mb={2} sx={{ textAlign: 'center' }}>🔝 Top {top_5_items_today?.length || 0} Forecasted Menu Items (Today)</Typography>
+        <Typography variant="h6" fontWeight="medium" mb={2} sx={{ textAlign: 'center' }}>
+          🔝 Top {top_5_items_today?.length || 0} Forecasted Menu Items (Today)
+        </Typography>
 
         <Grid container spacing={2}>
           {top_5_items_today?.map(({ menu_item_id, name, forecasted_quantity }) => {
             const percent = (forecasted_quantity / maxQuantity) * 100;
             return (
               <Grid item xs={12} sm={6} md={4} key={menu_item_id}>
-                <Card elevation={4} sx={{ borderRadius: 2, minHeight: 140, display: 'flex', flexDirection: 'column' }}>
-                  <CardHeader title={<Typography variant="subtitle1" fontWeight={600} noWrap>{name}</Typography>} subheader={<Typography variant="caption" color="text.secondary" noWrap>Forecasted Menu Item</Typography>} sx={{ pb: 0 }} />
+                <Card
+                  elevation={4}
+                  sx={{ borderRadius: 2, minHeight: 140, display: 'flex', flexDirection: 'column' }}
+                >
+                  <CardHeader
+                    title={
+                      <Typography variant="subtitle1" fontWeight={600} noWrap>
+                        {name}
+                      </Typography>
+                    }
+                    subheader={
+                      <Typography variant="caption" color="text.secondary" noWrap>
+                        Forecasted Menu Item
+                      </Typography>
+                    }
+                    sx={{ pb: 0 }}
+                  />
                   <CardContent sx={{ pt: 1, flexGrow: 1 }}>
-                    <Typography variant="body2" color="text.secondary" mb={1}>Forecasted Quantity: <Box component="span" fontWeight="medium" color="text.primary">{forecasted_quantity}</Box></Typography>
-                    <LinearProgress variant="determinate" value={percent} sx={{ height: 10, borderRadius: 5, backgroundColor: theme.palette.grey[300], '& .MuiLinearProgress-bar': { backgroundColor: theme.palette.primary.main } }} />
+                    <Typography variant="body2" color="text.secondary" mb={1}>
+                      Forecasted Quantity:{' '}
+                      <Box component="span" fontWeight="medium" color="text.primary">
+                        {forecasted_quantity}
+                      </Box>
+                    </Typography>
+                    <LinearProgress
+                      variant="determinate"
+                      value={percent}
+                      sx={{
+                        height: 10,
+                        borderRadius: 5,
+                        backgroundColor: theme.palette.grey[300],
+                        '& .MuiLinearProgress-bar': { backgroundColor: theme.palette.primary.main },
+                      }}
+                    />
                   </CardContent>
                 </Card>
               </Grid>
@@ -188,10 +325,16 @@ export default function BasicOverview({ data }: { data: DailyOverviewDTO | null 
         </Grid>
       </Paper>
 
-      <SalesUploadModal open={uploadModalOpen} onClose={() => setUploadModalOpen(false)} onUpload={upload} />
+      <SalesUploadModal
+        isOpen={uploadModalOpen}
+        onClose={() => setUploadModalOpen(false)}
+        onUpload={upload}
+      />
 
       <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={closeSnackbar}>
-        <Alert onClose={closeSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>{snackbar.message}</Alert>
+        <Alert onClose={closeSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
       </Snackbar>
     </>
   );

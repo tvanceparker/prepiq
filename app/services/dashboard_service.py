@@ -19,7 +19,7 @@ from app.repositories.restaurants_repo import RestaurantRepository
 from app.repositories.activity_logs_repo import ActivityLogRepository
 from app.utils.logger_helpers import log_method
 from app.core.logging import logger 
-from app.schemas.dashboard_dto import EodSalesEntriesIn
+from app.schemas.dashboard_dto import EodSalesEntriesIn, DailyOverviewOut, SaleOut
 from typing import Sequence, Optional as Opt
 
 class DashboardService:
@@ -63,7 +63,9 @@ class DashboardService:
 
     async def get_daily_overview_data(self):
         if self.subscription_tier == 'basic':
-            return await self._get_basic_overview()
+            data = await self._get_basic_overview()
+            # Wrap into Pydantic DTO for consistent typing
+            return DailyOverviewOut(**data)
         # Later: add 'plus', 'pro', etc.
 
     @log_method("Get basic overview")
@@ -350,7 +352,25 @@ class DashboardService:
                 logger.error(f"Failed to process sales row {row}: {e}", exc_info=True)
                 continue
 
-        return inserted_sales
+        # Convert ORM sale objects into Pydantic DTOs for the API layer
+        result_models = []
+        for s in inserted_sales:
+            try:
+                ts = getattr(s, "sale_timestamp", None)
+                ts_iso = ts.isoformat() if ts is not None else None
+            except Exception:
+                ts_iso = None
+            result_models.append(
+                SaleOut(
+                    sale_id=getattr(s, "sale_id", getattr(s, "id", None)),
+                    menu_item_id=getattr(s, "menu_item_id", None),
+                    quantity_sold=getattr(s, "quantity_sold", 0),
+                    sales_channel=getattr(s, "sales_channel", None),
+                    sale_timestamp=ts_iso,
+                )
+            )
+
+        return result_models
 
     @log_method("Upload Sales Entries (Manual JSON)")
     async def upload_sales_entries(self, payload: EodSalesEntriesIn):
@@ -399,7 +419,25 @@ class DashboardService:
                 logger.error(f"Failed to insert manual sale entry {entry}: {e}", exc_info=True)
                 continue
 
-        return inserted
+        # Normalize into Pydantic DTOs
+        result_models = []
+        for s in inserted:
+            try:
+                ts = getattr(s, "sale_timestamp", None)
+                ts_iso = ts.isoformat() if ts is not None else None
+            except Exception:
+                ts_iso = None
+            result_models.append(
+                SaleOut(
+                    sale_id=getattr(s, "sale_id", getattr(s, "id", None)),
+                    menu_item_id=getattr(s, "menu_item_id", None),
+                    quantity_sold=getattr(s, "quantity_sold", 0),
+                    sales_channel=getattr(s, "sales_channel", None),
+                    sale_timestamp=ts_iso,
+                )
+            )
+
+        return result_models
     
     @log_method("Generating Sales Upload Template")
     async def generate_sales_upload_template_xlsx(self, default_date: Optional[str] = None) -> BytesIO:

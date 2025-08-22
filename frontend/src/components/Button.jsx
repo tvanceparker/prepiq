@@ -1,12 +1,12 @@
-import React, { useState, useContext } from "react";
-import Button from "@mui/material/Button";
-import { AuthContext } from "../contexts/AuthContext";
-import EditIcon from "@mui/icons-material/Edit";
-import DeleteIcon from "@mui/icons-material/Delete";
-import FileDownloadIcon from "@mui/icons-material/FileDownload";
-import CheckIcon from "@mui/icons-material/Check";
-import CancelIcon from "@mui/icons-material/Close";
-import AddIcon from "@mui/icons-material/Add";
+import React, { useState, useContext } from 'react';
+import Button from '@mui/material/Button';
+import { AuthContext } from '../contexts/AuthContext';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import CheckIcon from '@mui/icons-material/Check';
+import CancelIcon from '@mui/icons-material/Close';
+import AddIcon from '@mui/icons-material/Add';
 
 // Optional: Map variant to icon (no margin here, margin handled dynamically)
 const variantIconMapping = {
@@ -19,26 +19,26 @@ const variantIconMapping = {
 };
 
 const variantColorMapping = {
-  edit: "primary",
-  confirm: "success",
-  delete: "error",
-  cancel: "secondary",
-  clearFilter: "secondary",
-  file: "secondary",
-  default: "inherit",
+  edit: 'primary',
+  confirm: 'success',
+  delete: 'error',
+  cancel: 'secondary',
+  clearFilter: 'secondary',
+  file: 'secondary',
+  default: 'inherit',
 };
 
 export default function MuiButton({
-  muiVariant = "contained", // corresponds to MUI Button variant prop
-  variant = "default", // your custom variant to pick icon and color mapping
+  muiVariant = 'contained', // corresponds to MUI Button variant prop
+  variant = 'default', // your custom variant to pick icon and color mapping
   children,
   onClick,
   disabled = false,
-  type = "button",
+  type = 'button',
   toggle = false,
   toggleState = false,
-  toggleLabels = ["On", "Off"],
-  toggleVariants = ["confirm", "cancel"],
+  toggleLabels = ['On', 'Off'],
+  toggleVariants = ['confirm', 'cancel'],
   onToggle,
   requiredPermission = null,
   hideIfNoPermission = false,
@@ -51,20 +51,19 @@ export default function MuiButton({
   const { permissions } = useContext(AuthContext);
   const [internalToggle, setInternalToggle] = useState(toggleState);
 
-  const hasPermission =
-    !requiredPermission || permissions.includes(requiredPermission);
+  const hasPermission = !requiredPermission || permissions.includes(requiredPermission);
 
   if (hideIfNoPermission && !hasPermission) {
     return null;
   }
 
   const isToggled = toggle
-    ? typeof toggleState === "boolean"
+    ? typeof toggleState === 'boolean'
       ? toggleState
       : internalToggle
     : false;
 
-  const handleClick = (e) => {
+  const handleClick = e => {
     if (disabled || !hasPermission) return;
 
     if (toggle) {
@@ -80,8 +79,8 @@ export default function MuiButton({
   };
 
   const color = toggle
-    ? variantColorMapping[toggleVariants[isToggled ? 0 : 1]] || "primary"
-    : variantColorMapping[variant] || "inherit";
+    ? variantColorMapping[toggleVariants[isToggled ? 0 : 1]] || 'primary'
+    : variantColorMapping[variant] || 'inherit';
 
   // Handle icon styling based on iconOnly flag and showIcon flag
   let icon = null;
@@ -106,14 +105,14 @@ export default function MuiButton({
       color={color}
       startIcon={iconOnly ? null : icon}
       sx={{
-        textTransform: "none",
-        boxShadow: muiVariant === "contained" ? 3 : "none",
-        "&:active": {
-          transform: "scale(0.97)",
-          boxShadow: "none",
+        textTransform: 'none',
+        boxShadow: muiVariant === 'contained' ? 3 : 'none',
+        '&:active': {
+          transform: 'scale(0.97)',
+          boxShadow: 'none',
         },
         minWidth: iconOnly ? 40 : undefined,
-        padding: iconOnly ? "6px" : undefined,
+        padding: iconOnly ? '6px' : undefined,
         ...sx,
       }}
       {...props}
@@ -122,7 +121,6 @@ export default function MuiButton({
     </Button>
   );
 }
-
 
 // import Button from "../../../components/Button";
 
@@ -135,10 +133,10 @@ export default function MuiButton({
 // ✅ Outlined button with icon + text
 // <Button muiVariant="outlined" variant="delete">Delete</Button>
 
- // ✅ Text button with icon only
+// ✅ Text button with icon only
 // <Button muiVariant="text" variant="file" iconOnly />
 
- // ✅ Button with custom icon passed directly (overrides `variant` mapping)
+// ✅ Button with custom icon passed directly (overrides `variant` mapping)
 // import StarIcon from '@mui/icons-material/Star';
 // <Button muiVariant="contained" startIcon={<StarIcon />}>Favorite</Button>
 
