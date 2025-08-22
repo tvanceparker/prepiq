@@ -9,11 +9,19 @@ export default function HomeScreen({ navigation }: any) {
     <View style={styles.container}>
       <Text>Welcome to Prepiq Mobile</Text>
       <Text>Token: {token ? 'set' : 'not set'}</Text>
-      <Button onPress={() => { setToken(null); navigation.replace('Login'); }} style={{ marginTop: 12 }}>
+      <Button
+        onPress={() => {
+          setToken(null);
+          navigation.replace('Login');
+        }}
+        style={{ marginTop: 12 }}
+      >
         Sign out
       </Button>
     </View>
   );
 }
 
-const styles = StyleSheet.create({ container: { flex: 1, alignItems: 'center', justifyContent: 'center' } });
+const styles = StyleSheet.create({
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+});

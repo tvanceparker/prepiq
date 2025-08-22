@@ -9,23 +9,30 @@ export function useLogin() {
   const [error, setError] = useState('');
 
   const handleLogin = async (username: string, password: string) => {
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try {
-  const normUser = username.trim();
-  const normPass = password; // do not trim or alter password to preserve exact characters
+      const normUser = username.trim();
+      const normPass = password; // do not trim or alter password to preserve exact characters
       // Basic debug log (will show in Metro console) – remove for prod
       console.log('[login] Attempt', { BASE_URL, username: normUser });
       const data = await apiLogin(normUser, normPass);
       await login({
         token: data.access_token,
         tier: data.subscription_tier,
-        user: { username: normUser, name: data.name, restaurant_id: data.restaurant_id, employee_id: data.employee_id, role_id: data.role_id },
+        user: {
+          username: normUser,
+          name: data.name,
+          restaurant_id: data.restaurant_id,
+          employee_id: data.employee_id,
+          role_id: data.role_id,
+        },
         preferences: data.preferences,
       });
       return true;
-    } catch (e:any) {
+    } catch (e: any) {
       console.log('[login] Error', e);
-      setError(e.message||'Login failed');
+      setError(e.message || 'Login failed');
       return false;
     } finally {
       setLoading(false);

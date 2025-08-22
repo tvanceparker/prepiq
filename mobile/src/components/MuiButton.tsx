@@ -48,7 +48,11 @@ export default function MuiButton({
   const hasPermission = !requiredPermission || !!token; // simple stub — replace with proper permission check
   if (hideIfNoPermission && !hasPermission) return null;
 
-  const isToggled = toggle ? (typeof toggleState === 'boolean' ? toggleState : internalToggle) : false;
+  const isToggled = toggle
+    ? typeof toggleState === 'boolean'
+      ? toggleState
+      : internalToggle
+    : false;
 
   const handlePress = () => {
     if (disabled || !hasPermission) return;
@@ -63,7 +67,13 @@ export default function MuiButton({
   const color = variantColorMapping[variant] || undefined;
 
   return (
-    <PaperButton mode={mode as any} onPress={handlePress} disabled={disabled || !hasPermission} contentStyle={contentStyle} buttonColor={color}>
+    <PaperButton
+      mode={mode as any}
+      onPress={handlePress}
+      disabled={disabled || !hasPermission}
+      contentStyle={contentStyle}
+      buttonColor={color}
+    >
       {iconOnly ? null : toggle ? toggleLabels[isToggled ? 0 : 1] : children}
     </PaperButton>
   );

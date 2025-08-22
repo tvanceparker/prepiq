@@ -1,5 +1,12 @@
-export interface SidebarChildItem { name: string; path: string; permission?: string }
-export interface SidebarSection { label: string; children: SidebarChildItem[] }
+export interface SidebarChildItem {
+  name: string;
+  path: string;
+  permission?: string;
+}
+export interface SidebarSection {
+  label: string;
+  children: SidebarChildItem[];
+}
 
 export const sidebarDataByTier: Record<string, SidebarSection[]> = {
   basic: [
@@ -108,7 +115,7 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
       label: 'Admin Panel',
       children: [
         { name: 'Tenant Info', path: '/admin/tenant-info' },
-  { name: 'System Alerts', path: '/admin/system-alerts', permission: 'system_alerts' },
+        { name: 'System Alerts', path: '/admin/system-alerts', permission: 'system_alerts' },
         { name: 'System Health Check', path: '/admin/system-health' },
         { name: 'User Management', path: '/admin/users' },
         { name: 'Activity Logs', path: '/admin/activity-logs' },

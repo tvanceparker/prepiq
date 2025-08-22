@@ -22,7 +22,12 @@ export interface AuthContextType {
   setPreferences: (prefs: Preferences) => void;
   theme: ThemeMode;
   setTheme: (mode: ThemeMode) => void;
-  login: (args: { token: string; tier: string; user: UserInfo; preferences?: Preferences }) => Promise<void> | void;
+  login: (args: {
+    token: string;
+    tier: string;
+    user: UserInfo;
+    preferences?: Preferences;
+  }) => Promise<void> | void;
   logout: () => Promise<void> | void;
   permissions: string[];
   refetchPermissions: () => Promise<unknown> | void;

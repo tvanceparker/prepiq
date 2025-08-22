@@ -11,11 +11,19 @@ const Stack = createNativeStackNavigator();
 export default function RootNavigator() {
   const { token, loading } = React.useContext(AuthContext);
   if (loading) {
-    return <View style={{ flex:1, justifyContent:'center', alignItems:'center' }}><ActivityIndicator /></View>;
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator />
+      </View>
+    );
   }
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-  {token ? <Stack.Screen name="App" component={AppRoutes} /> : <Stack.Screen name="Login" component={LoginScreen} />}
+      {token ? (
+        <Stack.Screen name="App" component={AppRoutes} />
+      ) : (
+        <Stack.Screen name="Login" component={LoginScreen} />
+      )}
     </Stack.Navigator>
   );
 }

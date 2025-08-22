@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { Button, Text, TextInput, Menu, Divider } from 'react-native-paper';
+import { View, StyleSheet, Modal, TouchableOpacity } from 'react-native';
+import { Button, Text, Menu, Divider } from 'react-native-paper';
+import { Calendar } from 'react-native-calendars';
 
 // Simplified mobile DateSelector mirroring web presets
 const presets = [
@@ -19,7 +20,7 @@ function addDays(date: Date, days: number) {
 
 function startOfDay(date: Date) {
   const d = new Date(date);
-  d.setHours(0,0,0,0);
+  d.setHours(0, 0, 0, 0);
   return d;
 }
 
@@ -37,8 +38,17 @@ interface Props {
   direction?: 'forward' | 'backward';
 }
 
-export default function DateSelector({ label, startDate, endDate, onStartDateChange, onEndDateChange, mode='range', direction='forward' }: Props) {
+export default function DateSelector({
+  label,
+  startDate,
+  endDate,
+  onStartDateChange,
+  onEndDateChange,
+  mode = 'range',
+  direction = 'forward',
+}: Props) {
   const [menuVisible, setMenuVisible] = useState(false);
+  const [calendarVisible, setCalendarVisible] = useState<null | 'start' | 'end'>(null);
 
   const applyPreset = (days: number) => {
     const today = startOfDay(new Date());
@@ -54,16 +64,28 @@ export default function DateSelector({ label, startDate, endDate, onStartDateCha
 
   return (
     <View style={styles.container}>
-      {label && <Text variant="titleMedium" style={styles.label}>{label}</Text>}
+      {label && (
+        <Text variant="titleMedium" style={styles.label}>
+          {label}
+        </Text>
+      )}
       {mode !== 'single' && (
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Menu
             visible={menuVisible}
             onDismiss={() => setMenuVisible(false)}
-            anchor={<Button mode="outlined" onPress={() => setMenuVisible(true)}>{direction === 'forward' ? '→ Days' : '← Days'}</Button>}
+            anchor={
+              <Button mode="outlined" onPress={() => setMenuVisible(true)}>
+                {direction === 'forward' ? '→ Days' : '← Days'}
+              </Button>
+            }
           >
             {presets.map(p => (
-              <Menu.Item key={p.label} title={(direction === 'forward' ? 'Next ' : 'Previous ') + p.label} onPress={() => applyPreset(p.days)} />
+              <Menu.Item
+                key={p.label}
+                title={(direction === 'forward' ? 'Next ' : 'Previous ') + p.label}
+                onPress={() => applyPreset(p.days)}
+              />
             ))}
           </Menu>
         </View>
@@ -71,21 +93,49 @@ export default function DateSelector({ label, startDate, endDate, onStartDateCha
       <View style={styles.inputsRow}>
         <View style={styles.inputWrapper}>
           <Text variant="labelSmall">{mode === 'single' ? 'Date' : 'Start Date'}</Text>
-          <TextInput mode="outlined" value={formatDate(startDate)} onChangeText={(v) => {
-            const d = new Date(v);
-            if (!isNaN(d.getTime())) onStartDateChange(d);
-          }} />
+          <TouchableOpacity onPress={() => setCalendarVisible('start')} style={styles.pseudoInput}>
+            <Text>{formatDate(startDate)}</Text>
+          </TouchableOpacity>
         </View>
         {mode === 'range' && (
           <View style={styles.inputWrapper}>
             <Text variant="labelSmall">End Date</Text>
-            <TextInput mode="outlined" value={formatDate(endDate)} onChangeText={(v) => {
-              const d = new Date(v);
-              if (!isNaN(d.getTime())) onEndDateChange(d);
-            }} />
+            <TouchableOpacity onPress={() => setCalendarVisible('end')} style={styles.pseudoInput}>
+              <Text>{formatDate(endDate)}</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
+
+      <Modal visible={calendarVisible !== null} transparent animationType="fade">
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0,0,0,0.4)',
+          }}
+        >
+          <View style={{ width: 340, backgroundColor: 'white', borderRadius: 8, padding: 12 }}>
+            <Calendar
+              current={calendarVisible === 'start' ? formatDate(startDate) : formatDate(endDate)}
+              onDayPress={(day: any) => {
+                const d = new Date(day.dateString + 'T00:00:00');
+                if (calendarVisible === 'start') onStartDateChange(d);
+                else onEndDateChange(d);
+                setCalendarVisible(null);
+              }}
+              enableSwipeMonths
+            />
+            <Divider />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
+              <Button mode="outlined" onPress={() => setCalendarVisible(null)}>
+                Cancel
+              </Button>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -95,4 +145,11 @@ const styles = StyleSheet.create({
   label: { marginBottom: 8, fontWeight: '600' },
   inputsRow: { flexDirection: 'row', gap: 12 },
   inputWrapper: { flex: 1 },
+  pseudoInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
 });

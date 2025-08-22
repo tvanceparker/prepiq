@@ -55,16 +55,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await client.get('/admin/roles-with-permissions');
       const roles = res.data as Array<{ role_id: number; permissions: Array<{ name: string }> }>;
-      const found = roles.find((r) => r.role_id === user.role_id);
-  const perms = found ? found.permissions.map((p) => p.name) : [];
-  setPermissions(perms);
-  console.log('[AuthContext] permissions fetched:', perms);
+      const found = roles.find(r => r.role_id === user.role_id);
+      const perms = found ? found.permissions.map(p => p.name) : [];
+      setPermissions(perms);
+      console.log('[AuthContext] permissions fetched:', perms);
     } catch (e) {
       // ignore
     }
   };
 
-  const login = async ({ token, tier, user, preferences: prefs }: { token: string; tier: string; user: UserInfo; preferences?: Preferences }) => {
+  const login = async ({
+    token,
+    tier,
+    user,
+    preferences: prefs,
+  }: {
+    token: string;
+    tier: string;
+    user: UserInfo;
+    preferences?: Preferences;
+  }) => {
     setToken(token);
     setTier(tier);
     setUser(user);
@@ -76,7 +86,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.setItem('tier', tier),
       AsyncStorage.setItem('user', JSON.stringify(user)),
       AsyncStorage.setItem('preferences', JSON.stringify(newPrefs)),
-      AsyncStorage.setItem('theme', (newPrefs.theme !== 'system' ? newPrefs.theme : 'light') as string),
+      AsyncStorage.setItem(
+        'theme',
+        (newPrefs.theme !== 'system' ? newPrefs.theme : 'light') as string
+      ),
     ]);
     await refetchPermissions();
   };

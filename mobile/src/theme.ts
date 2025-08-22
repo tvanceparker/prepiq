@@ -21,4 +21,7 @@ export const darkTheme = {
   },
 };
 
-export const { LightTheme, DarkTheme } = adaptNavigationTheme({ reactNavigationLight: lightTheme as any, reactNavigationDark: darkTheme as any });
+export const { LightTheme, DarkTheme } = adaptNavigationTheme({
+  reactNavigationLight: lightTheme as any,
+  reactNavigationDark: darkTheme as any,
+});

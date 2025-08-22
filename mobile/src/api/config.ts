@@ -4,13 +4,13 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 function resolveHost() {
-	const hostUri = (Constants as any)?.expoConfig?.hostUri as string | undefined;
-	if (hostUri) {
-		const host = hostUri.split(':')[0];
-		if (host && /^(\d+\.\d+\.\d+\.\d+)$/.test(host)) return host; // LAN IPv4
-	}
-	if (Platform.OS === 'android') return '10.0.2.2';
-	return 'localhost';
+  const hostUri = (Constants as any)?.expoConfig?.hostUri as string | undefined;
+  if (hostUri) {
+    const host = hostUri.split(':')[0];
+    if (host && /^(\d+\.\d+\.\d+\.\d+)$/.test(host)) return host; // LAN IPv4
+  }
+  if (Platform.OS === 'android') return '10.0.2.2';
+  return 'localhost';
 }
 
 const HOST = process.env.API_HOST || resolveHost();

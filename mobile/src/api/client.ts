@@ -7,7 +7,7 @@ const client = axios.create({
   timeout: 15000,
 });
 
-client.interceptors.request.use(async (cfg) => {
+client.interceptors.request.use(async cfg => {
   try {
     const token = await AsyncStorage.getItem('token');
     if (token) {

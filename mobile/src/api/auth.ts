@@ -10,17 +10,19 @@ export const login = async (username: string, password: string) => {
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: formData.toString(),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formData.toString(),
     });
-  } catch (networkErr:any) {
-    throw new Error(`Network error connecting to backend at ${BASE_URL}: ${networkErr?.message || networkErr}`);
+  } catch (networkErr: any) {
+    throw new Error(
+      `Network error connecting to backend at ${BASE_URL}: ${networkErr?.message || networkErr}`
+    );
   }
 
   if (!res.ok) {
     const errText = await res.text();
-  throw new Error(`Login failed: ${res.status} ${errText}`);
+    throw new Error(`Login failed: ${res.status} ${errText}`);
   }
 
   const data = await res.json();
@@ -38,4 +40,3 @@ export const login = async (username: string, password: string) => {
     preferences: data.preferences || {},
   };
 };
-

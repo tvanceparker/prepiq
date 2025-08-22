@@ -11,7 +11,12 @@ const getYesterday = () => {
 export function useSystemHealth(initialDate?: string) {
   const [checkDate, setCheckDate] = useState(initialDate || getYesterday());
   const queryClient = useQueryClient();
-  const { data, error, isLoading: loading, refetch } = useQuery({
+  const {
+    data,
+    error,
+    isLoading: loading,
+    refetch,
+  } = useQuery({
     queryKey: ['systemHealth', checkDate],
     queryFn: () => checkEndOfDayWrites(checkDate),
     enabled: !!checkDate,

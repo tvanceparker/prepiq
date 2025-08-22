@@ -5,7 +5,11 @@ import type { RestaurantSettings } from '../../../interfaces/settings';
 export function useRestaurantSettings() {
   const queryClient = useQueryClient();
 
-  const { data: settings, isLoading: loading, error } = useQuery<RestaurantSettings>({
+  const {
+    data: settings,
+    isLoading: loading,
+    error,
+  } = useQuery<RestaurantSettings>({
     queryKey: ['restaurantSettings'],
     queryFn: getRestaurantSettings,
   });

@@ -23,12 +23,14 @@ export default function LoginScreen({ navigation }: any) {
       const form = new FormData();
       form.append('username', data.username);
       form.append('password', data.password);
-      const res = await client.post('/api/v1/auth/login', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const res = await client.post('/api/v1/auth/login', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
       await login({
         token: res.data.access_token,
         tier: res.data.subscription_tier,
         user: { name: res.data.name, role_id: res.data.role_id, user_id: res.data.employee_id },
-        preferences: res.data.preferences || { theme: 'light', auto_logout_minutes: 30 }
+        preferences: res.data.preferences || { theme: 'light', auto_logout_minutes: 30 },
       });
       navigation.replace('MainTabs');
     } catch (err) {
@@ -50,7 +52,13 @@ export default function LoginScreen({ navigation }: any) {
         control={control}
         name="password"
         render={({ field: { onChange, value } }) => (
-          <TextInput label="Password" value={value} secureTextEntry onChangeText={onChange} style={styles.input} />
+          <TextInput
+            label="Password"
+            value={value}
+            secureTextEntry
+            onChangeText={onChange}
+            style={styles.input}
+          />
         )}
       />
       <Button mode="contained" onPress={handleSubmit(onSubmit)} style={styles.button}>

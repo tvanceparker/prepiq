@@ -2,9 +2,9 @@ import React, { useContext } from 'react';
 import { AuthContext } from '../../contexts/AuthContext';
 import SalesExplorerBasicMobile from './components/SalesExplorerBasicMobile';
 
-export default function SalesExplorer(){
+export default function SalesExplorer() {
   const { tier } = useContext(AuthContext);
-  switch(tier){
+  switch (tier) {
     case 'basic':
     case 'pro':
     case 'master':

@@ -4,7 +4,11 @@ import type { TenantInfoResponse, TenantInfoUpdateRequest } from '../../../inter
 
 export default function useTenantInfo() {
   const queryClient = useQueryClient();
-  const { data: info, isLoading: loading, error } = useQuery<TenantInfoResponse>({
+  const {
+    data: info,
+    isLoading: loading,
+    error,
+  } = useQuery<TenantInfoResponse>({
     queryKey: ['tenantInfo'],
     queryFn: getTenantInfo,
     staleTime: 5 * 60 * 1000,
@@ -13,5 +17,10 @@ export default function useTenantInfo() {
     mutationFn: (data: TenantInfoUpdateRequest) => updateTenantInfo(data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tenantInfo'] }),
   });
-  return { info, loading, error, saveTenantInfo: (data: TenantInfoUpdateRequest) => mutation.mutateAsync(data) };
+  return {
+    info,
+    loading,
+    error,
+    saveTenantInfo: (data: TenantInfoUpdateRequest) => mutation.mutateAsync(data),
+  };
 }

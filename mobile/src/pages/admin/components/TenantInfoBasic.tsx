@@ -12,7 +12,9 @@ export default function TenantInfoBasic() {
       <Text style={{ fontSize: 20, fontWeight: '600', marginBottom: 12 }}>Tenant Info</Text>
       <Text>Name: {info.name}</Text>
       <Text>Email: {info.email}</Text>
-      <Text>Subscription: {info.subscription_tier} ({info.subscription_status})</Text>
+      <Text>
+        Subscription: {info.subscription_tier} ({info.subscription_status})
+      </Text>
     </View>
   );
 }

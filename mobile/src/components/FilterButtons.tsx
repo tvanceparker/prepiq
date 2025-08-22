@@ -2,13 +2,27 @@ import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Button } from 'react-native-paper';
 
-interface Option { label: string; value: string }
-interface Props { options: Option[]; value: string; onChange: (v: string) => void }
+interface Option {
+  label: string;
+  value: string;
+}
+interface Props {
+  options: Option[];
+  value: string;
+  onChange: (v: string) => void;
+}
 export default function FilterButtons({ options, value, onChange }: Props) {
   return (
     <View style={styles.row}>
       {options.map(opt => (
-        <Button key={opt.value} mode={opt.value === value ? 'contained' : 'outlined'} style={styles.btn} onPress={() => onChange(opt.value)}>{opt.label}</Button>
+        <Button
+          key={opt.value}
+          mode={opt.value === value ? 'contained' : 'outlined'}
+          style={styles.btn}
+          onPress={() => onChange(opt.value)}
+        >
+          {opt.label}
+        </Button>
       ))}
     </View>
   );
