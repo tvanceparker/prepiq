@@ -1,1 +1,0 @@
-**Goal** to make a react native application just like /frontend
