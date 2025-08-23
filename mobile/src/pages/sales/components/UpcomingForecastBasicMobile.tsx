@@ -56,7 +56,7 @@ export default function UpcomingForecastBasicMobile() {
   const totalItemsSummary = useMemo(() => {
     if (mode !== 'total') return null;
     const sums: Record<string, number> = {};
-  forecastTable.forEach((r: any) => {
+    forecastTable.forEach((r: any) => {
       if (!r.menu_item_name) return;
       sums[r.menu_item_name] = (sums[r.menu_item_name] || 0) + r.forecasted_quantity;
     });

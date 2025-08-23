@@ -63,7 +63,7 @@ export default function SalesPatternsBasicMobile() {
     for (const r of salesOverTime) {
       if (!r) continue;
       const key = r.menu_item_name || r.menu_item_id || 'unknown';
-  const dateVal = (r as any).sale_date;
+      const dateVal = (r as any).sale_date;
       const dateOk = isValidDate(dateVal);
       const y = safeNum(r.metric);
       if (!dateOk || Number.isNaN(y)) {
