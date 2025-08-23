@@ -1,14 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  ActivityIndicator,
+  TouchableOpacity,
+  Modal,
+  Pressable,
+} from 'react-native';
 import { useTheme } from 'react-native-paper';
 import DateSelector from '../../../components/DateSelector';
 import { useSalesPatterns } from '../hooks/useSalesPatterns';
-import { VictoryLabel } from 'victory-native';
-import Svg from 'react-native-svg';
+// imports for reusable graphs
 import { SalesOverTimeGraph, type SalesSeries } from '../../dashboard/graphs/SalesOverTimeGraph';
 import { WeekdayBarGraph } from '../../dashboard/graphs/WeekdayBarGraph';
 import { HeatmapPreviewGraph } from '../../dashboard/graphs/HeatmapPreviewGraph';
 import { ChannelBreakdownPie } from '../../dashboard/graphs/ChannelBreakdownPie';
+import { Button, Checkbox, Text as PaperText, TextInput as PaperInput } from 'react-native-paper';
 
 // Simple color palette for series
 const COLORS = ['#2563eb', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6'];
@@ -30,6 +38,9 @@ function isValidDate(v: any) {
 
 export default function SalesPatternsBasicMobile() {
   const theme = useTheme();
+  const [itemPickerOpen, setItemPickerOpen] = useState(false);
+  const [itemSearch, setItemSearch] = useState('');
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const {
     startDate,
     endDate,
@@ -55,11 +66,14 @@ export default function SalesPatternsBasicMobile() {
   const renderSalesOverTime = () => {
     if (!Array.isArray(salesOverTime) || salesOverTime.length === 0)
       return <Text style={{ color: theme.colors.onSurfaceVariant }}>No data</Text>;
-    // group by menu_item_name and compute totals (sanitize inputs)
+    // group by menu_item_id with name mapping and compute totals (sanitize inputs)
     const byItem: Record<string, { x: Date; y: number }[]> = {};
+    const nameById: Record<string, string> = {};
     for (const r of salesOverTime) {
       if (!r) continue;
-      const key = r.menu_item_name || r.menu_item_id || 'unknown';
+      const id = (r as any).menu_item_id ?? (r as any).menuItemId;
+      const name = (r as any).menu_item_name || (r as any).name || String(id ?? 'unknown');
+      const key = String(id ?? name);
       const dateVal = (r as any).sale_date;
       const dateOk = isValidDate(dateVal);
       const y = safeNum(r.metric);
@@ -69,23 +83,28 @@ export default function SalesPatternsBasicMobile() {
       const x = new Date(dateVal);
       byItem[key] = byItem[key] || [];
       byItem[key].push({ x, y });
+      nameById[key] = name;
     }
 
-    // pick top 3 items by total
-    const totals = Object.keys(byItem).map(k => ({
-      key: k,
-      total: byItem[k].reduce((s: number, v: any) => s + safeNum(v.y), 0),
-    }));
-    totals.sort((a, b) => b.total - a.total);
-    const top = totals.slice(0, 3).map(t => t.key);
+    // Build selection list from current dataset
+    const optionEntries = Object.keys(byItem)
+      .map(id => ({ id, name: nameById[id] || `Item ${id}` }))
+      .sort((a, b) => a.name.localeCompare(b.name));
 
-    // guard: ensure at least one series has data
-    if (top.length === 0)
+    // filter series by selected IDs (if any selected)
+    let keys = Object.keys(byItem);
+    if (selectedItemIds.length > 0) {
+      const set = new Set(selectedItemIds);
+      keys = keys.filter(k => set.has(k));
+    }
+
+    // guard
+    if (keys.length === 0)
       return <Text style={{ color: theme.colors.onSurfaceVariant }}>No data</Text>;
 
-    // compute global y max across top series for dynamic scaling
+    // compute global y max across selected series
     let globalMax = 0;
-    for (const k of top) {
+    for (const k of keys) {
       const series = byItem[k] || [];
       for (const p of series) globalMax = Math.max(globalMax, Math.abs(p.y));
     }
@@ -102,13 +121,98 @@ export default function SalesPatternsBasicMobile() {
       : new Date((salesOverTime[salesOverTime.length - 1] as any).sale_date);
 
     // Prepare series for reusable graph with legend
-    const series: SalesSeries[] = top.map((k, i) => {
+    const series: SalesSeries[] = keys.map((k, i) => {
       const pts = (byItem[k] || [])
         .filter((p: any) => p && typeof p.y === 'number')
         .sort((a: any, b: any) => new Date(a.x).getTime() - new Date(b.x).getTime());
-      return { key: String(k), color: COLORS[i % COLORS.length], points: pts };
+      const label = nameById[k] || String(k);
+      return { key: label, color: COLORS[i % COLORS.length], points: pts };
     });
-    return <SalesOverTimeGraph series={series} xMin={xMin} xMax={xMax} yMax={yMax} />;
+    return (
+      <>
+        {/* Item picker trigger */}
+        <View style={{ flexDirection: 'row', marginBottom: 8, alignItems: 'center' }}>
+          <Button mode="outlined" onPress={() => setItemPickerOpen(true)}>
+            Select Items ({selectedItemIds.length || optionEntries.length})
+          </Button>
+          {selectedItemIds.length > 0 && (
+            <Button mode="text" onPress={() => setSelectedItemIds([])} style={{ marginLeft: 8 }}>
+              Clear
+            </Button>
+          )}
+        </View>
+
+        <SalesOverTimeGraph series={series} xMin={xMin} xMax={xMax} yMax={yMax} />
+
+        {/* Item picker bottom sheet */}
+        <Modal
+          visible={itemPickerOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setItemPickerOpen(false)}
+        >
+          <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.3)' }}>
+            <Pressable
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+              onPress={() => setItemPickerOpen(false)}
+            />
+            <View
+              style={{
+                backgroundColor: theme.colors.surface,
+                padding: 16,
+                paddingBottom: 20,
+                borderTopLeftRadius: 16,
+                borderTopRightRadius: 16,
+                width: '100%',
+                maxHeight: '75%',
+              }}
+            >
+              <Text style={{ fontWeight: '700', fontSize: 16, marginBottom: 8 }}>
+                Select Menu Items
+              </Text>
+              <PaperText style={{ marginBottom: 6 }}>Showing items in current date range</PaperText>
+              <PaperInput
+                mode="outlined"
+                label="Search items"
+                value={itemSearch}
+                onChangeText={setItemSearch}
+                style={{ marginBottom: 10 }}
+              />
+              <View style={{ maxHeight: 360 }}>
+                <ScrollView>
+                  {optionEntries
+                    .filter(opt =>
+                      itemSearch ? opt.name.toLowerCase().includes(itemSearch.toLowerCase()) : true
+                    )
+                    .map(opt => {
+                      const checked = selectedItemIds.includes(opt.id);
+                      return (
+                        <Checkbox.Item
+                          key={opt.id}
+                          label={opt.name}
+                          status={checked ? 'checked' : 'unchecked'}
+                          onPress={() => {
+                            setSelectedItemIds(prev =>
+                              checked ? prev.filter(id => id !== opt.id) : [...prev, opt.id]
+                            );
+                          }}
+                        />
+                      );
+                    })}
+                </ScrollView>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
+                <Button onPress={() => setSelectedItemIds(optionEntries.map(o => o.id))}>
+                  All
+                </Button>
+                <Button onPress={() => setSelectedItemIds([])}>None</Button>
+                <Button onPress={() => setItemPickerOpen(false)}>Done</Button>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </>
+    );
   };
 
   const renderHeatmapPreview = () => {
@@ -232,6 +336,8 @@ export default function SalesPatternsBasicMobile() {
           <Text style={{ fontSize: 12 }}>Refresh</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Item picker button is rendered inside the Sales Over Time card above */}
 
       {loading && <ActivityIndicator />}
       {error && <Text style={{ color: theme.colors.error }}>Error loading data</Text>}

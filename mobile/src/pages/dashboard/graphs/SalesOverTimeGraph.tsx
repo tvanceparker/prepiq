@@ -46,7 +46,7 @@ export function SalesOverTimeGraph({
           theme={VictoryTheme.material}
           scale={{ x: 'time' }}
           domain={{ x: [xMin, xMax], y: [0, yMax] }}
-          padding={{ left: 50, right: 30, top: 10, bottom: 60 }}
+          padding={{ left: 50, right: 30, top: 60, bottom: 40 }}
         >
           <VictoryAxis
             fixLabelOverlap
@@ -74,8 +74,8 @@ export function SalesOverTimeGraph({
             />
           ))}
           <VictoryLegend
-            x={70}
-            y={185}
+            x={60}
+            y={18}
             orientation="horizontal"
             gutter={12}
             itemsPerRow={3}
