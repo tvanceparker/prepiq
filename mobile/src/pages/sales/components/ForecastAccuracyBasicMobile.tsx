@@ -132,7 +132,7 @@ export default function ForecastAccuracyBasicMobile() {
         ))}
       </ScrollView>
       {loading && <ActivityIndicator />}
-      {error && <Text style={{ color: theme.colors.error }}>{error}</Text>}
+  {error && <Text style={{ color: theme.colors.error }}>{String(error)}</Text>}
       {!loading && !error && (
         <>
           {/* Accuracy over time chart */}

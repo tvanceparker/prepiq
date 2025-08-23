@@ -63,7 +63,7 @@ export default function SalesPatternsBasicMobile() {
     for (const r of salesOverTime) {
       if (!r) continue;
       const key = r.menu_item_name || r.menu_item_id || 'unknown';
-      const dateVal = r.sale_date || r.date || r.sale_timestamp;
+  const dateVal = (r as any).sale_date;
       const dateOk = isValidDate(dateVal);
       const y = safeNum(r.metric);
       if (!dateOk || Number.isNaN(y)) {
@@ -99,13 +99,10 @@ export default function SalesPatternsBasicMobile() {
     // x domain should cover the selected date range so missing days are shown
     const xMin = isValidDate(startDate)
       ? new Date(startDate)
-      : new Date(salesOverTime[0].sale_date || salesOverTime[0].date);
+      : new Date((salesOverTime[0] as any).sale_date);
     const xMax = isValidDate(endDate)
       ? new Date(endDate)
-      : new Date(
-          salesOverTime[salesOverTime.length - 1].sale_date ||
-            salesOverTime[salesOverTime.length - 1].date
-        );
+      : new Date((salesOverTime[salesOverTime.length - 1] as any).sale_date);
 
     return (
       <View style={{ height: 260, overflow: 'hidden' }}>

@@ -92,7 +92,7 @@ export default function MenuMixInsightsBasicMobile() {
   const filteredBreakdown =
     selectedMenuItemIds.length === 0
       ? breakdownData
-      : breakdownData.filter(item => selectedMenuItemIds.includes(item.menu_item_id));
+      : breakdownData.filter((item: any) => selectedMenuItemIds.includes(item.menu_item_id));
   // Aggregate breakdown by menu_item_id so the pie shows total metric per item
   const aggregatedBreakdown = useMemo(() => {
     const m = new Map<any, { menu_item_id: any; menu_item_name: string; metric: number }>();
@@ -110,15 +110,16 @@ export default function MenuMixInsightsBasicMobile() {
   const filteredOverTime =
     selectedMenuItemIds.length === 0
       ? overTimeData
-      : overTimeData.filter(item => selectedMenuItemIds.includes(item.menu_item_id));
+      : overTimeData.filter((item: any) => selectedMenuItemIds.includes(item.menu_item_id));
   const filteredTopBottom =
     selectedMenuItemIds.length === 0
       ? topBottomData
-      : topBottomData.filter(item => selectedMenuItemIds.includes(item.menu_item_id));
+      : topBottomData.filter((item: any) => selectedMenuItemIds.includes(item.menu_item_id));
 
   const groupedOverTime = useMemo(() => {
     const grouped: Record<string, any> = {};
-    filteredOverTime.forEach(({ sale_date, menu_item_name, metric }) => {
+    filteredOverTime.forEach((row: any) => {
+      const { sale_date, menu_item_name, metric } = row;
       if (!sale_date || !menu_item_name) return;
       if (!grouped[sale_date]) grouped[sale_date] = { date: sale_date };
       grouped[sale_date][menu_item_name] = metric;

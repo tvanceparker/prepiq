@@ -56,7 +56,7 @@ export default function UpcomingForecastBasicMobile() {
   const totalItemsSummary = useMemo(() => {
     if (mode !== 'total') return null;
     const sums: Record<string, number> = {};
-    forecastTable.forEach(r => {
+  forecastTable.forEach((r: any) => {
       if (!r.menu_item_name) return;
       sums[r.menu_item_name] = (sums[r.menu_item_name] || 0) + r.forecasted_quantity;
     });
@@ -129,7 +129,7 @@ export default function UpcomingForecastBasicMobile() {
                         {Number(t.forecasted_revenue || 0).toFixed(2)}
                       </Text>
                       {forecastTable
-                        .filter(r => r.date === t.date)
+                        .filter((r: any) => r.date === t.date)
                         .map((r: any) => (
                           <Text
                             key={r.menu_item_name}
