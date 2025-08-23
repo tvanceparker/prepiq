@@ -10,8 +10,19 @@ import type {
 export const getDailyOverview = () => get<DailyOverviewDTO>('/dashboard/daily_overview');
 export const getMenuItems = () => get<MenuItemDTO[]>('/dashboard/list_menu_items');
 export const createMenuItem = (data: any) => post('/dashboard/create_menu_item', data);
-export const updateMenuItem = (menuItemId: string | number, data: any) =>
-  put(`/dashboard/update/${menuItemId}`, data);
+export const updateMenuItem = async (menuItemId: string | number, data: any) => {
+  const path = `/dashboard/update/${menuItemId}`;
+  try {
+    const res = await client.put(path, data);
+    return res.data;
+  } catch (err: any) {
+    // Surface server validation details if present
+    const serverMsg = err?.response?.data || err?.response?.data?.detail || err?.message;
+    throw new Error(
+      `Update failed: ${typeof serverMsg === 'string' ? serverMsg : JSON.stringify(serverMsg)}`
+    );
+  }
+};
 export const deleteMenuItem = (menuItemId: string | number) =>
   del(`/dashboard/delete/${menuItemId}`);
 

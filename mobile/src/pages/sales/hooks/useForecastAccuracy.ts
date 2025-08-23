@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   getForecastAccuracyChart,
   getForecastAccuracyTable,
@@ -15,53 +16,61 @@ export interface ForecastAccuracyPoint {
 }
 
 export const useForecastAccuracy = (startDate: string, endDate: string) => {
-  const [chartData, setChartData] = useState<any[]>([]);
-  const [tableData, setTableData] = useState<any[]>([]);
-  const [computedData, setComputedData] = useState<any[]>([]);
   const [selectedMenuItemIds, setSelectedMenuItemIds] = useState<number[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!startDate || !endDate) return;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [chart, table, computed] = await Promise.all([
-          getForecastAccuracyChart(startDate, endDate),
-          getForecastAccuracyTable(startDate, endDate),
-          getComputedForecastAccuracy(startDate, endDate),
-        ]);
-        setChartData(chart);
-        setTableData(table);
-        setComputedData(computed);
-      } catch (e: any) {
-        setError('Failed to load forecast accuracy data.');
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [startDate, endDate]);
+  const {
+    data: chartData = [],
+    isLoading: chartLoading,
+    error: chartError,
+  } = useQuery({
+    queryKey: ['forecastAccuracy', 'chart', startDate, endDate],
+    queryFn: () => getForecastAccuracyChart(startDate, endDate),
+    enabled: !!startDate && !!endDate,
+  });
+
+  const {
+    data: tableData = [],
+    isLoading: tableLoading,
+    error: tableError,
+  } = useQuery({
+    queryKey: ['forecastAccuracy', 'table', startDate, endDate],
+    queryFn: () => getForecastAccuracyTable(startDate, endDate),
+    enabled: !!startDate && !!endDate,
+  });
+
+  const {
+    data: computedData = [],
+    isLoading: computedLoading,
+    error: computedError,
+  } = useQuery({
+    queryKey: ['forecastAccuracy', 'computed', startDate, endDate],
+    queryFn: () => getComputedForecastAccuracy(startDate, endDate),
+    enabled: !!startDate && !!endDate,
+  });
+
+  const loading = chartLoading || tableLoading || computedLoading;
+  const error = chartError || tableError || computedError || null;
 
   const filteredChartData = useMemo(
     () =>
       selectedMenuItemIds.length
-        ? chartData.filter(d => selectedMenuItemIds.includes(d.menu_item_id))
+        ? chartData.filter((d: any) => selectedMenuItemIds.includes(d.menu_item_id))
         : chartData,
     [chartData, selectedMenuItemIds]
   );
+
   const filteredTableData = useMemo(
     () =>
       selectedMenuItemIds.length
-        ? tableData.filter(d => selectedMenuItemIds.includes(d.menu_item_id))
+        ? tableData.filter((d: any) => selectedMenuItemIds.includes(d.menu_item_id))
         : tableData,
     [tableData, selectedMenuItemIds]
   );
+
   const filteredComputedData = useMemo(
     () =>
       selectedMenuItemIds.length
-        ? computedData.filter(d => selectedMenuItemIds.includes(d.menu_item_id))
+        ? computedData.filter((d: any) => selectedMenuItemIds.includes(d.menu_item_id))
         : computedData,
     [computedData, selectedMenuItemIds]
   );

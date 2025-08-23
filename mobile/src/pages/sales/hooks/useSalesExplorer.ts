@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   getSalesExplorerTable,
   downloadSalesExplorerExcel,
@@ -9,13 +10,6 @@ import { getMenuItems } from '../../../api/dashboard';
 import { getRestaurantSettings } from '../../../api/settings';
 
 export function useSalesExplorer() {
-  const [data, setData] = useState<any[]>([]);
-  const [menuItems, setMenuItems] = useState<any[]>([]);
-  const [salesChannels, setSalesChannels] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // default to last 30 days so mobile screens show data without manual input
   const toIso = (d: Date) => d.toISOString().slice(0, 10);
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 1000 * 60 * 60 * 24 * 29);
@@ -23,109 +17,93 @@ export function useSalesExplorer() {
   const [endDate, setEndDate] = useState<string | null>(toIso(now));
   const [menuItemId, setMenuItemId] = useState<string | number | null>(null);
 
-  const fetchData = useCallback(async () => {
-    if (!startDate || !endDate) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    try {
-      const resp = await getSalesExplorerTable(
-        startDate,
-        endDate,
-        menuItemId ? [menuItemId] : [],
-        []
-      );
-      if (cancelled) return;
-      setData(Array.isArray(resp) ? resp : []);
-    } catch (e: any) {
-      if (!cancelled) setError(e?.message || 'Failed to fetch sales data');
-    } finally {
-      if (!cancelled) setLoading(false);
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [startDate, endDate, menuItemId]);
+  const { data: menuItems = [] } = useQuery({ queryKey: ['menuItems'], queryFn: getMenuItems });
+  const { data: settings = null } = useQuery<any, Error>({
+    queryKey: ['restaurantSettings'],
+    queryFn: getRestaurantSettings as any,
+  });
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const [menuResp, settingsResp] = await Promise.all([
-          getMenuItems(),
-          getRestaurantSettings(),
-        ]);
-        if (!mounted) return;
-        setMenuItems(Array.isArray(menuResp) ? menuResp : []);
-        setSalesChannels((settingsResp && settingsResp.sales_channels) || []);
-      } catch (e) {
-        console.error('initial sales explorer', e);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const {
+    data: tableData = [],
+    isLoading: tableLoading,
+    refetch: refetchTable,
+  } = useQuery({
+    queryKey: ['salesExplorer', startDate, endDate, menuItemId],
+    queryFn: () =>
+      startDate && endDate
+        ? getSalesExplorerTable(startDate, endDate, menuItemId ? [menuItemId] : [], [])
+        : [],
+    enabled: !!startDate && !!endDate,
+  });
 
   const downloadExcel = useCallback(async () => {
     if (!startDate || !endDate) return;
     try {
-      // mobile: skipping actual file save for now — server returns a download URL or blob
       await downloadSalesExplorerExcel(startDate, endDate);
     } catch (e) {
       console.error('download excel', e);
     }
   }, [startDate, endDate]);
 
+  const createFn = async (saleData: any) => createSale(saleData);
+  const updateFn = async ({ id, data }: { id: number | string; data: any }) => updateSale(id, data);
+
+  // useMutation for create
+  const createMutation = useMutation<any, Error, any>(
+    createFn as any,
+    {
+      onSuccess: async () => {
+        try {
+          await refetchTable();
+        } catch (e) {
+          /* swallow */
+        }
+      },
+    } as any
+  );
+
+  const updateMutation = useMutation<any, Error, { id: number | string; data: any }>(
+    updateFn as any,
+    {
+      onSuccess: async () => {
+        try {
+          await refetchTable();
+        } catch (e) {
+          /* swallow */
+        }
+      },
+    } as any
+  );
+
   const createSaleRecord = useCallback(
     async (saleData: any) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await createSale(saleData);
-        await fetchData();
-        return result;
-      } catch (e: any) {
-        setError(e?.message || 'Failed to create sale');
-        throw e;
-      } finally {
-        setLoading(false);
-      }
+      const r = await (createMutation as any).mutateAsync(saleData);
+      return r;
     },
-    [fetchData]
+    [createMutation]
   );
 
   const updateSaleRecord = useCallback(
     async (saleId: number | string, saleData: any) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await updateSale(saleId, saleData);
-        await fetchData();
-        return result;
-      } catch (e: any) {
-        setError(e?.message || 'Failed to update sale');
-        throw e;
-      } finally {
-        setLoading(false);
-      }
+      const r = await (updateMutation as any).mutateAsync({ id: saleId, data: saleData });
+      return r;
     },
-    [fetchData]
+    [updateMutation]
   );
 
   return {
-    data,
-    menuItems,
-    salesChannels,
-    loading,
-    error,
+    data: tableData as any[],
+    menuItems: menuItems as any[],
+    salesChannels: (settings && (settings as any).sales_channels) || [],
+    loading: tableLoading,
+    error: null,
     filters: { startDate, setStartDate, endDate, setEndDate, menuItemId, setMenuItemId },
     downloadExcel,
     createSaleRecord,
     updateSaleRecord,
+    createLoading: (createMutation as any).isLoading as boolean,
+    createError: (createMutation as any).error ?? null,
+    updateLoading: (updateMutation as any).isLoading as boolean,
+    updateError: (updateMutation as any).error ?? null,
   };
 }

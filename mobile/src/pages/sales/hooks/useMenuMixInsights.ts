@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { getSalesBreakdown, getSalesOverTime, getTopBottomItems } from '../../../api/forecast';
 
 export default function useMenuMixInsights(
@@ -9,30 +10,27 @@ export default function useMenuMixInsights(
 ) {
   const [topView, setTopView] = useState(true);
   const [selectedMenuItemIds, setSelectedMenuItemIds] = useState<number[]>([]);
-  const [breakdownData, setBreakdownData] = useState<any[]>([]);
-  const [overTimeData, setOverTimeData] = useState<any[]>([]);
-  const [topBottomData, setTopBottomData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  useEffect(() => {
-    if (!startDate || !endDate) return;
-    (async () => {
-      setLoading(true);
-      try {
-        const [breakdown, overTime, topBottom] = await Promise.all([
-          getSalesBreakdown(startDate, endDate, byRevenue),
-          getSalesOverTime(startDate, endDate, byRevenue),
-          getTopBottomItems(startDate, endDate, byRevenue, topView, topCount),
-        ]);
-        setBreakdownData(breakdown);
-        setOverTimeData(overTime);
-        setTopBottomData(topBottom);
-      } catch (e) {
-        console.error('menu mix insights', e);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [startDate, endDate, byRevenue, topView, topCount]);
+
+  const { data: breakdownData = [], isLoading: breakdownLoading } = useQuery({
+    queryKey: ['menuMix', 'breakdown', startDate, endDate, byRevenue],
+    queryFn: () => getSalesBreakdown(startDate, endDate, byRevenue),
+    enabled: !!startDate && !!endDate,
+  });
+
+  const { data: overTimeData = [], isLoading: overTimeLoading } = useQuery({
+    queryKey: ['menuMix', 'overTime', startDate, endDate, byRevenue],
+    queryFn: () => getSalesOverTime(startDate, endDate, byRevenue),
+    enabled: !!startDate && !!endDate,
+  });
+
+  const { data: topBottomData = [], isLoading: topBottomLoading } = useQuery({
+    queryKey: ['menuMix', 'topBottom', startDate, endDate, byRevenue, topView, topCount],
+    queryFn: () => getTopBottomItems(startDate, endDate, byRevenue, topView, topCount),
+    enabled: !!startDate && !!endDate,
+  });
+
+  const loading = breakdownLoading || overTimeLoading || topBottomLoading;
+
   return {
     breakdownData,
     overTimeData,

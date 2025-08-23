@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   getUpcomingForecastTable,
   getUpcomingForecastTotals,
@@ -17,31 +18,40 @@ export function useUpcomingForecast(
   const [startDate, setStartDate] = useState(initialStart);
   const [endDate, setEndDate] = useState(initialEnd);
   const [mode, setMode] = useState<'per_day' | 'total'>(initialMode);
-  const [forecastTable, setForecastTable] = useState<any[]>([]);
-  const [forecastTotals, setForecastTotals] = useState<any>(null);
-  const [topItems, setTopItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [table, totals, top] = await Promise.all([
-          getUpcomingForecastTable(fmt(startDate), fmt(endDate)),
-          getUpcomingForecastTotals(fmt(startDate), fmt(endDate), mode),
-          getTopForecastedItems(fmt(startDate), fmt(endDate), 5),
-        ]);
-        setForecastTable(table);
-        setForecastTotals(totals);
-        setTopItems(top);
-      } catch (e: any) {
-        setError(e);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [startDate, endDate, mode]);
+
+  const {
+    data: forecastTable = [],
+    isLoading: tableLoading,
+    error: tableError,
+  } = useQuery({
+    queryKey: ['upcomingForecast', 'table', fmt(startDate), fmt(endDate)],
+    queryFn: () => getUpcomingForecastTable(fmt(startDate), fmt(endDate)),
+    enabled: !!startDate && !!endDate,
+  });
+
+  const {
+    data: forecastTotals = null,
+    isLoading: totalsLoading,
+    error: totalsError,
+  } = useQuery({
+    queryKey: ['upcomingForecast', 'totals', fmt(startDate), fmt(endDate), mode],
+    queryFn: () => getUpcomingForecastTotals(fmt(startDate), fmt(endDate), mode),
+    enabled: !!startDate && !!endDate,
+  });
+
+  const {
+    data: topItems = [],
+    isLoading: topLoading,
+    error: topError,
+  } = useQuery({
+    queryKey: ['upcomingForecast', 'topItems', fmt(startDate), fmt(endDate)],
+    queryFn: () => getTopForecastedItems(fmt(startDate), fmt(endDate), 5),
+    enabled: !!startDate && !!endDate,
+  });
+
+  const loading = tableLoading || totalsLoading || topLoading;
+  const error = tableError || totalsError || topError || null;
+
   return {
     startDate,
     setStartDate,
@@ -49,9 +59,9 @@ export function useUpcomingForecast(
     setEndDate,
     mode,
     setMode,
-    forecastTable,
-    forecastTotals,
-    topItems,
+    forecastTable: forecastTable || [],
+    forecastTotals: forecastTotals || null,
+    topItems: topItems || [],
     loading,
     error,
   };

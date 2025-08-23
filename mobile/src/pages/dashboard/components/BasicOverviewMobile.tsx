@@ -12,13 +12,8 @@ import {
 } from 'react-native-paper';
 import DateSelector from '../../../components/DateSelector';
 import * as DocumentPicker from 'expo-document-picker';
-import {
-  uploadSalesData,
-  uploadSalesManual,
-  getMenuItems as getMenuItemsApi,
-  checkSalesExist,
-} from '../../../api/dashboard';
-import { getRestaurantSettings } from '../../../api/settings';
+import { uploadSalesData } from '../../../api/dashboard';
+import { useSalesUpload } from '../hooks/useSalesUpload';
 
 interface Props {
   data: any;
@@ -47,8 +42,13 @@ export default function BasicOverviewMobile({ data, navigation }: Props & { navi
   const [fileConfirmVisible, setFileConfirmVisible] = useState(false);
   const [pendingFile, setPendingFile] = useState<any | null>(null);
   // Manual multi-entry state
-  const [menuItems, setMenuItems] = useState<Array<{ menu_item_id: number; name: string }>>([]);
-  const [menuItemsLoading, setMenuItemsLoading] = useState(false);
+  const {
+    items: menuItems,
+    channels: availableChannelsHook,
+    loading: menuLoadLoading,
+    checkConflicts,
+    submit,
+  } = useSalesUpload();
   const [filter, setFilter] = useState('');
   const [qtyById, setQtyById] = useState<Record<number, string>>({});
   const [availableChannels, setAvailableChannels] = useState<string[]>([]);
@@ -62,31 +62,18 @@ export default function BasicOverviewMobile({ data, navigation }: Props & { navi
     setSheetOpen(true);
   };
 
-  // Fetch menu items when opening the sheet so users don't need to know IDs
+  // When opening sheet, ensure react-query-backed data is loaded
   useEffect(() => {
-    const run = async () => {
-      if (!sheetOpen) return;
-      try {
-        setMenuItemsLoading(true);
-        const items = (await getMenuItemsApi()) as Array<any>;
-        const activeOnly = (items || []).filter((i: any) => i?.is_active !== false);
-        setMenuItems(activeOnly.map(i => ({ menu_item_id: i.menu_item_id, name: i.name })) || []);
-        // Load restaurant sales channels for per-channel uploads
-        try {
-          const settings = await getRestaurantSettings();
-          const channels = (settings?.sales_channels as string[]) || [];
-          setAvailableChannels(channels);
-          // keep previous selection if still valid, else default to null (unspecified)
-          setSelectedChannel(prev => (prev && channels.includes(prev) ? prev : null));
-        } catch {}
-      } catch (e) {
-        setSnackbar({ visible: true, message: 'Failed to load menu items' });
-      } finally {
-        setMenuItemsLoading(false);
-      }
-    };
-    run();
-  }, [sheetOpen]);
+    if (!sheetOpen) return;
+    // populate available channels from hook when sheet opens
+    setAvailableChannels(prev => {
+      const channels = availableChannelsHook || [];
+      // keep previous selection if still valid
+      setSelectedChannel(prevSel => (prevSel && channels.includes(prevSel) ? prevSel : null));
+      return channels;
+    });
+    // nothing else: data is managed by the hook
+  }, [sheetOpen, availableChannelsHook]);
 
   const handlePickAndUpload = async () => {
     try {
@@ -140,9 +127,9 @@ export default function BasicOverviewMobile({ data, navigation }: Props & { navi
     }
     const saleDate = templateDate.toISOString().slice(0, 10);
     try {
-      // Check conflicts for unspecified channel (null) since manual UI has no channel selector yet
-      const result = await checkSalesExist(saleDate, [selectedChannel ?? 'null']);
-      const confRaw = (result && result.conflicts) || {};
+      // Check conflicts using the hook
+      const result = await checkConflicts(saleDate, entries as any);
+      const confRaw = (result && result) || {};
       const conf: Record<string, number> = {};
       Object.entries(confRaw).forEach(([k, v]) => {
         const key = k === null || k === 'null' ? 'null' : String(k);
@@ -153,8 +140,8 @@ export default function BasicOverviewMobile({ data, navigation }: Props & { navi
         setConfirmVisible(true);
         return;
       }
-      // No conflicts, proceed without overwrite
-      await uploadSalesManual({ sale_date: saleDate, overwrite: false, entries });
+      // No conflicts, proceed without overwrite via hook
+      await submit(saleDate, entries as any, false);
       setSheetOpen(false);
       setQtyById({});
       setSnackbar({ visible: true, message: 'Manual sales saved' });
@@ -326,7 +313,7 @@ export default function BasicOverviewMobile({ data, navigation }: Props & { navi
           </View>
           <View style={{ height: 8 }} />
           {/* Manual multi-entry UI */}
-          {menuItemsLoading ? (
+          {menuLoadLoading ? (
             <View style={{ paddingVertical: 12, alignItems: 'center' }}>
               <ActivityIndicator />
               <Text style={{ marginTop: 6 }}>Loading menu items…</Text>
@@ -444,7 +431,7 @@ export default function BasicOverviewMobile({ data, navigation }: Props & { navi
                     }))
                     .filter(r => r.id && r.qty && r.qty > 0)
                     .map(r => ({ menu_item_id: r.id, quantity_sold: r.qty }));
-                  await uploadSalesManual({ sale_date: saleDate, overwrite: true, entries });
+                  await submit(saleDate, entries as any, true);
                   setConfirmVisible(false);
                   setSheetOpen(false);
                   setQtyById({});

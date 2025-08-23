@@ -14,8 +14,7 @@ import {
   useTheme,
 } from 'react-native-paper';
 import DateSelector from '../../components/DateSelector';
-import { getMenuItems, uploadSalesManual, checkSalesExist } from '../../api/dashboard';
-import { getRestaurantSettings } from '../../api/settings';
+import { useSalesUpload } from '../dashboard/hooks/useSalesUpload';
 
 type Mode = 'byChannel' | 'byItem';
 
@@ -29,10 +28,9 @@ export default function SalesUploadWizard({ navigation }: any) {
   const [step, setStep] = useState<number>(1);
   const [mode, setMode] = useState<Mode>('byChannel');
   const [saleDate, setSaleDate] = useState<Date>(new Date());
-  const [channels, setChannels] = useState<string[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
-  const [items, setItems] = useState<MenuItemLite[]>([]);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
+  const { items: menuItems, channels, load, checkConflicts, submit } = useSalesUpload();
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [filter, setFilter] = useState<string>('');
   const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string }>({
@@ -47,21 +45,10 @@ export default function SalesUploadWizard({ navigation }: any) {
   const entryKey = (itemId: number, channel: string) => `${itemId}||${channel}`;
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const [menu, settings] = await Promise.all([
-          getMenuItems() as any,
-          getRestaurantSettings() as any,
-        ]);
-        setItems((menu || []).map((i: any) => ({ menu_item_id: i.menu_item_id, name: i.name })));
-        const ch = (settings?.sales_channels as string[]) || [];
-        setChannels(ch);
-      } catch (e: any) {
-        setSnackbar({ visible: true, message: `Failed to load settings/menu: ${e?.message || e}` });
-      }
-    };
-    load();
-  }, []);
+    load().catch((e: any) =>
+      setSnackbar({ visible: true, message: `Failed to load settings/menu: ${e?.message || e}` })
+    );
+  }, [load]);
 
   const modeTargets = useMemo(() => {
     return mode === 'byChannel' ? selectedChannels : selectedItems;
@@ -70,18 +57,18 @@ export default function SalesUploadWizard({ navigation }: any) {
   const currentLabel = useMemo(() => {
     if (mode === 'byChannel') return selectedChannels[currentIndex] || '';
     const id = selectedItems[currentIndex];
-    const it = items.find(i => i.menu_item_id === id);
+    const it = (menuItems || []).find(i => i.menu_item_id === id);
     return it?.name || '';
-  }, [mode, selectedChannels, selectedItems, currentIndex, items]);
+  }, [mode, selectedChannels, selectedItems, currentIndex, menuItems]);
 
   const visibleItems = useMemo(() => {
-    const base = items;
+    const base = menuItems;
     if (!filter) return base;
     const f = filter.toLowerCase();
     return base.filter(
       i => i.name.toLowerCase().includes(f) || String(i.menu_item_id).includes(filter)
     );
-  }, [items, filter]);
+  }, [menuItems, filter]);
 
   const updateQty = (itemId: number, channel: string, value: string) => {
     const v = Math.max(0, parseInt(value.replace(/[^0-9]/g, '') || '0', 10));
@@ -116,12 +103,12 @@ export default function SalesUploadWizard({ navigation }: any) {
       if (!qty || qty <= 0) return;
       const [idStr, ch] = k.split('||');
       const id = Number(idStr);
-      const item = items.find(i => i.menu_item_id === id);
+      const item = (menuItems || []).find(i => i.menu_item_id === id);
       if (!item) return;
       result.push({ item_id: id, item_name: item?.name || String(id), channel: ch, qty });
     });
     return result;
-  }, [entries, items]);
+  }, [entries, menuItems]);
 
   const submitAll = async (confirmOverwrite: boolean) => {
     const sale_date = saleDate.toISOString().slice(0, 10);
@@ -137,9 +124,8 @@ export default function SalesUploadWizard({ navigation }: any) {
     try {
       if (!confirmOverwrite) {
         // check conflicts by channels present
-        const channels = Array.from(new Set(payloadEntries.map(e => e.sales_channel)));
-        const result = await checkSalesExist(sale_date, channels as any);
-        const confRaw = (result && result.conflicts) || {};
+        const result = await checkConflicts(sale_date, payloadEntries as any);
+        const confRaw = result || {};
         const conf: Record<string, number> = {};
         Object.entries(confRaw).forEach(([k, v]) => {
           conf[String(k)] = Number(v as any) || 0;
@@ -150,11 +136,7 @@ export default function SalesUploadWizard({ navigation }: any) {
           return;
         }
       }
-      await uploadSalesManual({
-        sale_date,
-        overwrite: !!confirmOverwrite,
-        entries: payloadEntries,
-      });
+      await submit(sale_date, payloadEntries as any, !!confirmOverwrite);
       setSnackbar({
         visible: true,
         message: confirmOverwrite ? 'Sales overwritten' : 'Sales uploaded',
