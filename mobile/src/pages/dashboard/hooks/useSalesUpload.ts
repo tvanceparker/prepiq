@@ -39,8 +39,9 @@ export function useSalesUpload() {
     overwrite: boolean;
   }) => uploadSalesManual(payload);
 
-  // cast useMutation to any to avoid overload/type mismatches in this project's react-query types
-  const uploadMutation = (useMutation as any)(mutationFn, {
+  // use object-style useMutation to match project react-query usage and avoid runtime errors
+  const uploadMutation = useMutation({
+    mutationFn,
     onSuccess: () => {
       // invalidate related overview data so UI refreshes
       qc.invalidateQueries({ queryKey: ['dailyOverview'] });
@@ -73,9 +74,8 @@ export function useSalesUpload() {
   const loading = itemsLoading || settingsLoading;
   const error = itemsError || settingsError || null;
   // expose mutation state for callers that want to show progress
-  // cast to any to avoid version-specific type incompatibilities in this workspace's react-query types
-  const submitLoading = (uploadMutation as any).isLoading as boolean;
-  const submitError = (uploadMutation as any).error ?? null;
+  const submitLoading = uploadMutation.status === 'pending';
+  const submitError = uploadMutation.error ?? null;
 
   return {
     items: rawMenuItems as MenuItemDTO[],

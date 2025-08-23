@@ -3,15 +3,12 @@ import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'rea
 import { useTheme } from 'react-native-paper';
 import DateSelector from '../../../components/DateSelector';
 import { useSalesPatterns } from '../hooks/useSalesPatterns';
-import {
-  VictoryChart,
-  VictoryLine,
-  VictoryAxis,
-  VictoryTheme,
-  VictoryBar,
-  VictoryPie,
-} from 'victory-native';
 import { VictoryLabel } from 'victory-native';
+import Svg from 'react-native-svg';
+import { SalesOverTimeGraph, type SalesSeries } from '../../dashboard/graphs/SalesOverTimeGraph';
+import { WeekdayBarGraph } from '../../dashboard/graphs/WeekdayBarGraph';
+import { HeatmapPreviewGraph } from '../../dashboard/graphs/HeatmapPreviewGraph';
+import { ChannelBreakdownPie } from '../../dashboard/graphs/ChannelBreakdownPie';
 
 // Simple color palette for series
 const COLORS = ['#2563eb', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6'];
@@ -104,47 +101,14 @@ export default function SalesPatternsBasicMobile() {
       ? new Date(endDate)
       : new Date((salesOverTime[salesOverTime.length - 1] as any).sale_date);
 
-    return (
-      <View style={{ height: 260, overflow: 'hidden' }}>
-        <VictoryChart
-          theme={VictoryTheme.material}
-          height={240}
-          scale={{ x: 'time' }}
-          domain={{ x: [xMin, xMax], y: [0, yMax] }}
-          padding={{ left: 50, right: 30, top: 10, bottom: 50 }}
-        >
-          <VictoryAxis
-            fixLabelOverlap
-            tickFormat={t => {
-              const dt = new Date(t);
-              return isNaN(dt.getTime()) ? '' : `${dt.getMonth() + 1}/${dt.getDate()}`;
-            }}
-            tickCount={5}
-            style={{ tickLabels: { fontSize: 10 } }}
-          />
-          <VictoryAxis
-            dependentAxis
-            tickFormat={v => (Math.abs(v) >= 1000 ? `${Math.round(v)}` : `${Math.round(v)}`)}
-          />
-          {top.map((k, i) => {
-            const series = (byItem[k] || []).filter(p => p && typeof p.y === 'number');
-            if (!series || series.length === 0) return null;
-            // sort by x to ensure lines render correctly
-            series.sort((a, b) => a.x.getTime() - b.x.getTime());
-            return (
-              <VictoryLine
-                key={k}
-                data={series}
-                x="x"
-                y="y"
-                interpolation="monotoneX"
-                style={{ data: { stroke: COLORS[i % COLORS.length], strokeWidth: 2 } }}
-              />
-            );
-          })}
-        </VictoryChart>
-      </View>
-    );
+    // Prepare series for reusable graph with legend
+    const series: SalesSeries[] = top.map((k, i) => {
+      const pts = (byItem[k] || [])
+        .filter((p: any) => p && typeof p.y === 'number')
+        .sort((a: any, b: any) => new Date(a.x).getTime() - new Date(b.x).getTime());
+      return { key: String(k), color: COLORS[i % COLORS.length], points: pts };
+    });
+    return <SalesOverTimeGraph series={series} xMin={xMin} xMax={xMax} yMax={yMax} />;
   };
 
   const renderHeatmapPreview = () => {
@@ -159,55 +123,51 @@ export default function SalesPatternsBasicMobile() {
       x: r.menu_item_name || String(r.menu_item_id),
       y: safeNum(r.metric),
     }));
-    const max = Math.max(...data.map(d => d.y));
-    const height = Math.min(300, data.length * 36 + 60);
-    return (
-      <View style={{ height, overflow: 'hidden' }}>
-        <VictoryChart
-          horizontal
-          domainPadding={{ x: 20, y: 8 }}
-          height={height}
-          padding={{ left: 120, right: 20, top: 10, bottom: 30 }}
-        >
-          <VictoryBar
-            data={data}
-            x="x"
-            y="y"
-            style={{ data: { fill: COLORS[1] } }}
-            labels={({ datum }) => `${Math.round(datum.y)}`}
-            labelComponent={<VictoryLabel dx={-8} />}
-          />
-        </VictoryChart>
-      </View>
-    );
+    return <HeatmapPreviewGraph items={data} />;
   };
 
   const renderWeekdayAvg = () => {
     if (!Array.isArray(weekdayAvg) || weekdayAvg.length === 0)
       return <Text style={{ color: theme.colors.onSurfaceVariant }}>No data</Text>;
-    const data = weekdayAvg
-      .map((r: any) => ({
-        x: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][r.weekday] ?? String(r.weekday),
-        y: safeNum(r.metric),
-      }))
-      .filter((p: any) => typeof p.y === 'number' && !Number.isNaN(p.y));
-    const max = data.reduce((s: number, d: any) => Math.max(s, Math.abs(d.y)), 0);
-    const yMax = max > 0 ? max * 1.15 : 1;
-    return (
-      <View style={{ height: 220, overflow: 'hidden' }}>
-        <VictoryChart
-          domainPadding={20}
-          theme={VictoryTheme.material}
-          height={220}
-          padding={{ left: 40, right: 30, top: 10, bottom: 50 }}
-          domain={{ y: [0, yMax] }}
-        >
-          <VictoryAxis />
-          <VictoryAxis dependentAxis tickFormat={v => `${Math.round(v)}`} />
-          <VictoryBar data={data} style={{ data: { fill: COLORS[0] } }} />
-        </VictoryChart>
-      </View>
-    );
+
+    // Build a fixed 7-slot map for Sun..Sat so all weekdays appear; accept numeric or string weekday formats
+    const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const values: number[] = new Array(7).fill(0);
+
+    const parseWeekdayIndex = (raw: any): number | null => {
+      if (raw == null) return null;
+      // numeric-like
+      const n = Number(raw);
+      if (!Number.isNaN(n)) {
+        // if 0-6 -> assume JS Date.getDay() mapping
+        if (n >= 0 && n <= 6) return n;
+        // if 1-7 -> assume ISO-style (1=Mon..7=Sun) -> convert to 0=Sun..6=Sat
+        if (n >= 1 && n <= 7) return n % 7; // 7 -> 0 (Sun)
+      }
+      // string names e.g. 'Sun', 'sunday', 'SATURDAY'
+      const s = String(raw).toLowerCase().slice(0, 3);
+      const nameMap: Record<string, number> = {
+        sun: 0,
+        mon: 1,
+        tue: 2,
+        wed: 3,
+        thu: 4,
+        fri: 5,
+        sat: 6,
+      };
+      if (s in nameMap) return nameMap[s];
+      return null;
+    };
+
+    // Populate and sum values from backend (handle average_value, metric, or value)
+    for (const r of weekdayAvg) {
+      const wdIdx = parseWeekdayIndex((r as any).weekday);
+      if (wdIdx == null) continue;
+      const v = Number((r as any).average_value ?? (r as any).metric ?? (r as any).value ?? 0) || 0;
+      values[wdIdx] = (values[wdIdx] || 0) + v;
+    }
+
+    return <WeekdayBarGraph labels={labels} values={values} color={COLORS[0]} />;
   };
 
   const renderChannelBreakdown = () => {
@@ -222,18 +182,7 @@ export default function SalesPatternsBasicMobile() {
     const total = pieData.reduce((s: number, r: any) => s + r.y, 0);
     if (pieData.length === 0 || total === 0)
       return <Text style={{ color: theme.colors.onSurfaceVariant }}>No data</Text>;
-    return (
-      <View
-        style={{ height: 220, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}
-      >
-        <VictoryPie
-          data={pieData}
-          colorScale={COLORS}
-          height={200}
-          labels={({ datum }) => `${datum.x}: ${Math.round((datum.y / total) * 100)}%`}
-        />
-      </View>
-    );
+    return <ChannelBreakdownPie data={pieData} />;
   };
 
   return (
