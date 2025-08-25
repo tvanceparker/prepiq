@@ -97,6 +97,7 @@ export function useSalesExplorer() {
     salesChannels: (settings && (settings as any).sales_channels) || [],
     loading: tableLoading,
     error: null,
+    refetch: refetchTable,
     filters: { startDate, setStartDate, endDate, setEndDate, menuItemId, setMenuItemId },
     downloadExcel,
     createSaleRecord,

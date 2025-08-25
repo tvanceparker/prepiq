@@ -27,6 +27,7 @@ export default function SalesExplorerBasicMobile() {
     filters: { startDate, setStartDate, endDate, setEndDate, menuItemId, setMenuItemId },
     createSaleRecord,
     updateSaleRecord,
+    refetch,
   } = useSalesExplorer();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -40,12 +41,15 @@ export default function SalesExplorerBasicMobile() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      // trigger fetch by touching the date filters (hook listens to them)
-      setStartDate(startDate);
+      // prefer explicit refetch rather than nudging the filters which may cause
+      // redundant state updates in some scenarios
+      if (refetch) await refetch();
+    } catch (e) {
+      /* swallow */
     } finally {
       setRefreshing(false);
     }
-  }, [startDate, setStartDate]);
+  }, [refetch]);
 
   useEffect(() => {
     if (editRow) setForm({ ...editRow });

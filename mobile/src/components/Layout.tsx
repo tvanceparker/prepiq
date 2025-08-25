@@ -37,14 +37,17 @@ export default function Layout({
     }).start();
   }, [sidebarOpen, sidebarFromLeft, sidebarWidth, translateX]);
 
+  const paperTheme = useTheme();
+  const bg = paperTheme.colors.background as string;
+  const isDark = (paperTheme as any).dark === true;
+  const statusOffset = Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0;
+
   const overlayStyle = {
     ...styles.overlay,
     backgroundColor: sidebarOpen ? 'rgba(0,0,0,0.3)' : 'transparent',
     pointerEvents: sidebarOpen ? 'auto' : 'none',
+    top: -statusOffset,
   } as any;
-
-  const paperTheme = useTheme();
-  const bg = paperTheme.colors.background as string;
 
   return (
     <SafeAreaView
@@ -55,6 +58,7 @@ export default function Layout({
         Platform.OS === 'android' && { paddingTop: StatusBar.currentHeight || 0 },
       ]}
     >
+      <StatusBar backgroundColor={bg} barStyle={isDark ? 'light-content' : 'dark-content'} />
       <View style={styles.content}>
         {/* optional header slot to keep header spacing consistent */}
         {header}
@@ -73,6 +77,17 @@ export default function Layout({
                   transform: [{ translateX }],
                   left: sidebarFromLeft ? 0 : undefined,
                   right: sidebarFromLeft ? undefined : 0,
+                  top: -statusOffset,
+                  backgroundColor:
+                    (paperTheme.colors as any).elevation?.level2 ||
+                    (paperTheme.colors as any).surface ||
+                    bg,
+                  borderRightWidth: sidebarFromLeft ? StyleSheet.hairlineWidth : 0,
+                  borderLeftWidth: !sidebarFromLeft ? StyleSheet.hairlineWidth : 0,
+                  borderColor:
+                    (paperTheme.colors as any).outlineVariant || (paperTheme.colors as any).outline,
+                  shadowOpacity: isDark ? 0 : 0.15,
+                  elevation: isDark ? 0 : 6,
                 },
               ]}
             >
@@ -86,8 +101,8 @@ export default function Layout({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fafafa' },
-  content: { flex: 1 },
+  container: { flex: 1 },
+  content: { flex: 1, backgroundColor: 'transparent' },
   overlay: {
     position: 'absolute',
     top: 0,
@@ -99,7 +114,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     bottom: 0,
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
     // simple shadow/elevation
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

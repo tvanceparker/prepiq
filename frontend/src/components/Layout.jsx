@@ -1,14 +1,14 @@
-import React, { useState, useEffect, useRef, useContext } from "react";
-import Sidebar from "./Sidebar";
-import { useNavigate } from "react-router-dom";
-import { AuthContext } from "../contexts/AuthContext";
-import useAlertCount from "../hooks/useAlertCount";
+import React, { useState, useEffect, useRef, useContext } from 'react';
+import Sidebar from './Sidebar';
+import { useNavigate } from 'react-router-dom';
+import { AuthContext } from '../contexts/AuthContext';
+import useAlertCount from '../hooks/useAlertCount';
 
 import {
   Notifications as BellIcon,
   Menu as MenuIcon,
   Logout as LogoutIcon,
-} from "@mui/icons-material";
+} from '@mui/icons-material';
 import {
   AppBar,
   Toolbar,
@@ -20,7 +20,7 @@ import {
   Box,
   useTheme,
   Tooltip,
-} from "@mui/material";
+} from '@mui/material';
 
 export default function Layout({ children, tier }) {
   const { theme, setTheme, user, logout } = useContext(AuthContext);
@@ -41,11 +41,11 @@ export default function Layout({ children, tier }) {
 
   const handleLogout = () => {
     logout();
-    navigate("/login");
+    navigate('/login');
   };
 
   // Navigate to alerts feed
-  const goToAlertsFeed = () => navigate("/dashboard/alerts");
+  const goToAlertsFeed = () => navigate('/dashboard/alerts');
 
   useEffect(() => {
     const timer = setInterval(() => setDateTime(new Date()), 1000);
@@ -67,27 +67,27 @@ export default function Layout({ children, tier }) {
       }
     };
 
-    scrollEl.addEventListener("scroll", handleScroll);
-    return () => scrollEl.removeEventListener("scroll", handleScroll);
+    scrollEl.addEventListener('scroll', handleScroll);
+    return () => scrollEl.removeEventListener('scroll', handleScroll);
   }, [lastScrollY]);
 
   const toggleTheme = () => {
-    const newTheme = theme === "dark" ? "light" : "dark";
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
     setTheme(newTheme);
-    localStorage.setItem("theme", newTheme);
+    localStorage.setItem('theme', newTheme);
   };
 
   const formattedDate = dateTime.toLocaleDateString(undefined, {
-    weekday: "short",
-    year: "numeric",
-    month: "short",
-    day: "numeric",
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
   });
 
   const formattedTime = dateTime.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
   });
 
   const muiTheme = useTheme();
@@ -95,10 +95,10 @@ export default function Layout({ children, tier }) {
   return (
     <Box
       sx={{
-        display: "flex",
-        height: "100vh",
-        bgcolor: "background.default",
-        color: "text.primary",
+        display: 'flex',
+        height: '100vh',
+        bgcolor: 'background.default',
+        color: 'text.primary',
       }}
     >
       {/* Sidebar Drawer for mobile */}
@@ -108,10 +108,12 @@ export default function Layout({ children, tier }) {
         onClose={closeSidebar}
         ModalProps={{ keepMounted: true }}
         sx={{
-          display: { xs: "block", sm: "none" },
-          "& .MuiDrawer-paper": {
+          display: { xs: 'block', sm: 'none' },
+          '& .MuiDrawer-paper': {
             width: 260,
-            bgcolor: "background.paper",
+            bgcolor: 'background.paper',
+            backgroundImage: 'none',
+            boxShadow: 'none',
             borderRight: `1px solid ${muiTheme.palette.divider}`,
           },
         }}
@@ -125,13 +127,14 @@ export default function Layout({ children, tier }) {
         sx={{
           width: { sm: 260 },
           flexShrink: { sm: 0 },
-          display: { xs: "none", sm: "block" },
-          bgcolor: "background.paper",
+          display: { xs: 'none', sm: 'block' },
+          bgcolor: 'background.paper',
+          backgroundImage: 'none',
           borderRight: `1px solid ${muiTheme.palette.divider}`,
-          position: "fixed", // fix position so it layers independently
+          position: 'fixed', // fix position so it layers independently
           top: 0,
           left: 0,
-          height: "100vh",
+          height: '100vh',
           zIndex: muiTheme.zIndex.appBar + 1, // higher than header's z-index
         }}
       >
@@ -142,9 +145,10 @@ export default function Layout({ children, tier }) {
         component="main"
         sx={{
           flexGrow: 1,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          bgcolor: 'background.default',
         }}
       >
         {/* Header */}
@@ -153,24 +157,24 @@ export default function Layout({ children, tier }) {
           elevation={showHeader ? 4 : 0}
           sx={{
             height: 80,
-            transition: "transform 0.3s ease",
-            transform: showHeader ? "translateY(0)" : "translateY(-100%)",
+            transition: 'transform 0.3s ease',
+            transform: showHeader ? 'translateY(0)' : 'translateY(-100%)',
             borderBottom: `1px solid ${muiTheme.palette.divider}`,
             pl: { sm: 32.5 }, // 260px sidebar + padding
-            color: "text.primary", // ensure AppBar text uses theme text color (fix light-mode visibility)
+            color: 'text.primary', // ensure AppBar text uses theme text color (fix light-mode visibility)
+            bgcolor: 'background.paper',
+            backgroundImage: 'none',
           }}
         >
-          <Toolbar
-            sx={{ height: "100%", px: 3, justifyContent: "space-between" }}
-          >
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <Toolbar sx={{ height: '100%', px: 3, justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               {/* Sidebar toggle for mobile */}
               <IconButton
                 color="inherit"
                 aria-label="open drawer"
                 edge="start"
                 onClick={toggleSidebar}
-                sx={{ mr: 2, display: { sm: "none" } }}
+                sx={{ mr: 2, display: { sm: 'none' } }}
               >
                 <MenuIcon />
               </IconButton>
@@ -179,7 +183,12 @@ export default function Layout({ children, tier }) {
                 <Typography variant="body2" color="text.secondary" sx={{ color: 'text.secondary' }}>
                   {formattedDate}
                 </Typography>
-                <Typography variant="h6" fontWeight="bold" lineHeight={1} sx={{ color: 'text.primary' }}>
+                <Typography
+                  variant="h6"
+                  fontWeight="bold"
+                  lineHeight={1}
+                  sx={{ color: 'text.primary' }}
+                >
                   {formattedTime}
                 </Typography>
               </Box>
@@ -187,11 +196,11 @@ export default function Layout({ children, tier }) {
 
             <Box
               sx={{
-                display: "flex",
-                alignItems: "center",
+                display: 'flex',
+                alignItems: 'center',
                 gap: 2,
                 minWidth: 300,
-                overflowX: "auto",
+                overflowX: 'auto',
               }}
             >
               <Tooltip title="View Alerts & Insights Feed">
@@ -199,15 +208,12 @@ export default function Layout({ children, tier }) {
                   variant="contained"
                   color="error"
                   startIcon={
-                    <Badge
-                      badgeContent={alertsLoading ? "…" : alertsCount}
-                      color="warning"
-                    >
+                    <Badge badgeContent={alertsLoading ? '…' : alertsCount} color="warning">
                       <BellIcon />
                     </Badge>
                   }
                   onClick={goToAlertsFeed}
-                  sx={{ whiteSpace: "nowrap" }}
+                  sx={{ whiteSpace: 'nowrap' }}
                 >
                   Alerts
                 </Button>
@@ -216,10 +222,9 @@ export default function Layout({ children, tier }) {
               <Typography
                 variant="body2"
                 noWrap
-                sx={{ flexShrink: 0, display: { xs: "none", sm: "block" }, color: 'text.primary' }}
+                sx={{ flexShrink: 0, display: { xs: 'none', sm: 'block' }, color: 'text.primary' }}
               >
-                Logged in as{" "}
-                <strong>{user?.name || user?.username || "Unknown"}</strong>
+                Logged in as <strong>{user?.name || user?.username || 'Unknown'}</strong>
               </Typography>
 
               <Tooltip title="Logout">
@@ -236,11 +241,12 @@ export default function Layout({ children, tier }) {
           ref={scrollRef}
           sx={{
             flexGrow: 1,
-            pt: "80px",
-            pb: "56px",
+            pt: '80px',
+            pb: '56px',
             px: 3,
-            ml: { sm: "260px" },
-            overflowY: "auto",
+            ml: { sm: '260px' },
+            overflowY: 'auto',
+            bgcolor: 'background.default',
           }}
         >
           {children}
@@ -251,42 +257,39 @@ export default function Layout({ children, tier }) {
           component="footer"
           sx={{
             height: 56,
-            bgcolor: "background.paper",
+            bgcolor: 'background.paper',
             borderTop: `1px solid ${muiTheme.palette.divider}`,
-            textAlign: "center",
-            fontSize: "0.75rem",
-            color: "text.secondary",
+            textAlign: 'center',
+            fontSize: '0.75rem',
+            color: 'text.secondary',
             lineHeight: 1.5,
-            position: "fixed",
+            position: 'fixed',
             bottom: 0,
-            left: { sm: "260px" },
+            left: { sm: '260px' },
             right: 0,
             zIndex: muiTheme.zIndex.appBar,
             px: 2,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            transition: "transform 0.3s ease",
-            transform: showFooter ? "translateY(0)" : "translateY(100%)",
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'transform 0.3s ease',
+            transform: showFooter ? 'translateY(0)' : 'translateY(100%)',
           }}
         >
-          <span>
-            PrepIQ © {new Date().getFullYear()} — Built with ❤️ by Taylor and
-            Will
-          </span>
+          <span>PrepIQ © {new Date().getFullYear()} — Built with ❤️ by Taylor and Will</span>
 
-          {process.env.NODE_ENV === "development" && (
+          {process.env.NODE_ENV === 'development' && (
             <Button
               variant="outlined"
               size="small"
               onClick={toggleTheme}
               sx={{
-                position: "absolute",
+                position: 'absolute',
                 right: 16,
                 bottom: 8,
               }}
             >
-              {theme === "dark" ? "Light Mode" : "Dark Mode"}
+              {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
             </Button>
           )}
         </Box>

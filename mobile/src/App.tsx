@@ -9,7 +9,12 @@ import { PaperProvider } from 'react-native-paper';
 import { lightTheme, darkTheme, LightTheme, DarkTheme } from './theme';
 import { StatusBar } from 'expo-status-bar';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {},
+    mutations: {},
+  },
+});
 
 function ThemedAppInner() {
   const { themeName } = useAppTheme();

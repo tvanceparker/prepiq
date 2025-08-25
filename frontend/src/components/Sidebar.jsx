@@ -1,7 +1,7 @@
-import React, { useState, useContext } from "react";
-import { NavLink } from "react-router-dom";
-import { sidebarDataByTier } from "./data/sidebarData";
-import { AuthContext } from "../contexts/AuthContext";
+import React, { useState, useContext } from 'react';
+import { NavLink } from 'react-router-dom';
+import { sidebarDataByTier } from './data/sidebarData';
+import { AuthContext } from '../contexts/AuthContext';
 
 import {
   Box,
@@ -12,10 +12,10 @@ import {
   Typography,
   Divider,
   useTheme,
-} from "@mui/material";
+} from '@mui/material';
 
-import ExpandLess from "@mui/icons-material/ExpandLess";
-import ExpandMore from "@mui/icons-material/ExpandMore";
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
 
 export default function Sidebar({ tier }) {
   const [openSections, setOpenSections] = useState({});
@@ -26,8 +26,8 @@ export default function Sidebar({ tier }) {
 
   const sidebarData = sidebarDataByTier[tier] || [];
 
-  const toggleSection = (label) => {
-    setOpenSections((prev) => ({
+  const toggleSection = label => {
+    setOpenSections(prev => ({
       ...prev,
       [label]: !prev[label],
     }));
@@ -37,23 +37,24 @@ export default function Sidebar({ tier }) {
     <Box
       sx={{
         width: 260,
-        height: "100vh",
-        bgcolor: "background.paper",
-        color: "text.primary",
-        display: "flex",
-        flexDirection: "column",
+        height: '100vh',
+        bgcolor: 'background.paper',
+        backgroundImage: 'none',
+        color: 'text.primary',
+        display: 'flex',
+        flexDirection: 'column',
         borderRight: `1px solid ${theme.palette.divider}`,
         p: 2,
-        boxSizing: "border-box",
+        boxSizing: 'border-box',
       }}
     >
       {/* Branding */}
       <Box
         sx={{
-          display: "flex",
-          alignItems: "center",
+          display: 'flex',
+          alignItems: 'center',
           mb: 3,
-          userSelect: "none",
+          userSelect: 'none',
           gap: 2,
           px: 1,
         }}
@@ -62,17 +63,17 @@ export default function Sidebar({ tier }) {
           sx={{
             width: 40,
             height: 40,
-            bgcolor: "primary.main",
-            borderRadius: "50%",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            color: "primary.contrastText",
-            fontWeight: "bold",
-            fontSize: "1.25rem",
+            bgcolor: 'primary.main',
+            borderRadius: '50%',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            color: 'primary.contrastText',
+            fontWeight: 'bold',
+            fontSize: '1.25rem',
             boxShadow: theme.shadows[2],
             flexShrink: 0,
-            transition: "background-color 0.3s ease",
+            transition: 'background-color 0.3s ease',
           }}
         >
           PIQ
@@ -81,7 +82,7 @@ export default function Sidebar({ tier }) {
           variant="h6"
           fontWeight="bold"
           noWrap
-          sx={{ userSelect: "none", color: "text.primary" }}
+          sx={{ userSelect: 'none', color: 'text.primary' }}
         >
           PrepIQ
         </Typography>
@@ -94,28 +95,28 @@ export default function Sidebar({ tier }) {
         component="nav"
         sx={{
           flexGrow: 1,
-          overflowY: "auto",
+          overflowY: 'auto',
           mt: 1,
+          bgcolor: 'transparent',
           // Custom scrollbar for webkit browsers
-          scrollbarWidth: "thin",
+          scrollbarWidth: 'thin',
           scrollbarColor: `${theme.palette.primary.light} transparent`,
-          "&::-webkit-scrollbar": {
+          '&::-webkit-scrollbar': {
             width: 6,
           },
-          "&::-webkit-scrollbar-thumb": {
+          '&::-webkit-scrollbar-thumb': {
             backgroundColor: theme.palette.primary.light,
             borderRadius: 3,
           },
-          "&::-webkit-scrollbar-track": {
-            backgroundColor: "transparent",
+          '&::-webkit-scrollbar-track': {
+            backgroundColor: 'transparent',
           },
         }}
         disablePadding
       >
-        {sidebarData.map((section) => {
+        {sidebarData.map(section => {
           const filteredChildren = section.children?.filter(
-            (child) =>
-              !child.permission || permissions.includes(child.permission)
+            child => !child.permission || permissions.includes(child.permission)
           );
 
           if (!filteredChildren || filteredChildren.length === 0) return null;
@@ -129,8 +130,8 @@ export default function Sidebar({ tier }) {
                 sx={{
                   px: 2,
                   borderRadius: 1,
-                  "&:hover": { bgcolor: theme.palette.action.hover },
-                  "&.Mui-focusVisible": {
+                  '&:hover': { bgcolor: theme.palette.action.hover },
+                  '&.Mui-focusVisible': {
                     bgcolor: theme.palette.action.selected,
                   },
                 }}
@@ -142,7 +143,7 @@ export default function Sidebar({ tier }) {
                     <Typography
                       fontWeight="medium"
                       color="text.primary"
-                      sx={{ userSelect: "none" }}
+                      sx={{ userSelect: 'none' }}
                     >
                       {section.label}
                     </Typography>
@@ -151,14 +152,9 @@ export default function Sidebar({ tier }) {
                 {isOpen ? <ExpandLess /> : <ExpandMore />}
               </ListItemButton>
 
-              <Collapse
-                in={isOpen}
-                timeout="auto"
-                unmountOnExit
-                id={`${section.label}-list`}
-              >
+              <Collapse in={isOpen} timeout="auto" unmountOnExit id={`${section.label}-list`}>
                 <List component="div" disablePadding sx={{ pl: 3 }}>
-                  {filteredChildren.map((child) => (
+                  {filteredChildren.map(child => (
                     <ListItemButton
                       key={child.path}
                       component={NavLink}
@@ -166,16 +162,16 @@ export default function Sidebar({ tier }) {
                       sx={{
                         borderRadius: 1,
                         mb: 0.5,
-                        color: "text.secondary",
+                        color: 'text.secondary',
                         px: 2,
-                        "&.active": {
-                          bgcolor: "primary.light",
-                          color: "primary.main",
-                          fontWeight: "bold",
+                        '&.active': {
+                          bgcolor: 'primary.light',
+                          color: 'primary.main',
+                          fontWeight: 'bold',
                         },
-                        "&:hover": {
+                        '&:hover': {
                           bgcolor: theme.palette.action.hover,
-                          color: "primary.main",
+                          color: 'primary.main',
                         },
                       }}
                     >

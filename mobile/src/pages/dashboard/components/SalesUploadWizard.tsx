@@ -28,9 +28,7 @@ export default function SalesUploadWizard({ navigation }: any) {
   const [step, setStep] = useState<number>(1);
   const [mode, setMode] = useState<Mode>('byChannel');
   const [saleDate, setSaleDate] = useState<Date>(new Date());
-  const [channels, setChannels] = useState<string[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
-  const [items, setItems] = useState<MenuItemLite[]>([]);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [filter, setFilter] = useState<string>('');
@@ -60,10 +58,9 @@ export default function SalesUploadWizard({ navigation }: any) {
     );
   }, [load]);
 
-  useEffect(() => {
-    setItems(menuItems.map(i => ({ menu_item_id: i.menu_item_id, name: i.name })));
-    setChannels(orgChannels);
-  }, [menuItems, orgChannels]);
+  // NOTE: useSalesUpload provides `menuItems` and `orgChannels` directly.
+  // Avoid copying them into local state to prevent unnecessary re-renders or
+  // update loops.
 
   const modeTargets = useMemo(() => {
     return mode === 'byChannel' ? selectedChannels : selectedItems;
@@ -72,18 +69,18 @@ export default function SalesUploadWizard({ navigation }: any) {
   const currentLabel = useMemo(() => {
     if (mode === 'byChannel') return selectedChannels[currentIndex] || '';
     const id = selectedItems[currentIndex];
-    const it = items.find(i => i.menu_item_id === id);
+    const it = (menuItems || []).find(i => i.menu_item_id === id);
     return it?.name || '';
-  }, [mode, selectedChannels, selectedItems, currentIndex, items]);
+  }, [mode, selectedChannels, selectedItems, currentIndex, menuItems]);
 
   const visibleItems = useMemo(() => {
-    const base = items;
+    const base = menuItems || [];
     if (!filter) return base;
     const f = filter.toLowerCase();
     return base.filter(
       i => i.name.toLowerCase().includes(f) || String(i.menu_item_id).includes(filter)
     );
-  }, [items, filter]);
+  }, [menuItems, filter]);
 
   const updateQty = (itemId: number, channel: string, value: string) => {
     const v = Math.max(0, parseInt(value.replace(/[^0-9]/g, '') || '0', 10));
@@ -118,12 +115,12 @@ export default function SalesUploadWizard({ navigation }: any) {
       if (!qty || qty <= 0) return;
       const [idStr, ch] = k.split('||');
       const id = Number(idStr);
-      const item = items.find(i => i.menu_item_id === id);
+      const item = (menuItems || []).find(i => i.menu_item_id === id);
       if (!item) return;
       result.push({ item_id: id, item_name: item?.name || String(id), channel: ch, qty });
     });
     return result;
-  }, [entries, items]);
+  }, [entries, menuItems]);
 
   const submitAll = async (confirmOverwrite: boolean) => {
     if (submitting) return;
@@ -213,7 +210,7 @@ export default function SalesUploadWizard({ navigation }: any) {
                   Select one or more sales channels
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-                  {channels.map(ch => {
+                  {orgChannels.map(ch => {
                     const selected = selectedChannels.includes(ch);
                     return (
                       <Chip
@@ -311,7 +308,7 @@ export default function SalesUploadWizard({ navigation }: any) {
                   Item: {currentLabel}
                 </Text>
                 <View>
-                  {channels.map(ch => (
+                  {orgChannels.map(ch => (
                     <View
                       key={ch}
                       style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}

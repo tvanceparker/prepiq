@@ -41,16 +41,31 @@ export default function Sidebar({ tier, onNavigate }: Props) {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor:
+            (theme.colors as any).elevation?.level2 ||
+            (theme.colors as any).surface ||
+            theme.colors.background,
+          borderRightWidth: StyleSheet.hairlineWidth,
+          borderRightColor: theme.colors.outlineVariant || theme.colors.outline,
+        },
+      ]}
+    >
       <View style={styles.brandRow}>
         <View style={[styles.logo, { backgroundColor: theme.colors.primary }]}>
           <Text style={styles.logoText}>PIQ</Text>
         </View>
-        <Text variant="titleMedium" style={styles.brand}>
+        <Text variant="titleMedium" style={[styles.brand, { color: theme.colors.onSurface }]}>
           PrepIQ
         </Text>
       </View>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: 40 }]}
+        style={{ backgroundColor: 'transparent' }}
+      >
         {sections.map(section => {
           const children =
             permissions.length === 0
@@ -60,8 +75,14 @@ export default function Sidebar({ tier, onNavigate }: Props) {
           const isOpen = !!open[section.label];
           return (
             <View key={section.label} style={styles.section}>
-              <TouchableOpacity onPress={() => toggle(section.label)} style={styles.sectionHeader}>
-                <Text style={styles.sectionLabel}>{section.label}</Text>
+              <TouchableOpacity
+                onPress={() => toggle(section.label)}
+                style={[styles.sectionHeader, { borderRadius: 8 }]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.sectionLabel, { color: theme.colors.onSurface }]}>
+                  {section.label}
+                </Text>
                 <IconButton
                   icon={isOpen ? 'chevron-up' : 'chevron-down'}
                   size={18}
@@ -78,10 +99,27 @@ export default function Sidebar({ tier, onNavigate }: Props) {
                     return (
                       <TouchableOpacity
                         key={child.path}
-                        style={[styles.itemBtn, isActive && styles.itemActive]}
+                        style={[
+                          styles.itemBtn,
+                          isActive && {
+                            backgroundColor:
+                              (theme.colors as any).surfaceVariant || 'rgba(255,255,255,0.08)',
+                          },
+                        ]}
                         onPress={() => go(child.path)}
+                        activeOpacity={0.8}
                       >
-                        <Text style={[styles.itemText, isActive && styles.itemTextActive]}>
+                        <Text
+                          style={[
+                            styles.itemText,
+                            { color: theme.colors.onSurfaceVariant },
+                            isActive && {
+                              color: theme.colors.primary,
+                              fontWeight: '600',
+                              opacity: 1,
+                            },
+                          ]}
+                        >
                           {child.name}
                         </Text>
                       </TouchableOpacity>
@@ -98,7 +136,7 @@ export default function Sidebar({ tier, onNavigate }: Props) {
           </Button>
           {/* Theme toggle for development/testing */}
           <View style={styles.themeRow}>
-            <Text>Dark mode</Text>
+            <Text style={{ color: theme.colors.onSurface }}>Dark mode</Text>
             <ThemeToggle />
           </View>
         </View>
@@ -131,7 +169,7 @@ const styles = StyleSheet.create({
   items: { paddingLeft: 12 },
   itemBtn: { paddingVertical: 6, paddingHorizontal: 4, borderRadius: 4 },
   itemText: { opacity: 0.85 },
-  itemActive: { backgroundColor: 'rgba(0,0,0,0.07)' },
+  itemActive: {},
   itemTextActive: { fontWeight: '600', opacity: 1 },
   footer: { marginTop: 16, paddingHorizontal: 8 },
   logoutBtn: { marginTop: 8 },
