@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, ScrollView, RefreshControl, Image } from 'react-native';
 import {
   ActivityIndicator,
   Button,
@@ -8,13 +8,17 @@ import {
   Text,
   TextInput,
   Chip,
+  Snackbar,
+  Switch,
 } from 'react-native-paper';
 import { useRestaurantSettings } from '../hooks/useRestaurantSettings';
 
 export default function BasicRestaurantSettingsMobile() {
-  const { settings, loading, error, saveSettings, saving } = useRestaurantSettings();
+  const { settings, loading, error, saveSettings, saving, refetch, isFetching } = useRestaurantSettings();
   const [visible, setVisible] = useState(false);
   const [formData, setFormData] = useState<any | null>(null);
+  const [newChannel, setNewChannel] = useState('');
+  const [snack, setSnack] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
 
   useEffect(() => {
     if (settings && visible && !formData) setFormData(settings);
@@ -34,8 +38,10 @@ export default function BasicRestaurantSettingsMobile() {
     try {
       await saveSettings(formData);
       close();
+  setSnack({ visible: true, message: 'Settings saved' });
     } catch (e) {
       close();
+  setSnack({ visible: true, message: 'Failed to save settings' });
     }
   };
 
@@ -43,21 +49,42 @@ export default function BasicRestaurantSettingsMobile() {
     return (
       <View style={{ padding: 16, alignItems: 'center' }}>
         <ActivityIndicator />
+        <Text style={{ marginTop: 8 }}>Loading settings…</Text>
       </View>
     );
   if (error)
     return (
-      <View style={{ padding: 16 }}>
-        <Text>Error loading settings</Text>
+      <View style={{ padding: 16, alignItems: 'center' }}>
+        <Text style={{ marginBottom: 12 }}>Error loading settings</Text>
+        <Button mode="contained" onPress={() => refetch()}>Retry</Button>
       </View>
     );
   if (!settings) return null;
 
+  const mapUrl = useMemo(() => {
+    if (!settings?.latitude || !settings?.longitude) return null;
+    const lat = settings.latitude;
+    const lng = settings.longitude;
+    const zoom = 14;
+    const size = '600x300';
+    return `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=${zoom}&size=${size}&markers=${lat},${lng},red-pushpin`;
+  }, [settings?.latitude, settings?.longitude]);
+
   return (
-    <View style={{ padding: 16 }}>
+    <ScrollView
+      contentContainerStyle={{ padding: 16 }}
+      refreshControl={<RefreshControl refreshing={!!isFetching} onRefresh={() => refetch()} />}
+    >
       <Text variant="titleLarge" style={{ marginBottom: 12 }}>
         Restaurant Settings
       </Text>
+      {mapUrl && (
+        <Image
+          source={{ uri: mapUrl }}
+          style={{ width: '100%', height: 160, borderRadius: 8, marginBottom: 12 }}
+          resizeMode="cover"
+        />
+      )}
       <Text style={{ marginBottom: 4 }}>
         <Text style={{ fontWeight: '600' }}>Forecast Length:</Text> {settings.forecast_length} days
       </Text>
@@ -112,6 +139,13 @@ export default function BasicRestaurantSettingsMobile() {
                   }
                   style={{ marginBottom: 12 }}
                 />
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                  <Text style={{ marginRight: 8, fontWeight: '600' }}>Run EOD When Closed</Text>
+                  <Switch
+                    value={!!formData.eod_run_when_closed}
+                    onValueChange={v => updateField('eod_run_when_closed', v)}
+                  />
+                </View>
                 <Text style={{ fontWeight: '600', marginBottom: 4 }}>Sales Channels</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 }}>
                   {(formData.sales_channels || []).map((ch: string, idx: number) => (
@@ -129,21 +163,18 @@ export default function BasicRestaurantSettingsMobile() {
                     </Chip>
                   ))}
                 </View>
-                <TextInput
-                  label="Add Channel"
-                  value={''}
-                  onChangeText={() => {}}
-                  placeholder="Use + below"
-                  style={{ display: 'none' }}
-                />
                 {/* Simple quick add text input */}
                 <TextInput
                   label="New Channel"
                   mode="outlined"
-                  onSubmitEditing={(e: any) => {
-                    const val = e.nativeEvent.text.trim();
-                    if (val)
+                  value={newChannel}
+                  onChangeText={setNewChannel}
+                  onSubmitEditing={() => {
+                    const val = newChannel.trim();
+                    if (val && !(formData.sales_channels || []).includes(val)) {
                       updateField('sales_channels', [...(formData.sales_channels || []), val]);
+                      setNewChannel('');
+                    }
                   }}
                   placeholder="Type and press enter"
                   style={{ marginBottom: 12 }}
@@ -164,6 +195,13 @@ export default function BasicRestaurantSettingsMobile() {
           </Dialog.Actions>
         </Dialog>
       </Portal>
-    </View>
+      <Snackbar
+        visible={snack.visible}
+        onDismiss={() => setSnack({ visible: false, message: '' })}
+        duration={2000}
+      >
+        {snack.message}
+      </Snackbar>
+    </ScrollView>
   );
 }

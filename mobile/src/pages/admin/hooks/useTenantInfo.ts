@@ -7,7 +7,9 @@ export default function useTenantInfo() {
   const {
     data: info,
     isLoading: loading,
+  isFetching,
     error,
+  refetch,
   } = useQuery<TenantInfoResponse>({
     queryKey: ['tenantInfo'],
     queryFn: getTenantInfo,
@@ -20,7 +22,9 @@ export default function useTenantInfo() {
   return {
     info,
     loading,
+  isFetching,
     error,
+  refetch,
     saveTenantInfo: (data: TenantInfoUpdateRequest) => mutation.mutateAsync(data),
   };
 }

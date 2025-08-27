@@ -8,10 +8,13 @@ export function useRestaurantSettings() {
   const {
     data: settings,
     isLoading: loading,
+  isFetching,
     error,
+  refetch,
   } = useQuery<RestaurantSettings>({
     queryKey: ['restaurantSettings'],
     queryFn: getRestaurantSettings,
+  staleTime: 5 * 60 * 1000,
   });
 
   const mutation = useMutation({
@@ -24,8 +27,10 @@ export function useRestaurantSettings() {
   return {
     settings,
     loading,
+  isFetching,
     error,
     saving: mutation.status === 'pending',
     saveSettings: mutation.mutateAsync,
+  refetch,
   };
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native';
 import {
   Card,
   Chip,
@@ -16,7 +16,7 @@ import TenantModal from './TenantModal';
 
 export default function TenantInfoBasic() {
   const theme = useTheme();
-  const { info, loading, error, saveTenantInfo } = useTenantInfo();
+  const { info, loading, error, saveTenantInfo, refetch, isFetching } = useTenantInfo();
   const [showModal, setShowModal] = useState(false);
   const [snackbar, setSnackbar] = useState<{
     visible: boolean;
@@ -43,17 +43,29 @@ export default function TenantInfoBasic() {
     return parts.join(', ');
   };
 
-  if (loading) return <Text style={styles.center}>Loading tenant info...</Text>;
-  if (error) return <Text style={styles.center}>Error loading tenant info</Text>;
+  if (loading)
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <Text>Loading tenant info…</Text>
+      </View>
+    );
+  if (error)
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ marginBottom: 12 }}>Error loading tenant info</Text>
+        <PaperButton mode="contained" onPress={() => refetch()}>Retry</PaperButton>
+      </View>
+    );
   if (!info) return <Text style={styles.center}>No tenant info.</Text>;
 
   return (
     <ScrollView
       style={{ backgroundColor: theme.colors.background }}
       contentContainerStyle={[styles.container, { backgroundColor: theme.colors.background }]}
+      refreshControl={<RefreshControl refreshing={!!isFetching} onRefresh={() => refetch()} />}
     >
       <Card style={styles.hero}>
-        <Card.Title
+  <Card.Title
           title={info.name}
           subtitle={info.email}
           left={props => <Avatar.Icon {...props} icon="account" />}
@@ -115,6 +127,14 @@ export default function TenantInfoBasic() {
               </Text>
             </View>
           ))}
+        </Card.Content>
+      </Card>
+
+      <Card style={styles.card}>
+        <Card.Content>
+          <Text style={{ color: theme.colors.onSurfaceVariant }}>
+            Note: Subscription status changes are managed in account/billing settings.
+          </Text>
         </Card.Content>
       </Card>
 
