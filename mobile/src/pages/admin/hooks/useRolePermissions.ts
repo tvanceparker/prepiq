@@ -35,5 +35,9 @@ export function useRolePermissions() {
     syncData: (roles: any, deleted_roles: any) =>
       syncMutation.mutateAsync({ roles, deleted_roles }),
     deleteRole: (roleId: number | string) => deleteMutation.mutateAsync(roleId),
+    isFetching: rolesQuery.isFetching || permissionsQuery.isFetching,
+    refetch: async () => {
+      await Promise.all([rolesQuery.refetch(), permissionsQuery.refetch()]);
+    },
   };
 }
