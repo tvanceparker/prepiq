@@ -1,23 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, ScrollView, RefreshControl, Image } from 'react-native';
+import { View, ScrollView, RefreshControl, Image, Linking } from 'react-native';
 import {
   ActivityIndicator,
   Button,
-  Dialog,
-  Portal,
   Text,
-  TextInput,
   Chip,
   Snackbar,
-  Switch,
+  Card,
 } from 'react-native-paper';
 import { useRestaurantSettings } from '../hooks/useRestaurantSettings';
+import BasicRestaurantSettingsModal from './BasicRestaurantSettingsModal';
 
 export default function BasicRestaurantSettingsMobile() {
   const { settings, loading, error, saveSettings, saving, refetch, isFetching } = useRestaurantSettings();
   const [visible, setVisible] = useState(false);
   const [formData, setFormData] = useState<any | null>(null);
-  const [newChannel, setNewChannel] = useState('');
   const [snack, setSnack] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
 
   useEffect(() => {
@@ -78,6 +75,7 @@ export default function BasicRestaurantSettingsMobile() {
       <Text variant="titleLarge" style={{ marginBottom: 12 }}>
         Restaurant Settings
       </Text>
+
       {mapUrl && (
         <Image
           source={{ uri: mapUrl }}
@@ -85,116 +83,82 @@ export default function BasicRestaurantSettingsMobile() {
           resizeMode="cover"
         />
       )}
-      <Text style={{ marginBottom: 4 }}>
-        <Text style={{ fontWeight: '600' }}>Forecast Length:</Text> {settings.forecast_length} days
-      </Text>
-      <Text style={{ marginBottom: 4 }}>
-        <Text style={{ fontWeight: '600' }}>Timezone:</Text> {settings.timezone || 'N/A'}
-      </Text>
-      <Text style={{ marginBottom: 4 }}>
-        <Text style={{ fontWeight: '600' }}>Run EOD When Closed:</Text>{' '}
-        {settings.eod_run_when_closed ? 'Yes' : 'No'}
-      </Text>
-      <Text style={{ marginBottom: 4 }}>
-        <Text style={{ fontWeight: '600' }}>EOD Buffer Time:</Text>{' '}
-        {settings.eod_run_after_close_mins} mins
-      </Text>
-      <Text style={{ marginBottom: 4 }}>
-        <Text style={{ fontWeight: '600' }}>Sales Channels:</Text>{' '}
-        {settings.sales_channels?.length ? settings.sales_channels.join(', ') : 'None'}
-      </Text>
-      <Text style={{ marginBottom: 4 }}>
-        <Text style={{ fontWeight: '600' }}>Location:</Text>{' '}
-        {settings.latitude ? `${settings.latitude}, ${settings.longitude}` : 'Not set'}
-      </Text>
+
+      <Card style={{ marginBottom: 8 }}>
+        <Card.Title title="General" right={() => (isFetching ? <ActivityIndicator /> : null)} />
+        <Card.Content>
+          <Text>
+            <Text style={{ fontWeight: '600' }}>Forecast Length:</Text> {settings.forecast_length} days
+          </Text>
+          <Text>
+            <Text style={{ fontWeight: '600' }}>Timezone:</Text> {settings.timezone || 'N/A'}
+          </Text>
+        </Card.Content>
+      </Card>
+
+      <Card style={{ marginBottom: 8 }}>
+        <Card.Title title="End of Day (EOD)" />
+        <Card.Content>
+          <Text>
+            <Text style={{ fontWeight: '600' }}>Run EOD When Closed:</Text> {settings.eod_run_when_closed ? 'Yes' : 'No'}
+          </Text>
+          <Text>
+            <Text style={{ fontWeight: '600' }}>EOD Buffer Time:</Text> {settings.eod_run_after_close_mins} mins
+          </Text>
+        </Card.Content>
+      </Card>
+
+      <Card style={{ marginBottom: 8 }}>
+        <Card.Title title="Sales Channels" />
+        <Card.Content>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {settings.sales_channels?.length ? (
+              settings.sales_channels.map((ch: string, idx: number) => (
+                <Chip key={`${ch}-${idx}`} style={{ marginRight: 6, marginBottom: 6 }}>
+                  {ch}
+                </Chip>
+              ))
+            ) : (
+              <Text>None</Text>
+            )}
+          </View>
+        </Card.Content>
+      </Card>
+
+      <Card style={{ marginBottom: 8 }}>
+        <Card.Title title="Location" />
+        <Card.Content>
+          <Text style={{ marginBottom: 6 }}>
+            <Text style={{ fontWeight: '600' }}>Coordinates:</Text> {settings.latitude ? `${settings.latitude}, ${settings.longitude}` : 'Not set'}
+          </Text>
+          {settings.latitude && settings.longitude ? (
+            <Button
+              mode="outlined"
+              onPress={() =>
+                Linking.openURL(
+                  `https://www.google.com/maps/search/?api=1&query=${settings.latitude},${settings.longitude}`
+                )
+              }
+            >
+              Open in Maps
+            </Button>
+          ) : null}
+        </Card.Content>
+      </Card>
+
       <Button style={{ marginTop: 12 }} mode="contained" onPress={open}>
         Edit
       </Button>
 
-      <Portal>
-        <Dialog visible={visible} onDismiss={close}>
-          <Dialog.Title>Edit Restaurant Settings</Dialog.Title>
-          <Dialog.Content>
-            {formData && (
-              <>
-                <TextInput
-                  label="Forecast Length"
-                  keyboardType="numeric"
-                  value={String(formData.forecast_length)}
-                  onChangeText={v => updateField('forecast_length', parseInt(v || '0', 10))}
-                  style={{ marginBottom: 12 }}
-                />
-                <TextInput
-                  label="Timezone"
-                  value={formData.timezone || ''}
-                  onChangeText={v => updateField('timezone', v)}
-                  style={{ marginBottom: 12 }}
-                />
-                <TextInput
-                  label="EOD Run After Close (mins)"
-                  keyboardType="numeric"
-                  value={String(formData.eod_run_after_close_mins)}
-                  onChangeText={v =>
-                    updateField('eod_run_after_close_mins', parseInt(v || '0', 10))
-                  }
-                  style={{ marginBottom: 12 }}
-                />
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                  <Text style={{ marginRight: 8, fontWeight: '600' }}>Run EOD When Closed</Text>
-                  <Switch
-                    value={!!formData.eod_run_when_closed}
-                    onValueChange={v => updateField('eod_run_when_closed', v)}
-                  />
-                </View>
-                <Text style={{ fontWeight: '600', marginBottom: 4 }}>Sales Channels</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 }}>
-                  {(formData.sales_channels || []).map((ch: string, idx: number) => (
-                    <Chip
-                      key={idx}
-                      onClose={() =>
-                        updateField(
-                          'sales_channels',
-                          (formData.sales_channels || []).filter((c: string) => c !== ch)
-                        )
-                      }
-                      style={{ margin: 2 }}
-                    >
-                      {ch}
-                    </Chip>
-                  ))}
-                </View>
-                {/* Simple quick add text input */}
-                <TextInput
-                  label="New Channel"
-                  mode="outlined"
-                  value={newChannel}
-                  onChangeText={setNewChannel}
-                  onSubmitEditing={() => {
-                    const val = newChannel.trim();
-                    if (val && !(formData.sales_channels || []).includes(val)) {
-                      updateField('sales_channels', [...(formData.sales_channels || []), val]);
-                      setNewChannel('');
-                    }
-                  }}
-                  placeholder="Type and press enter"
-                  style={{ marginBottom: 12 }}
-                />
-                <Text style={{ fontSize: 12, opacity: 0.6 }}>
-                  Latitude/Longitude not editable here.
-                </Text>
-              </>
-            )}
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={close} disabled={saving}>
-              Cancel
-            </Button>
-            <Button onPress={handleSave} loading={saving}>
-              Save
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
+      <BasicRestaurantSettingsModal
+        visible={visible}
+        formData={formData}
+        saving={saving}
+        onChange={updateField}
+        onClose={close}
+        onSave={handleSave}
+      />
+
       <Snackbar
         visible={snack.visible}
         onDismiss={() => setSnack({ visible: false, message: '' })}
