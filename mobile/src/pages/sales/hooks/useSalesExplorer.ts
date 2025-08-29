@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getSalesExplorerTable,
   downloadSalesExplorerExcel,
@@ -10,6 +10,7 @@ import { getMenuItems } from '../../../api/dashboard';
 import { getRestaurantSettings } from '../../../api/settings';
 
 export function useSalesExplorer() {
+  const queryClient = useQueryClient();
   const toIso = (d: Date) => d.toISOString().slice(0, 10);
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 1000 * 60 * 60 * 24 * 29);
@@ -48,32 +49,34 @@ export function useSalesExplorer() {
   const createFn = async (saleData: any) => createSale(saleData);
   const updateFn = async ({ id, data }: { id: number | string; data: any }) => updateSale(id, data);
 
-  // useMutation for create
-  const createMutation = useMutation<any, Error, any>(
-    createFn as any,
-    {
-      onSuccess: async () => {
-        try {
-          await refetchTable();
-        } catch (e) {
-          /* swallow */
-        }
-      },
-    } as any
-  );
+  // useMutation for create (TanStack Query v5 object syntax)
+  const createMutation = useMutation({
+    mutationFn: createFn as any,
+    onSuccess: (created: any) => {
+      const key = ['salesExplorer', startDate, endDate, menuItemId];
+      queryClient.setQueryData<any[]>(key, old => {
+        const prev = Array.isArray(old) ? old : [];
+        // Prepend or append as desired; here we append
+        return [...prev, created];
+      });
+    },
+  });
 
-  const updateMutation = useMutation<any, Error, { id: number | string; data: any }>(
-    updateFn as any,
-    {
-      onSuccess: async () => {
-        try {
-          await refetchTable();
-        } catch (e) {
-          /* swallow */
-        }
-      },
-    } as any
-  );
+  const updateMutation = useMutation({
+    mutationFn: updateFn as any,
+    onSuccess: (_res: any, vars: { id: number | string; data: any }) => {
+      const key = ['salesExplorer', startDate, endDate, menuItemId];
+      queryClient.setQueryData<any[]>(key, old => {
+        if (!Array.isArray(old)) return old;
+        return old.map(row => {
+          const rid = row.sale_id ?? row.saleId ?? row.id;
+          if (String(rid) !== String(vars.id)) return row;
+          // Merge updated fields into cached row
+          return { ...row, ...vars.data };
+        });
+      });
+    },
+  });
 
   const createSaleRecord = useCallback(
     async (saleData: any) => {

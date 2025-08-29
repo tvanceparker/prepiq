@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchActiveAlerts,
   fetchAllAlerts,
@@ -18,58 +19,71 @@ interface AlertItem {
 }
 
 export default function useAlertsFeed({ pageSize = 20 } = {}) {
-  const [alerts, setAlerts] = useState<AlertItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [skip, setSkip] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
+  const qc = useQueryClient();
   const [feedMode, setFeedMode] = useState<'active' | 'all'>('active');
 
-  const fetchAlerts = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const fetchFn = feedMode === 'all' ? fetchAllAlerts : fetchActiveAlerts;
-      const raw: any[] = await fetchFn(skip, pageSize);
-      const data = raw.map(a => ({
-        ...a,
-        status: (a.status || '').toLowerCase(),
-        severity: (a.severity || 'info').toLowerCase(),
-      }));
-      setAlerts(prev => (skip === 0 ? data : [...prev, ...data]));
-      setHasMore(data.length === pageSize);
-    } catch (e: any) {
-      setError(e.message || 'Failed to fetch alerts');
-    } finally {
-      setLoading(false);
-    }
-  }, [feedMode, skip, pageSize]);
+  const queryKey = useMemo(() => ['alertsFeed', feedMode, pageSize], [feedMode, pageSize]);
 
-  useEffect(() => {
-    fetchAlerts();
-  }, [fetchAlerts]);
-  useEffect(() => {
-    setSkip(0);
-  }, [feedMode]);
+  const fetchPage = async ({ pageParam = 0 }): Promise<AlertItem[]> => {
+    const fetchFn = feedMode === 'all' ? fetchAllAlerts : fetchActiveAlerts;
+    const raw: any[] = await fetchFn(pageParam, pageSize);
+    return raw.map(a => ({
+      ...a,
+      status: (a.status || '').toLowerCase(),
+      severity: (a.severity || 'info').toLowerCase(),
+    }));
+  };
 
-  const loadMore = () => {
-    if (!loading && hasMore) setSkip(p => p + pageSize);
+  const { data, status, error, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } =
+    useInfiniteQuery({
+      queryKey,
+      queryFn: fetchPage,
+      initialPageParam: 0,
+      getNextPageParam: (lastPage, allPages) =>
+        lastPage.length === pageSize ? allPages.length * pageSize : undefined,
+    });
+
+  const alerts: AlertItem[] = useMemo(() => {
+    const pages = data?.pages || [];
+    return ([] as AlertItem[]).concat(...pages);
+  }, [data]);
+
+  // Mutations with cache updates so we don't reload the whole list
+  type AlertsInfiniteData = { pages: AlertItem[][]; pageParams: any[] } | undefined;
+
+  const ackMutation = useMutation({
+    mutationFn: (id: number) => acknowledgeAlert(id),
+    onSuccess: (_res, id) => {
+      qc.setQueryData<AlertsInfiniteData>(queryKey, old => {
+        if (!old) return old;
+        const pages = (old.pages || []).map(page =>
+          page.map(a => (a.alert_id === id ? { ...a, is_acknowledged: true } : a))
+        );
+        return { ...old, pages };
+      });
+    },
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: (id: number) => resolveAlert(id),
+    onSuccess: (_res, id) => {
+      qc.setQueryData<AlertsInfiniteData>(queryKey, old => {
+        if (!old) return old;
+        const pages = (old.pages || []).map(page => page.filter(a => a.alert_id !== id));
+        return { ...old, pages };
+      });
+    },
+  });
+
+  return {
+    alerts,
+    loading: status === 'pending' || isFetchingNextPage,
+    error: (error as any) || null,
+    hasMore: !!hasNextPage,
+    loadMore: () => fetchNextPage(),
+    acknowledge: (id: number) => ackMutation.mutateAsync(id),
+    resolve: (id: number) => resolveMutation.mutateAsync(id),
+    setFeedMode,
+    refetch,
   };
-  const acknowledge = async (id: number) => {
-    try {
-      const updated = await acknowledgeAlert(id);
-      setAlerts(prev => prev.map(a => (a.alert_id === id ? { ...a, ...updated } : a)));
-    } catch (e: any) {
-      setError(e.message || 'Ack failed');
-    }
-  };
-  const resolve = async (id: number) => {
-    try {
-      const updated = await resolveAlert(id);
-      setAlerts(prev => prev.map(a => (a.alert_id === id ? { ...a, ...updated } : a)));
-    } catch (e: any) {
-      setError(e.message || 'Resolve failed');
-    }
-  };
-  return { alerts, loading, error, hasMore, loadMore, acknowledge, resolve, setFeedMode };
 }
