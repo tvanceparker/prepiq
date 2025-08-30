@@ -27,6 +27,28 @@ class OrderService:
         self.sales_repo = SalesRepository(db, restaurant_id)
         self.restaurant_repo = RestaurantRepository(db, restaurant_id)
 
+    # Internal status mapping between DB values and frontend canonical values
+    def _to_frontend_status(self, db_status: str) -> str:
+        mapping = {
+            "open": "pending",
+            "in_progress": "preparing",
+            "completed": "completed",
+            "cancelled": "cancelled",
+            "ready": "ready",
+        }
+        return mapping.get(db_status, db_status)
+
+    def _to_db_status(self, frontend_status: str) -> str:
+        mapping = {
+            "pending": "open",
+            "confirmed": "in_progress",
+            "preparing": "in_progress",
+            "ready": "ready",
+            "completed": "completed",
+            "cancelled": "cancelled",
+        }
+        return mapping.get(frontend_status, frontend_status)
+
     @log_method("[Order] Create Order")
     async def create_order(self, order: OrderCreate):
         """
@@ -77,21 +99,99 @@ class OrderService:
         payload = {"type": "new_order", "order_id": order_id}
         await manager.send_message(room, payload)
 
-        return order_id
+        return {"order_id": order_id, "status": "created", "message": "Order created"}
+    async def get_order_by_id(self, order_id: int):
+        order = await self.order_repo.get_by_id(order_id)
+        if not order:
+            return None
+        # include items for order detail
+        items = await self.order_item_repo.get_by_order_id(order_id)
+        items_dto = [
+            {
+                "order_item_id": it.order_item_id,
+                "order_id": it.order_id,
+                "menu_item_id": it.menu_item_id,
+                "quantity": float(it.quantity),
+                "unit_price": float(it.unit_price),
+                "instructions": it.instructions,
+                "modifiers": [],
+                "created_at": None,
+                "updated_at": None,
+            }
+            for it in items
+        ]
+        created_iso = order.order_timestamp.isoformat() if getattr(order, "order_timestamp", None) else None
+        return {
+            "order_id": order.order_id,
+            "external_id": order.external_id,
+            "sales_channel": order.sales_channel,
+            "status": self._to_frontend_status(order.order_status),
+            "order_status": order.order_status,
+            "items": items_dto,
+            "subtotal": float(order.subtotal or 0),
+            "tax": float(order.tax or 0),
+            "discount": float(order.discount or 0),
+            "total": float(order.total or 0),
+            "created_at": created_iso,
+            "updated_at": created_iso,
+            "completed_at": None,
+        }
 
     @log_method("Update Order Status")
     async def update_order_status(self, order_id: int, new_status: str):
         """
         Update the status of an order (e.g., 'open', 'in_progress', 'completed', 'cancelled').
         """
-        await self.order_repo.update(order_id, {"order_status": new_status})
+        db_status = self._to_db_status(new_status)
+        await self.order_repo.update(order_id, {"order_status": db_status})
+        return {
+            "order_id": order_id,
+            "status": new_status,
+            "message": f"Order {order_id} status updated to {new_status}",
+        }
 
     @log_method("Get Active Orders")
     async def get_active_orders(self):
         """
         Get orders that are currently active (status: 'open', 'in_progress').
         """
-        return await self.order_repo.get_active_orders()
+        orders = await self.order_repo.get_active_orders()
+        results = []
+        for o in orders:
+            items = await self.order_item_repo.get_by_order_id(o.order_id)
+            items_dto = [
+                {
+                    "order_item_id": it.order_item_id,
+                    "order_id": it.order_id,
+                    "menu_item_id": it.menu_item_id,
+                    "quantity": float(it.quantity),
+                    "unit_price": float(it.unit_price),
+                    "instructions": it.instructions,
+                    "modifiers": [],
+                    "created_at": None,
+                    "updated_at": None,
+                }
+                for it in items
+            ]
+            created_iso = o.order_timestamp.isoformat() if getattr(o, "order_timestamp", None) else None
+        results.append(
+                {
+                    "order_id": o.order_id,
+                    "external_id": o.external_id,
+                    "sales_channel": o.sales_channel,
+            "status": self._to_frontend_status(o.order_status),
+                    "order_status": o.order_status,
+                    "items": items_dto,
+                    "subtotal": float(o.subtotal or 0),
+                    "tax": float(o.tax or 0),
+                    "discount": float(o.discount or 0),
+                    "total": float(o.total or 0),
+                    "created_at": created_iso,
+                    "updated_at": created_iso,
+                    "completed_at": None,
+                }
+            )
+        return results
 
     @log_method("Complete Order")
     async def complete_order(self, order_id: int):
@@ -119,13 +219,14 @@ class OrderService:
 
         # Update order status
         await self.update_order_status(order_id, 'completed')
-
+        return {"order_id": order_id, "status": "completed", "message": f"Order {order_id} completed"}
     @log_method("Cancel Order")
     async def cancel_order(self, order_id: int):
         """
         Mark order as cancelled.
         """
         await self.update_order_status(order_id, 'cancelled')
+        return {"order_id": order_id, "status": "cancelled", "message": f"Order {order_id} cancelled"}
 
     @log_method("Get Sales Channels")
     async def get_sales_channels(self):

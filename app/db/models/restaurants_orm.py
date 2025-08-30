@@ -92,3 +92,5 @@ class Restaurant(Base):
     orders = relationship("Order", back_populates="restaurant")
     payments = relationship("Payment", back_populates="restaurant")
     devices = relationship("Device", back_populates="restaurant")
+    order_items = relationship("OrderItem", back_populates="restaurant")
+    order_item_modifiers = relationship("OrderItemModifier", back_populates="restaurant")

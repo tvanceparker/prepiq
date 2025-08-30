@@ -29,8 +29,10 @@ import {
   Kitchen as KitchenIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import { useDeviceDetection, DeviceType } from '../../hooks/useDeviceDetection';
+import { useDeviceDetection } from '../../hooks/useDeviceDetection';
 import { usePOS } from './hooks/usePOS';
+
+import { DeviceType } from '../../interfaces/pos';
 
 const DeviceRegistration: React.FC = () => {
   const { device, isLoading, updateDeviceType, refresh } = useDeviceDetection();

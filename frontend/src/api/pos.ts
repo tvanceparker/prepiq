@@ -11,48 +11,76 @@ import {
   DeviceTokenResponse,
   POSDevice,
 } from '../interfaces/pos';
+import { MenuItemType } from '../interfaces/pos';
 
 export const registerDevice = async (
   request: DeviceRegistrationRequest
 ): Promise<DeviceRegistrationResponse> => {
-  return post<DeviceRegistrationResponse>('/api/v1/pos/register-device', request);
+  // Backend route: POST /api/v1/pos/devices/register (see app/api/v1/pos_routes.py)
+  return post<DeviceRegistrationResponse>('/pos/devices/register', request);
 };
 
 export const refreshDeviceToken = async (
   request: DeviceTokenRequest
 ): Promise<DeviceTokenResponse> => {
-  return post<DeviceTokenResponse>('/api/v1/pos/refresh-token', request);
+  // NOTE: no refresh-token route is defined in app/api/v1/pos_routes.py attachment.
+  // Keep this here if another backend route exists; otherwise callers should be updated.
+  return post<DeviceTokenResponse>('/pos/refresh-token', request);
 };
 
 export const getDeviceSettings = async (deviceId: string): Promise<DeviceSettingsResponse> => {
-  return get<DeviceSettingsResponse>(`/api/v1/pos/device/${deviceId}/settings`);
+  // Backend route: GET /api/v1/pos/devices/{device_id}/settings
+  return get<DeviceSettingsResponse>(`/pos/devices/${deviceId}/settings`);
 };
 
 export const updateDeviceSettings = async (
   deviceId: string,
   settings: DeviceSettingsUpdate
 ): Promise<DeviceSettingsResponse> => {
-  return put<DeviceSettingsResponse>(`/api/v1/pos/device/${deviceId}/settings`, settings);
+  // Backend route: PUT /api/v1/pos/devices/{device_id}/settings
+  return put<DeviceSettingsResponse>(`/pos/devices/${deviceId}/settings`, settings);
 };
 
+// Backend route: POST /api/v1/pos/payments/create-intent
 export const createPaymentIntent = async (request: PaymentRequest): Promise<PaymentResponse> => {
-  return post<PaymentResponse>('/api/v1/pos/payment-intent', request);
+  return post<PaymentResponse>('/pos/payments/create-intent', request);
 };
 
-export const confirmPayment = async (paymentId: string): Promise<PaymentResponse> => {
-  return post<PaymentResponse>(`/api/v1/pos/payment/${paymentId}/confirm`);
+// Backend route: POST /api/v1/pos/payments/confirm
+// The backend expects a PaymentConfirmRequest object; pass the appropriate shape here.
+export const confirmPayment = async (
+  paymentIdOrReq: string | { payment_intent_id: string }
+): Promise<any> => {
+  const body =
+    typeof paymentIdOrReq === 'string' ? { payment_intent_id: paymentIdOrReq } : paymentIdOrReq;
+  return post<any>('/pos/payments/confirm', body);
 };
 
 export const getDevices = async (): Promise<POSDevice[]> => {
-  return get<POSDevice[]>('/api/v1/pos/devices');
+  // NOTE: a list-devices endpoint wasn't present in the provided pos_routes.py attachment.
+  // If the backend implements this elsewhere, keep it; otherwise update callers.
+  return get<POSDevice[]>('/pos/devices');
 };
 
+// Backend route: POST /api/v1/pos/orders/send
+// Backend expects the order payload in the request body (see pos_routes.py).
 export const sendOrderToKitchen = async (
-  orderId: number
+  order: Record<string, any>
 ): Promise<{ success: boolean; message: string }> => {
-  return post<{ success: boolean; message: string }>(
-    `/api/v1/pos/order/${orderId}/send-to-kitchen`
-  );
+  return post<{ success: boolean; message: string }>(`/pos/orders/send`, order);
+};
+
+// New: create order (persistent) - POST /api/v1/pos/orders
+export const createOrder = async (
+  order: any
+): Promise<{ order_id: number; status: string; message?: string }> => {
+  return post<{ order_id: number; status: string; message?: string }>(`/pos/orders`, order);
+};
+
+// Fetch menu items
+export const fetchMenuItems = async (): Promise<MenuItemType[]> => {
+  // Use OrderService-backed menu for POS/basic tier
+  return get<MenuItemType[]>('/orders/menu');
 };
 
 // Utility function to generate device fingerprint

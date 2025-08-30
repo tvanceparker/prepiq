@@ -10,6 +10,7 @@ class OrderItemModifier(Base):
 
     modifier_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
     order_item_id = Column(BigInteger, ForeignKey("order_items.order_item_id"), nullable=False)
+    restaurant_id = Column(BigInteger, ForeignKey("restaurants.restaurant_id"), nullable=False)
     mod_type = Column(Enum('remove', 'add', 'replace', 'modifier', 'cooking_temp', 'note'), nullable=False)
     target_type = Column(Enum('ingredient', 'modifier'), nullable=True)
     reference_id = Column(BigInteger, nullable=True)
@@ -19,3 +20,4 @@ class OrderItemModifier(Base):
 
     # Relationships
     order_item = relationship("OrderItem", back_populates="modifiers")
+    restaurant = relationship("Restaurant", back_populates="order_item_modifiers")

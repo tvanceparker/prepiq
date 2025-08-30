@@ -5,7 +5,6 @@ import {
   OrderCreate,
   OrderResponse,
   Order,
-  ActiveOrdersResponse,
   MenuItem,
   MenuItemsResponse,
 } from '../../../interfaces/orders';
@@ -25,8 +24,15 @@ export const useOrders = () => {
     try {
       setIsLoading(true);
       setError(null);
-      const response: ActiveOrdersResponse = await getActiveOrders();
-      setActiveOrders(response.orders);
+      const response: any = await getActiveOrders();
+      const normalized = Array.isArray(response)
+        ? response
+        : Array.isArray((response || {}).orders)
+          ? (response as any).orders
+          : Array.isArray((response || {}).data)
+            ? (response as any).data
+            : [];
+      setActiveOrders(normalized || []);
     } catch (err: any) {
       setError(err.message || 'Failed to load orders');
     } finally {
@@ -38,8 +44,17 @@ export const useOrders = () => {
     try {
       setIsLoading(true);
       setError(null);
-      const response: MenuItemsResponse = await getMenuItems();
-      setMenuItems(response.items);
+      const response: MenuItemsResponse | any = await getMenuItems();
+      // OrderService.get_menu_items returns a plain array of items.
+      if (Array.isArray(response)) {
+        setMenuItems(response as any);
+      } else if (Array.isArray((response as any).items)) {
+        setMenuItems((response as any).items);
+      } else if (Array.isArray((response as any).data)) {
+        setMenuItems((response as any).data);
+      } else {
+        setMenuItems([]);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load menu items');
     } finally {
@@ -51,6 +66,24 @@ export const useOrders = () => {
     try {
       setError(null);
       const response = await createOrder(order);
+      // optimistic: if order_id returned, append a lightweight entry to activeOrders
+      try {
+        if (response?.order_id) {
+          const lightweight = {
+            order_id: response.order_id,
+            status: 'pending',
+            items: order.items as any,
+            subtotal: order.subtotal,
+            tax: order.tax || 0,
+            discount: order.discount || 0,
+            total: order.total,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          } as any;
+          setActiveOrders(prev => [lightweight, ...(prev || [])]);
+        }
+      } catch {}
+
       await refreshOrders(); // Refresh orders after creating new one
       return response;
     } catch (err: any) {
@@ -67,15 +100,11 @@ export const useOrders = () => {
     try {
       setError(null);
       const response = await updateOrderStatus(orderId, status);
-
-      // Update local state optimistically
-      setActiveOrders(prevOrders =>
-        prevOrders.map(order =>
-          order.order_id === orderId ? { ...order, status: status as any } : order
-        )
+      // Optimistic update; fallback to refresh
+      setActiveOrders(prev =>
+        (prev || []).map(o => (o.order_id === orderId ? { ...o, status: status as any } : o))
       );
-
-      await refreshOrders(); // Refresh to get latest data
+      await refreshOrders();
       return response;
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to update order status';

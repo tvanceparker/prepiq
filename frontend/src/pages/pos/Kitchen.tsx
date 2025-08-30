@@ -23,6 +23,7 @@ import { usePOS } from './hooks/usePOS';
 import { useOrders } from './hooks/useOrders';
 import { useDevice } from '../../contexts/DeviceContext';
 import OrderCard from './components/OrderCard';
+import { useKitchenWS, fetchOrderDetails } from '../../hooks/useKitchenWS';
 
 const Kitchen: React.FC = () => {
   const { device, isRegistered, isLoading: posLoading, registerDevice } = usePOS();
@@ -32,12 +33,9 @@ const Kitchen: React.FC = () => {
   const [showRegistration, setShowRegistration] = useState(false);
   const [deviceName, setDeviceName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [realtimeOrders, setRealtimeOrders] = useState<any[]>([]);
 
-  useEffect(() => {
-    if (!isRegistered && !posLoading) {
-      setShowRegistration(true);
-    }
-  }, [isRegistered, posLoading]);
+  // Do not auto-open registration modal; users can open it from the sidebar.
 
   // Auto-refresh orders every 30 seconds
   useEffect(() => {
@@ -49,6 +47,19 @@ const Kitchen: React.FC = () => {
 
     return () => clearInterval(interval);
   }, [isRegistered, refreshOrders]);
+
+  const onNewOrder = async (orderId: number) => {
+    try {
+      const order = await fetchOrderDetails(orderId);
+      if (order) {
+        setRealtimeOrders(prev => [order, ...prev]);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch new order details', err);
+    }
+  };
+
+  useKitchenWS(onNewOrder);
 
   const handleDeviceRegistration = async () => {
     if (!deviceName.trim()) {
@@ -80,11 +91,13 @@ const Kitchen: React.FC = () => {
   };
 
   // Filter orders for kitchen display
-  const pendingOrders = activeOrders.filter(order =>
+  const combinedOrders = [...realtimeOrders, ...activeOrders];
+  const pendingOrders = combinedOrders.filter(order =>
     ['confirmed', 'preparing'].includes(order.status)
   );
 
   const readyOrders = activeOrders.filter(order => order.status === 'ready');
+  const combinedReady = combinedOrders.filter(order => order.status === 'ready');
 
   if (posLoading) {
     return (
@@ -189,7 +202,7 @@ const Kitchen: React.FC = () => {
               </Typography>
             </Box>
 
-            {readyOrders.length === 0 ? (
+            {combinedReady.length === 0 ? (
               <Box textAlign="center" py={4}>
                 <Typography variant="body1" color="text.secondary">
                   No orders ready for pickup
@@ -197,7 +210,7 @@ const Kitchen: React.FC = () => {
               </Box>
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {readyOrders.map(order => (
+                {combinedReady.map(order => (
                   <Card key={order.order_id} sx={{ backgroundColor: 'white' }}>
                     <CardContent>
                       <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>

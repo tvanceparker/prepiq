@@ -69,19 +69,21 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onStatusUpdate }) => {
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
           <Typography variant="h6">Order #{order.order_id}</Typography>
           <Chip
-            label={order.status.toUpperCase()}
-            color={getStatusColor(order.status) as any}
+            label={order.status ? order.status.toUpperCase() : 'UNKNOWN'}
+            color={getStatusColor(order.status || 'unknown') as any}
             size="small"
           />
         </Box>
 
         <Typography variant="body2" color="text.secondary" gutterBottom>
-          {order.sales_channel} • {order.items.length} items
+          {order.sales_channel} • {Array.isArray(order.items) ? order.items.length : 0} items
         </Typography>
 
         <Box display="flex" alignItems="center" mb={1}>
           <TimeIcon sx={{ mr: 0.5, fontSize: 16 }} />
-          <Typography variant="body2">{new Date(order.created_at).toLocaleTimeString()}</Typography>
+          <Typography variant="body2">
+            {order?.created_at ? new Date(order.created_at).toLocaleTimeString() : ''}
+          </Typography>
         </Box>
 
         <Divider sx={{ my: 1 }} />
@@ -91,14 +93,22 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onStatusUpdate }) => {
         </Typography>
 
         <Box mt={1}>
-          {order.items.slice(0, 3).map((item, index) => (
-            <Typography key={index} variant="body2" color="text.secondary">
-              • {item.quantity}x Item #{item.menu_item_id}
-            </Typography>
-          ))}
-          {order.items.length > 3 && (
+          {Array.isArray(order.items) && order.items.length > 0 ? (
+            <>
+              {order.items.slice(0, 3).map((item, index) => (
+                <Typography key={index} variant="body2" color="text.secondary">
+                  • {item.quantity}x Item #{item.menu_item_id}
+                </Typography>
+              ))}
+              {order.items.length > 3 && (
+                <Typography variant="body2" color="text.secondary">
+                  ...and {order.items.length - 3} more items
+                </Typography>
+              )}
+            </>
+          ) : (
             <Typography variant="body2" color="text.secondary">
-              ...and {order.items.length - 3} more items
+              No items
             </Typography>
           )}
         </Box>

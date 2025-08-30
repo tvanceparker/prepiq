@@ -10,6 +10,7 @@ class OrderItem(Base):
 
     order_item_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
     order_id = Column(BigInteger, ForeignKey("orders.order_id"), nullable=False)
+    restaurant_id = Column(BigInteger, ForeignKey("restaurants.restaurant_id"), nullable=False)
     menu_item_id = Column(BigInteger, ForeignKey("menu_items.menu_item_id"), nullable=False)
     quantity = Column(DECIMAL(8, 2), default=1, nullable=False)
     unit_price = Column(DECIMAL(10, 2), default=0.00, nullable=False)
@@ -20,4 +21,5 @@ class OrderItem(Base):
     # Relationships
     order = relationship("Order", back_populates="order_items")
     menu_item = relationship("MenuItem", back_populates="order_items")
+    restaurant = relationship("Restaurant", back_populates="order_items")
     modifiers = relationship("OrderItemModifier", back_populates="order_item", cascade="all, delete-orphan")

@@ -129,3 +129,7 @@ export const useDeviceDetection = (): DeviceDetectionResult => {
     refresh,
   };
 };
+
+export const isDedicatedDevice = (deviceType?: DeviceType | null): boolean => {
+  return deviceType === 'pos_terminal' || deviceType === 'kitchen_display';
+};

@@ -39,3 +39,12 @@ class DeviceSettingsUpdateResponse(BaseModel):
 
 class SalesChannelsResponse(BaseModel):
     sales_channels: List[str]
+
+
+class SendOrderResponse(BaseModel):
+    status: str
+
+
+class ConfirmPaymentResponse(BaseModel):
+    status: str
+    payment_intent_id: str

@@ -68,7 +68,7 @@ export default function Login() {
     setDeviceRegistrationLoading(true);
     try {
       const fingerprint = generateDeviceFingerprint();
-      const response = await fetch('/api/v1/pos/register-device', {
+      const response = await fetch('/pos/register-device', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -113,7 +113,7 @@ export default function Login() {
         // Try to refresh device token
         try {
           const fingerprint = generateDeviceFingerprint();
-          const response = await fetch('/api/v1/pos/refresh-token', {
+          const response = await fetch('/pos/refresh-token', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

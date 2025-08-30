@@ -33,7 +33,7 @@ const MenuItemGrid: React.FC<MenuItemGridProps> = ({ menuItems, onAddItem, loadi
     return (
       <Box textAlign="center" py={4}>
         <Typography variant="body1" color="text.secondary">
-          No menu items available
+          No menu items available. Add items in the Menu section to start selling.
         </Typography>
       </Box>
     );
@@ -42,7 +42,7 @@ const MenuItemGrid: React.FC<MenuItemGridProps> = ({ menuItems, onAddItem, loadi
   return (
     <Grid container spacing={2}>
       {menuItems
-        .filter(item => item.is_active)
+        .filter(item => (typeof item.is_active === 'boolean' ? item.is_active : true))
         .map(item => (
           <Grid item xs={12} sm={6} md={4} lg={3} key={item.menu_item_id}>
             <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>

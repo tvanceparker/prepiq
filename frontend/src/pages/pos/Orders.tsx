@@ -24,12 +24,7 @@ import { Refresh as RefreshIcon, Receipt as ReceiptIcon } from '@mui/icons-mater
 import { useOrders } from './hooks/useOrders';
 import { useDevice } from '../../contexts/DeviceContext';
 import OrderCard from './components/OrderCard';
-
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
+import { TabPanelProps } from '../../interfaces/pos';
 
 const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => (
   <div role="tabpanel" hidden={value !== index}>
@@ -48,13 +43,15 @@ const Orders: React.FC = () => {
   };
 
   const getOrdersByStatus = (status: string) => {
-    return activeOrders.filter(order => order.status === status);
+    return (activeOrders || []).filter(order => (order?.status || '') === status);
   };
 
   const getAllOrders = () => {
-    return activeOrders.sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
+    return [...(activeOrders || [])].sort((a, b) => {
+      const at = a?.created_at ? new Date(a.created_at).getTime() : 0;
+      const bt = b?.created_at ? new Date(b.created_at).getTime() : 0;
+      return bt - at;
+    });
   };
 
   const formatDateTime = (dateString: string) => {
@@ -80,7 +77,7 @@ const Orders: React.FC = () => {
     }
   };
 
-  if (isLoading && activeOrders.length === 0) {
+  if (isLoading && (activeOrders || []).length === 0) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
         <CircularProgress />
@@ -116,7 +113,7 @@ const Orders: React.FC = () => {
           textColor="primary"
           variant="fullWidth"
         >
-          <Tab label={`All Orders (${activeOrders.length})`} />
+          <Tab label={`All Orders (${(activeOrders || []).length})`} />
           <Tab label={`Pending (${getOrdersByStatus('pending').length})`} />
           <Tab
             label={`In Progress (${getOrdersByStatus('confirmed').length + getOrdersByStatus('preparing').length})`}
@@ -139,7 +136,7 @@ const Orders: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {getAllOrders().map(order => (
+                {(getAllOrders() || []).map(order => (
                   <TableRow key={order.order_id}>
                     <TableCell>
                       <Box display="flex" alignItems="center">
@@ -153,7 +150,9 @@ const Orders: React.FC = () => {
                         size="small"
                       />
                     </TableCell>
-                    <TableCell>{order.items.length} items</TableCell>
+                    <TableCell>
+                      {Array.isArray(order.items) ? order.items.length : 0} items
+                    </TableCell>
                     <TableCell>${order.total.toFixed(2)}</TableCell>
                     <TableCell>{formatDateTime(order.created_at)}</TableCell>
                     <TableCell>
@@ -161,7 +160,10 @@ const Orders: React.FC = () => {
                         size="small"
                         variant="outlined"
                         onClick={() => updateOrderStatus(order.order_id, 'completed')}
-                        disabled={order.status === 'completed' || order.status === 'cancelled'}
+                        disabled={
+                          (order?.status || '') === 'completed' ||
+                          (order?.status || '') === 'cancelled'
+                        }
                       >
                         Complete
                       </Button>

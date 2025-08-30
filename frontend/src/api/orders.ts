@@ -1,46 +1,40 @@
 // src/api/orders.ts
 import { post, get, put } from './index';
-import {
-  OrderCreate,
-  OrderResponse,
-  Order,
-  OrderUpdate,
-  ActiveOrdersResponse,
-  MenuItem,
-  MenuItemsResponse,
-} from '../interfaces/orders';
+import { OrderCreate, OrderResponse, Order, OrderUpdate, MenuItem } from '../interfaces/orders';
 
 export const createOrder = async (order: OrderCreate): Promise<OrderResponse> => {
-  return post<OrderResponse>('/api/v1/orders', order);
+  return post<OrderResponse>('/orders', order);
 };
 
 export const getOrder = async (orderId: number): Promise<Order> => {
-  return get<Order>(`/api/v1/orders/${orderId}`);
+  return get<Order>(`/orders/${orderId}`);
 };
 
 export const updateOrder = async (orderId: number, update: OrderUpdate): Promise<OrderResponse> => {
-  return put<OrderResponse>(`/api/v1/orders/${orderId}`, update);
+  return put<OrderResponse>(`/orders/${orderId}`, update);
 };
 
 export const updateOrderStatus = async (
   orderId: number,
   status: string
 ): Promise<OrderResponse> => {
-  return put<OrderResponse>(`/api/v1/orders/${orderId}/status`, { status });
+  return put<OrderResponse>(`/orders/${orderId}/status`, { status });
 };
 
-export const getActiveOrders = async (): Promise<ActiveOrdersResponse> => {
-  return get<ActiveOrdersResponse>('/api/v1/orders/active');
+export const getActiveOrders = async (): Promise<any> => {
+  // backend returns an array of OrderDTO for GET /orders
+  return get<any>('/orders?status=active');
 };
 
 export const completeOrder = async (orderId: number): Promise<OrderResponse> => {
-  return post<OrderResponse>(`/api/v1/orders/${orderId}/complete`);
+  return post<OrderResponse>(`/orders/${orderId}/complete`);
 };
 
-export const getMenuItems = async (): Promise<MenuItemsResponse> => {
-  return get<MenuItemsResponse>('/api/v1/menu/items');
+export const getMenuItems = async (): Promise<MenuItem[]> => {
+  // Use OrderService-backed menu for POS/basic tier: GET /orders/menu
+  return get<MenuItem[]>('/orders/menu');
 };
 
 export const getMenuItem = async (menuItemId: number): Promise<MenuItem> => {
-  return get<MenuItem>(`/api/v1/menu/items/${menuItemId}`);
+  return get<MenuItem>(`/menu/items/${menuItemId}`);
 };

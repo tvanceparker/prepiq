@@ -1,5 +1,5 @@
 // src/pages/pos/POS.tsx
-import React, { Fragment, useEffect, useState } from 'react';
+import React, { Fragment, useState } from 'react';
 import {
   Alert,
   Box,
@@ -9,13 +9,8 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Grid,
   Paper,
-  TextField,
   Typography,
 } from '@mui/material';
 import { Payment as PaymentIcon, ShoppingCart as CartIcon } from '@mui/icons-material';
@@ -25,24 +20,8 @@ import { useDevice } from '../../contexts/DeviceContext';
 import OrderCard from './components/OrderCard';
 import PaymentTerminal from './components/PaymentTerminal';
 import MenuItemGrid from './components/MenuItemGrid';
-
-// Types kept light to avoid cross-file coupling
-
-type StatusUpdater = (orderId: number, status: string) => Promise<any>;
-
-type OrderItem = {
-  menu_item_id: number;
-  quantity: number;
-  unit_price: number;
-  instructions?: string;
-  modifiers?: any[];
-};
-
-type MenuItemType = {
-  menu_item_id: number;
-  name?: string;
-  price: number;
-};
+import ModifierEditor from './components/ModifierEditor';
+import { StatusUpdater, OrderItem, MenuItemType } from '../../interfaces/pos';
 
 const KitchenDisplayMode: React.FC<{
   activeOrders: any[];
@@ -74,7 +53,16 @@ const MobilePOSMode: React.FC<{
   onAddItem: (item: MenuItemType) => void;
   onCreateOrder: () => void;
   calculateTotal: () => number;
-}> = ({ currentOrder, menuItems, loading, onAddItem, onCreateOrder, calculateTotal }) => (
+  onEditModifiers: (menuItemId: number) => void;
+}> = ({
+  currentOrder,
+  menuItems,
+  loading,
+  onAddItem,
+  onCreateOrder,
+  calculateTotal,
+  onEditModifiers,
+}) => (
   <Box>
     <Typography variant="h6" gutterBottom>
       Mobile POS Interface
@@ -100,6 +88,14 @@ const MobilePOSMode: React.FC<{
                   </Typography>
                   <Typography variant="body2" fontWeight="bold">
                     ${(item.unit_price * item.quantity).toFixed(2)}
+                  </Typography>
+                </Box>
+                <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                  <Button size="small" onClick={() => onEditModifiers(item.menu_item_id)}>
+                    Edit Modifiers
+                  </Button>
+                  <Typography variant="caption" color="text.secondary">
+                    {item.modifiers?.length ? `${item.modifiers.length} modifiers` : 'No modifiers'}
                   </Typography>
                 </Box>
               </CardContent>
@@ -134,6 +130,7 @@ const DesktopPOSMode: React.FC<{
   onPayment: () => void;
   onStatusUpdate: StatusUpdater;
   calculateTotal: () => number;
+  onEditModifiers: (menuItemId: number) => void;
 }> = ({
   currentOrder,
   menuItems,
@@ -147,6 +144,7 @@ const DesktopPOSMode: React.FC<{
   onPayment,
   onStatusUpdate,
   calculateTotal,
+  onEditModifiers,
 }) => (
   <Grid container spacing={3}>
     <Grid item xs={12} md={8}>
@@ -207,6 +205,9 @@ const DesktopPOSMode: React.FC<{
                   >
                     Remove
                   </Button>
+                  <Button size="small" onClick={() => onEditModifiers(item.menu_item_id)}>
+                    Edit Modifiers
+                  </Button>
                 </CardActions>
               </Card>
             ))
@@ -247,10 +248,10 @@ const DesktopPOSMode: React.FC<{
     <Grid item xs={12}>
       <Paper sx={{ p: 2 }}>
         <Typography variant="h6" gutterBottom>
-          Active Orders ({activeOrders.length})
+          Active Orders ({(activeOrders || []).length})
         </Typography>
         <Grid container spacing={2}>
-          {activeOrders.map((order: any) => (
+          {(activeOrders || []).map((order: any) => (
             <Grid item xs={12} sm={6} md={4} key={order.order_id}>
               <OrderCard order={order} onStatusUpdate={onStatusUpdate} />
             </Grid>
@@ -262,7 +263,7 @@ const DesktopPOSMode: React.FC<{
 );
 
 const POS: React.FC = () => {
-  const { device, isRegistered, isLoading: posLoading, registerDevice } = usePOS();
+  const { device, isLoading: posLoading } = usePOS();
   const {
     activeOrders,
     menuItems,
@@ -274,44 +275,13 @@ const POS: React.FC = () => {
   const { device: deviceInfo } = useDevice();
 
   const [currentOrder, setCurrentOrder] = useState<OrderItem[]>([]);
+  // removed unused menuQuery/search - category filter will be used instead
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [editingModifiersFor, setEditingModifiersFor] = useState<number | null>(null);
+  const [modifierEditorOpen, setModifierEditorOpen] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
-  const [showRegistration, setShowRegistration] = useState(false);
-  const [deviceName, setDeviceName] = useState('');
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isRegistered && !posLoading) {
-      setShowRegistration(true);
-    }
-  }, [isRegistered, posLoading]);
-
-  const handleDeviceRegistration = async () => {
-    if (!deviceName.trim()) {
-      setError('Device name is required');
-      return;
-    }
-    try {
-      setError(null);
-      await registerDevice({
-        device_type: 'pos_terminal',
-        device_name: deviceName,
-        fingerprint: {
-          userAgent: navigator.userAgent,
-          screenResolution: `${(window as any).screen?.width || 0}x${(window as any).screen?.height || 0}`,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          language: navigator.language,
-          platform: navigator.platform,
-          cookieEnabled: navigator.cookieEnabled,
-          plugins: Array.from(navigator.plugins).map((p: any) => p.name),
-          canvasFingerprint: '',
-          webglFingerprint: '',
-        },
-      });
-      setShowRegistration(false);
-    } catch (err: any) {
-      setError(err.message || 'Failed to register device');
-    }
-  };
+  // registration modal controlled globally via RegistrationModalContext
 
   const addItemToOrder = (menuItem: MenuItemType) => {
     const existing = currentOrder.find(i => i.menu_item_id === menuItem.menu_item_id);
@@ -353,9 +323,23 @@ const POS: React.FC = () => {
       const subtotal = calculateTotal();
       const tax = subtotal * 0.08;
       const total = subtotal + tax;
+      // Map local OrderItem -> API OrderItemCreate shape
+      const apiItems = currentOrder.map(i => ({
+        menu_item_id: i.menu_item_id,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        instructions: i.instructions || undefined,
+        modifiers: (i.modifiers || []).map((m: any) => ({
+          mod_type: m.mod_type || 'custom',
+          reference_id: m.reference_id,
+          quantity: m.quantity || 1,
+          note: m.note || null,
+        })),
+      }));
+
       await createOrder({
         sales_channel: 'in_person',
-        items: currentOrder as any,
+        items: apiItems,
         subtotal,
         tax,
         discount: 0,
@@ -376,39 +360,7 @@ const POS: React.FC = () => {
     );
   }
 
-  if (!isRegistered) {
-    return (
-      <Dialog open={showRegistration} maxWidth="sm" fullWidth>
-        <DialogTitle>Register POS Device</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            This device needs to be registered before you can use the POS system.
-          </Typography>
-          <TextField
-            fullWidth
-            label="Device Name"
-            value={deviceName}
-            onChange={e => setDeviceName(e.target.value)}
-            placeholder="e.g., Front Counter POS"
-            sx={{ mb: 2 }}
-          />
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowRegistration(false)} variant="outlined" sx={{ mr: 1 }}>
-            Cancel
-          </Button>
-          <Button onClick={handleDeviceRegistration} variant="contained">
-            Register Device
-          </Button>
-        </DialogActions>
-      </Dialog>
-    );
-  }
+  // Do not block the POS UI if device is not registered; users can register via the sidebar CTA.
 
   return (
     <Fragment>
@@ -423,6 +375,27 @@ const POS: React.FC = () => {
           </Alert>
         )}
 
+        {/* Category filter chips */}
+        <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Chip
+            label={`All (${(menuItems || []).length})`}
+            clickable
+            color={categoryFilter === 'all' ? 'primary' : 'default'}
+            onClick={() => setCategoryFilter('all')}
+          />
+          {Array.from(new Set((menuItems || []).map(m => m.category).filter(Boolean))).map(
+            (cat: any) => (
+              <Chip
+                key={cat}
+                label={`${cat} (${(menuItems || []).filter(m => m.category === cat).length})`}
+                clickable
+                color={categoryFilter === cat ? 'primary' : 'default'}
+                onClick={() => setCategoryFilter(cat)}
+              />
+            )
+          )}
+        </Box>
+
         {deviceInfo.type === 'kitchen_display' ? (
           <KitchenDisplayMode
             activeOrders={activeOrders as any}
@@ -432,16 +405,28 @@ const POS: React.FC = () => {
         ) : deviceInfo.type === 'mobile' ? (
           <MobilePOSMode
             currentOrder={currentOrder}
-            menuItems={menuItems as any}
+            menuItems={
+              (menuItems || []).filter(m =>
+                categoryFilter === 'all' ? true : (m.category || '') === categoryFilter
+              ) as any
+            }
             loading={ordersLoading}
             onAddItem={addItemToOrder}
             onCreateOrder={handleCreateOrder}
             calculateTotal={calculateTotal}
+            onEditModifiers={(menuItemId: number) => {
+              setEditingModifiersFor(menuItemId);
+              setModifierEditorOpen(true);
+            }}
           />
         ) : (
           <DesktopPOSMode
             currentOrder={currentOrder}
-            menuItems={menuItems as any}
+            menuItems={
+              (menuItems || []).filter(m =>
+                categoryFilter === 'all' ? true : (m.category || '') === categoryFilter
+              ) as any
+            }
             activeOrders={activeOrders as any}
             loading={ordersLoading}
             onAddItem={addItemToOrder}
@@ -452,6 +437,10 @@ const POS: React.FC = () => {
             onPayment={() => setShowPayment(true)}
             onStatusUpdate={updateOrderStatus as StatusUpdater}
             calculateTotal={calculateTotal}
+            onEditModifiers={(menuItemId: number) => {
+              setEditingModifiersFor(menuItemId);
+              setModifierEditorOpen(true);
+            }}
           />
         )}
       </Box>
@@ -463,6 +452,22 @@ const POS: React.FC = () => {
         onPaymentComplete={() => {
           setShowPayment(false);
           setCurrentOrder([]);
+        }}
+      />
+      <ModifierEditor
+        open={modifierEditorOpen}
+        onClose={() => setModifierEditorOpen(false)}
+        initial={
+          editingModifiersFor
+            ? currentOrder.find(i => i.menu_item_id === editingModifiersFor)?.modifiers || []
+            : []
+        }
+        onSave={mods => {
+          if (!editingModifiersFor) return;
+          setCurrentOrder(prev =>
+            prev.map(i => (i.menu_item_id === editingModifiersFor ? { ...i, modifiers: mods } : i))
+          );
+          setEditingModifiersFor(null);
         }}
       />
     </Fragment>

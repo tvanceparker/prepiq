@@ -101,3 +101,39 @@ export interface POSContextType {
   updateSettings: (settings: DeviceSettingsUpdate) => Promise<DeviceSettingsResponse>;
   logout: () => void;
 }
+
+// Additional types for POS components
+export type DeviceType = 'desktop' | 'mobile' | 'pos_terminal' | 'kitchen_display';
+
+export type StatusUpdater = (orderId: number, status: string) => Promise<any>;
+
+export interface OrderItem {
+  menu_item_id: number;
+  quantity: number;
+  unit_price: number;
+  instructions?: string;
+  modifiers?: any[];
+}
+
+export interface MenuItemType {
+  menu_item_id: number;
+  name: string;
+  price: number;
+  category?: string | null;
+}
+
+export interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+// Order DTOs (basic shapes for POS flows)
+export type {
+  ModifierCreate,
+  OrderItemCreate as OrderItemDTO,
+  OrderCreate,
+  Order,
+  OrderResponse,
+  ActiveOrdersResponse,
+} from './orders';

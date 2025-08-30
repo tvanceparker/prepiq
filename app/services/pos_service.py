@@ -3,6 +3,8 @@ import os
 import stripe
 from app.sockets.connection_manager import manager
 from app.schemas.pos_dto import PaymentRequest, PaymentResponse
+import asyncio
+from typing import Any, Dict
 from app.repositories.devices_repo import DevicesRepository
 from app.repositories.restaurants_repo import RestaurantRepository
 from copy import deepcopy
@@ -31,12 +33,16 @@ class POSService:
         Create a Stripe PaymentIntent for the order.
         """
         try:
-            intent = stripe.PaymentIntent.create(
-                amount=payment_req.amount,
-                currency=payment_req.currency,
-                payment_method_types=payment_req.payment_method_types,
-                metadata={"order_id": str(payment_req.order_id), "restaurant_id": str(self.restaurant_id)},
-            )
+            loop = asyncio.get_running_loop()
+            def _create():
+                return stripe.PaymentIntent.create(
+                    amount=payment_req.amount,
+                    currency=payment_req.currency,
+                    payment_method_types=payment_req.payment_method_types,
+                    metadata={"order_id": str(payment_req.order_id), "restaurant_id": str(self.restaurant_id)},
+                )
+
+            intent = await loop.run_in_executor(None, _create)
             return PaymentResponse(
                 client_secret=intent.client_secret,
                 payment_intent_id=intent.id,
@@ -45,14 +51,20 @@ class POSService:
         except Exception as e:
             raise ValueError(f"Failed to create payment intent: {str(e)}")
 
-    async def confirm_payment(self, payment_intent_id: str):
+    async def confirm_payment(self, payment_intent_id: str) -> Dict[str, Any]:
         """
         Confirm the payment intent.
         """
         try:
-            intent = stripe.PaymentIntent.retrieve(payment_intent_id)
-            if intent.status == "requires_confirmation":
-                intent.confirm()
+            loop = asyncio.get_running_loop()
+
+            def _retrieve_and_confirm():
+                intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+                if intent.status == "requires_confirmation":
+                    intent.confirm()
+                return intent
+
+            intent = await loop.run_in_executor(None, _retrieve_and_confirm)
             return {"status": intent.status, "payment_intent_id": intent.id}
         except Exception as e:
             raise ValueError(f"Failed to confirm payment: {str(e)}")
@@ -64,7 +76,7 @@ class POSService:
             result.update(device_settings)
         return result
 
-    async def register_device(self, registration):
+    async def register_device(self, registration: Any) -> Dict[str, Any]:
         """Register a new device and return merged settings"""
         # Create device record
         device_data = {
@@ -96,7 +108,7 @@ class POSService:
             }
         }
 
-    async def get_device_settings(self, device_id: int):
+    async def get_device_settings(self, device_id: int) -> Dict[str, Any]:
         """Get merged settings for a device"""
         device = await self.devices_repo.get_by_id(device_id)
         if not device:
@@ -116,7 +128,7 @@ class POSService:
             }
         }
 
-    async def update_device_settings(self, device_id: int, settings: dict):
+    async def update_device_settings(self, device_id: int, settings: dict) -> Dict[str, Any]:
         """Update device-specific settings"""
         device = await self.devices_repo.get_by_id(device_id)
         if not device:

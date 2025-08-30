@@ -4,6 +4,8 @@ import Layout from './components/Layout';
 import AppRoutes from './routes/AppRoutes';
 import { AuthContext } from './contexts/AuthContext';
 import { DeviceProvider } from './contexts/DeviceContext';
+import { RegistrationModalProvider } from './contexts/RegistrationModalContext';
+import RegistrationModalHost from './components/RegistrationModalHost';
 import type { AuthContextType } from './interfaces/auth';
 import GlobalSnackbar from './components/GlobalSnackbar';
 
@@ -25,7 +27,7 @@ export default function App(): JSX.Element {
 
   return (
     <DeviceProvider>
-      <>
+      <RegistrationModalProvider>
         {isAuthPage ? (
           <AppRoutes />
         ) : (
@@ -34,7 +36,8 @@ export default function App(): JSX.Element {
           </Layout>
         )}
         <GlobalSnackbar />
-      </>
+        <RegistrationModalHost />
+      </RegistrationModalProvider>
     </DeviceProvider>
   );
 }

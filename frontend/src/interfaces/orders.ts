@@ -46,8 +46,11 @@ export interface OrderItem {
 export interface Order {
   order_id: number;
   external_id?: string;
-  sales_channel: string;
-  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+  sales_channel?: string;
+  // main canonical status returned by backend
+  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled' | string;
+  // legacy alias
+  order_status?: string;
   items: OrderItem[];
   subtotal: number;
   tax: number;
@@ -69,7 +72,7 @@ export interface OrderUpdate {
 
 export interface ActiveOrdersResponse {
   orders: Order[];
-  total_count: number;
+  total_count?: number;
 }
 
 export interface MenuItem {
@@ -78,9 +81,9 @@ export interface MenuItem {
   name: string;
   price: number;
   category?: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface MenuItemsResponse {
