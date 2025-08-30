@@ -30,10 +30,20 @@ class RestaurantRepository(BaseRepository):
             Restaurant.sales_channels.label("sales_channels"),
             Restaurant.latitude.label("latitude"),
             Restaurant.longitude.label("longitude"),
+            Restaurant.settings.label("settings"),
+            Restaurant.has_pos_display.label("has_pos_display"),
+            Restaurant.has_kitchen_display.label("has_kitchen_display"),
+            Restaurant.default_ui_layout.label("default_ui_layout"),
         ).where(Restaurant.restaurant_id == self.restaurant_id)
 
         result = await self.db.execute(stmt)
         return result.mappings().first()
+    
+    async def get_sales_channels(self):
+        stmt = select(Restaurant.sales_channels).where(Restaurant.restaurant_id == self.restaurant_id)
+        result = await self.db.execute(stmt)
+        channels = result.scalar_one_or_none()
+        return channels or ["in-house", "take-out"]
     
     #---------For permission------------------
     async def update_permissions(self, restaurant_id: int, permissions: list):

@@ -1,3 +1,5 @@
 export * from './auth';
 export * from './admin';
 export * from './dashboardInterfaceFrontend';
+export * from './pos';
+export * from './orders';

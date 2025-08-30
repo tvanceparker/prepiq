@@ -22,7 +22,8 @@ from app.api.v1 import (
     alert_routes,
     permission_routes,
     team_routes,
-    waiter_routes,
+    orders_routes,
+    pos_routes,
     kitchen_routes,
 )
 from app.utils.eod_runner import run_eod_jobs
@@ -37,6 +38,7 @@ from app.db.models import (
     clock_events_orm,
     error_logs_orm,
     daily_forecast_accuracy_orm,
+    devices_orm,
     forecast_accuracy_orm,
     forecast_breakdown_orm,
     forecasts_orm,
@@ -70,6 +72,10 @@ from app.db.models import (
     supplier_preferences_orm,
     batch_recipe_forecast_breakdown_orm,
     ingredient_forecast_breakdown_orm,
+    orders_orm,
+    order_items_orm,
+    order_item_modifiers_orm,
+    payments_orm,
 )
 # import logging
 # logging.basicConfig()
@@ -113,8 +119,9 @@ app.add_middleware(
 app.add_middleware(AuthExtractionMiddleware)
 
 # Include routers after app creation
-app.include_router(waiter_routes.router, prefix="/api/v1")
 app.include_router(kitchen_routes.router, prefix="/api/v1")
+app.include_router(pos_routes.router, prefix="/api/v1")
+app.include_router(orders_routes.router, prefix="/api/v1")
 # app.include_router(websocket_routes.router)
 app.include_router(team_routes.router, prefix="/api/v1")
 app.include_router(dashboard_routes.router, prefix="/api/v1")
@@ -131,7 +138,7 @@ app.include_router(auth_routes.router, prefix="/api/v1")
 app.include_router(permission_routes.router, prefix="/api/v1")
 
 from app.sockets.kitchen_ws import router as kitchen_ws_router
-from app.sockets.waiter_ws import router as waiter_ws_router
+from app.sockets.pos_ws import router as pos_ws_router
 
 app.include_router(kitchen_ws_router)
-app.include_router(waiter_ws_router)
+app.include_router(pos_ws_router)

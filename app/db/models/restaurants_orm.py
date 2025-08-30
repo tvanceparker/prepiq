@@ -1,6 +1,6 @@
 # app/db/models/restaurants_orm.py
 
-from sqlalchemy import Column, Integer, String, Text, Enum, JSON, Date, Boolean, DECIMAL
+from sqlalchemy import Column, BigInteger, String, Text, Enum, JSON, Date, Boolean, DECIMAL
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.mysql import INTEGER
 from sqlalchemy.ext.declarative import declarative_base
@@ -12,7 +12,7 @@ def default_sales_channels():
 class Restaurant(Base):
     __tablename__ = "restaurants"
 
-    restaurant_id = Column(Integer, primary_key=True, index=True)
+    restaurant_id = Column(BigInteger, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     phone = Column(String(20))
     address = Column(Text)
@@ -26,7 +26,7 @@ class Restaurant(Base):
     email = Column(String(255))
     subscription_status = Column(String(20), default='inactive') 
     expiry_date = Column(Date)
-    forecast_length = Column(Integer)
+    forecast_length = Column(BigInteger)
     hours_of_operation = Column(JSON)
     tax_rate = Column(DECIMAL(5,2)) 
     timezone = Column(String(100))
@@ -34,6 +34,11 @@ class Restaurant(Base):
     eod_run_after_close_mins = Column(INTEGER(unsigned=True), default=60)
     sales_channels = Column(JSON, default=default_sales_channels)
     last_eod_run_date = Column(Date, nullable=True)
+    # Feature flags and settings for POS/kitchen behavior
+    settings = Column(JSON, default=dict)
+    has_pos_display = Column(Boolean, default=False)  # True if restaurant has dedicated POS terminals
+    has_kitchen_display = Column(Boolean, default=False)  # True if restaurant has dedicated kitchen displays
+    default_ui_layout = Column(String(16), default='auto')  # Default UI layout for devices
 
 
     ingredients = relationship("Ingredient", back_populates="restaurant")
@@ -84,3 +89,6 @@ class Restaurant(Base):
     roles = relationship("Role", back_populates="restaurant", cascade="all, delete-orphan")
     permissions = relationship("Permission", back_populates="restaurant", cascade="all, delete-orphan")
     role_permissions = relationship("RolePermission", back_populates="restaurant", cascade="all, delete-orphan")
+    orders = relationship("Order", back_populates="restaurant")
+    payments = relationship("Payment", back_populates="restaurant")
+    devices = relationship("Device", back_populates="restaurant")

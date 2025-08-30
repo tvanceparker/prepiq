@@ -19,6 +19,15 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
       ],
     },
     {
+      label: 'POS',
+      children: [
+        { name: 'Order Management', path: '/orders' },
+        { name: 'POS Terminal', path: '/pos' },
+        { name: 'Kitchen Display', path: '/kitchen' },
+        { name: 'Device Registration', path: '/pos/device-registration' },
+      ],
+    },
+    {
       label: 'Sales & Forecasting',
       children: [
         { name: 'Upcoming Forecast', path: '/sales/upcoming' },
@@ -54,8 +63,15 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
         { name: 'Alerts & Issues Feed', path: '/dashboard/alerts' },
         { name: 'Shift Readiness', path: '/dashboard/shift-readiness' },
         { name: "Yesterday's Trends", path: '/dashboard/yesterday' },
-        { name: 'Waiter', path: '/waiter' },
-        { name: 'Kitchen', path: '/kitchen' },
+      ],
+    },
+    {
+      label: 'POS',
+      children: [
+        { name: 'Order Management', path: '/orders' },
+        { name: 'POS Terminal', path: '/pos' },
+        { name: 'Kitchen Display', path: '/kitchen' },
+        { name: 'Device Registration', path: '/pos/device-registration' },
       ],
     },
     {

@@ -21,3 +21,16 @@ class LoginResponse(TokenResponse):
 class LoginRequest(BaseModel):
     username: str = Field(..., description="Employee username")
     password: str = Field(..., description="Employee password")
+
+
+class DeviceRegistrationRequest(BaseModel):
+    device_name: str = Field(..., description="Human-readable device name")
+    device_type: str = Field(..., description="Device type: pos_terminal, kitchen_display, mobile")
+    device_fingerprint: str = Field(..., description="Unique device fingerprint")
+    restaurant_id: int = Field(..., description="Restaurant ID")
+
+
+class DeviceRegistrationResponse(BaseModel):
+    device_id: int = Field(..., description="Unique device ID")
+    device_token: str = Field(..., description="JWT device token")
+    device_type: str = Field(..., description="Device type")

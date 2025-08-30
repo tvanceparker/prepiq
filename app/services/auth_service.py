@@ -2,9 +2,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.employees_repo import EmployeeRepository
 from app.repositories.restaurants_repo import RestaurantRepository
 from app.repositories.activity_logs_repo import ActivityLogRepository
-from app.utils.security import verify_password, create_access_token
+from app.repositories.devices_repo import DevicesRepository
+from app.utils.security import verify_password, create_access_token, create_device_token
 from app.utils.logger_helpers import log_method
 from app.core.logging import logger
+from app.services.pos_service import POSService
 from datetime import datetime
 class AuthService:
     def __init__(self, db: AsyncSession):
@@ -72,3 +74,32 @@ class AuthService:
 
 
         return user, token, subscription_tier
+
+    @log_method("Register Device")
+    async def register_device(self, device_name: str, device_type: str, device_fingerprint: str, restaurant_id: int):
+        """Register a new device and return device token"""
+        devices_repo = DevicesRepository(self.db, restaurant_id)
+        
+        device_data = {
+            "restaurant_id": restaurant_id,
+            "name": device_name,
+            "device_type": device_type,
+            "device_fingerprint": device_fingerprint
+        }
+        
+        device = await devices_repo.create(device_data)
+        
+        # Create device token
+        device_token = create_device_token({
+            "sub": f"device_{device.device_id}",
+            "device_id": device.device_id,
+            "device_type": device.device_type,
+            "restaurant_id": restaurant_id,
+            "fingerprint": device_fingerprint
+        })
+        
+        return {
+            "device_id": device.device_id,
+            "device_token": device_token,
+            "device_type": device.device_type
+        }

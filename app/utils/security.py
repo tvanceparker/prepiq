@@ -29,3 +29,22 @@ def create_refresh_token(data: dict, expires_delta: timedelta = timedelta(days=3
     expire = datetime.utcnow() + expires_delta
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def create_device_token(data: dict, expires_delta: timedelta = timedelta(days=90)):
+    """Create a device-specific JWT token with longer expiration"""
+    to_encode = data.copy()
+    expire = datetime.utcnow() + expires_delta
+    to_encode.update({"exp": expire, "type": "device"})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def verify_device_token(token: str):
+    """Verify and decode device token"""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "device":
+            return None
+        return payload
+    except JWTError:
+        return None

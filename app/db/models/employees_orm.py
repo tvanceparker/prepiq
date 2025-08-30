@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, DECIMAL, Boolean, ForeignKey, JSON
+from sqlalchemy import Column, BigInteger, String, DateTime, DECIMAL, Boolean, ForeignKey, JSON
 from app.db.session import Base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -7,19 +7,19 @@ from datetime import datetime
 class Employee(Base):
     __tablename__ = "employees"
 
-    employee_id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
     restaurant_id = Column(
-        Integer, ForeignKey("restaurants.restaurant_id"), nullable=False
+        BigInteger, ForeignKey("restaurants.restaurant_id"), nullable=False
     )
     name = Column(String(100), nullable=False)
-    role_id = Column(Integer, ForeignKey("roles.role_id"), nullable=True)  # Changed to Integer and ForeignKey
+    role_id = Column(BigInteger, ForeignKey("roles.role_id"), nullable=True)  # Changed to Integer and ForeignKey
     email = Column(String(100), unique=True, nullable=False)
     username = Column(String(100), unique=True, nullable=False)
     phone = Column(String(20))
     password_hash = Column(String(255), nullable=False)
     hire_date = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
-    login_code = Column(Integer, nullable=True)
+    login_code = Column(BigInteger, nullable=True)
     pay_rate = Column(DECIMAL(10, 2))
     employment_type = Column(String(20), default="hourly")
     preferences = Column(JSON, nullable=True, default=dict)
@@ -34,6 +34,7 @@ class Employee(Base):
     activity_logs = relationship("ActivityLog", back_populates="employee")
     prep_schedules = relationship("PrepSchedule", back_populates="employee")
     alerts = relationship("Alert", back_populates="employee")
+    orders = relationship("Order", back_populates="employee")
 
     def __repr__(self):
         return f"<Employee(id={self.employee_id}, name={self.name}, role_id={self.role_id})>"

@@ -11,6 +11,11 @@ class RestaurantSettingsDTO(BaseModel):
     # Optional geolocation for weather integrations
     latitude: Optional[Annotated[float, Field(ge=-90, le=90)]] = None
     longitude: Optional[Annotated[float, Field(ge=-180, le=180)]] = None
+    # POS/Kitchen settings
+    settings: Optional[Dict[str, Any]] = {}
+    pos_mode: Optional[str] = "register"
+    kitchen_mode: Optional[str] = "display_only"
+    ui_layout_size: Optional[str] = "auto"
 
 class UpdateRestaurantSettingsDTO(BaseModel):
     forecast_length: Optional[Annotated[int, Field(ge=3, le=30)]] = None
@@ -20,6 +25,11 @@ class UpdateRestaurantSettingsDTO(BaseModel):
     sales_channels: Optional[List[str]] = None
     latitude: Optional[Annotated[float, Field(ge=-90, le=90)]] = None
     longitude: Optional[Annotated[float, Field(ge=-180, le=180)]] = None
+    # POS/Kitchen settings
+    settings: Optional[Dict[str, Any]] = None
+    pos_mode: Optional[str] = None
+    kitchen_mode: Optional[str] = None
+    ui_layout_size: Optional[str] = None
 
 # ---- Account Management ----
 class ChangePasswordDTO(BaseModel):

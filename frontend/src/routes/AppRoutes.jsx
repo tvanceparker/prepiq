@@ -65,7 +65,7 @@ import IntegrationSettings from "../pages/settings/IntegrationSettings";
 import AccountSettings from "../pages/settings/AccountSettings";
 
 import Kitchen from "../pages/Kitchen";
-import Waiter from "../pages/Waiter";
+import POS from "../pages/POS";
 
 export default function AppRoutes(): JSX.Element {
   return (
@@ -81,8 +81,8 @@ export default function AppRoutes(): JSX.Element {
         />
         <Route path="*" element={<h1>404 - Page Not Found</h1>} />
 
-        <Route path="/kitchen" element={<Kitchen />} />
-        <Route path="/waiter" element={<Waiter />} />
+  <Route path="/kitchen" element={<Kitchen />} />
+  <Route path="/waiter" element={<POS />} />
 
         {/* Dashboard */}
         <Route path="/dashboard/daily-overview" element={<DailyOverview />} />

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from typing import List
 from app.core.logging import logger
 from jose import JWTError, jwt
-from app.utils.security import SECRET_KEY, ALGORITHM
+from app.utils.security import SECRET_KEY, ALGORITHM, verify_device_token
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.db.models.role_permissions_orm import RolePermission
@@ -48,6 +48,38 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     logger.info(f"[Dependency]JWT Payload: {payload}")
     logger.info(f"[Dependency]Authenticated user '{username}' for restaurant_id {restaurant_id}")
     return CurrentUser(username, restaurant_id, subscription_tier, employee_id, name, role_id)
+
+
+async def get_device_context(token: str = Depends(oauth2_scheme)):
+    """Extract device info from device token"""
+    credentials_exception = HTTPException(status_code=401, detail="Invalid device token")
+    
+    logger.info("[Dependency] Validating device token")
+    try:
+        payload = verify_device_token(token)
+        if not payload:
+            logger.warning("[Dependency] Invalid device token format")
+            raise credentials_exception
+            
+        device_id = payload.get("device_id")
+        device_type = payload.get("device_type")
+        restaurant_id = payload.get("restaurant_id")
+        fingerprint = payload.get("fingerprint")
+        
+        if not all([device_id, device_type, restaurant_id]):
+            logger.warning("[Dependency] Missing required device claims")
+            raise credentials_exception
+            
+        logger.info(f"[Dependency] Validated device {device_id} ({device_type}) for restaurant {restaurant_id}")
+        return {
+            "device_id": device_id,
+            "device_type": device_type,
+            "restaurant_id": restaurant_id,
+            "fingerprint": fingerprint
+        }
+    except Exception as e:
+        logger.error(f"[Dependency] Device token validation error: {e}")
+        raise credentials_exception
 
 
 def get_restaurant_id(current_user: CurrentUser = Depends(get_current_user)) -> int:
@@ -131,7 +163,7 @@ from app.services.admin_service import AdminService
 from app.services.settings_service import SettingsService
 from app.services.alerts_service import AlertsService
 from app.services.team_service import TeamService
-from app.services.waiter_service import WaiterService
+from app.services.pos_service import POSService
 from app.services.kitchen_service import KitchenService
 
 
@@ -146,5 +178,7 @@ get_admin_service = build_service(AdminService)
 get_settings_service = build_service(SettingsService)
 get_alert_service = build_service(AlertsService)
 get_team_service = build_service(TeamService)
-get_waiter_service = build_service(WaiterService)
+get_pos_service = build_service(POSService)
+# backwards-compat alias
+get_waiter_service = get_pos_service
 get_kitchen_service = build_service(KitchenService)

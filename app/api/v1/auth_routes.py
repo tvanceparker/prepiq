@@ -7,7 +7,7 @@ from jose import jwt, JWTError
 from app.api.dependencies import get_auth_service
 from app.services.auth_service import AuthService
 from app.utils.security import create_access_token, create_refresh_token, SECRET_KEY, ALGORITHM
-from app.schemas.auth_dto import LoginResponse
+from app.schemas.auth_dto import LoginResponse, DeviceRegistrationRequest, DeviceRegistrationResponse
 from app.utils.logger_helpers import log_route
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -84,8 +84,19 @@ async def refresh_token(request: Request):
     return {"access_token": new_token, "token_type": "bearer"}
 
 
-@router.post("/logout", status_code=status.HTTP_200_OK)
-@log_route("logout")
-async def logout(response: Response):
-    response.delete_cookie("refresh_token", path="/api/v1/auth/refresh")
-    return {"message": "Logged out"}
+from pydantic import BaseModel
+from typing import Optional
+
+@router.post("/register-device", response_model=DeviceRegistrationResponse)
+@log_route("Register Device")
+async def register_device(
+    registration: DeviceRegistrationRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    """Register a new device and return device token"""
+    return await auth_service.register_device(
+        registration.device_name,
+        registration.device_type,
+        registration.device_fingerprint,
+        registration.restaurant_id
+    )

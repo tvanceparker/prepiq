@@ -1,9 +1,9 @@
 /*M!999999\- enable the sandbox mode */ 
--- MariaDB dump 10.19-11.8.3-MariaDB, for Linux (x86_64)
+-- MariaDB dump 10.19-12.0.2-MariaDB, for Linux (x86_64)
 --
 -- Host: localhost    Database: prep_iq3
 -- ------------------------------------------------------
--- Server version	11.8.3-MariaDB
+-- Server version	12.0.2-MariaDB
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -35,7 +35,7 @@ CREATE TABLE `activity_logs` (
   KEY `employee_id` (`employee_id`),
   CONSTRAINT `activity_logs_ibfk_1` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`),
   CONSTRAINT `activity_logs_ibfk_2` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=1498 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=1530 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -63,7 +63,7 @@ CREATE TABLE `alerts` (
   KEY `alerts_ibfk_2` (`employee_id`),
   CONSTRAINT `alerts_ibfk_1` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`),
   CONSTRAINT `alerts_ibfk_2` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=225 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=226 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -560,6 +560,107 @@ CREATE TABLE `menu_items` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `order_item_modifiers`
+--
+
+DROP TABLE IF EXISTS `order_item_modifiers`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `order_item_modifiers` (
+  `modifier_id` int(11) NOT NULL AUTO_INCREMENT,
+  `order_item_id` int(11) NOT NULL,
+  `mod_type` enum('remove','add','replace','modifier','cooking_temp','note') NOT NULL,
+  `target_type` enum('ingredient','modifier') DEFAULT NULL,
+  `reference_id` int(11) DEFAULT NULL,
+  `quantity` decimal(10,2) DEFAULT NULL,
+  `unit` varchar(20) DEFAULT NULL,
+  `note` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`modifier_id`),
+  KEY `order_item_id` (`order_item_id`),
+  CONSTRAINT `order_item_modifiers_order_item_fk` FOREIGN KEY (`order_item_id`) REFERENCES `order_items` (`order_item_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `order_items`
+--
+
+DROP TABLE IF EXISTS `order_items`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `order_items` (
+  `order_item_id` int(11) NOT NULL AUTO_INCREMENT,
+  `order_id` int(11) NOT NULL,
+  `menu_item_id` int(11) NOT NULL,
+  `quantity` decimal(8,2) NOT NULL DEFAULT 1.00,
+  `unit_price` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `line_total` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `instructions` varchar(255) DEFAULT NULL,
+  `recipe_snapshot` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`recipe_snapshot`)),
+  PRIMARY KEY (`order_item_id`),
+  KEY `order_id` (`order_id`),
+  KEY `menu_item_id` (`menu_item_id`),
+  CONSTRAINT `order_items_menu_item_fk` FOREIGN KEY (`menu_item_id`) REFERENCES `menu_items` (`menu_item_id`),
+  CONSTRAINT `order_items_order_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`order_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `orders`
+--
+
+DROP TABLE IF EXISTS `orders`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `orders` (
+  `order_id` int(11) NOT NULL AUTO_INCREMENT,
+  `restaurant_id` int(11) NOT NULL,
+  `external_id` varchar(255) DEFAULT NULL,
+  `employee_id` int(11) DEFAULT NULL,
+  `order_timestamp` datetime NOT NULL DEFAULT current_timestamp(),
+  `order_status` varchar(32) NOT NULL DEFAULT 'open',
+  `sales_channel` varchar(50) DEFAULT NULL,
+  `subtotal` decimal(10,2) DEFAULT 0.00,
+  `tax` decimal(10,2) DEFAULT 0.00,
+  `discount` decimal(10,2) DEFAULT 0.00,
+  `total` decimal(10,2) DEFAULT 0.00,
+  `order_metadata` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`order_metadata`)),
+  PRIMARY KEY (`order_id`),
+  KEY `restaurant_id` (`restaurant_id`),
+  KEY `employee_id` (`employee_id`),
+  CONSTRAINT `orders_employee_fk` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`),
+  CONSTRAINT `orders_restaurant_fk` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `payments`
+--
+
+DROP TABLE IF EXISTS `payments`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `payments` (
+  `payment_id` int(11) NOT NULL AUTO_INCREMENT,
+  `order_id` int(11) NOT NULL,
+  `restaurant_id` int(11) NOT NULL,
+  `payment_timestamp` datetime NOT NULL DEFAULT current_timestamp(),
+  `amount` decimal(10,2) NOT NULL,
+  `currency` varchar(10) DEFAULT 'USD',
+  `method` varchar(50) DEFAULT NULL,
+  `provider` varchar(50) DEFAULT NULL,
+  `provider_payment_id` varchar(255) DEFAULT NULL,
+  `status` varchar(32) DEFAULT 'pending',
+  `payment_metadata` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`payment_metadata`)),
+  PRIMARY KEY (`payment_id`),
+  KEY `order_id` (`order_id`),
+  KEY `payments_restaurant_fk` (`restaurant_id`),
+  CONSTRAINT `payments_order_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`order_id`) ON DELETE CASCADE,
+  CONSTRAINT `payments_restaurant_fk` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `permissions`
 --
 
@@ -752,6 +853,12 @@ CREATE TABLE `restaurants` (
   `eod_run_after_close_mins` int(10) unsigned DEFAULT 60,
   `sales_channels` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT json_array(_cp850'in-house',_cp850'take-out') CHECK (json_valid(`sales_channels`)),
   `last_eod_run_date` date DEFAULT NULL,
+  `settings` longtext DEFAULT '{}',
+  `pos_mode` varchar(16) DEFAULT 'full',
+  `kitchen_mode` varchar(16) DEFAULT 'full',
+  `ui_layout_size` varchar(16) DEFAULT 'auto',
+  `latitude` decimal(9,6) DEFAULT NULL,
+  `longitude` decimal(9,6) DEFAULT NULL,
   PRIMARY KEY (`restaurant_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -813,7 +920,7 @@ CREATE TABLE `sales` (
   KEY `restaurant_id` (`restaurant_id`),
   CONSTRAINT `sales_ibfk_1` FOREIGN KEY (`menu_item_id`) REFERENCES `menu_items` (`menu_item_id`),
   CONSTRAINT `sales_ibfk_2` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=15873 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=15918 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -948,7 +1055,7 @@ CREATE TABLE `weather_data` (
   PRIMARY KEY (`weather_id`),
   UNIQUE KEY `ux_weather_rest_date` (`restaurant_id`,`weather_date`),
   KEY `idx_weather_rest` (`restaurant_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=111 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -960,4 +1067,4 @@ CREATE TABLE `weather_data` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2025-08-16 11:21:29
+-- Dump completed on 2025-08-29 15:53:05
