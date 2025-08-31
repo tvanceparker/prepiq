@@ -3,81 +3,34 @@
   "editor.formatOnSave": true,
   "editor.formatOnPaste": true,
   "editor.formatOnType": true,
-  "[javascript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  "[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[typescriptreact]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "python.envFile": "${workspaceFolder}/.env",
+  "python.testing.pytestArgs": ["tests"],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true,
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/*.pyo": true,
+    ".pytest_cache": true,
+    "node_modules": true,
+    "frontend/node_modules": true
   },
-  "[javascriptreact]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  {
-    "editor.defaultFormatter": "esbenp.prettier-vscode",
-    "editor.formatOnSave": true,
-    "editor.formatOnPaste": true,
-    "editor.formatOnType": true,
-    "[javascript]": {
-      "editor.defaultFormatter": "esbenp.prettier-vscode"
-    },
-    "[javascriptreact]": {
-      "editor.defaultFormatter": "esbenp.prettier-vscode"
-    {
-      "editor.defaultFormatter": "esbenp.prettier-vscode",
-      "editor.formatOnSave": true,
-      "editor.formatOnPaste": true,
-      "editor.formatOnType": true,
-      "[javascript]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
+  "search.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true
+  },
+  "terminal.integrated.profiles.linux": {
+    "Python (workspace .venv)": {
+      "path": "/bin/bash",
+      "args": ["-l"],
+      "env": {
+        "VIRTUAL_ENV": "${workspaceFolder}/.venv",
+        "PATH": "${workspaceFolder}/.venv/bin:${env:PATH}"
       },
-      "[javascriptreact]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
-      },
-      "[typescript]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
-      },
-      "[typescriptreact]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
-      },
-
-      "python.envFile": "${workspaceFolder}/.env",
-      "python.testing.pytestArgs": ["tests"],
-      "python.testing.unittestEnabled": false,
-      "python.testing.pytestEnabled": true,
-      "files.exclude": {
-        "**/__pycache__": true,
-        "**/*.pyc": true,
-        "**/*.pyo": true,
-        ".pytest_cache": true,
-        ".gitignore": true,
-        "pytest.ini": true,
-        "__init__.py": true
-      },
-      "search.exclude": {
-        "**/__pycache__": true,
-        "**/*.pyc": true
-      },
-      "cSpell.words": ["Toastify", "Uncategorized"],
-
-      "terminal.integrated.profiles.linux": {
-        "Python (workspace .venv)": {
-          "path": "/bin/zsh",
-          "args": ["-l"],
-          "env": {
-            "VIRTUAL_ENV": "${workspaceFolder}/.venv",
-            "PATH": "${workspaceFolder}/.venv/bin:${env:PATH}"
-          },
-          "icon": "python"
-        }
-      },
-      "terminal.integrated.defaultProfile.linux": "Python (workspace .venv)",
-      "chat.tools.terminal.autoApprove": {
-        "rm": false,
-        "rmdir": false,
-        "del": false,
-        "kill": false,
-        "curl": false,
-        "wget": false,
-        "eval": false,
-        "chmod": false,
-        "chown": false,
-        "/^Remove-Item\\b/i": false
-      },
-      "chat.agent.maxRequests": 50
+      "icon": "python"
     }
+  },
+  "terminal.integrated.defaultProfile.linux": "Python (workspace .venv)"
+}

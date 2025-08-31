@@ -1,62 +1,84 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "label": "Run Backend (FastAPI)",
-            "type": "shell",
-            "command": "source .venv/bin/activate && uvicorn main:app --reload --host 0.0.0.0 --port 8000",
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "isBackground": true,
-            "problemMatcher": [],
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false,
-                "panel": "new",
-                "showReuseMessage": true,
-                "clear": false
-            }
-        },
-        {
-            "label": "Run Frontend (React)",
-            "type": "shell",
-            "command": "cd frontend && npm start",
-            "group": "build",
-            "isBackground": true,
-            "problemMatcher": [],
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false,
-                "panel": "new",
-                "showReuseMessage": true,
-                "clear": false
-            }
-        },
-        {
-            "label": "Start Both Servers",
-            "dependsOrder": "parallel",
-            "dependsOn": [
-                "Run Backend (FastAPI)",
-                "Run Frontend (React)"
-            ],
-            "group": {
-                "kind": "build",
-                "isDefault": false
-            }
-        },
-        {
-            "label": "Run Streamlit",
-            "type": "shell",
-            "command": "streamlit run ui/main_page.py",
-            "group": "build",
-            "presentation": {
-                "panel": "dedicated",
-                "clear": true
-            }
-        }
-    ]
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run backend (FastAPI)",
+      "type": "shell",
+      "command": "source .venv/bin/activate && uvicorn main:app --reload --host 0.0.0.0 --port 8000",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "new",
+        "showReuseMessage": true,
+        "clear": false
+      }
+    },
+    {
+      "label": "Run frontend (React)",
+      "type": "shell",
+      "command": "cd frontend && npm start",
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "new",
+        "showReuseMessage": true,
+        "clear": false
+      }
+    },
+    {
+      "label": "Run mobile (React Native)",
+      "type": "shell",
+      "command": "cd mobile && npm start -- --clear",
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "new",
+        "showReuseMessage": true,
+        "clear": false
+      }
+    },
+    {
+      "label": "Run backend and frontend",
+      "dependsOrder": "parallel",
+      "dependsOn": ["Run backend (FastAPI)", "Run frontend (React)"],
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      }
+    },
+    {
+      "label": "Run all (backend+frontend+mobile)",
+      "dependsOrder": "parallel",
+      "dependsOn": ["Run backend (FastAPI)", "Run frontend (React)", "Run mobile (React Native)"],
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      }
+    },
+    {
+      "label": "Run Streamlit",
+      "type": "shell",
+      "command": "streamlit run ui/main_page.py",
+      "group": "build",
+      "presentation": {
+        "panel": "dedicated",
+        "clear": true
+      }
+    }
+  ]
 }
