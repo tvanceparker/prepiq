@@ -1,9 +1,8 @@
 from decimal import Decimal
-from typing import List
+from typing import Dict, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.ingredients_repo import IngredientRepository
 from app.services.inventory_stats_service import InventoryStatsService
-from app.services.forecasting_engine import ForecastingEngine
 from app.repositories.alerts_repo import AlertRepository
 import math
 
@@ -32,8 +31,8 @@ class ReorderForecastEngine:
         self.subscription_tier = subscription_tier
         self.ingredient_repo = IngredientRepository(db, restaurant_id)
         self.stats_service = InventoryStatsService(db, restaurant_id)
-        self.forecasting_engine = ForecastingEngine(db, restaurant_id)
         self.alert_repo = AlertRepository(db,restaurant_id)
+        self._abc_cache: Dict[int, str] = {}
 
     async def calculate_safety_stock(
         self, ingredient_id: int, lead_time: int
@@ -101,7 +100,7 @@ class ReorderForecastEngine:
                 f"[MAX ORDER] Ingredient {ingredient_id}: Max Stock={max_stock}, Current Stock={current_stock}, Max Allowed Order={max_allowed}"
             )
             return max_allowed
-        print(f"[MAX ORDER] Ingredient {ingredient_id}: No max stock limit set.")
+        print(f"[MAX ORDER] Ingredient {ingredient_id}: No max stock limit set; treating as unlimited.")
         return Decimal("Infinity")
 
     async def suggest_reorder_quantity(
@@ -180,10 +179,19 @@ class ReorderForecastEngine:
         Returns:
             str: The ABC classification ('A', 'B', or 'C') of the ingredient.
         """
-        #!We still need to work on the classification of abc items
+        cached = self._abc_cache.get(ingredient_id)
+        if cached:
+            print(
+                f"[ABC CLASSIFICATION] Ingredient {ingredient_id}: Using cached classification '{cached}'"
+            )
+            return cached
+
         ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
         abc = ingredient.abc_class or "C"
-        print(f"[ABC CLASSIFICATION] Ingredient {ingredient_id}: Classified as '{abc}'")
+        self._abc_cache[ingredient_id] = abc
+        print(
+            f"[ABC CLASSIFICATION] Ingredient {ingredient_id}: Retrieved classification '{abc}' from database"
+        )
         return abc
 
     async def classify_all_ingredients(self, days: int = 90):
@@ -197,27 +205,32 @@ class ReorderForecastEngine:
         ingredients = await self.ingredient_repo.get_all()
         usage_data = []
 
+        self._abc_cache = {}
+
         for ingredient in ingredients:
             usage = await self.stats_service.get_total_usage_last_n_days(
                 ingredient.ingredient_id, days
             )
             cost = ingredient.unit_cost or Decimal("0")
             value = usage * cost
-            usage_data.append((ingredient.ingredient_id, value))
+            usage_data.append((ingredient.ingredient_id, value, ingredient.abc_class))
 
         if not usage_data:
+            print("[ABC CLASSIFICATION] No ingredients found to classify.")
             return
 
         usage_data.sort(key=lambda x: x[1], reverse=True)
-        total_value = sum(v for _, v in usage_data)
+        total_value = sum(v for _, v, _ in usage_data)
         if total_value == 0:
-            return
+            print(
+                f"[ABC CLASSIFICATION] Total consumption value is zero across last {days} days; defaulting all to 'C'."
+            )
 
         cumulative = Decimal("0")
 
-        for ingredient_id, value in usage_data:
+        for ingredient_id, value, current_class in usage_data:
             cumulative += value
-            pct = (cumulative / total_value) * Decimal("100")
+            pct = (cumulative / total_value * Decimal("100")) if total_value else Decimal("100")
             if pct <= Decimal("70"):
                 abc = "A"
             elif pct <= Decimal("90"):
@@ -225,18 +238,17 @@ class ReorderForecastEngine:
             else:
                 abc = "C"
 
-            await self.ingredient_repo.update(ingredient_id, {"abc_class": abc})
+            self._abc_cache[ingredient_id] = abc
 
-    async def generate_batch_prep_suggestions(self) -> List[dict]:
-        """
-        Placeholder for future batch preparation suggestion logic.
-
-        Returns:
-            List[dict]: Placeholder return for batch prep suggestions.
-        """
-        #! Not sure if generate batch prep suggestions would be good here, maybe in 
-        #! the forecasting engine since we are already having forecasting, and batch breakdown in there.
-        return []
+            if current_class != abc:
+                await self.ingredient_repo.update(ingredient_id, {"abc_class": abc})
+                print(
+                    f"[ABC CLASSIFICATION] Ingredient {ingredient_id}: Updated from '{current_class}' to '{abc}' (value={value}, cumulative_pct={pct})"
+                )
+            else:
+                print(
+                    f"[ABC CLASSIFICATION] Ingredient {ingredient_id}: Remains '{abc}' (value={value}, cumulative_pct={pct})"
+                )
 
     async def create_low_stock_alert(self, ingredient_id: int, current_stock: Decimal, reorder_point: Decimal):
         ingredient = await self.ingredient_repo.get_by_id(ingredient_id)

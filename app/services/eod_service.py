@@ -31,6 +31,7 @@ from decimal import Decimal
 from datetime import date, datetime, timedelta
 from collections import defaultdict
 import logging
+import contextlib
 from app.utils.logger_helpers import log_method
 from app.core.logging import logger 
 
@@ -60,9 +61,15 @@ class EODService:
         self.inventory_repo = InventoryRepository(db, restaurant_id)
         self.alert_repo = AlertRepository(db, restaurant_id)
         self.inventory_usage_log_repo = InventoryUsageLogRepository(db, restaurant_id)
-        self.forecasting_engine = ForecastingEngine(db=db, restaurant_id=restaurant_id)
-        self.reorder_engine = ReorderForecastEngine(db=db, restaurant_id=restaurant_id)
-        self.inventory_stats = InventoryStatsService(db=db, restaurant_id=restaurant_id)
+        self.forecasting_engine = ForecastingEngine(
+            db=db, restaurant_id=restaurant_id, subscription_tier=subscription_tier
+        )
+        self.reorder_engine = ReorderForecastEngine(
+            db=db, restaurant_id=restaurant_id, subscription_tier=subscription_tier
+        )
+        self.inventory_stats = InventoryStatsService(
+            db=db, restaurant_id=restaurant_id, subscription_tier=subscription_tier
+        )
         print(f'init end of day')
 
     async def process_batch_recipe_production(self, date: date) -> None:
@@ -325,15 +332,31 @@ class EODService:
             "updated_inventories_count": len(updated_inventories),
         }
 
-    async def auto_deduct_spoilage(self) -> None:
-        """Automatic deduction of spoilage, not sure whether to use a exponential or linear model for this."""
+    async def auto_deduct_spoilage(self, target_date: date) -> None:
+        """Automatic deduction of spoilage (placeholder implementation)."""
 
-    async def generate_forecast(self) -> None:
-        """Forecast menu item sales and compute ingredient demand for each based on lead time and shelf life."""
+        logger.info(
+            "[EOD] Spoilage auto-deduction placeholder executed for %s (restaurant=%s)",
+            target_date,
+            self.restaurant_id,
+        )
+
+    async def generate_forecast(
+        self,
+        forecast_horizon_days: int = 30,
+        reorder_horizon_days: int = 30,
+    ) -> Dict[int, dict]:
+        """Forecast menu item sales and compute ingredient demand for reorder planning."""
+
+        forecast_horizon_days = max(int(forecast_horizon_days or 1), 1)
+        reorder_horizon_days = max(int(reorder_horizon_days or 1), 1)
+
+        # We want to get the restaurant settings from the database which will have their preferred forecasting length needs to be implemented in settings and database too
 
         await self.forecasting_engine.initialize()
         ingredient_forecast = await self.forecasting_engine.run_forecasting_pipeline(
-            horizon_days=30, reorder_horizon_days=30
+            horizon_days=forecast_horizon_days,
+            reorder_horizon_days=reorder_horizon_days,
         )
 
         return ingredient_forecast
@@ -609,29 +632,86 @@ class EODService:
         print(f"✅ Forecast accuracy evaluated for {yesterday}")
 
     @log_method("Finalize End Of Day Summary")
-    async def finalize_end_of_day_summary(self, date: date, commit: bool = True) -> None:
+    async def finalize_end_of_day_summary(
+        self,
+        date: date,
+        commit: bool = True,
+        forecast_horizon_days: int = 30,
+        reorder_horizon_days: int = 30,
+    ) -> Dict[str, int]:
         try:
-            logger.info(f"[EOD] Running finalize_end_of_day_summary for {date} ({self.subscription_tier})")
-            # Step 2: Tier-Based Flow
+            logger.info(
+                "[EOD] Running finalize_end_of_day_summary for %s (tier=%s)",
+                date,
+                self.subscription_tier,
+            )
+
+            processed_usage = 0
+            purchase_order_count = 0
+            forecasted_ingredients = 0
+
             if self.subscription_tier == 'basic':
                 try:
                     logger.info("[EOD] Initializing Basic Forecasting Engine...")
-                    self.basic_forecasting_engine = ForecastingEngineBasic(self.db, self.restaurant_id)
+                    self.basic_forecasting_engine = ForecastingEngineBasic(
+                        self.db, self.restaurant_id
+                    )
                     await self.basic_forecasting_engine.run(date)
                 except Exception as e:
                     logger.error(f"[EOD] Error: {e}", exc_info=True)
 
             elif self.subscription_tier == 'master':
-                # your master flow...
-                pass
+                usage_summary = await self.aggregate_daily_sales(date)
+                processed_usage = len(usage_summary or [])
+
+                if usage_summary:
+                    await self.deduct_ingredients_from_inventory(usage_summary)
+
+                await self.auto_deduct_spoilage(date)
+
+                ingredient_forecast = await self.generate_forecast(
+                    forecast_horizon_days=forecast_horizon_days,
+                    reorder_horizon_days=reorder_horizon_days,
+                )
+
+                forecasted_ingredients = len(ingredient_forecast or {})
+
+                if not ingredient_forecast:
+                    logger.warning(
+                        "[EOD] Forecast returned no ingredient demand. Skipping reorder generation."
+                    )
+                else:
+                    await self.reorder_engine.classify_all_ingredients()
+
+                    purchase_suggestions = await self.generate_suggested_purchase_orders(
+                        ingredient_forecast
+                    )
+
+                    purchase_order_count = len(purchase_suggestions or [])
+
+                    if purchase_suggestions:
+                        await self.write_purchase_orders_to_db()
+                    else:
+                        logger.info(
+                            "[EOD] No purchase suggestions produced after forecasting."
+                        )
 
             else:
                 raise ValueError(f"Unknown subscription tier: {self.subscription_tier}")
 
             logger.info(f"[EOD] Summary finalized successfully for {date}")
 
+            return {
+                "usage_summary_count": processed_usage,
+                "forecasted_ingredients": forecasted_ingredients,
+                "purchase_orders_created": purchase_order_count,
+            }
+
         except Exception as e:
             logger.error(f"[EOD] Failed to finalize EOD summary for {date}: {e}", exc_info=True)
+            if commit and hasattr(self.db, "rollback"):
+                with contextlib.suppress(Exception):
+                    await self.db.rollback()
             raise
     @log_method("Check if Sales data exists")
     async def check_sales_data_exists(self, date: date) -> int:

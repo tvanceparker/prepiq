@@ -1,8 +1,8 @@
-import React, { useState } from "react";
-import useTenantInfo from "../hooks/useTenantInfo";
-import TenantModal from "./TenantModal";
-import Button from "../../../components/Button.jsx";
-import { PageHeader } from "../../../components/PageHeader";
+import React, { useState } from 'react';
+import useTenantInfo from '../hooks/useTenantInfo';
+import TenantModal from './TenantModal';
+import Button from '../../../components/Button';
+import { PageHeader } from '../../../components/PageHeader';
 import {
   Box,
   Typography,
@@ -12,21 +12,16 @@ import {
   Alert,
   Paper,
   Divider,
-  Container,
-} from "@mui/material";
-import {
-  TenantInfoResponse,
-  TenantInfoUpdateRequest,
-} from "../../../interfaces/admin";
+} from '@mui/material';
+import { TenantInfoResponse, TenantInfoUpdateRequest } from '../../../interfaces/admin';
 
-type Severity = "error" | "warning" | "info" | "success";
+type Severity = 'error' | 'warning' | 'info' | 'success';
 
 export default function TenantInfoBasic() {
   const { info, loading, error, saveTenantInfo } = useTenantInfo();
 
   const [showModal, setShowModal] = useState(false);
-  const [initialFormData, setInitialFormData] =
-    useState<TenantInfoResponse | null>(null);
+  const [initialFormData, setInitialFormData] = useState<TenantInfoResponse | null>(null);
 
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -34,8 +29,8 @@ export default function TenantInfoBasic() {
     message: string;
   }>({
     open: false,
-    severity: "success",
-    message: "",
+    severity: 'success',
+    message: '',
   });
 
   const handleSave = async (data: TenantInfoUpdateRequest) => {
@@ -51,14 +46,14 @@ export default function TenantInfoBasic() {
       setShowModal(false);
       setSnackbar({
         open: true,
-        severity: "success",
-        message: "Tenant Info updated successfully",
+        severity: 'success',
+        message: 'Tenant Info updated successfully',
       });
     } catch {
       setSnackbar({
         open: true,
-        severity: "error",
-        message: "Failed to update Tenant Info",
+        severity: 'error',
+        message: 'Failed to update Tenant Info',
       });
     }
   };
@@ -72,11 +67,9 @@ export default function TenantInfoBasic() {
 
   // Helper to format address nicely
   const formatAddress = () => {
-    if (!info) return "";
-    const parts = [info.address, info.city, info.state, info.zip_code].filter(
-      Boolean
-    );
-    return parts.join(", ");
+    if (!info) return '';
+    const parts = [info.address, info.city, info.state, info.zip_code].filter(Boolean);
+    return parts.join(', ');
   };
 
   return (
@@ -84,7 +77,7 @@ export default function TenantInfoBasic() {
       sx={{
         maxWidth: 1200,
         mt: 4,
-        mx: "auto",
+        mx: 'auto',
         px: { xs: 2, md: 4 },
         py: { xs: 4, md: 8 },
       }}
@@ -107,24 +100,21 @@ export default function TenantInfoBasic() {
 
           <Stack spacing={2}>
             {[
-              { label: "Name", value: info.name },
-              { label: "Phone", value: info.phone || "-" },
-              { label: "Email", value: info.email },
-              { label: "Address", value: formatAddress() || "-" },
+              { label: 'Name', value: info.name },
+              { label: 'Phone', value: info.phone || '-' },
+              { label: 'Email', value: info.email },
+              { label: 'Address', value: formatAddress() || '-' },
             ].map(({ label, value }) => (
               <Stack
                 key={label}
-                direction={{ xs: "column", sm: "row" }}
+                direction={{ xs: 'column', sm: 'row' }}
                 spacing={2}
-                alignItems={{ sm: "center" }}
+                alignItems={{ sm: 'center' }}
               >
-                <Typography
-                  variant="subtitle1"
-                  sx={{ width: 140, fontWeight: 600 }}
-                >
+                <Typography variant="subtitle1" sx={{ width: 140, fontWeight: 600 }}>
                   {label}:
                 </Typography>
-                <Typography variant="body1" sx={{ wordBreak: "break-word" }}>
+                <Typography variant="body1" sx={{ wordBreak: 'break-word' }}>
                   {value}
                 </Typography>
               </Stack>
@@ -133,48 +123,34 @@ export default function TenantInfoBasic() {
             <Divider sx={{ my: 2 }} />
 
             <Stack
-              direction={{ xs: "column", sm: "row" }}
+              direction={{ xs: 'column', sm: 'row' }}
               spacing={2}
-              alignItems={{ sm: "center" }}
+              alignItems={{ sm: 'center' }}
             >
-              <Typography
-                variant="subtitle1"
-                sx={{ width: 140, fontWeight: 600 }}
-              >
+              <Typography variant="subtitle1" sx={{ width: 140, fontWeight: 600 }}>
                 Subscription:
               </Typography>
               <Typography variant="body1">
                 {info.subscription_tier} - {info.subscription_status}
                 {info.expiry_date
-                  ? ` (Expires: ${new Date(
-                      info.expiry_date
-                    ).toLocaleDateString()})`
-                  : ""}
+                  ? ` (Expires: ${new Date(info.expiry_date).toLocaleDateString()})`
+                  : ''}
               </Typography>
             </Stack>
 
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={2}
-              alignItems="flex-start"
-            >
-              <Typography
-                variant="subtitle1"
-                sx={{ width: 140, fontWeight: 600, pt: 0.5 }}
-              >
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-start">
+              <Typography variant="subtitle1" sx={{ width: 140, fontWeight: 600, pt: 0.5 }}>
                 Hours:
               </Typography>
               <Typography
                 variant="body1"
-                sx={{ whiteSpace: "pre-line", fontFamily: "Roboto Mono" }}
+                sx={{ whiteSpace: 'pre-line', fontFamily: 'Roboto Mono' }}
               >
                 {info.hours_of_operation
                   .map(({ day, is_closed, open_time, close_time }) =>
-                    is_closed
-                      ? `${day}: Closed`
-                      : `${day}: ${open_time} - ${close_time}`
+                    is_closed ? `${day}: Closed` : `${day}: ${open_time} - ${close_time}`
                   )
-                  .join("\n")}
+                  .join('\n')}
               </Typography>
             </Stack>
 
@@ -199,14 +175,14 @@ export default function TenantInfoBasic() {
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
-        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert
           severity={snackbar.severity}
-          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
           variant="filled"
-          sx={{ width: "100%" }}
+          sx={{ width: '100%' }}
         >
           {snackbar.message}
         </Alert>

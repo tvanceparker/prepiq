@@ -24,17 +24,16 @@ import {
 } from '@mui/material';
 import useMediaQuery from '../hooks/useMediaQuery';
 import Button from '../../../components/Button';
-
-type AlertItem = any;
+import type { NormalizedAlert } from '../hooks/useAlertsFeed';
 
 interface Props {
-  alerts: AlertItem[];
+  alerts: NormalizedAlert[];
   loading?: boolean;
   isCardView?: boolean;
-  onFixSubmit?: (a: AlertItem, v: string) => void;
+  onFixSubmit?: (a: NormalizedAlert, v: string) => void;
   onResolve?: (id: string | number) => void;
   onAcknowledge?: (id: string | number) => void;
-  isFixable?: (a: AlertItem) => boolean;
+  isFixable?: (a: NormalizedAlert) => boolean;
   severityColors?: Record<string, string>;
 }
 
@@ -53,7 +52,7 @@ export default function AlertsFeedTableBasic({
 
   const [openTooltipId, setOpenTooltipId] = useState<string | number | null>(null);
   const [fixAnchorEl, setFixAnchorEl] = useState<HTMLElement | null>(null);
-  const [fixAlert, setFixAlert] = useState<AlertItem | null>(null);
+  const [fixAlert, setFixAlert] = useState<NormalizedAlert | null>(null);
   const [fixValue, setFixValue] = useState('');
   const inputRef = useRef<HTMLInputElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -73,7 +72,7 @@ export default function AlertsFeedTableBasic({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleFixClick = (event: React.MouseEvent, alert: AlertItem) => {
+  const handleFixClick = (event: React.MouseEvent, alert: NormalizedAlert) => {
     event.stopPropagation();
     if (fixAlert?.alert_id === alert.alert_id) {
       closeFixPopper();

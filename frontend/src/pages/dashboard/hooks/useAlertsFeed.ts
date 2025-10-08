@@ -6,10 +6,24 @@ import {
   resolveAlert,
   fixAlert,
 } from '../../../api/alerts';
+import type { AlertDto, FixAlertPayload } from '../../../interfaces/alerts';
 
-type AnyObj = Record<string, any>;
+export interface NormalizedAlert extends AlertDto {
+  created_at?: string;
+  status: string;
+  severity: string;
+  is_acknowledged: boolean;
+  employee_id?: string | number | null;
+  role?: string | null;
+}
 
-function normalizeAlert(alert: AnyObj) {
+const coerceNullableValue = (value: unknown): string | number | null => {
+  if (value == null) return null;
+  if (typeof value === 'string' || typeof value === 'number') return value;
+  return String(value);
+};
+
+function normalizeAlert(alert: AlertDto): NormalizedAlert {
   return {
     ...alert,
     created_at: alert.date_created ?? alert.created_at,
@@ -19,17 +33,24 @@ function normalizeAlert(alert: AnyObj) {
         : String(alert.status ?? '').toLowerCase(),
     is_acknowledged: alert.is_acknowledged ?? false,
     severity: alert.severity ? String(alert.severity).toLowerCase() : 'info',
+    employee_id: coerceNullableValue(alert.employee_id),
+    role:
+      alert.role == null ? null : typeof alert.role === 'string' ? alert.role : String(alert.role),
   };
 }
 
-const fixableAlertTypes = [
+const fixableAlertTypes: readonly string[] = [
   'DataQuality:NullOrZeroQuantity',
   'DataQuality:MissingChannel',
   'DataQuality:QuantityOutlier',
 ];
 
-export default function useAlertsFeed({ pageSize = 20 } = {}) {
-  const [alerts, setAlerts] = useState<AnyObj[]>([]);
+interface UseAlertsFeedOptions {
+  pageSize?: number;
+}
+
+export default function useAlertsFeed({ pageSize = 20 }: UseAlertsFeedOptions = {}) {
+  const [alerts, setAlerts] = useState<NormalizedAlert[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [skip, setSkip] = useState(0);
@@ -88,7 +109,7 @@ export default function useAlertsFeed({ pageSize = 20 } = {}) {
     }
   };
 
-  const fix = async (alertId: string | number, fixData: AnyObj) => {
+  const fix = async (alertId: string | number, fixData: FixAlertPayload) => {
     try {
       // forward to backend; backend may update data, so trigger refetch
       await fixAlert(alertId, fixData);
@@ -98,7 +119,7 @@ export default function useAlertsFeed({ pageSize = 20 } = {}) {
     }
   };
 
-  const isFixable = (alert: AnyObj) => fixableAlertTypes.includes(alert.alert_type);
+  const isFixable = (alert: AlertDto) => fixableAlertTypes.includes(alert.alert_type);
 
   return {
     alerts,

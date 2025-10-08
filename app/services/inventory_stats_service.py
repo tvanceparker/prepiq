@@ -246,7 +246,20 @@ class InventoryStatsService:
         usage_data = await self.inventory_usage_log_repo.get_daily_usage(
             ingredient_id, days
         )
-        total = sum(Decimal(usage) for _, usage in usage_data)
+
+        if usage_data:
+            total = sum(Decimal(usage) for _, usage in usage_data)
+            print(
+                f"[TOTAL USAGE] Ingredient {ingredient_id}: Using inventory logs with {len(usage_data)} samples"
+            )
+        else:
+            print(
+                f"[TOTAL USAGE FALLBACK] Ingredient {ingredient_id}: No inventory usage logs, deriving from sales"
+            )
+            usage_by_ingredient = await self.forecasting_engine.derive_ingredient_usage_from_sales(days)
+            ingredient_usage = usage_by_ingredient.get(ingredient_id, {})
+            total = sum(Decimal(value) for value in ingredient_usage.values())
+
         total = total.quantize(Decimal("0.01"))
         print(
             f"[TOTAL USAGE] Ingredient {ingredient_id}: Total usage over last {days} days = {total}"
