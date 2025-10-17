@@ -15,6 +15,181 @@ from app.repositories.batch_recipes_repo import BatchRecipeRepository
 from app.services.utils.unit_conversion import convert_unit, round_decimal
 
 class InventoryService:
+    # --- Purchase Orders ---
+    async def create_purchase_order(self, supplier_id: int, expected_delivery_date, items: list, notes: str = None) -> dict:
+        """
+        Create a new purchase order with items.
+        """
+        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
+        from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
+        from sqlalchemy import func
+        import datetime
+        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
+        poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
+        async with self.db.begin():
+            order_date = datetime.date.today()
+            po_data = {
+                "restaurant_id": self.restaurant_id,
+                "supplier_id": supplier_id,
+                "order_date": order_date,
+                "expected_delivery_date": expected_delivery_date,
+                "status": "cart",
+                "total_order_price": 0.0,
+                "notes": notes,
+            }
+            po = await po_repo.create(po_data)
+            total = 0.0
+            item_objs = []
+            for item in items:
+                item_data = {
+                    "restaurant_id": self.restaurant_id,
+                    "order_id": po.order_id,
+                    "ingredient_id": item["ingredient_id"],
+                    "ingredient_supplier_id": item.get("ingredient_supplier_id"),
+                    "quantity_ordered": item["quantity_ordered"],
+                    "unit": item["unit"],
+                    "unit_price": item["unit_price"],
+                    "total_item_price": float(item["quantity_ordered"]) * float(item["unit_price"]),
+                }
+                total += item_data["total_item_price"]
+                item_obj = await poi_repo.create(item_data)
+                item_objs.append(item_obj)
+            await po_repo.update(po.order_id, {"total_order_price": total})
+        return {"order_id": po.order_id, "total_order_price": total, "status": "cart"}
+
+    async def get_purchase_orders(self, status: str = None, supplier_id: int = None) -> list:
+        """
+        List purchase orders, optionally filter by status or supplier.
+        """
+        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
+        from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
+        from app.repositories.supplier_repo import SupplierRepository
+        from app.repositories.ingredients_repo import IngredientRepository
+        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
+        poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
+        supplier_repo = SupplierRepository(self.db, self.restaurant_id)
+        ingredient_repo = IngredientRepository(self.db, self.restaurant_id)
+        filters = {}
+        if status:
+            filters["status"] = status
+        if supplier_id:
+            filters["supplier_id"] = supplier_id
+        pos = await po_repo.get_all(filters)
+        result = []
+        for po in pos:
+            supplier = await supplier_repo.get_by_id(po.supplier_id)
+            items = await poi_repo.get_by_field("order_id", po.order_id)
+            item_dtos = []
+            for item in items:
+                ingredient = await ingredient_repo.get_by_id(item.ingredient_id)
+                item_dtos.append({
+                    "order_item_id": item.order_item_id,
+                    "order_id": item.order_id,
+                    "ingredient_id": item.ingredient_id,
+                    "ingredient_name": ingredient.name if ingredient else "Unknown",
+                    "ingredient_supplier_id": item.ingredient_supplier_id,
+                    "quantity_ordered": float(item.quantity_ordered),
+                    "unit": item.unit,
+                    "unit_price": float(item.unit_price),
+                    "total_item_price": float(item.total_item_price),
+                })
+            result.append({
+                "order_id": po.order_id,
+                "restaurant_id": po.restaurant_id,
+                "supplier_id": po.supplier_id,
+                "supplier_name": supplier.name if supplier else "Unknown",
+                "order_date": po.order_date,
+                "expected_delivery_date": po.expected_delivery_date,
+                "actual_delivery_date": po.actual_delivery_date,
+                "status": po.status,
+                "total_order_price": float(po.total_order_price),
+                "items": item_dtos,
+                "notes": getattr(po, "notes", None),
+            })
+        return result
+
+    async def get_purchase_order_detail(self, order_id: int) -> dict:
+        """
+        Get a single purchase order with items.
+        """
+        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
+        from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
+        from app.repositories.supplier_repo import SupplierRepository
+        from app.repositories.ingredients_repo import IngredientRepository
+        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
+        poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
+        supplier_repo = SupplierRepository(self.db, self.restaurant_id)
+        ingredient_repo = IngredientRepository(self.db, self.restaurant_id)
+        po = await po_repo.get_by_id(order_id)
+        if not po:
+            return None
+        supplier = await supplier_repo.get_by_id(po.supplier_id)
+        items = await poi_repo.get_by_field("order_id", po.order_id)
+        item_dtos = []
+        for item in items:
+            ingredient = await ingredient_repo.get_by_id(item.ingredient_id)
+            item_dtos.append({
+                "order_item_id": item.order_item_id,
+                "order_id": item.order_id,
+                "ingredient_id": item.ingredient_id,
+                "ingredient_name": ingredient.name if ingredient else "Unknown",
+                "ingredient_supplier_id": item.ingredient_supplier_id,
+                "quantity_ordered": float(item.quantity_ordered),
+                "unit": item.unit,
+                "unit_price": float(item.unit_price),
+                "total_item_price": float(item.total_item_price),
+            })
+        return {
+            "order_id": po.order_id,
+            "restaurant_id": po.restaurant_id,
+            "supplier_id": po.supplier_id,
+            "supplier_name": supplier.name if supplier else "Unknown",
+            "order_date": po.order_date,
+            "expected_delivery_date": po.expected_delivery_date,
+            "actual_delivery_date": po.actual_delivery_date,
+            "status": po.status,
+            "total_order_price": float(po.total_order_price),
+            "items": item_dtos,
+            "notes": getattr(po, "notes", None),
+        }
+
+    async def update_purchase_order_status(self, order_id: int, status: str) -> dict:
+        """
+        Update the status of a purchase order (cart, pending, delivered, etc).
+        """
+        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
+        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
+        await po_repo.update(order_id, {"status": status})
+        return {"order_id": order_id, "status": status}
+
+    async def add_item_to_purchase_order(self, order_id: int, item: dict) -> dict:
+        """
+        Add an item to an existing purchase order.
+        """
+        from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
+        poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
+        item_data = {
+            "restaurant_id": self.restaurant_id,
+            "order_id": order_id,
+            "ingredient_id": item["ingredient_id"],
+            "ingredient_supplier_id": item.get("ingredient_supplier_id"),
+            "quantity_ordered": item["quantity_ordered"],
+            "unit": item["unit"],
+            "unit_price": item["unit_price"],
+            "total_item_price": float(item["quantity_ordered"]) * float(item["unit_price"]),
+        }
+        obj = await poi_repo.create(item_data)
+        return {"order_item_id": obj.order_item_id}
+
+    async def remove_item_from_purchase_order(self, order_id: int, order_item_id: int) -> dict:
+        """
+        Remove an item from a purchase order.
+        """
+        from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
+        poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
+        await poi_repo.delete(order_item_id)
+        return {"order_item_id": order_item_id, "removed": True}
+
     def __init__(self, db: AsyncSession, restaurant_id: int,subscription_tier:str, employee_id: int):
         self.db = db
         self.restaurant_id = restaurant_id
@@ -32,6 +207,103 @@ class InventoryService:
         self.batch_recipe_repo = BatchRecipeRepository(db,restaurant_id)
 
         print(f"Inventory Service: restaurant {self.restaurant_id}")
+
+    async def get_ingredient_names(self) -> list:
+        """
+        Returns a list of all ingredient names and IDs for autocomplete/search.
+        """
+        ingredients = await self.ingredient_repo.get_all()
+        return [
+            {"ingredient_id": ing.ingredient_id, "ingredient_name": getattr(ing, "ingredient_name", getattr(ing, "name", "Unknown"))}
+            for ing in ingredients
+        ]
+    async def get_stock_movements(self, start_date: date, end_date: date, ingredient_id: int = None) -> list:
+        """
+        Returns a chronological list of all stock movements (inbound and outbound) for the given date range and ingredient.
+        Includes: Receipts (lots), Usage (sales, waste, batch, adjustments), Batch Production (in/out).
+        Only available for Pro/Master tiers.
+        """
+        if self.subscription_tier not in ["pro", "master"]:
+            raise Exception("Stock Movements are only available for Pro and Master tiers.")
+
+        # Get all ingredients (for name lookup)
+        ingredient_map = {ing.ingredient_id: ing.name for ing in await self.ingredient_repo.get_all()}
+
+        # 1. Inventory In: Lots (deliveries)
+        lots = await self.inventory_lot_repo.get_all()
+        lot_movements = []
+        for lot in lots:
+            if (ingredient_id and lot.ingredient_id != ingredient_id):
+                continue
+            if not (start_date <= lot.delivery_date <= end_date):
+                continue
+            lot_movements.append({
+                "date": lot.delivery_date.isoformat(),
+                "type": "Purchase",
+                "ingredient_id": lot.ingredient_id,
+                "ingredient_name": ingredient_map.get(lot.ingredient_id, "Unknown"),
+                "quantity": float(lot.total_received),
+                "unit": lot.unit,
+                "source_or_destination": None,  # Could add supplier name if needed
+                "lot_id": lot.lot_id,
+                "notes": None,
+            })
+
+        # 2. Inventory Out: Usage Logs (sales, waste, batch, adjustments)
+        usage_logs = await self.inventory_usage_log_repo.get_all()
+        usage_movements = []
+        for log in usage_logs:
+            if (ingredient_id and log.ingredient_id != ingredient_id):
+                continue
+            if not (start_date <= log.used_date.date() <= end_date):
+                continue
+            usage_movements.append({
+                "date": log.used_date.isoformat(),
+                "type": log.usage_type.replace("_", " ").title(),
+                "ingredient_id": log.ingredient_id,
+                "ingredient_name": ingredient_map.get(log.ingredient_id, "Unknown"),
+                "quantity": float(log.used_quantity) * -1,  # Outbound is negative
+                "unit": log.unit,
+                "source_or_destination": None,  # Could add reference info
+                "lot_id": log.lot_id,
+                "notes": log.notes,
+            })
+
+        # 3. Inventory In: Batch Output (when a batch recipe is produced, it creates inventory)
+        # (Assume batch output is logged as a positive adjustment in usage logs with usage_type='batch_output')
+        batch_output_movements = [
+            {
+                "date": log.used_date.isoformat(),
+                "type": "Batch Output",
+                "ingredient_id": log.ingredient_id,
+                "ingredient_name": ingredient_map.get(log.ingredient_id, "Unknown"),
+                "quantity": float(log.used_quantity),
+                "unit": log.unit,
+                "source_or_destination": None,
+                "lot_id": log.lot_id,
+                "notes": log.notes,
+            }
+            for log in usage_logs
+            if log.usage_type == "batch_output"
+            and (not ingredient_id or log.ingredient_id == ingredient_id)
+            and (start_date <= log.used_date.date() <= end_date)
+        ]
+
+        # Combine all movements
+        all_movements = lot_movements + usage_movements + batch_output_movements
+        all_movements.sort(key=lambda x: ((x["ingredient_id"] if x["ingredient_id"] is not None else -1), x["date"]))
+
+        # Calculate running balance per ingredient
+        running_balances = {}
+        for move in all_movements:
+            ing_id = move["ingredient_id"]
+            prev = running_balances.get(ing_id, 0)
+            running_balances[ing_id] = prev + move["quantity"]
+            move["running_balance"] = running_balances[ing_id]
+
+    # Filter out any movement with ingredient_id == None (invalid for DTO)
+        all_movements = [m for m in all_movements if m["ingredient_id"] is not None]
+        return all_movements
     async def get_lot_info(self, lot_id: int) -> dict:
         # Get lot details
         lot = await self.inventory_lot_repo.get_by_id(lot_id)

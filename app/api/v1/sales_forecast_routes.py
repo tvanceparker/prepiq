@@ -6,7 +6,8 @@ from app.schemas.sales_forecast_dto import (
     SalesBreakdownItem, SalesOverTimeItem, TopBottomItem,ForecastAccuracyChartRow,
     ForecastAccuracyTableRow,ComputedForecastAccuracyRow, SalesChannelBreakdown,
     SalesOverTimeByItem, WeekdaySalesAverage, SalesHeatmapData, SalesExplorerFilters, SalesExplorerRow,
-    SaleUpdateDTO, StandardResponse, SaleCreateDTO, SaleReadDTO
+    SaleUpdateDTO, StandardResponse, SaleCreateDTO, SaleReadDTO,
+    SalesBreakdownProItem, SalesOverTimeProItem, TopBottomProItem
 )
 from app.services.sales_forecast_service import SalesForecastService
 from app.api.dependencies import get_sales_forecast_service
@@ -223,3 +224,63 @@ async def create_sale(
         return StandardResponse(success=True, message="Sale created", data=sale)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============================================================================
+# PRO TIER: Menu Mix Insights with Cost Analysis
+# ============================================================================
+
+@router.get("/sales_breakdown_pro", response_model=List[SalesBreakdownProItem])
+@log_route("Get Sales Breakdown (Pro)")
+async def sales_breakdown_pro(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    by_revenue: bool = Query(False),
+    service: SalesForecastService = Depends(get_sales_forecast_service),
+):
+    """
+    Pro tier sales breakdown including recipe costs, margins, and profitability metrics.
+    Requires Pro or Master subscription tier.
+    """
+    if service.subscription_tier not in ["pro", "master"]:
+        raise HTTPException(status_code=403, detail="Pro or Master tier required")
+    
+    return await service.get_sales_breakdown_pro(start_date, end_date, by_revenue)
+
+
+@router.get("/sales_over_time_pro", response_model=List[SalesOverTimeProItem])
+@log_route("Get Sales Over Time (Pro)")
+async def sales_over_time_pro(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    by_revenue: bool = Query(False),
+    service: SalesForecastService = Depends(get_sales_forecast_service),
+):
+    """
+    Pro tier sales over time with cost and profitability analysis.
+    Requires Pro or Master subscription tier.
+    """
+    if service.subscription_tier not in ["pro", "master"]:
+        raise HTTPException(status_code=403, detail="Pro or Master tier required")
+    
+    return await service.get_sales_over_time_pro(start_date, end_date, by_revenue)
+
+
+@router.get("/top_bottom_items_pro", response_model=List[TopBottomProItem])
+@log_route("Get Top/Bottom Items (Pro)")
+async def top_bottom_items_pro(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    by_revenue: bool = Query(False),
+    top: bool = Query(True),
+    count: int = Query(10, ge=1, le=20),
+    service: SalesForecastService = Depends(get_sales_forecast_service),
+):
+    """
+    Pro tier top/bottom performers with profitability analysis.
+    Requires Pro or Master subscription tier.
+    """
+    if service.subscription_tier not in ["pro", "master"]:
+        raise HTTPException(status_code=403, detail="Pro or Master tier required")
+    
+    return await service.get_top_bottom_items_pro(start_date, end_date, by_revenue, top, count)

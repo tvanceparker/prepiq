@@ -9,6 +9,18 @@ body,
   background-color: transparent;
 }
 
+/* Stock movement row backgrounds for light/dark mode */
+:root {
+  --stock-move-in-bg: rgba(76, 175, 80, 0.08); /* green tint for in */
+  --stock-move-out-bg: rgba(255, 77, 77, 0.08); /* red tint for out */
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --stock-move-in-bg: rgba(76, 175, 80, 0.18);
+    --stock-move-out-bg: rgba(255, 77, 77, 0.18);
+  }
+}
+
 /* Ensure body inherits MUI theme background via CssBaseline */
 body {
   margin: 0;

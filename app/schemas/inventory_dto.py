@@ -1,10 +1,47 @@
-# app/schemas/inventory_dto.py
-
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from typing import Optional, List, Union
 from datetime import date, datetime
 from decimal import Decimal
+class PurchaseOrderItemDTO(BaseModel):
+    order_item_id: int
+    order_id: int
+    ingredient_id: int
+    ingredient_name: str
+    ingredient_supplier_id: Optional[int]
+    quantity_ordered: float
+    unit: str
+    unit_price: float
+    total_item_price: float
+
+class PurchaseOrderCreateItemDTO(BaseModel):
+    ingredient_id: int
+    ingredient_supplier_id: Optional[int]
+    quantity_ordered: float
+    unit: str
+    unit_price: float
+    notes: Optional[str] = None
+
+class PurchaseOrderCreateDTO(BaseModel):
+    supplier_id: int
+    expected_delivery_date: Optional[date]
+    items: List[PurchaseOrderCreateItemDTO]
+    notes: Optional[str] = None
+
+class PurchaseOrderDTO(BaseModel):
+    order_id: int
+    restaurant_id: int
+    supplier_id: int
+    supplier_name: str
+    order_date: date
+    expected_delivery_date: Optional[date]
+    actual_delivery_date: Optional[date]
+    status: str
+    total_order_price: float
+    items: List[PurchaseOrderItemDTO]
+    notes: Optional[str] = None
+# app/schemas/inventory_dto.py
+
 
 
 class InventoryBase(BaseModel):
@@ -134,6 +171,18 @@ class IngredientOut(BaseModel):
     supplier_priority: Optional[int]
     pack_size: Optional[str]  # Because pack_size might sometimes be None or a string
     quantity_per_pack_item: float
+class StockMovementItem(BaseModel):
+    date: str  # ISO date string
+    type: str  # e.g. 'Purchase', 'Sale', 'Waste', 'Batch Production', 'Adjustment'
+    ingredient_id: int
+    ingredient_name: str
+    quantity: float
+    unit: str
+    source_or_destination: Optional[str] = None
+    lot_id: Optional[int] = None
+    notes: Optional[str] = None
+    running_balance: Optional[float] = None
+
 class SupplierOut(BaseModel):
     supplier_id: int
     name: str

@@ -159,3 +159,50 @@ class SaleReadDTO(BaseModel):
     sales_channel: Optional[str]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ============================================================================
+# PRO TIER: Menu Mix Insights with Cost Analysis
+# ============================================================================
+
+class SalesBreakdownProItem(BaseModel):
+    """Pro tier sales breakdown with cost analysis"""
+    menu_item_id: int
+    menu_item_name: str
+    category: Optional[str]
+    sales_channel: Optional[str]
+    quantity_sold: int
+    revenue: float
+    recipe_cost: float
+    total_cost: float
+    contribution_margin: float
+    gross_margin_pct: float
+    food_cost_pct: float
+    metric: float
+    percent_of_total: float
+
+
+class SalesOverTimeProItem(BaseModel):
+    """Pro tier sales over time with profitability"""
+    sale_date: date
+    menu_item_id: int
+    menu_item_name: str
+    quantity: int
+    revenue: float
+    cost: float
+    contribution_margin: float
+    metric: float
+
+
+class TopBottomProItem(BaseModel):
+    """Pro tier top/bottom items with profitability"""
+    menu_item_id: int
+    menu_item_name: str
+    quantity_sold: int
+    revenue: float
+    recipe_cost: float
+    total_cost: float
+    contribution_margin: float
+    gross_margin_pct: float
+    food_cost_pct: float
+    metric: float

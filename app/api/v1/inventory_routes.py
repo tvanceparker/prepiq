@@ -1,3 +1,4 @@
+
 # app/api/v1/inventory_routes.py
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -11,10 +12,111 @@ from app.schemas.inventory_dto import (
     SupplierOut,
     InventoryLotIn,
 )
+from app.schemas.inventory_dto import StockMovementItem, PurchaseOrderDTO, PurchaseOrderCreateDTO
 from typing import Dict, List
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
+# --- Purchase Orders ---
+@router.post("/purchase_orders", response_model=dict)
+async def create_purchase_order(
+    po: PurchaseOrderCreateDTO,
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Create a new purchase order with items.
+    """
+    return await inventory_service.create_purchase_order(
+        supplier_id=po.supplier_id,
+        expected_delivery_date=po.expected_delivery_date,
+        items=[item.dict() for item in po.items],
+        notes=po.notes,
+    )
 
+@router.get("/purchase_orders", response_model=List[PurchaseOrderDTO])
+async def list_purchase_orders(
+    status: str = Query(None),
+    supplier_id: int = Query(None),
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    List purchase orders, optionally filter by status or supplier.
+    """
+    return await inventory_service.get_purchase_orders(status=status, supplier_id=supplier_id)
+
+@router.get("/purchase_orders/{order_id}", response_model=PurchaseOrderDTO)
+async def get_purchase_order_detail(
+    order_id: int,
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Get a single purchase order with items.
+    """
+    result = await inventory_service.get_purchase_order_detail(order_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    return result
+
+@router.patch("/purchase_orders/{order_id}/status", response_model=dict)
+async def update_purchase_order_status(
+    order_id: int,
+    status: str,
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Update the status of a purchase order (cart, pending, delivered, etc).
+    """
+    return await inventory_service.update_purchase_order_status(order_id, status)
+
+@router.post("/purchase_orders/{order_id}/items", response_model=dict)
+async def add_item_to_purchase_order(
+    order_id: int,
+    item: dict,
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Add an item to an existing purchase order.
+    """
+    return await inventory_service.add_item_to_purchase_order(order_id, item)
+
+@router.delete("/purchase_orders/{order_id}/items/{order_item_id}", response_model=dict)
+async def remove_item_from_purchase_order(
+    order_id: int,
+    order_item_id: int,
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Remove an item from a purchase order.
+    """
+    return await inventory_service.remove_item_from_purchase_order(order_id, order_item_id)
+
+# Ingredient names for autocomplete/search
+@router.get("/ingredient_names")
+async def get_ingredient_names(
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Get all ingredient names and IDs for autocomplete/search.
+    """
+    return await inventory_service.get_ingredient_names()
+
+@router.get("/stock_movements", response_model=List[StockMovementItem])
+async def get_stock_movements(
+    start_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    end_date: str = Query(..., description="End date (YYYY-MM-DD)"),
+    ingredient_id: int = Query(None, description="Ingredient ID (optional)"),
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Get all stock movements (inbound/outbound) for the given date range and ingredient.
+    Only available for Pro/Master tiers.
+    """
+    try:
+        from datetime import datetime
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        return await inventory_service.get_stock_movements(start, end, ingredient_id)
+    except Exception as e:
+        raise HTTPException(status_code=403, detail=str(e))
 
 @router.get("/ingredient-suppliers")
 async def view_ingredient_suppliers(

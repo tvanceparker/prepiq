@@ -8,6 +8,12 @@ from app.repositories.daily_forecast_accuracy_repo import (
     DailyForecastAccuracyRepository,
 )
 from app.repositories.activity_logs_repo import ActivityLogRepository
+from app.repositories.menu_item_recipes_repo import MenuItemRecipeRepository
+from app.repositories.recipe_ingredients_repo import RecipeIngredientRepository
+from app.repositories.ingredients_repo import IngredientRepository
+from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
+from app.repositories.purchase_orders_repo import PurchaseOrderRepository
+from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
 from app.schemas.sales_forecast_dto import SaleUpdateDTO, SaleCreateDTO
 from typing import List, Dict, Optional, Literal, Any
 from datetime import datetime, date, timedelta
@@ -34,6 +40,14 @@ class SalesForecastService:
             db, restaurant_id
         )
         self.activity_log_repo = ActivityLogRepository(db,restaurant_id,employee_id)
+        
+        # Pro/Master tier repositories
+        self.menu_item_recipes_repo = MenuItemRecipeRepository(db, restaurant_id)
+        self.recipe_ingredients_repo = RecipeIngredientRepository(db, restaurant_id)
+        self.ingredients_repo = IngredientRepository(db, restaurant_id)
+        self.ingredient_supplier_repo = IngredientSupplierRepository(db, restaurant_id)
+        self.purchase_orders_repo = PurchaseOrderRepository(db, restaurant_id)
+        self.purchase_order_items_repo = PurchaseOrderItemRepository(db, restaurant_id)
 
     async def log_activity(self, action: str, details: Any = None):
         """
@@ -637,3 +651,264 @@ class SalesForecastService:
     async def create_sale(self, dto: SaleCreateDTO):
         dto.restaurant_id = self.restaurant_id
         return await self.sale_repo.create(dto)
+
+    # ============================================================================
+    # PRO TIER: MENU MIX INSIGHTS WITH COST ANALYSIS
+    # ============================================================================
+
+    @log_method("Calculate Recipe Cost (Pro)")
+    async def calculate_recipe_cost(self, menu_item_id: int) -> Decimal:
+        """
+        Calculate total ingredient cost for a menu item by summing costs of all
+        recipe ingredients. Uses most recent purchase order prices.
+        """
+        # Get all recipes linked to this menu item
+        recipe_ids = await self.menu_item_recipes_repo.get_recipe_ids_for_menu_item(menu_item_id)
+        
+        if not recipe_ids:
+            return Decimal("0.00")
+        
+        total_cost = Decimal("0.00")
+        
+        for recipe_id in recipe_ids:
+            # Get all ingredients in this recipe
+            recipe_ingredients = await self.recipe_ingredients_repo.get_by_recipe_id(recipe_id)
+            
+            for ri in recipe_ingredients:
+                if ri.ingredient_type != "ingredient":
+                    continue  # Skip batch recipes for now (Pro tier)
+                
+                ingredient_id = ri.reference_id
+                quantity_used = Decimal(str(ri.quantity_used))
+                
+                # Get most recent cost from ingredient_supplier (preferred supplier)
+                ingredient_suppliers = await self.ingredient_supplier_repo.get_by_ingredient_id(ingredient_id)
+                
+                # Prefer the preferred supplier, else use first
+                ingredient_cost_per_unit = Decimal("0.00")
+                for ing_supp in ingredient_suppliers:
+                    if ing_supp.preferred:
+                        ingredient_cost_per_unit = Decimal(str(ing_supp.cost_per_unit))
+                        break
+                
+                if ingredient_cost_per_unit == Decimal("0.00") and ingredient_suppliers:
+                    ingredient_cost_per_unit = Decimal(str(ingredient_suppliers[0].cost_per_unit))
+                
+                total_cost += quantity_used * ingredient_cost_per_unit
+        
+        return total_cost
+
+    @log_method("Get Sales Breakdown with Cost Analysis (Pro)")
+    async def get_sales_breakdown_pro(
+        self, start_date: date, end_date: date, by_revenue=False
+    ) -> List[Dict[str, Any]]:
+        """
+        Enhanced sales breakdown for Pro tier including:
+        - Recipe cost
+        - Gross margin %
+        - Contribution margin ($)
+        - Food cost %
+        """
+        sales = await self.sale_repo.get_sales_between_dates(start_date, end_date)
+        
+        menu_item_ids = list({s.menu_item_id for s in sales})
+        menu_items = await self.menu_repo.get_by_ids(menu_item_ids)
+        menu_lookup = {item.menu_item_id: item for item in menu_items if getattr(item, "is_active", True)}
+        
+        # Calculate costs for all menu items (cache them)
+        cost_cache = {}
+        for menu_item_id in menu_item_ids:
+            cost_cache[menu_item_id] = await self.calculate_recipe_cost(menu_item_id)
+        
+        # Group by item+channel
+        grouped = defaultdict(lambda: defaultdict(lambda: {
+            "quantity": 0,
+            "revenue": Decimal("0.00"),
+            "cost": Decimal("0.00")
+        }))
+        
+        for sale in sales:
+            item = menu_lookup.get(sale.menu_item_id)
+            if not item:
+                continue
+            
+            price = Decimal(str(item.price))
+            recipe_cost = cost_cache.get(sale.menu_item_id, Decimal("0.00"))
+            quantity = sale.quantity_sold
+            
+            grouped[sale.menu_item_id][sale.sales_channel]["quantity"] += quantity
+            grouped[sale.menu_item_id][sale.sales_channel]["revenue"] += quantity * price
+            grouped[sale.menu_item_id][sale.sales_channel]["cost"] += quantity * recipe_cost
+        
+        # Calculate total for percentage
+        total_metric = sum(
+            sum(channels[ch]["revenue" if by_revenue else "quantity"] for ch in channels)
+            for channels in grouped.values()
+        ) or 1
+        
+        results = []
+        for menu_item_id, channels in grouped.items():
+            item = menu_lookup[menu_item_id]
+            item_price = Decimal(str(item.price))
+            recipe_cost = cost_cache.get(menu_item_id, Decimal("0.00"))
+            
+            for channel, data in channels.items():
+                quantity = data["quantity"]
+                revenue = float(data["revenue"])
+                total_cost = float(data["cost"])
+                
+                metric = revenue if by_revenue else quantity
+                contribution_margin = revenue - total_cost
+                gross_margin_pct = ((item_price - recipe_cost) / item_price * 100) if item_price > 0 else 0
+                food_cost_pct = (recipe_cost / item_price * 100) if item_price > 0 else 0
+                
+                results.append({
+                    "menu_item_id": menu_item_id,
+                    "menu_item_name": item.name,
+                    "category": item.category,
+                    "sales_channel": channel,
+                    "quantity_sold": quantity,
+                    "revenue": round(revenue, 2),
+                    "recipe_cost": round(float(recipe_cost), 2),
+                    "total_cost": round(total_cost, 2),
+                    "contribution_margin": round(contribution_margin, 2),
+                    "gross_margin_pct": round(float(gross_margin_pct), 2),
+                    "food_cost_pct": round(float(food_cost_pct), 2),
+                    "metric": round(metric, 2),
+                    "percent_of_total": round(metric / total_metric * 100, 2),
+                })
+        
+        return results
+
+    @log_method("Get Sales Over Time with Profitability (Pro)")
+    async def get_sales_over_time_pro(
+        self, start_date: date, end_date: date, by_revenue=False
+    ) -> List[Dict[str, Any]]:
+        """
+        Sales over time with cost and profitability metrics for Pro tier.
+        """
+        sales = await self.sale_repo.get_sales_between_dates(start_date, end_date)
+        
+        menu_item_ids = list({s.menu_item_id for s in sales})
+        menu_items = await self.menu_repo.get_by_ids(menu_item_ids)
+        menu_lookup = {item.menu_item_id: item for item in menu_items if getattr(item, "is_active", True)}
+        
+        # Calculate costs
+        cost_cache = {}
+        for menu_item_id in menu_item_ids:
+            cost_cache[menu_item_id] = await self.calculate_recipe_cost(menu_item_id)
+        
+        grouped = defaultdict(lambda: defaultdict(lambda: {
+            "quantity": 0,
+            "revenue": Decimal("0.00"),
+            "cost": Decimal("0.00")
+        }))
+        
+        for sale in sales:
+            item = menu_lookup.get(sale.menu_item_id)
+            if not item:
+                continue
+            
+            price = Decimal(str(item.price))
+            recipe_cost = cost_cache.get(sale.menu_item_id, Decimal("0.00"))
+            quantity = sale.quantity_sold
+            date_key = sale.sale_timestamp.date()
+            
+            grouped[date_key][sale.menu_item_id]["quantity"] += quantity
+            grouped[date_key][sale.menu_item_id]["revenue"] += quantity * price
+            grouped[date_key][sale.menu_item_id]["cost"] += quantity * recipe_cost
+        
+        results = []
+        for sale_date, items in grouped.items():
+            for menu_item_id, data in items.items():
+                item = menu_lookup[menu_item_id]
+                quantity = data["quantity"]
+                revenue = float(data["revenue"])
+                total_cost = float(data["cost"])
+                contribution_margin = revenue - total_cost
+                
+                results.append({
+                    "sale_date": sale_date,
+                    "menu_item_id": menu_item_id,
+                    "menu_item_name": item.name,
+                    "quantity": quantity,
+                    "revenue": round(revenue, 2),
+                    "cost": round(total_cost, 2),
+                    "contribution_margin": round(contribution_margin, 2),
+                    "metric": round(revenue if by_revenue else quantity, 2),
+                })
+        
+        return results
+
+    @log_method("Get Top/Bottom Items with Profitability (Pro)")
+    async def get_top_bottom_items_pro(
+        self, start_date: date, end_date: date, by_revenue=False, top=True, count=10
+    ) -> List[Dict[str, Any]]:
+        """
+        Top/bottom performers with profitability analysis for Pro tier.
+        """
+        sales = await self.sale_repo.get_sales_between_dates(start_date, end_date)
+        
+        menu_item_ids = list({s.menu_item_id for s in sales})
+        menu_items = await self.menu_repo.get_by_ids(menu_item_ids)
+        menu_lookup = {item.menu_item_id: item for item in menu_items if getattr(item, "is_active", True)}
+        
+        # Calculate costs
+        cost_cache = {}
+        for menu_item_id in menu_item_ids:
+            cost_cache[menu_item_id] = await self.calculate_recipe_cost(menu_item_id)
+        
+        metrics = defaultdict(lambda: {
+            "quantity": 0,
+            "revenue": Decimal("0.00"),
+            "cost": Decimal("0.00")
+        })
+        
+        for sale in sales:
+            item = menu_lookup.get(sale.menu_item_id)
+            if not item:
+                continue
+            
+            price = Decimal(str(item.price))
+            recipe_cost = cost_cache.get(sale.menu_item_id, Decimal("0.00"))
+            quantity = sale.quantity_sold
+            
+            metrics[sale.menu_item_id]["quantity"] += quantity
+            metrics[sale.menu_item_id]["revenue"] += quantity * price
+            metrics[sale.menu_item_id]["cost"] += quantity * recipe_cost
+        
+        # Sort by chosen metric
+        sorted_items = sorted(
+            metrics.items(),
+            key=lambda x: float(x[1]["revenue" if by_revenue else "quantity"]),
+            reverse=top
+        )[:count]
+        
+        results = []
+        for menu_item_id, data in sorted_items:
+            item = menu_lookup[menu_item_id]
+            recipe_cost = cost_cache.get(menu_item_id, Decimal("0.00"))
+            item_price = Decimal(str(item.price))
+            
+            quantity = data["quantity"]
+            revenue = float(data["revenue"])
+            total_cost = float(data["cost"])
+            contribution_margin = revenue - total_cost
+            
+            gross_margin_pct = ((item_price - recipe_cost) / item_price * 100) if item_price > 0 else 0
+            food_cost_pct = (recipe_cost / item_price * 100) if item_price > 0 else 0
+            
+            results.append({
+                "menu_item_id": menu_item_id,
+                "menu_item_name": item.name,
+                "quantity_sold": quantity,
+                "revenue": round(revenue, 2),
+                "recipe_cost": round(float(recipe_cost), 2),
+                "total_cost": round(total_cost, 2),
+                "contribution_margin": round(contribution_margin, 2),
+                "gross_margin_pct": round(float(gross_margin_pct), 2),
+                "food_cost_pct": round(float(food_cost_pct), 2),
+                "metric": round(revenue if by_revenue else quantity, 2),
+            })
+        
+        return results
