@@ -137,7 +137,7 @@ const PurchaseOrdersPage: React.FC = () => {
       <PurchaseOrderModal
         open={showNewDialog}
         onClose={() => setShowNewDialog(false)}
-        onSubmit={async (po) => {
+        onSubmit={async po => {
           setLoading(true);
           try {
             await createPurchaseOrder(po);

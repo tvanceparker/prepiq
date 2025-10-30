@@ -247,10 +247,6 @@ class PrepService:
 
         return deducted_ingredients
 
-
-
-    
-
         return response
 
     async def get_prep_schedule(self, prep_date: Optional[date] = None) -> List[Dict]:

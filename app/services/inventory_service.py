@@ -4,6 +4,7 @@ from typing import List, Union
 from decimal import Decimal
 from datetime import date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, and_
 from app.repositories.inventory_repo import InventoryRepository
 from app.repositories.inventory_lot_repo import InventoryLotRepository
 from app.repositories.supplier_repo import SupplierRepository
@@ -220,89 +221,186 @@ class InventoryService:
     async def get_stock_movements(self, start_date: date, end_date: date, ingredient_id: int = None) -> list:
         """
         Returns a chronological list of all stock movements (inbound and outbound) for the given date range and ingredient.
-        Includes: Receipts (lots), Usage (sales, waste, batch, adjustments), Batch Production (in/out).
+        Includes: 
+        - Receipts (lots/deliveries) - inventory IN
+        - Usage (sales, waste, spoilage, adjustments) - inventory OUT
+        - Batch Production - ingredients OUT, batch recipe product IN
         Only available for Pro/Master tiers.
         """
         if self.subscription_tier not in ["pro", "master"]:
             raise Exception("Stock Movements are only available for Pro and Master tiers.")
 
-        # Get all ingredients (for name lookup)
-        ingredient_map = {ing.ingredient_id: ing.name for ing in await self.ingredient_repo.get_all()}
+        # Get all ingredients and batch recipes for name lookup
+        ingredients = await self.ingredient_repo.get_all()
+        ingredient_map = {ing.ingredient_id: ing.name for ing in ingredients}
+        
+        batch_recipes = await self.batch_recipe_repo.get_all()
+        batch_recipe_map = {br.batch_recipe_id: br.name for br in batch_recipes}
 
-        # 1. Inventory In: Lots (deliveries)
-        lots = await self.inventory_lot_repo.get_all()
-        lot_movements = []
+        all_movements = []
+
+        # 1. INVENTORY IN: Lots (deliveries/purchases)
+        from sqlalchemy import and_
+        from app.db.models.inventory_lot_orm import InventoryLot
+        
+        lot_query = select(InventoryLot).where(
+            and_(
+                InventoryLot.restaurant_id == self.restaurant_id,
+                InventoryLot.delivery_date >= start_date,
+                InventoryLot.delivery_date <= end_date
+            )
+        )
+        
+        if ingredient_id:
+            lot_query = lot_query.where(InventoryLot.ingredient_id == ingredient_id)
+            
+        lot_result = await self.db.execute(lot_query)
+        lots = lot_result.scalars().all()
+        
         for lot in lots:
-            if (ingredient_id and lot.ingredient_id != ingredient_id):
-                continue
-            if not (start_date <= lot.delivery_date <= end_date):
-                continue
-            lot_movements.append({
+            # Determine if this is a batch recipe lot or regular ingredient lot
+            is_batch = lot.batch_recipe_id is not None
+            item_name = batch_recipe_map.get(lot.batch_recipe_id, "Unknown Batch") if is_batch else ingredient_map.get(lot.ingredient_id, "Unknown")
+            
+            # Get supplier name if available
+            supplier_name = None
+            if lot.ingredient_supplier_id:
+                supplier = await self.ingredient_supplier_repo.get_by_id(lot.ingredient_supplier_id)
+                if supplier:
+                    supplier_obj = await self.supplier_repo.get_by_id(supplier.supplier_id)
+                    supplier_name = supplier_obj.name if supplier_obj else None
+            
+            all_movements.append({
                 "date": lot.delivery_date.isoformat(),
-                "type": "Purchase",
-                "ingredient_id": lot.ingredient_id,
-                "ingredient_name": ingredient_map.get(lot.ingredient_id, "Unknown"),
-                "quantity": float(lot.total_received),
+                "type": "Batch Production" if is_batch else "Purchase",
+                "ingredient_id": lot.ingredient_id if lot.ingredient_id else lot.batch_recipe_id,
+                "ingredient_name": item_name,
+                "quantity": float(lot.total_received if lot.total_received else lot.quantity),
                 "unit": lot.unit,
-                "source_or_destination": None,  # Could add supplier name if needed
+                "source_or_destination": supplier_name if supplier_name else ("Production" if is_batch else None),
                 "lot_id": lot.lot_id,
-                "notes": None,
+                "notes": f"Batch: {item_name}" if is_batch else None,
             })
 
-        # 2. Inventory Out: Usage Logs (sales, waste, batch, adjustments)
-        usage_logs = await self.inventory_usage_log_repo.get_all()
-        usage_movements = []
+        # 2. INVENTORY OUT: Usage Logs (sales, waste, batch production input, etc.)
+        from app.db.models.inventory_usage_log_orm import InventoryUsageLog
+        
+        usage_query = select(InventoryUsageLog).where(
+            and_(
+                InventoryUsageLog.restaurant_id == self.restaurant_id,
+                func.date(InventoryUsageLog.used_date) >= start_date,
+                func.date(InventoryUsageLog.used_date) <= end_date
+            )
+        )
+        
+        if ingredient_id:
+            usage_query = usage_query.where(InventoryUsageLog.ingredient_id == ingredient_id)
+            
+        usage_result = await self.db.execute(usage_query)
+        usage_logs = usage_result.scalars().all()
+        
         for log in usage_logs:
-            if (ingredient_id and log.ingredient_id != ingredient_id):
-                continue
-            if not (start_date <= log.used_date.date() <= end_date):
-                continue
-            usage_movements.append({
+            # Determine movement type and quantity sign
+            usage_type = log.usage_type.value if hasattr(log.usage_type, 'value') else str(log.usage_type)
+            
+            # batch_output creates inventory (positive), everything else reduces inventory (negative)
+            if usage_type == "batch_output":
+                quantity = float(log.used_quantity)
+                movement_type = "Batch Production"
+                source_dest = "Production"
+            elif usage_type == "batch_production":
+                # This is an ingredient being consumed to make a batch
+                quantity = float(log.used_quantity) * -1
+                movement_type = "Batch Production (Ingredient Used)"
+                source_dest = f"Batch #{log.reference_id}" if log.reference_id else "Production"
+            elif usage_type == "sale":
+                quantity = float(log.used_quantity) * -1
+                movement_type = "Sale"
+                source_dest = f"Order #{log.reference_id}" if log.reference_id else "POS"
+            elif usage_type == "waste":
+                quantity = float(log.used_quantity) * -1
+                movement_type = "Waste"
+                source_dest = "Waste Log"
+            elif usage_type == "spoilage":
+                quantity = float(log.used_quantity) * -1
+                movement_type = "Spoilage"
+                source_dest = "Expired"
+            elif usage_type == "manual_adjustment":
+                # Could be positive or negative - assume the sign in used_quantity is correct
+                quantity = float(log.used_quantity)
+                movement_type = "Manual Adjustment"
+                source_dest = "Manual Entry"
+            else:
+                # Default for unknown types
+                quantity = float(log.used_quantity) * -1
+                movement_type = usage_type.replace("_", " ").title()
+                source_dest = None
+            
+            all_movements.append({
                 "date": log.used_date.isoformat(),
-                "type": log.usage_type.replace("_", " ").title(),
+                "type": movement_type,
                 "ingredient_id": log.ingredient_id,
                 "ingredient_name": ingredient_map.get(log.ingredient_id, "Unknown"),
-                "quantity": float(log.used_quantity) * -1,  # Outbound is negative
+                "quantity": quantity,
                 "unit": log.unit,
-                "source_or_destination": None,  # Could add reference info
+                "source_or_destination": source_dest,
                 "lot_id": log.lot_id,
                 "notes": log.notes,
             })
 
-        # 3. Inventory In: Batch Output (when a batch recipe is produced, it creates inventory)
-        # (Assume batch output is logged as a positive adjustment in usage logs with usage_type='batch_output')
-        batch_output_movements = [
-            {
-                "date": log.used_date.isoformat(),
-                "type": "Batch Output",
-                "ingredient_id": log.ingredient_id,
-                "ingredient_name": ingredient_map.get(log.ingredient_id, "Unknown"),
-                "quantity": float(log.used_quantity),
-                "unit": log.unit,
-                "source_or_destination": None,
-                "lot_id": log.lot_id,
-                "notes": log.notes,
-            }
-            for log in usage_logs
-            if log.usage_type == "batch_output"
-            and (not ingredient_id or log.ingredient_id == ingredient_id)
-            and (start_date <= log.used_date.date() <= end_date)
-        ]
-
-        # Combine all movements
-        all_movements = lot_movements + usage_movements + batch_output_movements
-        all_movements.sort(key=lambda x: ((x["ingredient_id"] if x["ingredient_id"] is not None else -1), x["date"]))
+        # Sort by ingredient_id (for grouping) and then by date
+        all_movements.sort(key=lambda x: (
+            x["ingredient_id"] if x["ingredient_id"] is not None else -1, 
+            x["date"]
+        ))
 
         # Calculate running balance per ingredient
-        running_balances = {}
+        # First, get starting balance for each ingredient before start_date
+        starting_balances = {}
+        
+        if ingredient_id:
+            # If filtering by specific ingredient, get its current inventory
+            inventory = await self.inventory_repo.get_by_field("ingredient_id", ingredient_id)
+            if inventory:
+                inv_item = inventory[0] if isinstance(inventory, list) else inventory
+                # Calculate what the balance was at start_date by working backwards from current
+                current_balance = float(inv_item.quantity_on_hand) if inv_item.quantity_on_hand else 0.0
+                
+                # Get movements after end_date to work backwards
+                future_query = select(InventoryUsageLog).where(
+                    and_(
+                        InventoryUsageLog.restaurant_id == self.restaurant_id,
+                        InventoryUsageLog.ingredient_id == ingredient_id,
+                        func.date(InventoryUsageLog.used_date) > end_date
+                    )
+                )
+                future_result = await self.db.execute(future_query)
+                future_logs = future_result.scalars().all()
+                
+                # Add back future usage to get balance at end_date
+                for log in future_logs:
+                    usage_type = log.usage_type.value if hasattr(log.usage_type, 'value') else str(log.usage_type)
+                    if usage_type == "batch_output":
+                        current_balance -= float(log.used_quantity)
+                    else:
+                        current_balance += float(log.used_quantity)
+                
+                starting_balances[ingredient_id] = current_balance - sum(m["quantity"] for m in all_movements if m["ingredient_id"] == ingredient_id)
+
+        # Apply running balance to movements
+        running_balances = starting_balances.copy()
+        
         for move in all_movements:
             ing_id = move["ingredient_id"]
-            prev = running_balances.get(ing_id, 0)
-            running_balances[ing_id] = prev + move["quantity"]
-            move["running_balance"] = running_balances[ing_id]
+            if ing_id not in running_balances:
+                running_balances[ing_id] = 0.0
+            
+            running_balances[ing_id] += move["quantity"]
+            move["running_balance"] = round(running_balances[ing_id], 2)
 
-    # Filter out any movement with ingredient_id == None (invalid for DTO)
+        # Filter out any movement with invalid ingredient_id
         all_movements = [m for m in all_movements if m["ingredient_id"] is not None]
+        
         return all_movements
     async def get_lot_info(self, lot_id: int) -> dict:
         # Get lot details

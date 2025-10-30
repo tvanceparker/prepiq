@@ -53,3 +53,56 @@ export interface StockMovement {
   notes?: string | null;
   running_balance?: number | null;
 }
+
+// --- Inventory Table Components ---
+export interface LotBreakdown {
+  lot_id: number;
+  delivery_date: string;
+  quantity: number;
+  used_quantity: number;
+  wasted_quantity: number;
+  added_quantity: number;
+  remaining_quantity: number;
+  ingredient_supplier_id?: number | null;
+  supplier_unit?: string | null;
+  pack_size?: number | null;
+  quantity_per_pack_item?: number | null;
+  packages_received_total?: number | null;
+  approx_packages_remaining?: number | null;
+}
+
+export interface InventoryItem {
+  inventory_id: number;
+  ingredient_id?: number | null;
+  batch_recipe_id?: number | null;
+  category: string;
+  ingredient_name: string;
+  unit: string;
+  quantity_on_hand: number;
+  packaging_breakdown: LotBreakdown[];
+}
+
+export interface SupplierInfo {
+  supplier_name: string;
+  ingredient_supplier_id?: number | null;
+  cost_per_unit?: number | null;
+  total_packs?: number | null;
+  pack_description?: string | null;
+}
+
+export interface LotInfo {
+  lot_id: number;
+  delivery_date: string;
+  spoilage_expected_date?: string | null;
+  received_quantity: number;
+  status: string;
+  supplier?: SupplierInfo | null;
+}
+
+export interface UsageLog {
+  usage_id: number;
+  used_date: string;
+  used_quantity: number;
+  unit: string;
+  usage_type: string;
+}

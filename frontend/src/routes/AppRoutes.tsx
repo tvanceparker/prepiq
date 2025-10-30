@@ -3,6 +3,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from '../components/ProtectedRoute';
 import PermissionRoute from '../components/PermissionRoute';
+import TierGatedRoute from '../components/TierGatedRoute';
 
 //Login
 import Login from '../pages/auth/Login';
@@ -107,7 +108,12 @@ export default function AppRoutes(): JSX.Element {
 
         {/* Inventory */}
         <Route path="/inventory/table" element={<InventoryTable />} />
-        <Route path="/inventory/stock-movements" element={<StockMovements />} />
+
+        {/* Stock Movements - Pro/Master Only */}
+        <Route element={<TierGatedRoute requiredTiers={['pro', 'master']} />}>
+          <Route path="/inventory/stock-movements" element={<StockMovements />} />
+        </Route>
+
         <Route path="/inventory/pos" element={<POs />} />
         <Route path="/menu/ingredient-costing" element={<IngredientCatalog />} />
         <Route path="/inventory/suppliers" element={<Suppliers />} />
