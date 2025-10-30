@@ -10,11 +10,7 @@ import {
   ClickAwayListener,
   Stack,
 } from '@mui/material';
-import {
-  useLotInfo,
-  useUsedUsageLogs,
-  useWastedUsageLogs,
-} from '../hooks/useInventoryTable';
+import { useLotInfo, useUsedUsageLogs, useWastedUsageLogs } from '../hooks/useInventoryTable';
 import { LotInfo, UsageLog } from '../../../interfaces/inventory';
 
 interface ChipInfoPopperProps {
@@ -70,19 +66,23 @@ const ChipInfoPopper: React.FC<ChipInfoPopperProps> = ({
                   ) : lotInfo ? (
                     <Stack spacing={1}>
                       <Typography variant="body2">
-                        <strong>Supplier:</strong> {(lotInfo as LotInfo).supplier?.supplier_name || 'N/A'}
+                        <strong>Supplier:</strong>{' '}
+                        {(lotInfo as LotInfo).supplier?.supplier_name || 'N/A'}
                       </Typography>
                       <Typography variant="body2">
-                        <strong>Packs:</strong> {(lotInfo as LotInfo).supplier?.pack_description || 'N/A'}
+                        <strong>Packs:</strong>{' '}
+                        {(lotInfo as LotInfo).supplier?.pack_description || 'N/A'}
                       </Typography>
                       <Typography variant="body2">
-                        <strong>Cost/Unit:</strong> ${(lotInfo as LotInfo).supplier?.cost_per_unit || 'N/A'}
+                        <strong>Cost/Unit:</strong> $
+                        {(lotInfo as LotInfo).supplier?.cost_per_unit || 'N/A'}
                       </Typography>
                       <Typography variant="body2">
                         <strong>Status:</strong> {(lotInfo as LotInfo).status}
                       </Typography>
                       <Typography variant="body2">
-                        <strong>Spoilage Expected:</strong> {(lotInfo as LotInfo).spoilage_expected_date || 'N/A'}
+                        <strong>Spoilage Expected:</strong>{' '}
+                        {(lotInfo as LotInfo).spoilage_expected_date || 'N/A'}
                       </Typography>
                     </Stack>
                   ) : (
@@ -99,12 +99,8 @@ const ChipInfoPopper: React.FC<ChipInfoPopperProps> = ({
                   {loadingUsed ? (
                     <CircularProgress size={24} />
                   ) : usedLogs.length > 0 ? (
-                    (usedLogs as UsageLog[]).map((log) => (
-                      <Paper
-                        key={log.usage_id}
-                        variant="outlined"
-                        sx={{ mb: 2, p: 1.5 }}
-                      >
+                    (usedLogs as UsageLog[]).map(log => (
+                      <Paper key={log.usage_id} variant="outlined" sx={{ mb: 2, p: 1.5 }}>
                         <Typography variant="body2">
                           <strong>Date:</strong> {log.used_date}
                         </Typography>
@@ -130,12 +126,8 @@ const ChipInfoPopper: React.FC<ChipInfoPopperProps> = ({
                   {loadingWasted ? (
                     <CircularProgress size={24} />
                   ) : wastedLogs.length > 0 ? (
-                    (wastedLogs as UsageLog[]).map((log) => (
-                      <Paper
-                        key={log.usage_id}
-                        variant="outlined"
-                        sx={{ mb: 2, p: 1.5 }}
-                      >
+                    (wastedLogs as UsageLog[]).map(log => (
+                      <Paper key={log.usage_id} variant="outlined" sx={{ mb: 2, p: 1.5 }}>
                         <Typography variant="body2">
                           <strong>Date:</strong> {log.used_date}
                         </Typography>

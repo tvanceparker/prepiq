@@ -22,31 +22,33 @@ export default function InventoryTable() {
 
   const openChipPopper = Boolean(chipAnchor);
 
-  const handleChipClick = useCallback((
-    event: React.MouseEvent<HTMLDivElement>,
-    lotId: number,
-    type: string
-  ) => {
-    setChipAnchor(event.currentTarget);
-    setActiveLotId(lotId);
-    setChipType(type as 'added' | 'used' | 'wasted');
-  }, []);
+  const handleChipClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>, lotId: number, type: string) => {
+      setChipAnchor(event.currentTarget);
+      setActiveLotId(lotId);
+      setChipType(type as 'added' | 'used' | 'wasted');
+    },
+    []
+  );
 
-  const handlePackagingClick = useCallback((
-    event: React.MouseEvent<HTMLButtonElement>,
-    breakdown: LotBreakdown[],
-    batchId: number | null
-  ) => {
-    if (anchorEl) {
-      setAnchorEl(null);
-      setSelectedLots([]);
-      setBatchRecipeId(null);
-    } else {
-      setAnchorEl(event.currentTarget);
-      setSelectedLots(breakdown);
-      setBatchRecipeId(batchId);
-    }
-  }, [anchorEl]);
+  const handlePackagingClick = useCallback(
+    (
+      event: React.MouseEvent<HTMLButtonElement>,
+      breakdown: LotBreakdown[],
+      batchId: number | null
+    ) => {
+      if (anchorEl) {
+        setAnchorEl(null);
+        setSelectedLots([]);
+        setBatchRecipeId(null);
+      } else {
+        setAnchorEl(event.currentTarget);
+        setSelectedLots(breakdown);
+        setBatchRecipeId(batchId);
+      }
+    },
+    [anchorEl]
+  );
 
   const columns = useMemo<MRT_ColumnDef<InventoryItem>[]>(
     () => [
@@ -117,7 +119,7 @@ export default function InventoryTable() {
               color="primary"
               size="small"
               startIcon={<InventoryIcon />}
-              onClick={(e) => handlePackagingClick(e, breakdown, row.batch_recipe_id || null)}
+              onClick={e => handlePackagingClick(e, breakdown, row.batch_recipe_id || null)}
             >
               {breakdown?.length || 0}
             </Button>

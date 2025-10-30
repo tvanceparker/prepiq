@@ -1,13 +1,5 @@
 import React from 'react';
-import {
-  Popper,
-  Paper,
-  Typography,
-  Button,
-  Stack,
-  Grow,
-  ClickAwayListener,
-} from '@mui/material';
+import { Popper, Paper, Typography, Button, Stack, Grow, ClickAwayListener } from '@mui/material';
 import QuantityChip from './QuantityChip';
 import { LotBreakdown } from '../../../interfaces/inventory';
 
@@ -54,12 +46,8 @@ const PackagingPopper: React.FC<PackagingPopperProps> = ({
               {lots.length === 0 ? (
                 <Typography>No packaging info available</Typography>
               ) : (
-                lots.map((lot) => (
-                  <Paper
-                    key={lot.lot_id}
-                    variant="outlined"
-                    sx={{ mb: 2, p: 2 }}
-                  >
+                lots.map(lot => (
+                  <Paper key={lot.lot_id} variant="outlined" sx={{ mb: 2, p: 2 }}>
                     <Typography variant="subtitle2" gutterBottom>
                       Lot #{lot.lot_id} - {batchRecipeId ? 'Made on' : 'Delivered'}:{' '}
                       {lot.delivery_date}
@@ -69,19 +57,19 @@ const PackagingPopper: React.FC<PackagingPopperProps> = ({
                         label="Qty"
                         quantity={lot.quantity}
                         type="added"
-                        onClick={(e) => onChipClick(e, lot.lot_id, 'added')}
+                        onClick={e => onChipClick(e, lot.lot_id, 'added')}
                       />
                       <QuantityChip
                         label="Used"
                         quantity={lot.used_quantity}
                         type="used"
-                        onClick={(e) => onChipClick(e, lot.lot_id, 'used')}
+                        onClick={e => onChipClick(e, lot.lot_id, 'used')}
                       />
                       <QuantityChip
                         label="Wasted"
                         quantity={lot.wasted_quantity}
                         type="wasted"
-                        onClick={(e) => onChipClick(e, lot.lot_id, 'wasted')}
+                        onClick={e => onChipClick(e, lot.lot_id, 'wasted')}
                       />
                     </Stack>
                     <Typography variant="body2" color="text.secondary">

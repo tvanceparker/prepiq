@@ -16,8 +16,8 @@ export function useInventoryTable() {
   useEffect(() => {
     setLoading(true);
     fetchAllInventory()
-      .then((data) => setInventory(data as InventoryItem[]))
-      .catch((err) => setError(err))
+      .then(data => setInventory(data as InventoryItem[]))
+      .catch(err => setError(err))
       .finally(() => setLoading(false));
   }, []);
 
@@ -36,7 +36,7 @@ export function useLotInfo(lotId: number | null) {
     }
     setLoading(true);
     fetchLotInfo(lotId)
-      .then((data) => setLotInfo(data as LotInfo))
+      .then(data => setLotInfo(data as LotInfo))
       .catch(() => setLotInfo(null))
       .finally(() => setLoading(false));
   }, [lotId]);
@@ -56,7 +56,7 @@ export function useUsedUsageLogs(lotId: number | null) {
     }
     setLoading(true);
     fetchUsedUsageLogs(lotId)
-      .then((data) => setUsedLogs(data as UsageLog[]))
+      .then(data => setUsedLogs(data as UsageLog[]))
       .catch(() => setUsedLogs([]))
       .finally(() => setLoading(false));
   }, [lotId]);
@@ -76,7 +76,7 @@ export function useWastedUsageLogs(lotId: number | null) {
     }
     setLoading(true);
     fetchWastedUsageLogs(lotId)
-      .then((data) => setWastedLogs(data as UsageLog[]))
+      .then(data => setWastedLogs(data as UsageLog[]))
       .catch(() => setWastedLogs([]))
       .finally(() => setLoading(false));
   }, [lotId]);
