@@ -40,8 +40,8 @@ export default function BasicAccountSettings() {
     severity: AlertColor;
   }>({
     open: false,
-    message: "",
-    severity: "success",
+    message: '',
+    severity: 'success',
   });
 
   const showSnackbar = (message: string, severity: AlertColor = 'success') => {

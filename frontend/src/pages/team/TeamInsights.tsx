@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from "react";
-import { Line } from "react-chartjs-2";
+import React, { useState, useMemo } from 'react';
+import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -10,7 +10,7 @@ import {
   Title,
   Tooltip,
   Legend,
-} from "chart.js";
+} from 'chart.js';
 
 ChartJS.register(
   CategoryScale,
@@ -24,32 +24,32 @@ ChartJS.register(
 );
 
 // Fake data
-const roles = ["Waitress", "Cook", "Manager", "Shift Manager"];
+const roles = ['Waitress', 'Cook', 'Manager', 'Shift Manager'];
 
 const attendanceData = [
   {
-    week: "Week 1",
+    week: 'Week 1',
     punctuality: 95,
     overtimeHours: 4,
     absenteeism: 2,
     avgHours: 38,
   },
   {
-    week: "Week 2",
+    week: 'Week 2',
     punctuality: 90,
     overtimeHours: 6,
     absenteeism: 1,
     avgHours: 40,
   },
   {
-    week: "Week 3",
+    week: 'Week 3',
     punctuality: 92,
     overtimeHours: 5,
     absenteeism: 3,
     avgHours: 39,
   },
   {
-    week: "Week 4",
+    week: 'Week 4',
     punctuality: 94,
     overtimeHours: 4,
     absenteeism: 0,
@@ -59,51 +59,51 @@ const attendanceData = [
 
 const topPerformers = [
   {
-    name: "Alice Johnson",
-    role: "Waitress",
+    name: 'Alice Johnson',
+    role: 'Waitress',
     hoursWorked: 42,
-    punctuality: "98%",
+    punctuality: '98%',
   },
-  { name: "Bob Smith", role: "Cook", hoursWorked: 40, punctuality: "95%" },
-  { name: "Carol Lee", role: "Manager", hoursWorked: 44, punctuality: "99%" },
+  { name: 'Bob Smith', role: 'Cook', hoursWorked: 40, punctuality: '95%' },
+  { name: 'Carol Lee', role: 'Manager', hoursWorked: 44, punctuality: '99%' },
 ];
 
 const lateClockIns = [
-  { name: "Dave Wilson", role: "Cook", lateCount: 3 },
-  { name: "Emily Clark", role: "Waitress", lateCount: 2 },
+  { name: 'Dave Wilson', role: 'Cook', lateCount: 3 },
+  { name: 'Emily Clark', role: 'Waitress', lateCount: 2 },
 ];
 
 export default function TeamInsights() {
-  const [filterRole, setFilterRole] = useState("");
-  const [dateRange, setDateRange] = useState({ start: "", end: "" });
+  const [filterRole, setFilterRole] = useState('');
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
   const filteredTopPerformers = useMemo(() => {
     if (!filterRole) return topPerformers;
-    return topPerformers.filter((p) => p.role === filterRole);
+    return topPerformers.filter(p => p.role === filterRole);
   }, [filterRole]);
 
   const filteredLateClockIns = useMemo(() => {
     if (!filterRole) return lateClockIns;
-    return lateClockIns.filter((p) => p.role === filterRole);
+    return lateClockIns.filter(p => p.role === filterRole);
   }, [filterRole]);
 
   const lineChartData = {
-    labels: attendanceData.map((d) => d.week),
+    labels: attendanceData.map(d => d.week),
     datasets: [
       {
-        label: "Punctuality (%)",
-        data: attendanceData.map((d) => d.punctuality),
-        borderColor: "rgba(53, 162, 235, 0.8)",
-        backgroundColor: "rgba(53, 162, 235, 0.4)",
-        yAxisID: "y1",
+        label: 'Punctuality (%)',
+        data: attendanceData.map(d => d.punctuality),
+        borderColor: 'rgba(53, 162, 235, 0.8)',
+        backgroundColor: 'rgba(53, 162, 235, 0.4)',
+        yAxisID: 'y1',
         tension: 0.3,
       },
       {
-        label: "Overtime Hours",
-        data: attendanceData.map((d) => d.overtimeHours),
-        borderColor: "rgba(255, 99, 132, 0.8)",
-        backgroundColor: "rgba(255, 99, 132, 0.4)",
-        yAxisID: "y2",
+        label: 'Overtime Hours',
+        data: attendanceData.map(d => d.overtimeHours),
+        borderColor: 'rgba(255, 99, 132, 0.8)',
+        backgroundColor: 'rgba(255, 99, 132, 0.4)',
+        yAxisID: 'y2',
         tension: 0.3,
       },
     ],
@@ -112,26 +112,26 @@ export default function TeamInsights() {
   const lineChartOptions = {
     responsive: true,
     interaction: {
-      mode: "index" as const,
+      mode: 'index' as const,
       intersect: false,
     },
     stacked: false,
     scales: {
       y1: {
-        type: "linear" as const,
+        type: 'linear' as const,
         display: true,
-        position: "left" as const,
+        position: 'left' as const,
         min: 0,
         max: 100,
         title: {
           display: true,
-          text: "Punctuality (%)",
+          text: 'Punctuality (%)',
         },
       },
       y2: {
-        type: "linear" as const,
+        type: 'linear' as const,
         display: true,
-        position: "right" as const,
+        position: 'right' as const,
         min: 0,
         max: 10,
         grid: {
@@ -139,7 +139,7 @@ export default function TeamInsights() {
         },
         title: {
           display: true,
-          text: "Overtime Hours",
+          text: 'Overtime Hours',
         },
       },
     },
@@ -154,11 +154,11 @@ export default function TeamInsights() {
           <span className="font-semibold block mb-1">Filter by Role:</span>
           <select
             value={filterRole}
-            onChange={(e) => setFilterRole(e.target.value)}
+            onChange={e => setFilterRole(e.target.value)}
             className="p-2 border rounded"
           >
             <option value="">All Roles</option>
-            {roles.map((role) => (
+            {roles.map(role => (
               <option key={role} value={role}>
                 {role}
               </option>
@@ -172,9 +172,7 @@ export default function TeamInsights() {
           <input
             type="date"
             value={dateRange.start}
-            onChange={(e) =>
-              setDateRange((d) => ({ ...d, start: e.target.value }))
-            }
+            onChange={e => setDateRange(d => ({ ...d, start: e.target.value }))}
             className="p-2 border rounded"
           />
         </label>
@@ -184,17 +182,15 @@ export default function TeamInsights() {
           <input
             type="date"
             value={dateRange.end}
-            onChange={(e) =>
-              setDateRange((d) => ({ ...d, end: e.target.value }))
-            }
+            onChange={e => setDateRange(d => ({ ...d, end: e.target.value }))}
             className="p-2 border rounded"
           />
         </label>
 
         <button
           onClick={() => {
-            setFilterRole("");
-            setDateRange({ start: "", end: "" });
+            setFilterRole('');
+            setDateRange({ start: '', end: '' });
           }}
           className="ml-auto px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
         >
@@ -219,16 +215,14 @@ export default function TeamInsights() {
               </tr>
             </thead>
             <tbody>
-              {filteredTopPerformers.map(
-                ({ name, role, hoursWorked, punctuality }) => (
-                  <tr key={name} className="hover:bg-green-50">
-                    <td className="border-b p-2">{name}</td>
-                    <td className="border-b p-2">{role}</td>
-                    <td className="border-b p-2">{hoursWorked}</td>
-                    <td className="border-b p-2">{punctuality}</td>
-                  </tr>
-                )
-              )}
+              {filteredTopPerformers.map(({ name, role, hoursWorked, punctuality }) => (
+                <tr key={name} className="hover:bg-green-50">
+                  <td className="border-b p-2">{name}</td>
+                  <td className="border-b p-2">{role}</td>
+                  <td className="border-b p-2">{hoursWorked}</td>
+                  <td className="border-b p-2">{punctuality}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

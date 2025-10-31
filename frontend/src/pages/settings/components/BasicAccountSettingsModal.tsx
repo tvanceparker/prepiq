@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from "react";
-import type { AccountSettingsFormData, AccountSettingsFormErrors } from "../../../interfaces/settings";
+import React, { useState, useEffect } from 'react';
+import type {
+  AccountSettingsFormData,
+  AccountSettingsFormErrors,
+} from '../../../interfaces/settings';
 import {
   Box,
   TextField,
@@ -12,7 +15,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-} from "@mui/material";
+} from '@mui/material';
 
 export default function BasicAccountSettingsModal({
   type,
@@ -35,26 +38,26 @@ export default function BasicAccountSettingsModal({
     setErrors({});
 
     switch (type) {
-      case "preferences":
+      case 'preferences':
         setFormData({
           auto_logout_minutes:
             currentPreferences?.auto_logout_minutes === 0
               ? 0
               : currentPreferences?.auto_logout_minutes || 15,
-          theme: currentPreferences?.theme || "light",
+          theme: currentPreferences?.theme || 'light',
         });
         break;
-      case "email":
-        setFormData({ current_password: "", new_email: currentEmail });
+      case 'email':
+        setFormData({ current_password: '', new_email: currentEmail });
         break;
-      case "phone":
-        setFormData({ current_password: "", new_phone: currentPhone || "" });
+      case 'phone':
+        setFormData({ current_password: '', new_phone: currentPhone || '' });
         break;
-      case "password":
+      case 'password':
         setFormData({
-          current_password: "",
-          new_password: "",
-          confirm_password: "",
+          current_password: '',
+          new_password: '',
+          confirm_password: '',
         });
         break;
       default:
@@ -63,35 +66,35 @@ export default function BasicAccountSettingsModal({
     }
   }, [type, currentPreferences, currentEmail, currentPhone]);
 
-  const handleChange = (e) => {
+  const handleChange = e => {
     const { name, value, type: inputType, checked } = e.target;
-    const newValue = inputType === "checkbox" ? checked : value;
-    setFormData((prev) => ({ ...prev, [name]: newValue }));
-    setErrors((prev) => ({ ...prev, [name]: "" }));
+    const newValue = inputType === 'checkbox' ? checked : value;
+    setFormData(prev => ({ ...prev, [name]: newValue }));
+    setErrors(prev => ({ ...prev, [name]: '' }));
   };
 
   const handleSave = async () => {
     try {
-      if (type === "preferences") {
+      if (type === 'preferences') {
         await savePreferences(formData);
-        onShowSnackbar?.("Preferences saved.", "success");
-      } else if (type === "email") {
+        onShowSnackbar?.('Preferences saved.', 'success');
+      } else if (type === 'email') {
         await updateUserEmail({
           currentPassword: formData.current_password,
           newEmail: formData.new_email,
         });
-        onShowSnackbar?.("Email updated.", "success");
-      } else if (type === "phone") {
+        onShowSnackbar?.('Email updated.', 'success');
+      } else if (type === 'phone') {
         await updateUserPhone({
           currentPassword: formData.current_password,
           newPhone: formData.new_phone,
         });
-        onShowSnackbar?.("Phone number updated.", "success");
-      } else if (type === "password") {
+        onShowSnackbar?.('Phone number updated.', 'success');
+      } else if (type === 'password') {
         if (formData.new_password !== formData.confirm_password) {
-          setErrors((prev) => ({
+          setErrors(prev => ({
             ...prev,
-            confirm_password: "Passwords do not match.",
+            confirm_password: 'Passwords do not match.',
           }));
           return;
         }
@@ -99,7 +102,7 @@ export default function BasicAccountSettingsModal({
           currentPassword: formData.current_password,
           newPassword: formData.new_password,
         });
-        onShowSnackbar?.("Password changed.", "success");
+        onShowSnackbar?.('Password changed.', 'success');
       }
 
       onClose();
@@ -108,23 +111,23 @@ export default function BasicAccountSettingsModal({
         setErrors(err.response.data.errors);
       } else {
         console.error(err);
-        onShowSnackbar?.("Something went wrong.", "error");
+        onShowSnackbar?.('Something went wrong.', 'error');
       }
     }
   };
 
   const getTitle = () => {
     switch (type) {
-      case "preferences":
-        return "Edit Preferences";
-      case "email":
-        return "Change Email";
-      case "phone":
-        return "Change Phone";
-      case "password":
-        return "Change Password";
+      case 'preferences':
+        return 'Edit Preferences';
+      case 'email':
+        return 'Change Email';
+      case 'phone':
+        return 'Change Phone';
+      case 'password':
+        return 'Change Password';
       default:
-        return "Edit";
+        return 'Edit';
     }
   };
 
@@ -133,15 +136,15 @@ export default function BasicAccountSettingsModal({
       <DialogTitle>{getTitle()}</DialogTitle>
       <DialogContent>
         <Box component="form" noValidate autoComplete="off" sx={{ mt: 1 }}>
-          {type === "preferences" && (
+          {type === 'preferences' && (
             <>
               <FormControlLabel
                 control={
                   <Checkbox
                     checked={formData.auto_logout_minutes === 0}
                     name="auto_logout_minutes_toggle"
-                    onChange={(e) =>
-                      setFormData((prev) => ({
+                    onChange={e =>
+                      setFormData(prev => ({
                         ...prev,
                         auto_logout_minutes: e.target.checked ? 0 : 15,
                       }))
@@ -154,15 +157,10 @@ export default function BasicAccountSettingsModal({
                 label="Auto Logout (Minutes)"
                 name="auto_logout_minutes"
                 type="number"
-                value={
-                  formData.auto_logout_minutes === 0
-                    ? ""
-                    : formData.auto_logout_minutes
-                }
-                onChange={(e) => {
-                  const val =
-                    e.target.value === "" ? 0 : parseInt(e.target.value, 10);
-                  setFormData((prev) => ({
+                value={formData.auto_logout_minutes === 0 ? '' : formData.auto_logout_minutes}
+                onChange={e => {
+                  const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                  setFormData(prev => ({
                     ...prev,
                     auto_logout_minutes: val,
                   }));
@@ -189,7 +187,7 @@ export default function BasicAccountSettingsModal({
             </>
           )}
 
-          {(type === "email" || type === "phone" || type === "password") && (
+          {(type === 'email' || type === 'phone' || type === 'password') && (
             <>
               <TextField
                 label="Current Password"
@@ -203,7 +201,7 @@ export default function BasicAccountSettingsModal({
                 helperText={errors.current_password}
                 required
               />
-              {type === "email" && (
+              {type === 'email' && (
                 <TextField
                   label="New Email"
                   type="email"
@@ -217,7 +215,7 @@ export default function BasicAccountSettingsModal({
                   required
                 />
               )}
-              {type === "phone" && (
+              {type === 'phone' && (
                 <TextField
                   label="New Phone"
                   type="tel"
@@ -231,7 +229,7 @@ export default function BasicAccountSettingsModal({
                   required
                 />
               )}
-              {type === "password" && (
+              {type === 'password' && (
                 <>
                   <TextField
                     label="New Password"
@@ -264,7 +262,7 @@ export default function BasicAccountSettingsModal({
 
           {error && (
             <Typography color="error" variant="body2" sx={{ mt: 1 }}>
-              {error.message || "An error occurred."}
+              {error.message || 'An error occurred.'}
             </Typography>
           )}
         </Box>
@@ -274,7 +272,7 @@ export default function BasicAccountSettingsModal({
           Cancel
         </Button>
         <Button variant="contained" onClick={handleSave} disabled={loading}>
-          {loading ? "Saving..." : "Save"}
+          {loading ? 'Saving...' : 'Save'}
         </Button>
       </DialogActions>
     </Dialog>
