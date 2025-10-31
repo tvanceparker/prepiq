@@ -8,6 +8,9 @@ from app.schemas.dashboard_dto import (
     SalesConflictOut,
     DailyOverviewOut,
     SaleOut,
+    LiveOperationsOut,
+    QuickAnalyticsOut,
+    ProDailyOverviewOut,
 )
 from app.services.dashboard_service import DashboardService
 from app.api.dependencies import get_dashboard_service, check_permissions
@@ -193,3 +196,31 @@ async def upload_sales_manual(
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception:
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/live-operations", response_model=LiveOperationsOut)
+@log_route("Get live operations data")
+async def get_live_operations(
+    dashboard_service: DashboardService = Depends(get_dashboard_service),
+):
+    """Fetch real-time operational data including staff, orders, and kitchen status."""
+    return await dashboard_service.get_live_operations()
+
+
+@router.get("/quick-analytics", response_model=QuickAnalyticsOut)
+@log_route("Get quick analytics data")
+async def get_quick_analytics(
+    days: int = Query(7, ge=1, le=90, description="Number of days to analyze"),
+    dashboard_service: DashboardService = Depends(get_dashboard_service),
+):
+    """Fetch quick analytics summary for the last N days."""
+    return await dashboard_service.get_quick_analytics(days)
+
+
+@router.get("/pro-overview", response_model=ProDailyOverviewOut)
+@log_route("Get Pro/Master daily overview")
+async def get_pro_daily_overview(
+    dashboard_service: DashboardService = Depends(get_dashboard_service),
+):
+    """Fetch comprehensive daily overview for Pro/Master tiers with inventory, prep, and menu insights."""
+    return await dashboard_service.get_pro_daily_overview()

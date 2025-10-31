@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { MaterialReactTable, type MRT_ColumnDef } from 'material-react-table';
-import { getStockMovements } from '../../api/inventory';
+import { getStockMovements, adjustInventory } from '../../api/inventory';
 import { fetchIngredientNames, IngredientName } from '../../api/ingredients';
 import { StockMovement } from '../../interfaces/inventory';
 import {
@@ -13,7 +13,19 @@ import {
   Chip,
   Stack,
   useTheme,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
+  Snackbar,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 
 const today = new Date().toISOString().slice(0, 10);
 const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -30,11 +42,19 @@ export default function StockMovementsPage() {
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchIngredientNames().then(setIngredientOptions);
-  }, []);
+  // Adjustment dialog state
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedIngredient, setSelectedIngredient] = useState<IngredientName | null>(null);
+  const [quantity, setQuantity] = useState('');
+  const [adjustmentType, setAdjustmentType] = useState('manual_addition');
+  const [notes, setNotes] = useState('');
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error';
+  }>({ open: false, message: '', severity: 'success' });
 
-  useEffect(() => {
+  const fetchMovements = useCallback(() => {
     setLoading(true);
     setError(null);
     getStockMovements(startDate, endDate, ingredient?.ingredient_id)
@@ -42,6 +62,46 @@ export default function StockMovementsPage() {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [startDate, endDate, ingredient]);
+
+  useEffect(() => {
+    fetchIngredientNames().then(setIngredientOptions);
+  }, []);
+
+  useEffect(() => {
+    fetchMovements();
+  }, [startDate, endDate, ingredient]);
+
+  const handleAdjustment = async () => {
+    if (!selectedIngredient || !quantity) {
+      setSnackbar({
+        open: true,
+        message: 'Please select an ingredient and enter quantity',
+        severity: 'error',
+      });
+      return;
+    }
+
+    try {
+      // For simplicity, we'll use a placeholder inventory_id and lot_id
+      // In a real app, you'd fetch the current inventory record for the ingredient
+      await adjustInventory({
+        inventory_id: selectedIngredient.ingredient_id, // Placeholder - should be actual inventory_id
+        lot_id: 1, // Placeholder - should be actual lot_id
+        adjustment_quantity: parseFloat(quantity),
+        usage_type: adjustmentType,
+        notes,
+      });
+
+      setSnackbar({ open: true, message: 'Inventory adjusted successfully', severity: 'success' });
+      setDialogOpen(false);
+      setSelectedIngredient(null);
+      setQuantity('');
+      setNotes('');
+      fetchMovements(); // Refresh the list
+    } catch (err) {
+      setSnackbar({ open: true, message: 'Failed to adjust inventory', severity: 'error' });
+    }
+  };
 
   // Filter by type if set
   const filteredMovements = useMemo(() => {
@@ -141,10 +201,13 @@ export default function StockMovementsPage() {
 
   return (
     <Box sx={{ p: 2 }}>
-      <Paper sx={{ p: 3 }}>
-        <Typography variant="h5" gutterBottom>
-          Stock Movements
-        </Typography>
+      <Paper sx={{ p: 3, bgcolor: 'background.paper' }} elevation={0}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+          <Typography variant="h5">Stock Movements</Typography>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
+            Adjust Inventory
+          </Button>
+        </Stack>
         <Typography variant="body2" color="text.secondary" gutterBottom>
           Track all inventory movements including purchases, sales, waste, and batch production
         </Typography>
@@ -233,6 +296,74 @@ export default function StockMovementsPage() {
           />
         )}
       </Paper>
+
+      {/* Adjustment Dialog */}
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Adjust Inventory</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Autocomplete
+              options={ingredientOptions}
+              getOptionLabel={option => option.ingredient_name}
+              value={selectedIngredient}
+              onChange={(_, v) => setSelectedIngredient(v)}
+              renderInput={params => <TextField {...params} label="Select Ingredient" />}
+              isOptionEqualToValue={(o, v) => o.ingredient_id === v.ingredient_id}
+            />
+
+            <TextField
+              label="Quantity"
+              type="number"
+              value={quantity}
+              onChange={e => setQuantity(e.target.value)}
+              fullWidth
+            />
+
+            <FormControl fullWidth>
+              <InputLabel>Adjustment Type</InputLabel>
+              <Select
+                value={adjustmentType}
+                label="Adjustment Type"
+                onChange={e => setAdjustmentType(e.target.value)}
+              >
+                <MenuItem value="manual_addition">Add to Inventory</MenuItem>
+                <MenuItem value="manual_adjustment">Subtract from Inventory</MenuItem>
+                <MenuItem value="waste">Mark as Waste</MenuItem>
+                <MenuItem value="spoilage">Mark as Spoilage</MenuItem>
+              </Select>
+            </FormControl>
+
+            <TextField
+              label="Notes (optional)"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              multiline
+              rows={2}
+              fullWidth
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleAdjustment}>
+            Submit
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      >
+        <Alert
+          severity={snackbar.severity}
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

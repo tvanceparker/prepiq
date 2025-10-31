@@ -1,18 +1,18 @@
 // src/api/index.ts
-import axios from "axios";
-import { BASE_URL } from "./config";
+import axios from 'axios';
+import { BASE_URL } from './config';
 
 const api = axios.create({
   baseURL: BASE_URL,
   headers: {
-    "Content-Type": "application/json",
+    'Content-Type': 'application/json',
   },
   withCredentials: true, // if you're using cookies; otherwise remove this
 });
 
 // 🔐 Add Authorization header dynamically
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -43,3 +43,5 @@ export const del = async <T>(endpoint: string): Promise<T> => {
   const response = await api.delete<T>(endpoint);
   return response.data;
 };
+
+export { api };

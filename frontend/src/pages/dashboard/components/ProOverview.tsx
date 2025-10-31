@@ -1,15 +1,10 @@
-// src/pages/dashboard/components/ProOverview.jsx
-import React from "react";
+import React from 'react';
 
-export default function ProOverview({ data }) {
-  if (!data) return null;
-
-  // For example, reuse the same fields but maybe with additional styling or extra info later
+export default function ProOverview({ data }: { data: any }) {
   return (
-    <section>
-      <h2>Pro Daily Overview</h2>
-      {/* You can customize this with charts, breakdowns, etc. */}
+    <div>
+      <h2>Pro Dashboard - Under Construction</h2>
       <pre>{JSON.stringify(data, null, 2)}</pre>
-    </section>
+    </div>
   );
 }

@@ -118,3 +118,57 @@ class PrepScheduleUpdate(BaseModel):
     status: Optional[str] = None
     prep_time_minutes_actual: Optional[int] = None
     prep_batch_count: Optional[Decimal] = None
+
+
+# ----------------- Prep Logs (Read-Only View) -----------------
+
+class PrepLogResponse(BaseModel):
+    """Response model for completed prep logs."""
+    prep_id: int
+    batch_recipe_id: int
+    batch_recipe_name: str
+    prep_date: date
+    quantity_needed: Decimal
+    quantity_prepped: Optional[Decimal] = None
+    prep_batch_count: Optional[Decimal] = None
+    prep_time_minutes_estimated: Optional[int] = None
+    prep_time_minutes_actual: Optional[int] = None
+    assigned_employee_id: Optional[int] = None
+    assigned_employee_name: Optional[str] = None
+    status: str
+    created_at: Optional[str] = None
+    expiry_date: Optional[date] = None  # From inventory lot's spoilage_expected_date
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ----------------- Prep Waste Logs -----------------
+
+class WasteLogResponse(BaseModel):
+    """Response model for waste/spoilage logs."""
+    usage_id: int
+    waste_date: date
+    ingredient_id: int
+    ingredient_name: str
+    batch_recipe_id: Optional[int] = None
+    batch_recipe_name: Optional[str] = None
+    quantity_wasted: Decimal
+    unit: str
+    waste_type: str  # "waste" or "spoilage"
+    reason: str  # "expired", "damaged", "overproduction", "prep_error", etc.
+    cost_impact: Optional[Decimal] = None
+    lot_id: Optional[int] = None
+    notes: Optional[str] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CreateWasteLogRequest(BaseModel):
+    """Request to manually log waste."""
+    ingredient_id: Optional[int] = None
+    batch_recipe_id: Optional[int] = None
+    quantity_wasted: Decimal
+    unit: str
+    waste_type: str  # "waste" or "spoilage"
+    reason: str
+    notes: Optional[str] = None

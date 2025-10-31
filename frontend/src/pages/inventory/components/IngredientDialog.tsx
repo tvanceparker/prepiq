@@ -1,4 +1,4 @@
-import React from "react";
+import React from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -9,26 +9,18 @@ import {
   FormControlLabel,
   Switch,
   Grid,
-} from "@mui/material";
+} from '@mui/material';
 
-const IngredientDialog = ({
-  open,
-  onClose,
-  ingredient,
-  setIngredient,
-  onSave,
-}) => {
+const IngredientDialog = ({ open, onClose, ingredient, setIngredient, onSave }) => {
   const handleChange =
-    (key, transform = (v) => v) =>
-    (e) =>
+    (key, transform = v => v) =>
+    e =>
       setIngredient({ ...ingredient, [key]: transform(e.target.value) });
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>
-        {ingredient.ingredient_supplier_id
-          ? "Edit Ingredient"
-          : "Add Ingredient"}
+        {ingredient?.ingredient_supplier_id ? 'Edit Ingredient' : 'Add Ingredient'}
       </DialogTitle>
       <DialogContent dividers>
         <Grid container spacing={2}>
@@ -36,16 +28,16 @@ const IngredientDialog = ({
             <TextField
               label="Ingredient ID"
               fullWidth
-              value={ingredient.ingredient_id || ""}
-              onChange={handleChange("ingredient_id")}
+              value={ingredient?.ingredient_id || ''}
+              onChange={handleChange('ingredient_id')}
             />
           </Grid>
           <Grid item xs={6}>
             <TextField
               label="Unit"
               fullWidth
-              value={ingredient.unit || ""}
-              onChange={handleChange("unit")}
+              value={ingredient?.unit || ''}
+              onChange={handleChange('unit')}
             />
           </Grid>
 
@@ -55,8 +47,8 @@ const IngredientDialog = ({
               type="number"
               fullWidth
               inputProps={{ min: 0, step: 0.01 }}
-              value={ingredient.cost_per_unit ?? 0}
-              onChange={handleChange("cost_per_unit", parseFloat)}
+              value={ingredient?.cost_per_unit ?? 0}
+              onChange={handleChange('cost_per_unit', parseFloat)}
             />
           </Grid>
           <Grid item xs={6}>
@@ -65,8 +57,8 @@ const IngredientDialog = ({
               type="number"
               fullWidth
               inputProps={{ min: 0 }}
-              value={ingredient.lead_time_days ?? 0}
-              onChange={handleChange("lead_time_days", parseInt)}
+              value={ingredient?.lead_time_days ?? 0}
+              onChange={handleChange('lead_time_days', parseInt)}
             />
           </Grid>
 
@@ -76,8 +68,8 @@ const IngredientDialog = ({
               type="number"
               fullWidth
               inputProps={{ min: 0, max: 100 }}
-              value={ingredient.spoilage_rate ?? 0}
-              onChange={handleChange("spoilage_rate", parseFloat)}
+              value={ingredient?.spoilage_rate ?? 0}
+              onChange={handleChange('spoilage_rate', parseFloat)}
             />
           </Grid>
           <Grid item xs={6}>
@@ -86,10 +78,8 @@ const IngredientDialog = ({
               type="number"
               fullWidth
               inputProps={{ min: 0 }}
-              value={ingredient.shelf_life_days ?? ""}
-              onChange={handleChange("shelf_life_days", (v) =>
-                v === "" ? null : parseInt(v)
-              )}
+              value={ingredient?.shelf_life_days ?? ''}
+              onChange={handleChange('shelf_life_days', v => (v === '' ? null : parseInt(v)))}
             />
           </Grid>
 
@@ -97,8 +87,8 @@ const IngredientDialog = ({
             <FormControlLabel
               control={
                 <Switch
-                  checked={ingredient.preferred ?? false}
-                  onChange={(e) =>
+                  checked={ingredient?.preferred ?? false}
+                  onChange={e =>
                     setIngredient({
                       ...ingredient,
                       preferred: e.target.checked,
@@ -116,10 +106,8 @@ const IngredientDialog = ({
               type="number"
               fullWidth
               inputProps={{ min: 0 }}
-              value={ingredient.min_order_quantity ?? ""}
-              onChange={handleChange("min_order_quantity", (v) =>
-                v === "" ? null : parseInt(v)
-              )}
+              value={ingredient?.min_order_quantity ?? ''}
+              onChange={handleChange('min_order_quantity', v => (v === '' ? null : parseInt(v)))}
             />
           </Grid>
           <Grid item xs={6}>
@@ -128,10 +116,8 @@ const IngredientDialog = ({
               type="number"
               fullWidth
               inputProps={{ min: 0 }}
-              value={ingredient.supplier_priority ?? ""}
-              onChange={handleChange("supplier_priority", (v) =>
-                v === "" ? null : parseInt(v)
-              )}
+              value={ingredient?.supplier_priority ?? ''}
+              onChange={handleChange('supplier_priority', v => (v === '' ? null : parseInt(v)))}
             />
           </Grid>
 
@@ -141,10 +127,8 @@ const IngredientDialog = ({
               type="number"
               fullWidth
               inputProps={{ min: 0 }}
-              value={ingredient.pack_size ?? ""}
-              onChange={handleChange("pack_size", (v) =>
-                v === "" ? null : parseInt(v)
-              )}
+              value={ingredient?.pack_size ?? ''}
+              onChange={handleChange('pack_size', v => (v === '' ? null : parseInt(v)))}
             />
           </Grid>
           <Grid item xs={6}>
@@ -153,9 +137,9 @@ const IngredientDialog = ({
               type="number"
               fullWidth
               inputProps={{ min: 0 }}
-              value={ingredient.quantity_per_pack_item ?? ""}
-              onChange={handleChange("quantity_per_pack_item", (v) =>
-                v === "" ? null : parseInt(v)
+              value={ingredient?.quantity_per_pack_item ?? ''}
+              onChange={handleChange('quantity_per_pack_item', v =>
+                v === '' ? null : parseInt(v)
               )}
             />
           </Grid>

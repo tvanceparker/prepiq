@@ -14,7 +14,8 @@ from app.repositories.menu_items_repo import MenuItemRepository
 from app.repositories.prep_schedule_repo import PrepScheduleRepository
 from app.repositories.inventory_lot_repo import InventoryLotRepository
 from app.repositories.inventory_repo import InventoryRepository
-from app.schemas.prep_dto import BatchRecipeIngredientCreate, PrepScheduleUpdate
+from app.repositories.employees_repo import EmployeeRepository
+from app.schemas.prep_dto import BatchRecipeIngredientCreate, PrepScheduleUpdate, PrepLogResponse, WasteLogResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Optional
 from decimal import Decimal
@@ -44,9 +45,227 @@ class PrepService:
         self.prep_schedule_repo = PrepScheduleRepository(db, restaurant_id)
         self.inventory_lot_repo = InventoryLotRepository(db, restaurant_id)
         self.inventory_repo = InventoryRepository(db, restaurant_id)
+        self.employee_repo = EmployeeRepository(db, restaurant_id)
 
 
         #route call
+    
+    
+    async def get_prep_logs(
+        self,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        status: Optional[str] = None,
+        batch_recipe_id: Optional[int] = None,
+    ) -> List[PrepLogResponse]:
+        """
+        Retrieve prep logs (completed prep schedules) with optional filters.
+        Returns historical records of batch recipe preparations.
+        """
+        # Get all prep schedules
+        all_preps = await self.prep_schedule_repo.get_all()
+        
+        # Apply filters
+        filtered_preps = all_preps
+        
+        if start_date:
+            filtered_preps = [p for p in filtered_preps if p.prep_date >= start_date]
+        
+        if end_date:
+            filtered_preps = [p for p in filtered_preps if p.prep_date <= end_date]
+        
+        if status:
+            filtered_preps = [p for p in filtered_preps if p.status == status]
+        
+        if batch_recipe_id:
+            filtered_preps = [p for p in filtered_preps if p.batch_recipe_id == batch_recipe_id]
+        
+        # Build response with employee names
+        logs = []
+        for prep in filtered_preps:
+            employee_name = None
+            if prep.assigned_employee_id:
+                employee = await self.employee_repo.get_by_id(prep.assigned_employee_id)
+                if employee:
+                    employee_name = employee.name
+            
+            # Get expiry date from inventory lot if prep is completed
+            expiry_date = None
+            if prep.status == "completed" and prep.batch_recipe_id:
+                lot = await self.inventory_lot_repo.get_by_batch_recipe_id(prep.batch_recipe_id)
+                if lot and lot.spoilage_expected_date:
+                    expiry_date = lot.spoilage_expected_date
+            
+            logs.append(PrepLogResponse(
+                prep_id=prep.prep_id,
+                batch_recipe_id=prep.batch_recipe_id,
+                batch_recipe_name=prep.batch_recipe.name if prep.batch_recipe else "Unknown",
+                prep_date=prep.prep_date,
+                quantity_needed=prep.quantity_needed or 0,
+                quantity_prepped=prep.quantity_prepped,
+                prep_batch_count=prep.prep_batch_count,
+                prep_time_minutes_estimated=prep.prep_time_minutes_estimated,
+                prep_time_minutes_actual=prep.prep_time_minutes_actual,
+                assigned_employee_id=prep.assigned_employee_id,
+                assigned_employee_name=employee_name,
+                status=prep.status,
+                created_at=prep.created_at.isoformat() if prep.created_at else None,
+                expiry_date=expiry_date,
+            ))
+        
+        # Sort by prep_date descending (most recent first)
+        logs.sort(key=lambda x: x.prep_date, reverse=True)
+        
+        return logs
+    
+    
+    async def get_waste_logs(
+        self,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        waste_type: Optional[str] = None,
+    ) -> List[WasteLogResponse]:
+        """
+        Retrieve waste and spoilage logs from inventory_usage_log.
+        Includes both ingredient waste and batch recipe waste.
+        """
+        # Get all waste/spoilage usage logs
+        all_logs = await self.inventory_usage_log_repo.get_all()
+        
+        # Filter for waste and spoilage only
+        waste_logs = [
+            log for log in all_logs 
+            if log.usage_type in ["waste", "spoilage"]
+        ]
+        
+        # Apply date filters
+        if start_date:
+            waste_logs = [log for log in waste_logs if log.used_date.date() >= start_date]
+        
+        if end_date:
+            waste_logs = [log for log in waste_logs if log.used_date.date() <= end_date]
+        
+        if waste_type:
+            waste_logs = [log for log in waste_logs if log.usage_type == waste_type]
+        
+        # Build response with ingredient/batch names and cost impact
+        results = []
+        for log in waste_logs:
+            # Get ingredient name
+            ingredient = await self.ingredient_repo.get_by_id(log.ingredient_id)
+            ingredient_name = ingredient.name if ingredient else "Unknown"
+            
+            # Check if this is batch recipe waste (lot has batch_recipe_id)
+            batch_recipe_id = None
+            batch_recipe_name = None
+            if log.lot_id:
+                lot = await self.inventory_lot_repo.get_by_id(log.lot_id)
+                if lot and lot.batch_recipe_id:
+                    batch_recipe_id = lot.batch_recipe_id
+                    batch_recipe = await self.batch_recipe_repo.get_by_id(lot.batch_recipe_id)
+                    if batch_recipe:
+                        batch_recipe_name = batch_recipe.name
+            
+            # Calculate cost impact (quantity * ingredient cost or batch cost)
+            cost_impact = None
+            if ingredient:
+                # Get most recent ingredient supplier cost
+                inventory = await self.inventory_repo.get_inventory_by_ingredient(log.ingredient_id)
+                if inventory:
+                    # Rough estimate: use average cost per unit
+                    # You might want to get actual supplier cost here
+                    cost_impact = float(log.used_quantity) * 5.0  # Placeholder
+            
+            # Determine reason from notes or reference type
+            reason = "unknown"
+            if log.notes:
+                reason = log.notes
+            elif log.reference_type == "lot" and log.lot_id:
+                reason = "expired"
+            elif log.reference_type == "waste_report":
+                reason = "manual_entry"
+            
+            results.append(WasteLogResponse(
+                usage_id=log.usage_id,
+                waste_date=log.used_date.date(),
+                ingredient_id=log.ingredient_id,
+                ingredient_name=ingredient_name,
+                batch_recipe_id=batch_recipe_id,
+                batch_recipe_name=batch_recipe_name,
+                quantity_wasted=log.used_quantity,
+                unit=log.unit,
+                waste_type=log.usage_type,
+                reason=reason,
+                cost_impact=cost_impact,
+                lot_id=log.lot_id,
+                notes=log.notes,
+            ))
+        
+        # Sort by date descending
+        results.sort(key=lambda x: x.waste_date, reverse=True)
+        
+        return results
+    
+    
+    async def create_waste_log(
+        self,
+        ingredient_id: Optional[int] = None,
+        batch_recipe_id: Optional[int] = None,
+        quantity_wasted: Decimal = None,
+        unit: str = None,
+        waste_type: str = "waste",
+        reason: str = "manual_entry",
+        notes: Optional[str] = None,
+    ) -> dict:
+        """
+        Manually create a waste log entry.
+        Can log waste for either raw ingredients or batch recipes.
+        """
+        if not ingredient_id and not batch_recipe_id:
+            raise ValueError("Must provide either ingredient_id or batch_recipe_id")
+        
+        if not quantity_wasted or quantity_wasted <= 0:
+            raise ValueError("Quantity wasted must be greater than 0")
+        
+        # If batch_recipe_id provided, find the inventory for that batch
+        if batch_recipe_id:
+            lot = await self.inventory_lot_repo.get_by_batch_recipe_id(batch_recipe_id)
+            if not lot:
+                raise ValueError(f"No inventory lot found for batch recipe {batch_recipe_id}")
+            
+            inventory_id = lot.inventory_id
+            ingredient_id = lot.ingredient_id or 0  # Batch recipes might not have ingredient_id
+            lot_id = lot.lot_id
+        else:
+            # Get inventory for ingredient
+            inventory = await self.inventory_repo.get_inventory_by_ingredient(ingredient_id)
+            if not inventory:
+                raise ValueError(f"No inventory found for ingredient {ingredient_id}")
+            
+            inventory_id = inventory.inventory_id
+            lot_id = None
+        
+        # Create usage log entry
+        usage_log = await self.inventory_usage_log_repo.create({
+            "restaurant_id": self.restaurant_id,
+            "inventory_id": inventory_id,
+            "ingredient_id": ingredient_id,
+            "lot_id": lot_id,
+            "used_quantity": quantity_wasted,
+            "unit": unit,
+            "used_date": datetime.utcnow(),
+            "usage_type": waste_type,
+            "reference_type": "waste_report",
+            "notes": f"{reason}: {notes}" if notes else reason,
+        })
+        
+        # Optionally decrement inventory
+        await self.inventory_repo.decrement_quantity(inventory_id, float(quantity_wasted))
+        
+        return {
+            "usage_id": usage_log.usage_id,
+            "message": f"Waste log created successfully for {quantity_wasted} {unit}",
+        }
     
     
     async def update_prep_schedule(self, prep_id: int, 

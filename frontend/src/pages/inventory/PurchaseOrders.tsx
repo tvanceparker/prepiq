@@ -1,416 +1,467 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from 'react';
+import {
+  Box,
+  Paper,
+  Stack,
+  Typography,
+  Tabs,
+  Tab,
+  Divider,
+  Button,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Autocomplete,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  Snackbar,
+  Alert,
+} from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
+import dayjs from 'dayjs';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  getPurchaseOrders,
+  createPurchaseOrder,
+  addItemToPurchaseOrder,
+  removeItemFromPurchaseOrder,
+  updatePurchaseOrderStatus,
+  getSuppliersList,
+  getIngredientNames,
+} from '../../api/inventory';
+import type {
+  PurchaseOrder,
+  PurchaseOrderItem,
+  PurchaseOrderCreate,
+  PurchaseOrderStatus,
+  IngredientName,
+} from '../../interfaces/inventory';
 
-const suppliers = [
-  { id: 1, name: "Fresh Farms" },
-  { id: 2, name: "Dairy Best" },
-  { id: 3, name: "Organic Goods" },
+const statusTabs: { label: string; value: PurchaseOrderStatus }[] = [
+  { label: 'Drafts', value: 'cart' },
+  { label: 'Pending', value: 'pending' },
+  { label: 'Delivered', value: 'delivered' },
 ];
 
-const fakePurchaseOrders = [
-  {
-    id: 101,
-    poNumber: "PO-20250601-01",
-    supplierId: 1,
-    supplierName: "Fresh Farms",
-    orderDate: "2025-06-01",
-    status: "Pending",
-    items: [
-      {
-        id: 1,
-        ingredient: "Tomato",
-        quantity: 200,
-        unit: "lbs",
-        unitPrice: 0.8,
-      },
-      {
-        id: 2,
-        ingredient: "Lettuce",
-        quantity: 50,
-        unit: "lbs",
-        unitPrice: 1.2,
-      },
-    ],
-  },
-  {
-    id: 102,
-    poNumber: "PO-20250603-02",
-    supplierId: 2,
-    supplierName: "Dairy Best",
-    orderDate: "2025-06-03",
-    status: "Delivered",
-    items: [
-      {
-        id: 3,
-        ingredient: "Mozzarella Cheese",
-        quantity: 50,
-        unit: "lbs",
-        unitPrice: 4.5,
-      },
-      {
-        id: 4,
-        ingredient: "Parmesan",
-        quantity: 30,
-        unit: "lbs",
-        unitPrice: 5.0,
-      },
-    ],
-  },
-];
+export default function PurchaseOrders() {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState<PurchaseOrderStatus>('cart');
+  const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
+  const [newOrderOpen, setNewOrderOpen] = useState(false);
+  const [newOrderSupplier, setNewOrderSupplier] = useState<any | null>(null);
+  const [newOrderDate, setNewOrderDate] = useState<string>(dayjs().format('YYYY-MM-DD'));
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'info' | 'warning' | 'error';
+  }>({ open: false, message: '', severity: 'success' });
 
-function PurchaseOrdersPage() {
-  const [purchaseOrders, setPurchaseOrders] = useState(fakePurchaseOrders);
-  const [selectedPO, setSelectedPO] = useState(null);
-  const [showNewPOForm, setShowNewPOForm] = useState(false);
+  const showToast = (
+    message: string,
+    severity: 'success' | 'info' | 'warning' | 'error' = 'success'
+  ) => setSnackbar({ open: true, message, severity });
 
-  // Total cost for a PO
-  function calculateTotalCost(items) {
-    return items
-      .reduce((sum, i) => sum + i.quantity * i.unitPrice, 0)
-      .toFixed(2);
-  }
-
-  // Handlers for selecting and closing PO details
-  const openDetails = (po) => setSelectedPO(po);
-  const closeDetails = () => setSelectedPO(null);
-
-  // Add a new purchase order (simplified form)
-  const [newPO, setNewPO] = useState({
-    supplierId: suppliers[0].id,
-    orderDate: new Date().toISOString().slice(0, 10),
-    items: [{ id: 1, ingredient: "", quantity: 0, unit: "", unitPrice: 0 }],
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn: getSuppliersList,
   });
 
-  function handleNewPOChange(field, value) {
-    setNewPO({ ...newPO, [field]: value });
-  }
+  const { data: ingredientNames = [] } = useQuery<IngredientName[]>({
+    queryKey: ['ingredient_names'],
+    queryFn: getIngredientNames,
+  });
 
-  function handleNewItemChange(index, field, value) {
-    const newItems = [...newPO.items];
-    newItems[index][field] =
-      field === "quantity" || field === "unitPrice" ? Number(value) : value;
-    setNewPO({ ...newPO, items: newItems });
-  }
+  const { data: orders = [], isLoading } = useQuery<PurchaseOrder[]>({
+    queryKey: ['purchase_orders', status],
+    queryFn: () => getPurchaseOrders({ status }),
+  });
 
-  function addNewItem() {
-    setNewPO({
-      ...newPO,
-      items: [
-        ...newPO.items,
-        { id: Date.now(), ingredient: "", quantity: 0, unit: "", unitPrice: 0 },
-      ],
+  const createOrderMut = useMutation({
+    mutationFn: (payload: PurchaseOrderCreate) => createPurchaseOrder(payload),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      showToast('Draft order created.');
+      setNewOrderOpen(false);
+    },
+  });
+
+  const addItemMut = useMutation({
+    mutationFn: (args: { order_id: number; item: Partial<PurchaseOrderItem> }) =>
+      addItemToPurchaseOrder(args.order_id, args.item),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      if (selectedOrder) {
+        const updated =
+          (await getPurchaseOrders({ status }))?.find(o => o.order_id === selectedOrder.order_id) ||
+          null;
+        setSelectedOrder(updated);
+      }
+      showToast('Item added.');
+    },
+  });
+
+  const removeItemMut = useMutation({
+    mutationFn: (args: { order_id: number; order_item_id: number }) =>
+      removeItemFromPurchaseOrder(args.order_id, args.order_item_id),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      if (selectedOrder) {
+        const updated =
+          (await getPurchaseOrders({ status }))?.find(o => o.order_id === selectedOrder.order_id) ||
+          null;
+        setSelectedOrder(updated);
+      }
+      showToast('Item removed.', 'info');
+    },
+  });
+
+  const updateStatusMut = useMutation({
+    mutationFn: (args: { order_id: number; status: PurchaseOrderStatus }) =>
+      updatePurchaseOrderStatus(args.order_id, args.status),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      setSelectedOrder(null);
+      showToast('Order status updated.');
+    },
+  });
+
+  const groupedBySupplier = useMemo(() => {
+    const map = new Map<string, PurchaseOrder[]>();
+    (orders || []).forEach(po => {
+      const key = po.supplier_name || `Supplier ${po.supplier_id}`;
+      const arr = map.get(key) || [];
+      arr.push(po);
+      map.set(key, arr);
     });
-  }
+    return Array.from(map.entries());
+  }, [orders]);
 
-  function removeNewItem(index) {
-    const newItems = [...newPO.items];
-    newItems.splice(index, 1);
-    setNewPO({ ...newPO, items: newItems });
-  }
-
-  function submitNewPO() {
-    const supplierName =
-      suppliers.find((s) => s.id === newPO.supplierId)?.name || "";
-    const newOrder = {
-      id: Date.now(),
-      poNumber: `PO-${new Date()
-        .toISOString()
-        .slice(0, 10)
-        .replace(/-/g, "")}-${Math.floor(Math.random() * 1000)}`,
-      supplierId: newPO.supplierId,
-      supplierName,
-      orderDate: newPO.orderDate,
-      status: "Pending",
-      items: newPO.items.filter((i) => i.ingredient && i.quantity > 0),
+  const handleCreateOrder = () => {
+    if (!newOrderSupplier) {
+      showToast('Select a supplier.', 'warning');
+      return;
+    }
+    const payload: PurchaseOrderCreate = {
+      supplier_id: Number(
+        newOrderSupplier?.supplier_id ?? newOrderSupplier?.id ?? newOrderSupplier?.value
+      ),
+      expected_delivery_date: newOrderDate,
+      items: [],
+      notes: undefined,
     };
-    setPurchaseOrders([newOrder, ...purchaseOrders]);
-    setShowNewPOForm(false);
-    setNewPO({
-      supplierId: suppliers[0].id,
-      orderDate: new Date().toISOString().slice(0, 10),
-      items: [{ id: 1, ingredient: "", quantity: 0, unit: "", unitPrice: 0 }],
-    });
-  }
+    createOrderMut.mutate(payload);
+  };
+
+  const IngredientAutocomplete: React.FC<{
+    value: IngredientName | null;
+    onChange: (v: IngredientName | null) => void;
+  }> = ({ value, onChange }) => (
+    <Autocomplete
+      options={ingredientNames}
+      getOptionLabel={opt => opt.ingredient_name}
+      value={value}
+      onChange={(_, v) => onChange(v)}
+      renderInput={params => <TextField {...params} label="Ingredient" size="small" />}
+      sx={{ minWidth: 240 }}
+    />
+  );
+
+  const ItemEditor: React.FC<{ order: PurchaseOrder }> = ({ order }) => {
+    const [selIngredient, setSelIngredient] = useState<IngredientName | null>(null);
+    const [qty, setQty] = useState<string>('');
+    const [unit, setUnit] = useState<string>('unit');
+    const [price, setPrice] = useState<string>('');
+
+    const addItem = () => {
+      const q = Number(qty);
+      const p = Number(price);
+      if (!selIngredient || isNaN(q) || isNaN(p)) {
+        showToast('Fill ingredient, quantity and price.', 'warning');
+        return;
+      }
+      addItemMut.mutate({
+        order_id: order.order_id,
+        item: {
+          ingredient_id: selIngredient.ingredient_id,
+          quantity_ordered: q,
+          unit,
+          unit_price: p,
+        },
+      });
+      setSelIngredient(null);
+      setQty('');
+      setPrice('');
+    };
+
+    const total = (order.items || []).reduce((s, it) => s + (Number(it.total_item_price) || 0), 0);
+
+    return (
+      <Box>
+        <Typography variant="h6" sx={{ mb: 1 }}>
+          Order #{order.order_id} • {order.supplier_name}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Expected Delivery: {order.expected_delivery_date || '-'}
+        </Typography>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+          <IngredientAutocomplete value={selIngredient} onChange={setSelIngredient} />
+          <TextField
+            size="small"
+            label="Qty"
+            value={qty}
+            onChange={e => setQty(e.target.value)}
+            sx={{ width: 100 }}
+          />
+          <TextField
+            size="small"
+            label="Unit"
+            value={unit}
+            onChange={e => setUnit(e.target.value)}
+            sx={{ width: 120 }}
+          />
+          <TextField
+            size="small"
+            label="Unit Price"
+            value={price}
+            onChange={e => setPrice(e.target.value)}
+            sx={{ width: 140 }}
+          />
+          <Button variant="contained" startIcon={<AddIcon />} onClick={addItem}>
+            Add Item
+          </Button>
+        </Stack>
+
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Ingredient</TableCell>
+              <TableCell align="right">Qty</TableCell>
+              <TableCell>Unit</TableCell>
+              <TableCell align="right">Unit Price</TableCell>
+              <TableCell align="right">Line Total</TableCell>
+              <TableCell align="center">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {(order.items || []).map(it => (
+              <TableRow key={it.order_item_id}>
+                <TableCell>{it.ingredient_name}</TableCell>
+                <TableCell align="right">{it.quantity_ordered}</TableCell>
+                <TableCell>{it.unit}</TableCell>
+                <TableCell align="right">${Number(it.unit_price).toFixed(2)}</TableCell>
+                <TableCell align="right">${Number(it.total_item_price).toFixed(2)}</TableCell>
+                <TableCell align="center">
+                  <IconButton
+                    color="error"
+                    size="small"
+                    onClick={() =>
+                      removeItemMut.mutate({
+                        order_id: order.order_id,
+                        order_item_id: it.order_item_id,
+                      })
+                    }
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+            <TableRow>
+              <TableCell
+                colSpan={4}
+                align="right"
+                sx={{
+                  fontWeight: 600,
+                  borderBottom: 'none',
+                }}
+              >
+                Total
+              </TableCell>
+              <TableCell
+                align="right"
+                sx={{
+                  fontWeight: 600,
+                  borderBottom: 'none',
+                }}
+              >
+                ${total.toFixed(2)}
+              </TableCell>
+              <TableCell sx={{ borderBottom: 'none' }} />
+            </TableRow>
+          </TableBody>
+        </Table>
+
+        <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+          {order.status === 'cart' && (
+            <Button
+              variant="contained"
+              onClick={() =>
+                updateStatusMut.mutate({ order_id: order.order_id, status: 'pending' })
+              }
+            >
+              Submit Order
+            </Button>
+          )}
+          {order.status === 'pending' && (
+            <Button
+              variant="outlined"
+              onClick={() =>
+                updateStatusMut.mutate({ order_id: order.order_id, status: 'delivered' })
+              }
+            >
+              Mark Delivered
+            </Button>
+          )}
+        </Stack>
+      </Box>
+    );
+  };
 
   return (
-    <div className="max-w-7xl mx-auto p-6 bg-white rounded-lg shadow-lg">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Purchase Orders</h1>
-        <button
-          onClick={() => setShowNewPOForm(true)}
-          className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition"
+    <Box sx={{ p: 3, bgcolor: 'background.default' }}>
+      <Typography variant="h4" sx={{ mb: 1 }}>
+        Purchase Orders
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Create and manage supplier purchase orders. Drafts can be saved and continued later.
+      </Typography>
+
+      <Tabs
+        value={status}
+        onChange={(_, v) => {
+          setStatus(v);
+          setSelectedOrder(null);
+        }}
+        sx={{ mb: 2 }}
+      >
+        {statusTabs.map(t => (
+          <Tab key={t.value} value={t.value} label={t.label} />
+        ))}
+      </Tabs>
+
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <Paper
+          sx={{
+            p: 2,
+            width: { xs: '100%', md: 360 },
+            flexShrink: 0,
+            bgcolor: 'background.paper',
+          }}
+          elevation={0}
         >
-          + New Purchase Order
-        </button>
-      </div>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="subtitle1">Orders ({orders.length})</Typography>
+            <Button size="small" variant="contained" onClick={() => setNewOrderOpen(true)}>
+              New Order
+            </Button>
+          </Stack>
+          <Divider sx={{ mb: 1 }} />
+          {isLoading ? (
+            <Typography variant="body2">Loading…</Typography>
+          ) : (
+            <Stack spacing={1}>
+              {groupedBySupplier.map(([supplier, list]) => (
+                <Box key={supplier}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    {supplier} • {list.length}
+                  </Typography>
+                  <Stack spacing={0.5}>
+                    {list.map(po => (
+                      <Button
+                        key={po.order_id}
+                        variant={selectedOrder?.order_id === po.order_id ? 'contained' : 'text'}
+                        size="small"
+                        onClick={() => setSelectedOrder(po)}
+                        sx={{
+                          justifyContent: 'flex-start',
+                          ...(selectedOrder?.order_id !== po.order_id && {
+                            color: 'text.primary',
+                          }),
+                        }}
+                      >
+                        #{po.order_id} • {dayjs(po.order_date).format('MMM D')} • $
+                        {po.total_order_price.toFixed(2)}
+                      </Button>
+                    ))}
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
+          )}
+        </Paper>
 
-      {/* New PO Form */}
-      {showNewPOForm && (
-        <div className="mb-6 p-6 border rounded bg-gray-50">
-          <h2 className="text-xl font-semibold mb-4">
-            Create New Purchase Order
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-            <label className="block">
-              Supplier:
-              <select
-                value={newPO.supplierId}
-                onChange={(e) =>
-                  handleNewPOChange("supplierId", Number(e.target.value))
-                }
-                className="mt-1 block w-full border rounded px-3 py-2"
-              >
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              Order Date:
-              <input
-                type="date"
-                value={newPO.orderDate}
-                onChange={(e) => handleNewPOChange("orderDate", e.target.value)}
-                className="mt-1 block w-full border rounded px-3 py-2"
-              />
-            </label>
-          </div>
-
-          {/* Items */}
-          <div>
-            <h3 className="font-semibold mb-2">Ingredients</h3>
-            {newPO.items.map((item, idx) => (
-              <div
-                key={item.id}
-                className="grid grid-cols-6 gap-2 items-center mb-2"
-              >
-                <input
-                  type="text"
-                  placeholder="Ingredient Name"
-                  value={item.ingredient}
-                  onChange={(e) =>
-                    handleNewItemChange(idx, "ingredient", e.target.value)
-                  }
-                  className="col-span-2 border rounded px-2 py-1"
-                />
-                <input
-                  type="number"
-                  min={0}
-                  placeholder="Quantity"
-                  value={item.quantity}
-                  onChange={(e) =>
-                    handleNewItemChange(idx, "quantity", e.target.value)
-                  }
-                  className="border rounded px-2 py-1"
-                />
-                <input
-                  type="text"
-                  placeholder="Unit (lbs, kg, etc.)"
-                  value={item.unit}
-                  onChange={(e) =>
-                    handleNewItemChange(idx, "unit", e.target.value)
-                  }
-                  className="border rounded px-2 py-1"
-                />
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  placeholder="Unit Price"
-                  value={item.unitPrice}
-                  onChange={(e) =>
-                    handleNewItemChange(idx, "unitPrice", e.target.value)
-                  }
-                  className="border rounded px-2 py-1"
-                />
-                <button
-                  onClick={() => removeNewItem(idx)}
-                  className="text-red-600 hover:text-red-800 font-bold"
-                  title="Remove ingredient"
-                >
-                  &times;
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={addNewItem}
-              className="mt-2 text-indigo-600 hover:underline"
-            >
-              + Add Ingredient
-            </button>
-          </div>
-
-          <div className="mt-4 flex justify-end gap-2">
-            <button
-              onClick={() => setShowNewPOForm(false)}
-              className="px-4 py-2 border rounded hover:bg-gray-100"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={submitNewPO}
-              className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-            >
-              Create PO
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Purchase Orders List */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full table-auto border-collapse border border-gray-300">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="border border-gray-300 px-4 py-2 text-left">
-                PO Number
-              </th>
-              <th className="border border-gray-300 px-4 py-2 text-left">
-                Supplier
-              </th>
-              <th className="border border-gray-300 px-4 py-2 text-left">
-                Order Date
-              </th>
-              <th className="border border-gray-300 px-4 py-2 text-left">
-                Status
-              </th>
-              <th className="border border-gray-300 px-4 py-2 text-right">
-                Total Cost ($)
-              </th>
-              <th className="border border-gray-300 px-4 py-2 text-center">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {purchaseOrders.map((po) => (
-              <tr
-                key={po.id}
-                className="hover:bg-gray-50 cursor-pointer"
-                onClick={() => openDetails(po)}
-              >
-                <td className="border border-gray-300 px-4 py-2">
-                  {po.poNumber}
-                </td>
-                <td className="border border-gray-300 px-4 py-2">
-                  {po.supplierName}
-                </td>
-                <td className="border border-gray-300 px-4 py-2">
-                  {po.orderDate}
-                </td>
-                <td className="border border-gray-300 px-4 py-2">
-                  {po.status}
-                </td>
-                <td className="border border-gray-300 px-4 py-2 text-right">
-                  {calculateTotalCost(po.items)}
-                </td>
-                <td className="border border-gray-300 px-4 py-2 text-center">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      alert("Edit feature coming soon!");
-                    }}
-                    className="text-indigo-600 hover:underline"
-                  >
-                    Edit
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* PO Details Modal */}
-      {selectedPO && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50"
-          onClick={closeDetails}
+        <Paper
+          sx={{
+            p: 2,
+            flex: 1,
+            bgcolor: 'background.paper',
+          }}
+          elevation={0}
         >
-          <div
-            className="bg-white rounded-lg max-w-3xl w-full p-6 overflow-auto max-h-[80vh]"
-            onClick={(e) => e.stopPropagation()}
+          {selectedOrder ? (
+            <ItemEditor order={selectedOrder} />
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Select an order to view and edit items.
+            </Typography>
+          )}
+        </Paper>
+      </Stack>
+
+      <Dialog open={newOrderOpen} onClose={() => setNewOrderOpen(false)}>
+        <DialogTitle>Start New Order</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1, minWidth: 360 }}>
+            <Autocomplete
+              options={suppliers}
+              getOptionLabel={(opt: any) =>
+                opt?.name || opt?.supplier_name || `Supplier ${opt?.supplier_id || opt?.id || ''}`
+              }
+              value={newOrderSupplier}
+              onChange={(_, v) => setNewOrderSupplier(v)}
+              renderInput={params => <TextField {...params} label="Supplier" />}
+            />
+            <TextField
+              label="Expected Delivery Date"
+              type="date"
+              value={newOrderDate}
+              onChange={e => setNewOrderDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNewOrderOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleCreateOrder}
+            disabled={createOrderMut.isPending}
           >
-            <h2 className="text-2xl font-bold mb-4">
-              Purchase Order Details - {selectedPO.poNumber}
-            </h2>
-            <p className="mb-2">
-              <strong>Supplier:</strong> {selectedPO.supplierName}
-            </p>
-            <p className="mb-4">
-              <strong>Order Date:</strong> {selectedPO.orderDate}
-            </p>
+            Create Draft
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-            <table className="min-w-full table-auto border-collapse border border-gray-300">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="border border-gray-300 px-3 py-2 text-left">
-                    Ingredient
-                  </th>
-                  <th className="border border-gray-300 px-3 py-2 text-right">
-                    Quantity
-                  </th>
-                  <th className="border border-gray-300 px-3 py-2 text-left">
-                    Unit
-                  </th>
-                  <th className="border border-gray-300 px-3 py-2 text-right">
-                    Unit Price ($)
-                  </th>
-                  <th className="border border-gray-300 px-3 py-2 text-right">
-                    Total ($)
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedPO.items.map((item) => (
-                  <tr key={item.id}>
-                    <td className="border border-gray-300 px-3 py-2">
-                      {item.ingredient}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-2 text-right">
-                      {item.quantity}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-2">
-                      {item.unit}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-2 text-right">
-                      {item.unitPrice.toFixed(2)}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-2 text-right">
-                      {(item.quantity * item.unitPrice).toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td
-                    colSpan={4}
-                    className="border border-gray-300 px-3 py-2 font-bold text-right"
-                  >
-                    Total Cost:
-                  </td>
-                  <td className="border border-gray-300 px-3 py-2 font-bold text-right">
-                    {calculateTotalCost(selectedPO.items)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-
-            <div className="mt-6 flex justify-end gap-4">
-              <button
-                onClick={closeDetails}
-                className="px-4 py-2 border rounded hover:bg-gray-100"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(s => ({ ...s, open: false }))}
+      >
+        <Alert
+          onClose={() => setSnackbar(s => ({ ...s, open: false }))}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
   );
 }
-
-export default PurchaseOrdersPage;

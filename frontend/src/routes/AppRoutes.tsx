@@ -11,8 +11,8 @@ import Login from '../pages/auth/Login';
 // Dashboard
 import DailyOverview from '../pages/dashboard/DailyOverview';
 import AlertsFeed from '../pages/dashboard/AlertsFeed';
-import ShiftReadiness from '../pages/dashboard/ShiftReadiness';
-import YesterdaysTrends from '../pages/dashboard/YesterdaysTrends';
+import LiveOperations from '../pages/dashboard/LiveOperations';
+import QuickAnalytics from '../pages/dashboard/QuickAnalytics';
 import MenuItemQuickEntry from '../pages/dashboard/MenuItemQuickEntry';
 
 // Sales
@@ -89,8 +89,8 @@ export default function AppRoutes(): JSX.Element {
         {/* Dashboard */}
         <Route path="/dashboard/daily-overview" element={<DailyOverview />} />
         <Route path="/dashboard/alerts" element={<AlertsFeed />} />
-        <Route path="/dashboard/shift-readiness" element={<ShiftReadiness />} />
-        <Route path="/dashboard/yesterday" element={<YesterdaysTrends />} />
+        <Route path="/dashboard/live-operations" element={<LiveOperations />} />
+        <Route path="/dashboard/quick-analytics" element={<QuickAnalytics />} />
         <Route path="/dashboard/menu-item-entry" element={<MenuItemQuickEntry />} />
 
         {/* Sales */}

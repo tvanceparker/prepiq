@@ -47,6 +47,13 @@ export interface IngredientSupplierDetailsProps {
 }
 
 // --- Purchase Orders ---
+export type PurchaseOrderStatus = 'cart' | 'pending' | 'delivered' | 'cancelled';
+
+export interface IngredientName {
+  ingredient_id: number;
+  ingredient_name: string;
+}
+
 export interface PurchaseOrderItem {
   order_item_id: number;
   order_id: number;
@@ -67,7 +74,7 @@ export interface PurchaseOrder {
   order_date: string;
   expected_delivery_date?: string | null;
   actual_delivery_date?: string | null;
-  status: string;
+  status: PurchaseOrderStatus;
   total_order_price: number;
   items: PurchaseOrderItem[];
   notes?: string | null;

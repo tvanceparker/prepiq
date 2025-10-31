@@ -7,6 +7,9 @@ from app.schemas.prep_dto import (
     IngredientInput,
     CreateBatchRecipeRequest,
     PrepScheduleUpdate,
+    PrepLogResponse,
+    WasteLogResponse,
+    CreateWasteLogRequest,
 )
 from app.services.prep_service import PrepService
 from app.api.dependencies import get_prep_service
@@ -14,6 +17,58 @@ from typing import Dict, List, Optional
 from datetime import date
 
 router = APIRouter(prefix="/prep", tags=["Prep"])
+
+
+@router.get("/logs", response_model=List[PrepLogResponse])
+async def get_prep_logs(
+    start_date: Optional[date] = Query(None, description="Filter logs from this date onwards"),
+    end_date: Optional[date] = Query(None, description="Filter logs up to this date"),
+    status: Optional[str] = Query(None, description="Filter by status (completed, in_progress, etc.)"),
+    batch_recipe_id: Optional[int] = Query(None, description="Filter by batch recipe ID"),
+    prep_service: PrepService = Depends(get_prep_service),
+):
+    """Get prep logs (historical prep schedule records) with optional filters."""
+    return await prep_service.get_prep_logs(
+        start_date=start_date,
+        end_date=end_date,
+        status=status,
+        batch_recipe_id=batch_recipe_id,
+    )
+
+
+@router.get("/waste-logs", response_model=List[WasteLogResponse])
+async def get_waste_logs(
+    start_date: Optional[date] = Query(None, description="Filter from this date onwards"),
+    end_date: Optional[date] = Query(None, description="Filter up to this date"),
+    waste_type: Optional[str] = Query(None, description="Filter by waste or spoilage"),
+    prep_service: PrepService = Depends(get_prep_service),
+):
+    """Get waste and spoilage logs with optional filters."""
+    return await prep_service.get_waste_logs(
+        start_date=start_date,
+        end_date=end_date,
+        waste_type=waste_type,
+    )
+
+
+@router.post("/waste-logs")
+async def create_waste_log(
+    data: CreateWasteLogRequest,
+    prep_service: PrepService = Depends(get_prep_service),
+):
+    """Manually log waste or spoilage."""
+    try:
+        return await prep_service.create_waste_log(
+            ingredient_id=data.ingredient_id,
+            batch_recipe_id=data.batch_recipe_id,
+            quantity_wasted=data.quantity_wasted,
+            unit=data.unit,
+            waste_type=data.waste_type,
+            reason=data.reason,
+            notes=data.notes,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/schedule", response_model=List[Dict])

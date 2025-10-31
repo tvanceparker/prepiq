@@ -20,3 +20,25 @@ class ScheduledShiftRepository(BaseRepository):
         
         # Return the list of shifts
         return result.scalars().all()
+
+    async def get_shifts_by_date_range(
+        self, start_date: datetime.date, end_date: datetime.date
+    ) -> List[ScheduledShift]:
+        """Get all shifts within a date range for the restaurant."""
+        from datetime import datetime as dt
+        
+        # Convert dates to datetime for comparison
+        start_datetime = dt.combine(start_date, dt.min.time())
+        end_datetime = dt.combine(end_date, dt.max.time())
+        
+        result = await self.db.execute(
+            select(ScheduledShift)
+            .filter(
+                ScheduledShift.restaurant_id == self.restaurant_id,
+                ScheduledShift.shift_start >= start_datetime,
+                ScheduledShift.shift_start <= end_datetime,
+            )
+            .order_by(ScheduledShift.shift_start)
+        )
+        
+        return result.scalars().all()

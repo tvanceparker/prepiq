@@ -150,3 +150,18 @@ class SalesRepository(BaseRepository):
         )
         await self.db.execute(stmt)
         await self.db.commit()
+
+    async def get_sales_by_date_range(self, start_date: date, end_date: date) -> List[Sales]:
+        """Get all sales within a date range."""
+        start_dt = datetime.combine(start_date, time.min)
+        end_dt = datetime.combine(end_date, time.max)
+        
+        result = await self.db.execute(
+            select(Sales).filter(
+                Sales.restaurant_id == self.restaurant_id,
+                Sales.sale_timestamp >= start_dt,
+                Sales.sale_timestamp <= end_dt,
+            )
+            .order_by(asc(Sales.sale_timestamp))
+        )
+        return result.scalars().all()

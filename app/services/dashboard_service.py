@@ -9,6 +9,9 @@ from openpyxl.utils import get_column_letter
 import csv
 from io import StringIO, BytesIO
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
+from sqlalchemy import and_
 from app.services.utils.metrics import mape
 from decimal import Decimal
 from app.repositories.sales_repo import SalesRepository
@@ -17,10 +20,21 @@ from app.repositories.forecast_breakdown_repo import ForecastBreakdownRepository
 from app.repositories.daily_forecast_accuracy_repo import DailyForecastAccuracyRepository
 from app.repositories.restaurants_repo import RestaurantRepository
 from app.repositories.activity_logs_repo import ActivityLogRepository
+from app.repositories.inventory_repo import InventoryRepository
+from app.repositories.ingredients_repo import IngredientsRepository
+from app.repositories.batch_recipes_repo import BatchRecipesRepository
+from app.repositories.prep_logs_repo import PrepLogsRepository
+from app.repositories.alerts_repo import AlertsRepository
+from app.repositories.purchase_orders_repo import PurchaseOrderRepository
+from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
 from app.utils.logger_helpers import log_method
 from app.core.logging import logger 
-from app.schemas.dashboard_dto import EodSalesEntriesIn, DailyOverviewOut, SaleOut
+from app.schemas.dashboard_dto import (
+    EodSalesEntriesIn, DailyOverviewOut, SaleOut, 
+    ProDailyOverviewOut, DeliveryItemOut, ExpectedDeliveryOut
+)
 from typing import Sequence, Optional as Opt
+from app.db.models.purchase_orders_orm import PurchaseOrder
 
 class DashboardService:
     def __init__(self, db: AsyncSession, restaurant_id: int, subscription_tier: str, employee_id: int):
@@ -34,6 +48,13 @@ class DashboardService:
         self.forecast_breakdown_repo = ForecastBreakdownRepository(db, restaurant_id)
         self.daily_accuracy_repo = DailyForecastAccuracyRepository(db,restaurant_id)
         self.activity_log_repo = ActivityLogRepository(db,restaurant_id,employee_id)
+        self.inventory_repo = InventoryRepository(db, restaurant_id)
+        self.ingredients_repo = IngredientsRepository(db, restaurant_id)
+        self.batch_recipes_repo = BatchRecipesRepository(db, restaurant_id)
+        self.prep_logs_repo = PrepLogsRepository(db, restaurant_id)
+        self.alerts_repo = AlertsRepository(db, restaurant_id)
+        self.purchase_orders_repo = PurchaseOrderRepository(db, restaurant_id)
+        self.purchase_order_items_repo = PurchaseOrderItemRepository(db, restaurant_id)
 
     async def log_activity(self, action: str, details: Any = None):
         """
@@ -520,4 +541,198 @@ class DashboardService:
         filtered = { (ch if ch is not None else None): cnt for ch, cnt in rows if (ch in norm_channels) or (ch is None and None in norm_channels) }
         return {"sale_date": sale_date, "conflicts": filtered}
 
+    @log_method()
+    async def get_pro_daily_overview(self) -> ProDailyOverviewOut:
+        """
+        Comprehensive daily overview for Pro/Master tier with:
+        - Basic metrics
+        - Inventory summary & alerts
+        - Prep schedule & task completion
+        - Menu performance (forecast vs actuals)
+        - Expected deliveries today
+        """
+        try:
+            today = date.today()
+            logger.info(f"Fetching Pro daily overview for restaurant {self.restaurant_id} on {today}")
+            
+            # Get basic overview data
+            basic_data = await self._get_basic_overview()
+            logger.info("Basic overview data retrieved successfully")
+            
+            # ===== INVENTORY SUMMARY & ALERTS =====
+            all_inventory = await self.inventory_repo.get_all()
+            
+            critical_stock = []
+            low_stock = []
+            healthy_stock = []
+            total_value = 0.0
+            
+            for inv in all_inventory:
+                ingredient = await self.ingredients_repo.get_by_id(inv.ingredient_id)
+                if not ingredient:
+                    continue
+                    
+                item_value = float(inv.quantity_available or 0) * float(ingredient.cost_per_unit or 0)
+                total_value += item_value
+                
+                stock_item = {
+                    "ingredient_id": inv.ingredient_id,
+                    "ingredient_name": ingredient.ingredient_name,
+                    "quantity_available": float(inv.quantity_available or 0),
+                    "par_level": float(inv.par_level or 0),
+                    "unit": ingredient.unit,
+                    "value": item_value
+                }
+                
+                if inv.quantity_available <= (inv.par_level * 0.25):
+                    critical_stock.append(stock_item)
+                elif inv.quantity_available <= inv.par_level:
+                    low_stock.append(stock_item)
+                else:
+                    healthy_stock.append(stock_item)
+            
+            inventory_summary = {
+                "critical_count": len(critical_stock),
+                "low_count": len(low_stock),
+                "healthy_count": len(healthy_stock),
+                "total_value": total_value,
+                "critical_items": critical_stock[:5],  # Top 5
+                "low_items": low_stock[:5]
+            }
+            
+            # Get alerts
+            all_alerts = await self.alerts_repo.get_all()
+            active_alerts = [
+                {
+                    "alert_id": alert.alert_id,
+                    "alert_type": alert.alert_type,
+                    "message": alert.message,
+                    "severity": alert.severity,
+                    "created_at": alert.created_at.isoformat() if alert.created_at else None
+                }
+                for alert in all_alerts
+                if not alert.is_resolved
+            ]
+            
+            # ===== PREP SCHEDULE & TASK COMPLETION =====
+            batch_recipes = await self.batch_recipes_repo.get_all()
+            prep_logs_today = await self.prep_logs_repo.get_by_date(today)
+            
+            completed_batches = set(log.batch_recipe_id for log in prep_logs_today)
+            
+            prep_tasks = []
+            total_tasks = len(batch_recipes)
+            completed_tasks = 0
+            
+            for recipe in batch_recipes:
+                is_completed = recipe.batch_recipe_id in completed_batches
+                if is_completed:
+                    completed_tasks += 1
+                    
+                prep_tasks.append({
+                    "batch_recipe_id": recipe.batch_recipe_id,
+                    "batch_name": recipe.batch_name,
+                    "is_completed": is_completed,
+                    "target_quantity": float(recipe.target_quantity or 0),
+                    "unit": recipe.unit
+                })
+            
+            prep_schedule = {
+                "total_tasks": total_tasks,
+                "completed_tasks": completed_tasks,
+                "completion_rate": (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0,
+                "tasks": prep_tasks
+            }
+            
+            # ===== MENU PERFORMANCE (Forecast vs Actuals) =====
+            # Get today's forecast breakdown
+            forecast_items = await self.forecast_breakdown_repo.get_by_date(today)
+            
+            # Get today's actual sales
+            actual_sales = await self.sales_repo.get_by_date(today)
+            
+            # Build actual sales by menu item
+            actual_by_item = {}
+            for sale in actual_sales:
+                menu_item_id = sale.menu_item_id
+                actual_by_item[menu_item_id] = actual_by_item.get(menu_item_id, 0) + (sale.quantity or 0)
+            
+            menu_performance = []
+            for forecast in forecast_items:
+                menu_item = await self.menu_repo.get_by_id(forecast.menu_item_id)
+                if not menu_item:
+                    continue
+                    
+                forecasted_qty = float(forecast.predicted_quantity or 0)
+                actual_qty = float(actual_by_item.get(forecast.menu_item_id, 0))
+                variance = actual_qty - forecasted_qty
+                variance_pct = (variance / forecasted_qty * 100) if forecasted_qty > 0 else 0
+                
+                menu_performance.append({
+                    "menu_item_id": forecast.menu_item_id,
+                    "item_name": menu_item.item_name,
+                    "forecasted_quantity": forecasted_qty,
+                    "actual_quantity": actual_qty,
+                    "variance": variance,
+                    "variance_percent": variance_pct
+                })
+            
+            # ===== EXPECTED DELIVERIES TODAY =====
+            stmt = (
+                select(PurchaseOrder)
+                .options(selectinload(PurchaseOrder.supplier))
+                .options(selectinload(PurchaseOrder.purchase_order_items))
+                .where(
+                    and_(
+                        PurchaseOrder.restaurant_id == self.restaurant_id,
+                        PurchaseOrder.expected_delivery_date == today,
+                        PurchaseOrder.status.in_(["pending", "confirmed", "in_transit"])
+                    )
+                )
+            )
+            result = await self.db.execute(stmt)
+            orders = result.scalars().all()
+            
+            expected_deliveries = []
+            for order in orders:
+                # Build delivery items
+                delivery_items = []
+                for item in order.purchase_order_items:
+                    ingredient = await self.ingredients_repo.get_by_id(item.ingredient_id)
+                    if ingredient:
+                        delivery_items.append(DeliveryItemOut(
+                            ingredient_name=ingredient.ingredient_name,
+                            quantity_ordered=float(item.quantity_ordered or 0),
+                            unit=ingredient.unit
+                        ))
+                
+                expected_deliveries.append(ExpectedDeliveryOut(
+                    order_id=order.purchase_order_id,
+                    supplier_name=order.supplier.supplier_name if order.supplier else "Unknown",
+                    expected_delivery_date=order.expected_delivery_date.isoformat() if order.expected_delivery_date else None,
+                    order_date=order.order_date.isoformat() if order.order_date else None,
+                    status=order.status or "pending",
+                    total_items=len(delivery_items),
+                    total_order_price=float(order.total_order_price or 0),
+                    items=delivery_items
+                ))
+            
+            logger.info(f"Pro overview compiled successfully: {len(expected_deliveries)} expected deliveries")
+            
+            return ProDailyOverviewOut(
+                **basic_data,
+                inventory_summary=inventory_summary,
+                active_alerts=active_alerts,
+                prep_schedule=prep_schedule,
+                menu_performance=menu_performance,
+                expected_deliveries_today=expected_deliveries
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in get_pro_daily_overview: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to fetch Pro daily overview: {str(e)}"
+            )
+    
     

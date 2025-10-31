@@ -4,6 +4,8 @@ import {
   PurchaseOrder,
   PurchaseOrderCreate,
   PurchaseOrderItem,
+  IngredientName,
+  PurchaseOrderStatus,
 } from '../interfaces/inventory';
 import { get, patch, post } from './index';
 export async function createPurchaseOrder(data: PurchaseOrderCreate): Promise<any> {
@@ -24,7 +26,10 @@ export async function getPurchaseOrderDetail(order_id: number): Promise<Purchase
   return get(`/inventory/purchase_orders/${order_id}`);
 }
 
-export async function updatePurchaseOrderStatus(order_id: number, status: string): Promise<any> {
+export async function updatePurchaseOrderStatus(
+  order_id: number,
+  status: PurchaseOrderStatus
+): Promise<any> {
   return patch(
     `/inventory/purchase_orders/${order_id}/status?status=${encodeURIComponent(status)}`,
     {}
@@ -92,6 +97,18 @@ export const fetchAllSuppliers = async () => {
   return await get('/inventory/suppliers');
 };
 
+// Suppliers convenience (unwrap common {success, data, message} shape)
+export const getSuppliersList = async (): Promise<any[]> => {
+  const res = await fetchAllSuppliers();
+  if (res && typeof res === 'object' && 'data' in res) return (res as any).data ?? [];
+  return Array.isArray(res) ? res : [];
+};
+
+// Ingredient names for autocomplete
+export const getIngredientNames = async (): Promise<IngredientName[]> => {
+  return await get('/inventory/ingredient_names');
+};
+
 // Update supplier info (patch request with supplier_id and update data)
 export const updateSupplier = async (supplierData: any) => {
   return await patch('/inventory/update-supplier', supplierData);
@@ -110,4 +127,20 @@ export const createIngredientSupplier = async (
   ingredientSupplierData: any
 ) => {
   return await post(`/inventory/create-ingredient-supplier/${supplier_id}`, ingredientSupplierData);
+};
+
+// Inventory Adjustments
+export const adjustInventory = async (adjustmentData: {
+  inventory_id: number;
+  lot_id: number;
+  adjustment_quantity: number;
+  usage_type: string;
+  reference_id?: number;
+  notes?: string;
+}): Promise<any> => {
+  return await post('/inventory/adjust-inventory', adjustmentData);
+};
+
+export const getInventoryAdjustments = async (): Promise<any[]> => {
+  return await get('/inventory/adjustments');
 };

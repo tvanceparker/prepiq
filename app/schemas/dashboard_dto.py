@@ -88,3 +88,192 @@ class EodUploadResponse(BaseModel):
     data: List[SaleOut]
     model_config = ConfigDict(from_attributes=True)
 
+
+# ---- Live Operations DTOs ----
+class CurrentShiftOut(BaseModel):
+    clocked_in: int
+    scheduled: int
+    on_break: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrderFlowOut(BaseModel):
+    pending: int
+    in_progress: int
+    ready: int
+    completed_today: int
+    avg_prep_time: float  # minutes
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TodaysPaceOut(BaseModel):
+    current_sales: float
+    forecast_sales: float
+    percentage: float
+    pace_vs_forecast: str  # on_track, ahead, behind
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ActiveOrderOut(BaseModel):
+    order_id: int
+    table: str
+    items: int
+    time_elapsed: int  # minutes
+    status: str
+    server: str
+    model_config = ConfigDict(from_attributes=True)
+
+
+class KitchenStatusOut(BaseModel):
+    grill: str
+    fryer: str
+    salad: str
+    dessert: str
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UpcomingDeliveryOut(BaseModel):
+    supplier: str
+    eta: str
+    items: str
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LiveOperationsOut(BaseModel):
+    current_shift: CurrentShiftOut
+    order_flow: OrderFlowOut
+    todays_pace: TodaysPaceOut
+    active_orders: List[ActiveOrderOut]
+    kitchen_status: KitchenStatusOut
+    upcoming_deliveries: List[UpcomingDeliveryOut]
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---- Quick Analytics DTOs ----
+class AnalyticsSummaryOut(BaseModel):
+    total_sales: float
+    total_orders: int
+    avg_order_value: float
+    total_customers: int
+    wow_sales_change: float
+    wow_orders_change: float
+    wow_avg_change: float
+    wow_customers_change: float
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DailySalesOut(BaseModel):
+    date: str
+    sales: float
+    orders: int
+    customers: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ItemPerformanceOut(BaseModel):
+    name: str
+    units: int
+    revenue: float
+    trend: str  # up, down, neutral
+    change: float  # percentage
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QuickAnalyticsOut(BaseModel):
+    summary: AnalyticsSummaryOut
+    daily_sales: List[DailySalesOut]
+    top_items: List[ItemPerformanceOut]
+    bottom_items: List[ItemPerformanceOut]
+    hourly_pattern: List[int]
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---- Pro/Master Daily Overview DTOs ----
+class InventoryAlertOut(BaseModel):
+    ingredient_id: int
+    ingredient_name: str
+    current_quantity: float
+    unit: str
+    reorder_point: float
+    status: str  # critical, low, warning
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PrepTaskOut(BaseModel):
+    batch_recipe_id: int
+    batch_recipe_name: str
+    scheduled_quantity: int
+    completed_quantity: int
+    prep_date: str
+    status: str  # pending, in_progress, completed
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MenuPerformanceOut(BaseModel):
+    menu_item_id: int
+    name: str
+    category: Optional[str]
+    sales_today: int
+    revenue_today: float
+    forecast_today: int
+    variance: float  # percentage
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BatchRecipeSummaryOut(BaseModel):
+    total_batches: int
+    completed_today: int
+    pending_today: int
+    avg_completion_rate: float
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InventorySummaryOut(BaseModel):
+    total_ingredients: int
+    critical_stock: int
+    low_stock: int
+    healthy_stock: int
+    total_value: float
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DeliveryItemOut(BaseModel):
+    ingredient_name: str
+    quantity_ordered: float
+    unit: str
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ExpectedDeliveryOut(BaseModel):
+    order_id: int
+    supplier_name: str
+    expected_delivery_date: str
+    order_date: str
+    status: str
+    total_items: int
+    total_order_price: float
+    items: List[DeliveryItemOut]
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProDailyOverviewOut(BaseModel):
+    # Core metrics (from basic)
+    forecasted_sales_today: Optional[ForecastedSalesBasic]
+    top_5_items_today: List[TopForecastedItem]
+    accuracy_yesterday: Optional[AccuracyBasicOut]
+    
+    # Enhanced Pro metrics
+    inventory_summary: InventorySummaryOut
+    inventory_alerts: List[InventoryAlertOut]
+    prep_tasks_today: List[PrepTaskOut]
+    batch_recipe_summary: BatchRecipeSummaryOut
+    menu_performance_today: List[MenuPerformanceOut]
+    expected_deliveries_today: List[ExpectedDeliveryOut]
+    
+    # Quick stats
+    total_recipes: int
+    active_menu_items: int
+    staff_scheduled_today: int
+    
+    model_config = ConfigDict(from_attributes=True)
+
