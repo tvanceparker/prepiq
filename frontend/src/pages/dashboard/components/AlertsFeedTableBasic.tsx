@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState, useEffect, useRef } from "react";
 import {
   Table,
   TableBody,
@@ -21,65 +21,59 @@ import {
   Button as MUIButton,
   Stack,
   useTheme,
-} from '@mui/material';
-import useMediaQuery from '../hooks/useMediaQuery';
-import Button from '../../../components/Button';
-import type { NormalizedAlert } from '../hooks/useAlertsFeed';
+} from "@mui/material";
 
-interface Props {
-  alerts: NormalizedAlert[];
-  loading?: boolean;
-  isCardView?: boolean;
-  onFixSubmit?: (a: NormalizedAlert, v: string) => void;
-  onResolve?: (id: string | number) => void;
-  onAcknowledge?: (id: string | number) => void;
-  isFixable?: (a: NormalizedAlert) => boolean;
-  severityColors?: Record<string, string>;
-}
+import useMediaQuery from "../hooks/useMediaQuery";
+import Button from "../../../components/Button";
 
 export default function AlertsFeedTableBasic({
-  alerts = [],
-  loading = false,
-  isCardView = false,
+  alerts,
+  loading,
+  isCardView,
   onFixSubmit,
   onResolve,
   onAcknowledge,
-  isFixable = () => false,
-  severityColors = {},
-}: Props) {
+  isFixable,
+  severityColors,
+}) {
   const theme = useTheme();
-  const isMobile = useMediaQuery('(max-width: 768px)');
+  const isMobile = useMediaQuery("(max-width: 768px)");
 
-  const [openTooltipId, setOpenTooltipId] = useState<string | number | null>(null);
-  const [fixAnchorEl, setFixAnchorEl] = useState<HTMLElement | null>(null);
-  const [fixAlert, setFixAlert] = useState<NormalizedAlert | null>(null);
-  const [fixValue, setFixValue] = useState('');
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [openTooltipId, setOpenTooltipId] = useState(null);
+  const [fixAnchorEl, setFixAnchorEl] = useState(null);
+  const [fixAlert, setFixAlert] = useState(null);
+  const [fixValue, setFixValue] = useState("");
+  const inputRef = useRef(null);
+  const containerRef = useRef(null);
 
   useEffect(() => {
-    if (fixAnchorEl) requestAnimationFrame(() => inputRef.current?.focus());
+    if (fixAnchorEl) {
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
   }, [fixAnchorEl]);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+    function handleClickOutside(event) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target)
+      ) {
         setOpenTooltipId(null);
         closeFixPopper();
       }
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleFixClick = (event: React.MouseEvent, alert: NormalizedAlert) => {
+  const handleFixClick = (event, alert) => {
     event.stopPropagation();
     if (fixAlert?.alert_id === alert.alert_id) {
       closeFixPopper();
     } else {
-      setFixAnchorEl(event.currentTarget as HTMLElement);
+      setFixAnchorEl(event.currentTarget);
       setFixAlert(alert);
-      setFixValue('');
+      setFixValue("");
     }
   };
 
@@ -93,7 +87,7 @@ export default function AlertsFeedTableBasic({
   const closeFixPopper = () => {
     setFixAnchorEl(null);
     setFixAlert(null);
-    setFixValue('');
+    setFixValue("");
   };
 
   const renderFixPopper = () => {
@@ -117,8 +111,8 @@ export default function AlertsFeedTableBasic({
                 {fixAlert.message}
               </Typography>
 
-              {(fixAlert.alert_type === 'DataQuality:NullOrZeroQuantity' ||
-                fixAlert.alert_type === 'DataQuality:QuantityOutlier') && (
+              {(fixAlert.alert_type === "DataQuality:NullOrZeroQuantity" ||
+                fixAlert.alert_type === "DataQuality:QuantityOutlier") && (
                 <TextField
                   label="Quantity Sold"
                   type="number"
@@ -126,20 +120,29 @@ export default function AlertsFeedTableBasic({
                   fullWidth
                   size="small"
                   value={fixValue}
-                  onChange={e => setFixValue(e.target.value)}
+                  onChange={(e) => setFixValue(e.target.value)}
                   disabled={loading}
                   inputProps={{ min: 0 }}
                 />
               )}
 
-              <Stack direction="row" spacing={1} justifyContent="flex-end" mt={2}>
-                <MUIButton variant="outlined" onClick={closeFixPopper} disabled={loading}>
+              <Stack
+                direction="row"
+                spacing={1}
+                justifyContent="flex-end"
+                mt={2}
+              >
+                <MUIButton
+                  variant="outlined"
+                  onClick={closeFixPopper}
+                  disabled={loading}
+                >
                   Cancel
                 </MUIButton>
                 <MUIButton
                   variant="contained"
                   onClick={handleFixSubmit}
-                  disabled={loading || fixValue === ''}
+                  disabled={loading || fixValue === ""}
                 >
                   Confirm
                 </MUIButton>
@@ -155,8 +158,10 @@ export default function AlertsFeedTableBasic({
     return (
       <>
         <Grid container spacing={2} ref={containerRef}>
-          {alerts.map(alert => {
-            const displayStatus = alert.is_acknowledged ? 'Acknowledged' : alert.status;
+          {alerts.map((alert) => {
+            const displayStatus = alert.is_acknowledged
+              ? "Acknowledged"
+              : alert.status;
 
             const meta = alert.meta
               ? Object.entries(alert.meta).map(([key, val]) => (
@@ -164,9 +169,9 @@ export default function AlertsFeedTableBasic({
                     key={key}
                     variant="body2"
                     color="textSecondary"
-                    sx={{ textTransform: 'capitalize', mb: 0.5 }}
+                    sx={{ textTransform: "capitalize", mb: 0.5 }}
                   >
-                    <strong>{key.replace(/_/g, ' ')}:</strong> {String(val)}
+                    <strong>{key.replace(/_/g, " ")}:</strong> {val?.toString()}
                   </Typography>
                 ))
               : null;
@@ -182,47 +187,67 @@ export default function AlertsFeedTableBasic({
                 >
                   <Card
                     onClick={() =>
-                      setOpenTooltipId(id => (id === alert.alert_id ? null : alert.alert_id))
+                      setOpenTooltipId((id) =>
+                        id === alert.alert_id ? null : alert.alert_id
+                      )
                     }
                     sx={{
-                      border: `2px solid ${severityColors[alert.severity] || theme.palette.grey[400]}`,
-                      cursor: 'pointer',
-                      height: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      ':hover': { boxShadow: 6 },
+                      border: `2px solid ${
+                        severityColors[alert.severity] ||
+                        theme.palette.grey[400]
+                      }`,
+                      cursor: "pointer",
+                      height: "100%",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      ":hover": { boxShadow: 6 },
                     }}
                   >
                     <CardContent>
-                      <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
-                        {`${alert.alert_type} - ${String(alert.severity).toUpperCase()}`}
+                      <Typography
+                        variant="h6"
+                        gutterBottom
+                        sx={{ fontWeight: "bold" }}
+                      >
+                        {`${
+                          alert.alert_type
+                        } - ${alert.severity.toUpperCase()}`}
                       </Typography>
-                      <Typography variant="body1" color="text.primary" gutterBottom sx={{ mb: 1 }}>
+                      <Typography
+                        variant="body1"
+                        color="text.primary"
+                        gutterBottom
+                        sx={{ mb: 1 }}
+                      >
                         {alert.message}
                       </Typography>
 
                       <Divider sx={{ my: 1 }} />
 
                       <Typography variant="body2" color="text.secondary">
-                        Employee ID: {alert.employee_id ?? '—'}
+                        Employee ID: {alert.employee_id ?? "—"}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Role: {alert.role ?? '—'}
+                        Role: {alert.role ?? "—"}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         Status: {displayStatus}
                       </Typography>
                     </CardContent>
 
-                    <CardActions sx={{ flexWrap: 'wrap', gap: 1, px: 2, pb: 2 }}>
+                    <CardActions
+                      sx={{ flexWrap: "wrap", gap: 1, px: 2, pb: 2 }}
+                    >
                       <Button
-                        size={isMobile ? 'sm' : 'md'}
+                        size={isMobile ? "sm" : "md"}
                         variant="confirm"
-                        disabled={alert.is_acknowledged || alert.status === 'resolved'}
-                        onClick={(e: React.MouseEvent) => {
+                        disabled={
+                          alert.is_acknowledged || alert.status === "resolved"
+                        }
+                        onClick={(e) => {
                           e.stopPropagation();
-                          onAcknowledge && onAcknowledge(alert.alert_id);
+                          onAcknowledge(alert.alert_id);
                         }}
                         requiredPermission="alerts"
                       >
@@ -230,24 +255,24 @@ export default function AlertsFeedTableBasic({
                       </Button>
 
                       <Button
-                        size={isMobile ? 'sm' : 'md'}
+                        size={isMobile ? "sm" : "md"}
                         variant="delete"
-                        disabled={alert.status === 'resolved'}
-                        onClick={(e: React.MouseEvent) => {
+                        disabled={alert.status === "resolved"}
+                        onClick={(e) => {
                           e.stopPropagation();
-                          onResolve && onResolve(alert.alert_id);
+                          onResolve(alert.alert_id);
                         }}
                         requiredPermission="alerts"
                       >
                         Resolve
                       </Button>
 
-                      {isFixable && isFixable(alert) && (
+                      {isFixable(alert) && (
                         <Button
-                          size={isMobile ? 'sm' : 'md'}
+                          size={isMobile ? "sm" : "md"}
                           variant="default"
-                          disabled={alert.status === 'resolved'}
-                          onClick={(e: React.MouseEvent) => handleFixClick(e, alert)}
+                          disabled={alert.status === "resolved"}
+                          onClick={(e) => handleFixClick(e, alert)}
                           requiredPermission="alerts"
                         >
                           Fix
@@ -269,7 +294,7 @@ export default function AlertsFeedTableBasic({
   return (
     <>
       <TableContainer component={Paper} sx={{ maxHeight: 500 }}>
-        <Table stickyHeader size={isMobile ? 'small' : 'medium'}>
+        <Table stickyHeader size={isMobile ? "small" : "medium"}>
           <TableHead>
             <TableRow>
               <TableCell>ID</TableCell>
@@ -283,8 +308,10 @@ export default function AlertsFeedTableBasic({
             </TableRow>
           </TableHead>
           <TableBody>
-            {alerts.map(alert => {
-              const displayStatus = alert.is_acknowledged ? 'Acknowledged' : alert.status;
+            {alerts.map((alert) => {
+              const displayStatus = alert.is_acknowledged
+                ? "Acknowledged"
+                : alert.status;
 
               const meta = alert.meta
                 ? Object.entries(alert.meta).map(([key, val]) => (
@@ -292,9 +319,10 @@ export default function AlertsFeedTableBasic({
                       key={key}
                       variant="body2"
                       color="textSecondary"
-                      sx={{ textTransform: 'capitalize', mb: 0.5 }}
+                      sx={{ textTransform: "capitalize", mb: 0.5 }}
                     >
-                      <strong>{key.replace(/_/g, ' ')}:</strong> {String(val)}
+                      <strong>{key.replace(/_/g, " ")}:</strong>{" "}
+                      {val?.toString()}
                     </Typography>
                   ))
                 : null;
@@ -308,67 +336,81 @@ export default function AlertsFeedTableBasic({
                       <Typography
                         variant="body2"
                         sx={{
-                          textDecoration: 'underline dotted',
-                          cursor: 'pointer',
-                          display: 'inline-block',
+                          textDecoration: "underline dotted",
+                          cursor: "pointer",
+                          display: "inline-block",
                         }}
                       >
                         {alert.message}
                       </Typography>
                     </Tooltip>
                   </TableCell>
-                  <TableCell>{alert.employee_id ?? '—'}</TableCell>
-                  <TableCell>{alert.role ?? '—'}</TableCell>
+                  <TableCell>{alert.employee_id ?? "—"}</TableCell>
+                  <TableCell>{alert.role ?? "—"}</TableCell>
                   <TableCell
                     sx={{
-                      color: severityColors[alert.severity] || theme.palette.grey[600],
-                      fontWeight: 'bold',
-                      textTransform: 'capitalize',
+                      color:
+                        severityColors[alert.severity] ||
+                        theme.palette.grey[600],
+                      fontWeight: "bold",
+                      textTransform: "capitalize",
                     }}
                   >
                     {alert.severity}
                   </TableCell>
-                  <TableCell sx={{ textTransform: 'capitalize' }}>{displayStatus}</TableCell>
+                  <TableCell sx={{ textTransform: "capitalize" }}>
+                    {displayStatus}
+                  </TableCell>
                   <TableCell align="center">
                     <Box
-                      sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'center' }}
+                      sx={{
+                        display: "flex",
+                        gap: 1,
+                        flexWrap: "wrap",
+                        justifyContent: "center",
+                      }}
                     >
                       <Tooltip title="Acknowledge Alert" arrow placement="top">
                         <Button
                           variant="confirm"
-                          disabled={alert.is_acknowledged || alert.status === 'resolved'}
-                          onClick={() => onAcknowledge && onAcknowledge(alert.alert_id)}
+                          disabled={
+                            alert.is_acknowledged || alert.status === "resolved"
+                          }
+                          onClick={() => onAcknowledge(alert.alert_id)}
                           size="sm"
                           requiredPermission="alerts"
-                        >
-                          Acknowledge
-                        </Button>
+                        ></Button>
                       </Tooltip>
 
-                      <Tooltip title="Delete Alert" arrow placement="left">
+                      <Tooltip
+                        title="Delete Alert"
+                        arrow
+                        placement="left"
+                      >
                         <Button
                           variant="delete"
-                          disabled={alert.status === 'resolved'}
-                          onClick={() => onResolve && onResolve(alert.alert_id)}
+                          disabled={alert.status === "resolved"}
+                          onClick={() => onResolve(alert.alert_id)}
+                          size="sm"
+                          requiredPermission="alerts"
+                        ></Button>
+                      </Tooltip>
+                      <Tooltip
+                        title="Fix Alert"
+                        arrow
+                      placement="bottom">
+                      {isFixable(alert) && (
+                        <Button
+                          variant="default"
+                          disabled={alert.status === "resolved"}
+                          onClick={(e) => handleFixClick(e, alert)}
                           size="sm"
                           requiredPermission="alerts"
                         >
-                          Resolve
-                        </Button>
-                      </Tooltip>
-
-                      {isFixable && isFixable(alert) && (
-                        <Tooltip title="Fix Alert" arrow>
-                          <Button
-                            variant="default"
-                            onClick={(e: React.MouseEvent) => handleFixClick(e as any, alert)}
-                            size="sm"
-                            requiredPermission="alerts"
-                          >
-                            Fix
+                          Fix
                           </Button>
-                        </Tooltip>
                       )}
+                      </Tooltip>
                     </Box>
                   </TableCell>
                 </TableRow>

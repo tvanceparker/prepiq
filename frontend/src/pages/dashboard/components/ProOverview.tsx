@@ -1,18 +1,15 @@
-import React from 'react';
-import Paper from '@mui/material/Paper';
-import Typography from '@mui/material/Typography';
-import { DailyOverviewDTO } from '../../../interfaces/dashboardInterfaceFrontend';
+// src/pages/dashboard/components/ProOverview.jsx
+import React from "react";
 
-interface Props {
-  data?: DailyOverviewDTO | null;
-}
+export default function ProOverview({ data }) {
+  if (!data) return null;
 
-export default function ProOverview({ data = null }: Props) {
+  // For example, reuse the same fields but maybe with additional styling or extra info later
   return (
-    <Paper sx={{ p: 2 }}>
-      <Typography variant="h6">Pro Overview</Typography>
-      <Typography variant="body2">This area contains advanced metrics.</Typography>
-      {data && <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(data, null, 2)}</pre>}
-    </Paper>
+    <section>
+      <h2>Pro Daily Overview</h2>
+      {/* You can customize this with charts, breakdowns, etc. */}
+      <pre>{JSON.stringify(data, null, 2)}</pre>
+    </section>
   );
 }

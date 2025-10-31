@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Script to help with common TypeScript migration fixes
+
+echo "This migration involves several categories of fixes:"
+echo ""
+echo "1. Update SnackbarState across all components to use AlertColor from MUI"
+echo "2. Add proper type annotations for useState hooks"
+echo "3. Fix colSpan attribute (string -> number)"
+echo "4. Fix function wrapper issues (onClick handlers)"
+echo "5. Add proper interfaces for chart data and API responses"
+echo ""
+echo "Given the scale (150+ errors across 50+ files), here are your options:"
+echo ""
+echo "Option A: Temporarily add @ts-ignore comments (fastest, not recommended)"
+echo "  - Allows compilation immediately"
+echo "  - Technical debt to address later"
+echo ""
+echo "Option B: Create comprehensive type definition files (recommended)"
+echo "  - Create interfaces for all domain models"
+echo "  - Takes 1-2 hours but provides long-term benefits"
+echo ""
+echo "Option C: Continue with current relaxed tsconfig (middle ground)"
+echo "  - Keep strict: false, noImplicitAny: false"
+echo "  - Fix critical errors only"
+echo "  - Gradually improve types as files are edited"
+echo ""
+echo "Recommended: Option C for now, migrate to Option B over time"

@@ -1,29 +1,18 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
+import type { AccountSettingsFormData, AccountSettingsFormErrors } from "../../../interfaces/settings";
 import {
+  Box,
+  TextField,
+  FormControlLabel,
+  Checkbox,
+  MenuItem,
+  Typography,
+  Button,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button,
-  TextField,
-  FormHelperText,
-  Box,
 } from "@mui/material";
-
-interface Props {
-  type: string | null;
-  onClose: () => void;
-  savePreferences: (p: any) => Promise<any>;
-  updateUserEmail: (payload: any) => Promise<any>;
-  updateUserPhone: (payload: any) => Promise<any>;
-  changeUserPassword: (payload: any) => Promise<any>;
-  loading: boolean;
-  error: any;
-  currentPreferences?: Record<string, any>;
-  currentEmail?: string | null;
-  currentPhone?: string | null;
-  onShowSnackbar?: (message: string, severity?: "success" | "error") => void;
-}
 
 export default function BasicAccountSettingsModal({
   type,
@@ -37,91 +26,254 @@ export default function BasicAccountSettingsModal({
   currentPreferences,
   currentEmail,
   currentPhone,
-  onShowSnackbar,
-}: Props) {
-  const [formData, setFormData] = useState<any>({});
-  const [errors, setErrors] = useState<any>({});
+  onShowSnackbar, // ✨ new prop for snackbar control
+}) {
+  const [formData, setFormData] = useState<Partial<AccountSettingsFormData>>({});
+  const [errors, setErrors] = useState<Partial<AccountSettingsFormErrors>>({});
 
   useEffect(() => {
-    if (type === "preferences") setFormData(currentPreferences || {});
-    if (type === "email") setFormData({ currentPassword: "", newEmail: currentEmail || "" });
-    if (type === "phone") setFormData({ currentPassword: "", newPhone: currentPhone || "" });
-    if (type === "password") setFormData({ currentPassword: "", newPassword: "" });
+    setErrors({});
+
+    switch (type) {
+      case "preferences":
+        setFormData({
+          auto_logout_minutes:
+            currentPreferences?.auto_logout_minutes === 0
+              ? 0
+              : currentPreferences?.auto_logout_minutes || 15,
+          theme: currentPreferences?.theme || "light",
+        });
+        break;
+      case "email":
+        setFormData({ current_password: "", new_email: currentEmail });
+        break;
+      case "phone":
+        setFormData({ current_password: "", new_phone: currentPhone || "" });
+        break;
+      case "password":
+        setFormData({
+          current_password: "",
+          new_password: "",
+          confirm_password: "",
+        });
+        break;
+      default:
+        setFormData({});
+        break;
+    }
   }, [type, currentPreferences, currentEmail, currentPhone]);
 
-  const handleChange = (name: string, value: any) => setFormData((s: any) => ({ ...s, [name]: value }));
+  const handleChange = (e) => {
+    const { name, value, type: inputType, checked } = e.target;
+    const newValue = inputType === "checkbox" ? checked : value;
+    setFormData((prev) => ({ ...prev, [name]: newValue }));
+    setErrors((prev) => ({ ...prev, [name]: "" }));
+  };
 
   const handleSave = async () => {
     try {
       if (type === "preferences") {
         await savePreferences(formData);
-        onShowSnackbar?.("Preferences saved", "success");
+        onShowSnackbar?.("Preferences saved.", "success");
       } else if (type === "email") {
-        await updateUserEmail(formData);
-        onShowSnackbar?.("Email updated", "success");
+        await updateUserEmail({
+          currentPassword: formData.current_password,
+          newEmail: formData.new_email,
+        });
+        onShowSnackbar?.("Email updated.", "success");
       } else if (type === "phone") {
-        await updateUserPhone(formData);
-        onShowSnackbar?.("Phone updated", "success");
+        await updateUserPhone({
+          currentPassword: formData.current_password,
+          newPhone: formData.new_phone,
+        });
+        onShowSnackbar?.("Phone number updated.", "success");
       } else if (type === "password") {
-        await changeUserPassword(formData);
-        onShowSnackbar?.("Password changed", "success");
+        if (formData.new_password !== formData.confirm_password) {
+          setErrors((prev) => ({
+            ...prev,
+            confirm_password: "Passwords do not match.",
+          }));
+          return;
+        }
+        await changeUserPassword({
+          currentPassword: formData.current_password,
+          newPassword: formData.new_password,
+        });
+        onShowSnackbar?.("Password changed.", "success");
       }
+
       onClose();
-    } catch (err: any) {
-      setErrors({ form: err.message || String(err) });
-      onShowSnackbar?.(err.message || String(err), "error");
+    } catch (err) {
+      if (err?.response?.data?.errors) {
+        setErrors(err.response.data.errors);
+      } else {
+        console.error(err);
+        onShowSnackbar?.("Something went wrong.", "error");
+      }
     }
   };
 
-  if (!type) return null;
-
-  const title =
-    type === "preferences"
-      ? "Edit Preferences"
-      : type === "email"
-      ? "Change Email"
-      : type === "phone"
-      ? "Change Phone"
-      : "Change Password";
+  const getTitle = () => {
+    switch (type) {
+      case "preferences":
+        return "Edit Preferences";
+      case "email":
+        return "Change Email";
+      case "phone":
+        return "Change Phone";
+      case "password":
+        return "Change Password";
+      default:
+        return "Edit";
+    }
+  };
 
   return (
-    <Dialog open={!!type} onClose={onClose} fullWidth maxWidth="sm" aria-labelledby="account-settings-dialog-title">
-      <DialogTitle id="account-settings-dialog-title">{title}</DialogTitle>
-      <DialogContent dividers>
+    <Dialog open={!!type} onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle>{getTitle()}</DialogTitle>
+      <DialogContent>
         <Box component="form" noValidate autoComplete="off" sx={{ mt: 1 }}>
           {type === "preferences" && (
-            <TextField fullWidth label="Auto Logout Minutes" type="number" value={formData.auto_logout_minutes || 15} onChange={(e) => handleChange("auto_logout_minutes", parseInt(e.target.value, 10))} margin="normal" />
-          )}
-
-          {type === "email" && (
             <>
-              <TextField fullWidth label="Current Password" type="password" value={formData.currentPassword || ""} onChange={(e) => handleChange("currentPassword", e.target.value)} margin="normal" />
-              <TextField fullWidth label="New Email" type="email" value={formData.newEmail || ""} onChange={(e) => handleChange("newEmail", e.target.value)} margin="normal" />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={formData.auto_logout_minutes === 0}
+                    name="auto_logout_minutes_toggle"
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        auto_logout_minutes: e.target.checked ? 0 : 15,
+                      }))
+                    }
+                  />
+                }
+                label="Never auto logout"
+              />
+              <TextField
+                label="Auto Logout (Minutes)"
+                name="auto_logout_minutes"
+                type="number"
+                value={
+                  formData.auto_logout_minutes === 0
+                    ? ""
+                    : formData.auto_logout_minutes
+                }
+                onChange={(e) => {
+                  const val =
+                    e.target.value === "" ? 0 : parseInt(e.target.value, 10);
+                  setFormData((prev) => ({
+                    ...prev,
+                    auto_logout_minutes: val,
+                  }));
+                }}
+                disabled={formData.auto_logout_minutes === 0}
+                error={Boolean(errors.auto_logout_minutes)}
+                helperText={errors.auto_logout_minutes}
+                fullWidth
+                margin="normal"
+              />
+              <TextField
+                select
+                label="Theme"
+                name="theme"
+                value={formData.theme}
+                onChange={handleChange}
+                fullWidth
+                margin="normal"
+              >
+                <MenuItem value="light">Light</MenuItem>
+                <MenuItem value="dark">Dark</MenuItem>
+                <MenuItem value="system">System Default</MenuItem>
+              </TextField>
             </>
           )}
 
-          {type === "phone" && (
+          {(type === "email" || type === "phone" || type === "password") && (
             <>
-              <TextField fullWidth label="Current Password" type="password" value={formData.currentPassword || ""} onChange={(e) => handleChange("currentPassword", e.target.value)} margin="normal" />
-              <TextField fullWidth label="New Phone" value={formData.newPhone || ""} onChange={(e) => handleChange("newPhone", e.target.value)} margin="normal" />
+              <TextField
+                label="Current Password"
+                type="password"
+                name="current_password"
+                value={formData.current_password}
+                onChange={handleChange}
+                fullWidth
+                margin="normal"
+                error={Boolean(errors.current_password)}
+                helperText={errors.current_password}
+                required
+              />
+              {type === "email" && (
+                <TextField
+                  label="New Email"
+                  type="email"
+                  name="new_email"
+                  value={formData.new_email}
+                  onChange={handleChange}
+                  fullWidth
+                  margin="normal"
+                  error={Boolean(errors.new_email)}
+                  helperText={errors.new_email}
+                  required
+                />
+              )}
+              {type === "phone" && (
+                <TextField
+                  label="New Phone"
+                  type="tel"
+                  name="new_phone"
+                  value={formData.new_phone}
+                  onChange={handleChange}
+                  fullWidth
+                  margin="normal"
+                  error={Boolean(errors.new_phone)}
+                  helperText={errors.new_phone}
+                  required
+                />
+              )}
+              {type === "password" && (
+                <>
+                  <TextField
+                    label="New Password"
+                    type="password"
+                    name="new_password"
+                    value={formData.new_password}
+                    onChange={handleChange}
+                    fullWidth
+                    margin="normal"
+                    error={Boolean(errors.new_password)}
+                    helperText={errors.new_password}
+                    required
+                  />
+                  <TextField
+                    label="Confirm Password"
+                    type="password"
+                    name="confirm_password"
+                    value={formData.confirm_password}
+                    onChange={handleChange}
+                    fullWidth
+                    margin="normal"
+                    error={Boolean(errors.confirm_password)}
+                    helperText={errors.confirm_password}
+                    required
+                  />
+                </>
+              )}
             </>
           )}
 
-          {type === "password" && (
-            <>
-              <TextField fullWidth label="Current Password" type="password" value={formData.currentPassword || ""} onChange={(e) => handleChange("currentPassword", e.target.value)} margin="normal" />
-              <TextField fullWidth label="New Password" type="password" value={formData.newPassword || ""} onChange={(e) => handleChange("newPassword", e.target.value)} margin="normal" />
-            </>
+          {error && (
+            <Typography color="error" variant="body2" sx={{ mt: 1 }}>
+              {error.message || "An error occurred."}
+            </Typography>
           )}
-
-          {errors.form && <FormHelperText error>{errors.form}</FormHelperText>}
         </Box>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={loading}>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button variant="outlined" onClick={onClose} disabled={loading}>
           Cancel
         </Button>
-        <Button onClick={handleSave} disabled={loading} variant="contained" color="primary">
+        <Button variant="contained" onClick={handleSave} disabled={loading}>
           {loading ? "Saving..." : "Save"}
         </Button>
       </DialogActions>

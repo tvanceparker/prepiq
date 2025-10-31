@@ -1,3 +1,51 @@
+// src/interfaces/inventory.ts
+
+// --- Core Ingredient Types ---
+export interface Ingredient {
+  ingredient_id: number;
+  name: string;
+  category?: string;
+  unit?: string;
+  current_stock?: number;
+  reorder_point?: number;
+  cost_per_unit?: number;
+  // Add other ingredient properties as needed
+}
+
+export interface IngredientSupplier {
+  ingredient_supplier_id?: number;
+  ingredient_id: number;
+  supplier_id: number;
+  supplier_name?: string;
+  ingredient_name?: string;
+  ingredient_category?: string;
+  category?: string;
+  unit?: string;
+  cost_per_unit: number;
+  lead_time_days: number;
+  spoilage_rate?: number;
+  shelf_life_days?: number | null;
+  preferred?: boolean;
+  min_order_quantity?: number | null;
+  supplier_priority?: number | null;
+  pack_size?: number | null;
+  quantity_per_pack_item?: number | null;
+}
+
+export interface IngredientListProps {
+  ingredients: Ingredient[];
+  filter: string;
+  setFilter: (filter: string) => void;
+  onSelect: (ingredient: Ingredient) => void;
+  selectedId: number | null;
+}
+
+export interface IngredientSupplierDetailsProps {
+  ingredientSuppliers: IngredientSupplier[];
+  onEdit: (supplier: IngredientSupplier) => void;
+  onDelete: (id: number) => void;
+}
+
 // --- Purchase Orders ---
 export interface PurchaseOrderItem {
   order_item_id: number;

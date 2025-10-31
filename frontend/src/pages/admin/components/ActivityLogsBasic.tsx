@@ -1,33 +1,28 @@
 import React, { useMemo, useState } from "react";
-import { MaterialReactTable, type MRT_ColumnDef } from "material-react-table";
+import { MaterialReactTable } from "material-react-table";
 import { useActivityLogs } from "../hooks/useActivityLogs";
 import { PageHeader } from "../../../components/PageHeader";
-import {
-  Box,
-  Paper,
-  Typography,
-  useTheme,
-  Tooltip,
-  Skeleton,
-} from "@mui/material";
-import { ActivityLogResponse } from "../../../interfaces/admin";
+import { Box, Paper, Typography, useTheme, Tooltip } from "@mui/material";
 
 export default function ActivityLogsBasic() {
   const theme = useTheme();
   const { data: activityLogs = [], isLoading, error } = useActivityLogs();
-  const [globalFilter, setGlobalFilter] = useState<string>("");
+  const [globalFilter, setGlobalFilter] = useState("");
 
-  const columns = useMemo<MRT_ColumnDef<ActivityLogResponse>[]>(
+  const columns = useMemo(
     () => [
-      { accessorKey: "activity_id", header: "ID", enableSorting: true },
+      {
+        accessorKey: "activity_id",
+        header: "ID",
+        enableSorting: true,
+      },
       {
         accessorKey: "employee_name",
         header: "Employee",
         enableSorting: true,
-        Cell: ({ cell }) => {
-          const value = cell.getValue() as string | undefined;
-          return value ? (
-            value
+        Cell: ({ cell }) =>
+          cell.getValue() ? (
+            cell.getValue()
           ) : (
             <Typography
               component="span"
@@ -35,46 +30,43 @@ export default function ActivityLogsBasic() {
             >
               Unknown
             </Typography>
-          );
-        },
+          ),
       },
       {
         accessorKey: "employee_id",
         header: "Employee ID",
         enableSorting: true,
       },
-      { accessorKey: "action", header: "Action", enableSorting: true },
+      {
+        accessorKey: "action",
+        header: "Action",
+        enableSorting: true,
+      },
       {
         accessorKey: "details",
         header: "Details",
         enableSorting: false,
-        Cell: ({ cell }) => {
-          const value = cell.getValue() as string | undefined;
-          return (
-            <Tooltip title={value || ""} arrow>
-              <Box
-                sx={{
-                  maxWidth: 300,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  cursor: "help",
-                }}
-              >
-                {value ?? ""}
-              </Box>
-            </Tooltip>
-          );
-        },
+        Cell: ({ cell }) => (
+          <Tooltip title={cell.getValue() || ""} arrow>
+            <Box
+              sx={{
+                maxWidth: 300,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                cursor: "help",
+              }}
+            >
+              {cell.getValue()}
+            </Box>
+          </Tooltip>
+        ),
       },
       {
         accessorKey: "created_at",
         header: "Date",
         enableSorting: true,
-        Cell: ({ cell }) => {
-          const value = cell.getValue() as string;
-          return new Date(value).toLocaleString();
-        },
+        Cell: ({ cell }) => new Date(cell.getValue()).toLocaleString(),
       },
     ],
     []
@@ -108,78 +100,6 @@ export default function ActivityLogsBasic() {
     );
   }
 
-  // Render skeleton table if loading
-  if (isLoading) {
-    // Number of skeleton rows to display (adjust as you like)
-    const skeletonRows = 6;
-
-    return (
-      <Paper
-        sx={{
-          maxWidth: 1200,
-          mt: 4,
-          mx: "auto",
-          px: { xs: 2, md: 4 },
-          py: { xs: 4, md: 8 },
-        }}
-      >
-        <PageHeader title="Activity Log" />
-
-        <Paper
-          elevation={3}
-          sx={{
-            p: 3,
-            borderRadius: 2,
-            bgcolor: theme.palette.background.paper,
-            border: `1px solid ${theme.palette.divider}`,
-          }}
-        >
-          <Box
-            component="table"
-            sx={{ width: "100%", borderCollapse: "collapse" }}
-          >
-            <Box component="thead">
-              <Box component="tr">
-                {columns.map((col) => (
-                  <Box
-                    component="th"
-                    key={col.accessorKey}
-                    sx={{
-                      textAlign: "left",
-                      p: 1,
-                      borderBottom: `1px solid ${theme.palette.divider}`,
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {col.header}
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-            <Box component="tbody">
-              {[...Array(skeletonRows)].map((_, i) => (
-                <Box
-                  component="tr"
-                  key={i}
-                  sx={{
-                    borderBottom: `1px solid ${theme.palette.divider}`,
-                  }}
-                >
-                  {columns.map((col, idx) => (
-                    <Box component="td" key={idx} sx={{ p: 1 }}>
-                      <Skeleton variant="text" />
-                    </Box>
-                  ))}
-                </Box>
-              ))}
-            </Box>
-          </Box>
-        </Paper>
-      </Paper>
-    );
-  }
-
-  // Render actual table with data when loaded
   return (
     <Paper
       sx={{
@@ -215,8 +135,8 @@ export default function ActivityLogsBasic() {
           }}
           onGlobalFilterChange={setGlobalFilter}
           enableColumnFilters={false}
-          enablePagination
-          enableSorting
+          enablePagination={true}
+          enableSorting={true}
           muiTableContainerProps={{ sx: { maxHeight: 600 } }}
           initialState={{ sorting: [{ id: "created_at", desc: true }] }}
           muiToolbarAlertBannerProps={
@@ -227,8 +147,8 @@ export default function ActivityLogsBasic() {
                 }
               : undefined
           }
-          enableBottomToolbar
-          enableTopToolbar
+          enableBottomToolbar={true}
+          enableTopToolbar={true}
         />
       </Paper>
     </Paper>

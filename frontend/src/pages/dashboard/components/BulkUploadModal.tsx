@@ -1,94 +1,123 @@
-import React, { useState, useCallback } from 'react';
-import Modal from '@mui/material/Modal';
-import Box from '@mui/material/Box';
-import Button from '../../../components/Button';
-import Typography from '@mui/material/Typography';
-import { useUploadSalesData } from '../hooks/useUploadSalesData';
+import React, { useState, useCallback } from "react";
+import ModalBase from "../../../components/ModalBase";
 
-interface Props {
-  isOpen: boolean;
-  onClose: () => void;
-  onUpload?: (file: File) => Promise<any>;
-}
+const exampleData = [
+  { name: "Burger", category: "Main", price: "5.99" },
+  { name: "Fries", category: "Sides", price: "2.99" },
+  { name: "Soda", category: "Drinks", price: "1.49" },
+];
 
-export default function BulkUploadModal({ isOpen, onClose, onUpload }: Props) {
+export default function BulkUploadModal({ isOpen, onClose, onUpload }) {
   const [dragOver, setDragOver] = useState(false);
-  const { upload: internalUpload } = useUploadSalesData();
-
-  const handleFile = React.useCallback(
-    async (f: File | null) => {
-      if (!f) return;
-      const uploader = onUpload ?? internalUpload;
-      await uploader(f);
-      onClose();
-    },
-    [onUpload, internalUpload, onClose]
-  );
 
   const handleDrop = useCallback(
-    async (e: React.DragEvent) => {
+    async (e) => {
       e.preventDefault();
       setDragOver(false);
-      const f = e.dataTransfer.files[0];
-      if (f) await handleFile(f);
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        await onUpload(file);
+        // parent closes modal & shows toast
+      }
     },
-    [handleFile]
+    [onUpload]
   );
 
-  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] ?? null;
-    if (f) await handleFile(f);
+  const handleChange = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      await onUpload(file);
+      // parent closes modal & shows toast
+    }
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e) => {
     e.preventDefault();
     setDragOver(true);
   };
 
-  const handleDragLeave = (e: React.DragEvent) => {
+  const handleDragLeave = (e) => {
     e.preventDefault();
     setDragOver(false);
   };
 
   return (
-    <Modal open={isOpen} onClose={onClose}>
-      <Box sx={{ width: 700, mx: 'auto', mt: '8%', p: 4, bgcolor: 'background.paper' }}>
-        <Typography variant="h6">Upload Menu CSV or XLSX</Typography>
-
-        <Box
+    <ModalBase
+      visible={isOpen}
+      onClose={onClose}
+      title="Upload Menu CSV or XLSX"
+    >
+      <div className="space-y-4">
+        <div
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          sx={{
-            border: '2px dashed',
-            borderColor: dragOver ? 'primary.main' : 'grey.300',
-            p: 3,
-            mt: 2,
-            borderRadius: 1,
-            textAlign: 'center',
-          }}
+          className={`border-2 border-dashed rounded p-6 text-center cursor-pointer ${
+            dragOver
+              ? "border-dark-primary bg-light-primary/20"
+              : "border-gray-300"
+          }`}
         >
-          <Typography variant="body2" sx={{ mb: 1 }}>
+          <p className="mb-2 text-sm text-light-textSecondary dark:text-dark-textSecondary">
             Drag and drop your CSV or XLSX file here, or click to select file
-          </Typography>
+          </p>
           <input
-            id="file-upload"
             type="file"
-            accept=".csv,.xlsx"
-            style={{ display: 'none' }}
+            accept=".csv, .xlsx"
+            className="hidden"
+            id="file-upload"
             onChange={handleChange}
           />
-          <label htmlFor="file-upload">
-            <Button variant="create">Select File</Button>
+          <label
+            htmlFor="file-upload"
+            className="inline-block px-4 py-2 bg-dark-primary text-white rounded cursor-pointer hover:bg-dark-secondary"
+          >
+            Select File
           </label>
-        </Box>
+        </div>
 
-        <Box mt={2} display="flex" justifyContent="flex-end">
-          <Button onClick={onClose} variant="clear">
-            Cancel
-          </Button>
-        </Box>
-      </Box>
-    </Modal>
+        <p className="text-xs text-light-muted dark:text-dark-muted">
+          CSV should include the following columns:
+        </p>
+
+        <table className="w-full text-sm border-collapse border border-gray-300 dark:border-gray-600">
+          <thead className="bg-gray-100 dark:bg-gray-700">
+            <tr>
+              <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-left">
+                name
+              </th>
+              <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-left">
+                category
+              </th>
+              <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 text-left">
+                price
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {exampleData.map((row, i) => (
+              <tr
+                key={i}
+                className={
+                  i % 2 === 0
+                    ? "bg-white dark:bg-gray-800"
+                    : "bg-gray-50 dark:bg-gray-900"
+                }
+              >
+                <td className="border border-gray-300 dark:border-gray-600 px-2 py-1">
+                  {row.name}
+                </td>
+                <td className="border border-gray-300 dark:border-gray-600 px-2 py-1">
+                  {row.category}
+                </td>
+                <td className="border border-gray-300 dark:border-gray-600 px-2 py-1">
+                  {row.price}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </ModalBase>
   );
 }

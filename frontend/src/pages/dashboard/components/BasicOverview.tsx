@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import type { AlertColor } from '@mui/material';
 import {
   Snackbar,
   Box,
@@ -19,6 +20,7 @@ import {
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import BarChartIcon from '@mui/icons-material/BarChart';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 
 import { downloadSalesTemplate } from '../../../api/dashboard';
 import SalesUploadModal from './SalesUploadModal';
@@ -27,31 +29,27 @@ import DateSelector from '../../../components/DateSelector';
 import HintBox from '../../../components/HintBox';
 import Button from '../../../components/Button';
 import { PageHeader } from '../../../components/PageHeader';
-import type { DailyOverviewDTO } from '../../../interfaces/dashboardInterfaceFrontend';
 
-type SummaryCardProps = {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-  color?: string;
-  icon?: React.ReactNode;
-};
-
-const SummaryCard: React.FC<SummaryCardProps> = ({ title, subtitle, children, color, icon }) => {
+const SummaryCard = ({ title, subtitle, children, color, icon }) => {
   const theme = useTheme();
   return (
     <Card
       elevation={4}
-      sx={{ minHeight: 160, borderRadius: 2, display: 'flex', flexDirection: 'column' }}
+      sx={{
+        minHeight: 160, // Make sure all cards have the same min height
+        borderRadius: 2,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
     >
       <CardHeader
         avatar={
           icon &&
-          React.cloneElement(icon as any, {
+          React.cloneElement(icon, {
             sx: {
               color: color || theme.palette.text.primary,
-              width: 40,
-              height: 40,
+              width: 40, // Adjust icon size
+              height: 40, // Adjust icon size
             },
           })
         }
@@ -75,17 +73,22 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ title, subtitle, children, co
             {subtitle}
           </Typography>
         }
-        sx={{ pb: 0, pt: 2, pl: 2, pr: 2 }}
+        sx={{
+          pb: 0, // No bottom padding
+          pt: 2, // Padding top
+          pl: 2, // Padding left
+          pr: 2, // Padding right
+        }}
       />
 
       <CardContent
         sx={{
           flexGrow: 1,
           pt: 1,
-          minHeight: 120,
+          minHeight: 120, // Fixed min height to align all content consistently
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between',
+          justifyContent: 'space-between', // This ensures consistent alignment of text and bar
         }}
       >
         <Typography
@@ -97,16 +100,23 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ title, subtitle, children, co
           {children}
         </Typography>
 
+        {/* Display LinearProgress only for Accuracy */}
         {title === 'Accuracy Yesterday' && (
           <Paper
             variant="outlined"
-            sx={{ mt: 2, p: 1, borderRadius: 1, backgroundColor: 'inherit', height: 20 }}
+            sx={{
+              mt: 2,
+              p: 1,
+              borderRadius: 1,
+              backgroundColor: 'inherit',
+              height: 20, // Prevent the progress bar from adding extra heighta
+            }}
           >
             <LinearProgress
               variant="determinate"
-              value={children as any}
+              value={children}
               sx={{
-                height: 10,
+                height: 10, // Bar height itself
                 borderRadius: 5,
                 backgroundColor: theme.palette.grey[300],
                 '& .MuiLinearProgress-bar': {
@@ -121,15 +131,19 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ title, subtitle, children, co
   );
 };
 
-export default function BasicOverview({ data }: { data?: DailyOverviewDTO | null }) {
+export default function BasicOverview({ data }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [snackbar, setSnackbar] = useState({
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: AlertColor;
+  }>({
     open: false,
     message: '',
-    severity: 'success' as 'success' | 'error',
+    severity: 'success',
   });
 
   const { upload, uploading, error, result } = useUploadSalesData();
@@ -139,17 +153,27 @@ export default function BasicOverview({ data }: { data?: DailyOverviewDTO | null
 
   useEffect(() => {
     if (error) {
-      setSnackbar({ open: true, message: `Upload failed: ${error.message}`, severity: 'error' });
+      setSnackbar({
+        open: true,
+        message: `Upload failed: ${error.message}`,
+        severity: 'error',
+      });
     } else if (result) {
-      setSnackbar({ open: true, message: 'Upload successful!', severity: 'success' });
+      setSnackbar({
+        open: true,
+        message: 'Upload successful!',
+        severity: 'success',
+      });
     }
   }, [error, result]);
 
-  const closeSnackbar = useCallback(() => setSnackbar(prev => ({ ...prev, open: false })), []);
+  const closeSnackbar = useCallback(() => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  }, []);
 
   const handleDownloadTemplate = useCallback(() => {
     downloadSalesTemplate(templateDate)
-      .then(({ blob: fileBlob, filename: respFilename }: any) => {
+      .then(({ blob: fileBlob, filename: respFilename }) => {
         const url = window.URL.createObjectURL(fileBlob);
         const link = document.createElement('a');
         link.href = url;
@@ -166,7 +190,7 @@ export default function BasicOverview({ data }: { data?: DailyOverviewDTO | null
           severity: 'success',
         });
       })
-      .catch((err: any) => {
+      .catch(err => {
         setSnackbar({
           open: true,
           message: `Error downloading template: ${err.message}`,
@@ -175,7 +199,7 @@ export default function BasicOverview({ data }: { data?: DailyOverviewDTO | null
       });
   }, [templateDate]);
 
-  const getAccuracyColor = (percent: number) => {
+  const getAccuracyColor = percent => {
     if (percent >= 90) return theme.palette.success.main;
     if (percent >= 70) return theme.palette.warning.main;
     return theme.palette.error.main;
@@ -183,20 +207,31 @@ export default function BasicOverview({ data }: { data?: DailyOverviewDTO | null
 
   if (!data) return null;
 
-  const { forecasted_sales_today, top_5_items_today = [], accuracy_yesterday } = data;
-  const maxQuantity = Math.max(
-    ...(top_5_items_today.map(item => item.forecasted_quantity) || []),
-    1
-  );
+  const { forecasted_sales_today, top_5_items_today, accuracy_yesterday } = data;
+  const maxQuantity = Math.max(...top_5_items_today.map(item => item.forecasted_quantity), 1);
 
   return (
     <>
-      <Paper sx={{ maxWidth: 1200, mt: 4, mx: 'auto', px: { xs: 2, md: 4 }, py: { xs: 4, md: 8 } }}>
+      <Paper
+        sx={{
+          maxWidth: 1200,
+          mt: 4,
+          mx: 'auto',
+          px: { xs: 2, md: 4 },
+          py: { xs: 4, md: 8 },
+        }}
+      >
         <PageHeader title="📊 Daily Overview" />
 
+        {/* Summary Cards */}
         <Grid container spacing={2} justifyContent="center" sx={{ mt: 2, mb: 4 }}>
           <Grid item xs={12} sm={4}>
-            <SummaryCard title="Forecasted Menu Items" subtitle="Today" icon={<BarChartIcon />}>
+            <SummaryCard
+              title="Forecasted Menu Items"
+              subtitle="Today"
+              icon={<BarChartIcon />}
+              color="primary"
+            >
               {forecasted_sales_today?.forecasted_quantity ?? 0}
             </SummaryCard>
           </Grid>
@@ -205,8 +240,8 @@ export default function BasicOverview({ data }: { data?: DailyOverviewDTO | null
             <SummaryCard
               title="Forecasted Revenue"
               subtitle="Today"
-              icon={<DownloadIcon />}
-              color={theme.palette.primary.main}
+              icon={<AttachMoneyIcon />}
+              color="success"
             >
               ${forecasted_sales_today?.forecasted_revenue?.toFixed(2) ?? '0.00'}
             </SummaryCard>
@@ -216,14 +251,15 @@ export default function BasicOverview({ data }: { data?: DailyOverviewDTO | null
             <SummaryCard
               title="Accuracy Yesterday"
               subtitle={accuracy_yesterday?.note || 'No additional notes'}
+              icon={<BarChartIcon />}
               color={getAccuracyColor(accuracy_yesterday?.accuracy_percent ?? 0)}
-              icon={<UploadFileIcon />}
             >
-              {(accuracy_yesterday?.accuracy_percent ?? 0).toFixed(2)}
+              {(accuracy_yesterday?.accuracy_percent ?? 0).toFixed(2)}%
             </SummaryCard>
           </Grid>
         </Grid>
 
+        {/* Date Selector + Actions */}
         <Paper
           elevation={3}
           sx={{
@@ -247,10 +283,9 @@ export default function BasicOverview({ data }: { data?: DailyOverviewDTO | null
             <DateSelector
               label="Select date for sales template"
               startDate={new Date(templateDate)}
-              endDate={new Date(templateDate)}
-              onStartDateChange={(date: Date) => setTemplateDate(date.toISOString().slice(0, 10))}
-              onEndDateChange={() => {}}
+              onStartDateChange={date => setTemplateDate(date.toISOString().slice(0, 10))}
               mode="single"
+              disableFuture
             />
 
             <Stack direction="row" spacing={2}>
@@ -274,6 +309,7 @@ export default function BasicOverview({ data }: { data?: DailyOverviewDTO | null
           </Typography>
         </Paper>
 
+        {/* Top Forecasted Items */}
         <Typography variant="h6" fontWeight="medium" mb={2} sx={{ textAlign: 'center' }}>
           🔝 Top {top_5_items_today?.length || 0} Forecasted Menu Items (Today)
         </Typography>
@@ -285,7 +321,12 @@ export default function BasicOverview({ data }: { data?: DailyOverviewDTO | null
               <Grid item xs={12} sm={6} md={4} key={menu_item_id}>
                 <Card
                   elevation={4}
-                  sx={{ borderRadius: 2, minHeight: 140, display: 'flex', flexDirection: 'column' }}
+                  sx={{
+                    borderRadius: 2,
+                    minHeight: 140,
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
                 >
                   <CardHeader
                     title={
@@ -314,7 +355,9 @@ export default function BasicOverview({ data }: { data?: DailyOverviewDTO | null
                         height: 10,
                         borderRadius: 5,
                         backgroundColor: theme.palette.grey[300],
-                        '& .MuiLinearProgress-bar': { backgroundColor: theme.palette.primary.main },
+                        '& .MuiLinearProgress-bar': {
+                          backgroundColor: theme.palette.primary.main,
+                        },
                       }}
                     />
                   </CardContent>
@@ -322,6 +365,31 @@ export default function BasicOverview({ data }: { data?: DailyOverviewDTO | null
               </Grid>
             );
           })}
+        </Grid>
+
+        <Divider sx={{ my: 6 }} />
+
+        {/* Helpful Hints */}
+        <Grid container spacing={3} justifyContent="center">
+          <Grid item xs={12} md={6}>
+            <HintBox
+              title="📈 Explore sales patterns"
+              link={{ href: '/sales/patterns', label: 'View Sales Patterns →' }}
+            >
+              Analyze daily, weekly, and monthly sales trends to improve forecasting.
+            </HintBox>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <HintBox
+              title="✅ Check forecast accuracy"
+              link={{
+                href: '/sales/forecast-accuracy',
+                label: 'View Forecast Accuracy →',
+              }}
+            >
+              Review how your forecasts performed and track improvements over time.
+            </HintBox>
+          </Grid>
         </Grid>
       </Paper>
 
@@ -331,7 +399,12 @@ export default function BasicOverview({ data }: { data?: DailyOverviewDTO | null
         onUpload={upload}
       />
 
-      <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={closeSnackbar}>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={closeSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
         <Alert onClose={closeSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
           {snackbar.message}
         </Alert>
