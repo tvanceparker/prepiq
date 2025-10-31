@@ -21,10 +21,9 @@ from app.repositories.daily_forecast_accuracy_repo import DailyForecastAccuracyR
 from app.repositories.restaurants_repo import RestaurantRepository
 from app.repositories.activity_logs_repo import ActivityLogRepository
 from app.repositories.inventory_repo import InventoryRepository
-from app.repositories.ingredients_repo import IngredientsRepository
-from app.repositories.batch_recipes_repo import BatchRecipesRepository
-from app.repositories.prep_logs_repo import PrepLogsRepository
-from app.repositories.alerts_repo import AlertsRepository
+from app.repositories.ingredients_repo import IngredientRepository
+from app.repositories.batch_recipes_repo import BatchRecipeRepository
+from app.repositories.alerts_repo import AlertRepository
 from app.repositories.purchase_orders_repo import PurchaseOrderRepository
 from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
 from app.utils.logger_helpers import log_method
@@ -49,10 +48,9 @@ class DashboardService:
         self.daily_accuracy_repo = DailyForecastAccuracyRepository(db,restaurant_id)
         self.activity_log_repo = ActivityLogRepository(db,restaurant_id,employee_id)
         self.inventory_repo = InventoryRepository(db, restaurant_id)
-        self.ingredients_repo = IngredientsRepository(db, restaurant_id)
-        self.batch_recipes_repo = BatchRecipesRepository(db, restaurant_id)
-        self.prep_logs_repo = PrepLogsRepository(db, restaurant_id)
-        self.alerts_repo = AlertsRepository(db, restaurant_id)
+        self.ingredients_repo = IngredientRepository(db, restaurant_id)
+        self.batch_recipes_repo = BatchRecipeRepository(db, restaurant_id)
+        self.alerts_repo = AlertRepository(db, restaurant_id)
         self.purchase_orders_repo = PurchaseOrderRepository(db, restaurant_id)
         self.purchase_order_items_repo = PurchaseOrderItemRepository(db, restaurant_id)
 
@@ -616,31 +614,23 @@ class DashboardService:
             
             # ===== PREP SCHEDULE & TASK COMPLETION =====
             batch_recipes = await self.batch_recipes_repo.get_all()
-            prep_logs_today = await self.prep_logs_repo.get_by_date(today)
-            
-            completed_batches = set(log.batch_recipe_id for log in prep_logs_today)
             
             prep_tasks = []
             total_tasks = len(batch_recipes)
-            completed_tasks = 0
             
             for recipe in batch_recipes:
-                is_completed = recipe.batch_recipe_id in completed_batches
-                if is_completed:
-                    completed_tasks += 1
-                    
                 prep_tasks.append({
                     "batch_recipe_id": recipe.batch_recipe_id,
                     "batch_name": recipe.batch_name,
-                    "is_completed": is_completed,
+                    "is_completed": False,  # TODO: Track prep completion
                     "target_quantity": float(recipe.target_quantity or 0),
                     "unit": recipe.unit
                 })
             
             prep_schedule = {
                 "total_tasks": total_tasks,
-                "completed_tasks": completed_tasks,
-                "completion_rate": (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0,
+                "completed_tasks": 0,  # TODO: Count completed tasks
+                "completion_rate": 0,  # TODO: Calculate completion rate
                 "tasks": prep_tasks
             }
             
