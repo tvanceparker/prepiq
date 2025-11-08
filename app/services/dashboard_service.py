@@ -26,6 +26,8 @@ from app.repositories.batch_recipes_repo import BatchRecipeRepository
 from app.repositories.alerts_repo import AlertRepository
 from app.repositories.purchase_orders_repo import PurchaseOrderRepository
 from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
+from app.repositories.clock_events_repo import ClockEventRepository
+from app.repositories.orders_repo import OrdersRepository
 from app.utils.logger_helpers import log_method
 from app.core.logging import logger 
 from app.schemas.dashboard_dto import (
@@ -53,6 +55,8 @@ class DashboardService:
         self.alerts_repo = AlertRepository(db, restaurant_id)
         self.purchase_orders_repo = PurchaseOrderRepository(db, restaurant_id)
         self.purchase_order_items_repo = PurchaseOrderItemRepository(db, restaurant_id)
+        self.clock_event_repo = ClockEventRepository(db, restaurant_id)
+        self.orders_repo = OrdersRepository(db, restaurant_id)
 
     async def log_activity(self, action: str, details: Any = None):
         """
@@ -80,12 +84,249 @@ class DashboardService:
         except Exception as e:
             logger.error(f"Failed to log activity '{action}': {e}", exc_info=True)
 
+    @log_method()
+    async def get_live_operations(self):
+        """
+        Provide real-time operational snapshot required by LiveOperationsOut.
+        Uses available repositories where possible; fills safe defaults otherwise.
+        """
+        try:
+            today = date.today()
+
+            # Current shift: count currently clocked-in employees (scheduled/on_break not tracked here)
+            try:
+                clocked_in = await self.clock_event_repo.get_clocked_in_employees(today)
+                current_shift = {
+                    "clocked_in": len(clocked_in),
+                    "scheduled": 0,
+                    "on_break": 0,
+                }
+            except Exception as e:
+                logger.warning(f"Clock events unavailable: {e}", exc_info=True)
+                current_shift = {"clocked_in": 0, "scheduled": 0, "on_break": 0}
+
+            # Order flow: derive basic counts from orders table
+            pending = in_progress = ready = completed_today = 0
+            avg_prep_time = 0.0
+            try:
+                # Active orders
+                active_orders = await self.orders_repo.get_active_orders()
+                # Count by status for basic buckets
+                for o in active_orders:
+                    if getattr(o, "order_status", "open") == "in_progress":
+                        in_progress += 1
+                    else:
+                        pending += 1
+                # Completed today (simple filter on timestamp and status if present)
+                # Note: If 'completed' status doesn't exist, this stays 0.
+                # A richer repo method can refine this later.
+            except Exception as e:
+                logger.warning(f"Orders unavailable for flow: {e}", exc_info=True)
+                active_orders = []
+
+            order_flow = {
+                "pending": pending,
+                "in_progress": in_progress,
+                "ready": ready,
+                "completed_today": completed_today,
+                "avg_prep_time": avg_prep_time,
+            }
+
+            # Today's pace vs forecast (placeholders unless forecasting is queried here)
+            todays_pace = {
+                "current_sales": 0.0,
+                "forecast_sales": 0.0,
+                "percentage": 0.0,
+                "pace_vs_forecast": "on_track",
+            }
+
+            # Active orders list (minimal representation)
+            active_orders_out = []
+            try:
+                for o in active_orders:
+                    active_orders_out.append({
+                        "order_id": int(o.order_id),
+                        "table": getattr(o, "sales_channel", "") or "",
+                        "items": 0,  # could be enriched by counting order_items
+                        "time_elapsed": 0,
+                        "status": getattr(o, "order_status", "open"),
+                        "server": "",
+                    })
+            except Exception as e:
+                logger.warning(f"Could not format active orders: {e}", exc_info=True)
+
+            # Kitchen status (no direct signals yet; provide safe defaults)
+            kitchen_status = {"grill": "normal", "fryer": "normal", "salad": "normal", "dessert": "normal"}
+
+            # Upcoming deliveries (reuse purchase orders expected today)
+            upcoming_deliveries = []
+            try:
+                stmt = (
+                    select(PurchaseOrder)
+                    .where(
+                        and_(
+                            PurchaseOrder.restaurant_id == self.restaurant_id,
+                            PurchaseOrder.expected_delivery_date == today,
+                            PurchaseOrder.status.in_(["pending", "confirmed", "in_transit"]),
+                        )
+                    )
+                )
+                res = await self.db.execute(stmt)
+                for po in res.scalars().all():
+                    supplier = getattr(getattr(po, "supplier", None), "supplier_name", None) or "Unknown"
+                    eta = po.expected_delivery_date.isoformat() if getattr(po, "expected_delivery_date", None) else ""
+                    # If items not eager-loaded, present a generic summary
+                    items_str = "order items"
+                    upcoming_deliveries.append({"supplier": supplier, "eta": eta, "items": items_str})
+            except Exception as e:
+                logger.warning(f"Upcoming deliveries unavailable: {e}", exc_info=True)
+
+            return {
+                "current_shift": current_shift,
+                "order_flow": order_flow,
+                "todays_pace": todays_pace,
+                "active_orders": active_orders_out,
+                "kitchen_status": kitchen_status,
+                "upcoming_deliveries": upcoming_deliveries,
+            }
+        except Exception as e:
+            logger.error(f"Error in get_live_operations: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to fetch live operations")
+
+    @log_method()
+    async def get_quick_analytics(self, days: int = 7):
+        """
+        Return a lightweight analytics snapshot for the last N days.
+        Computes revenue via MenuItem price * Sales.quantity_sold.
+        Provides WoW deltas comparing the same length prior window.
+        """
+        try:
+            end_date = date.today()
+            start_date = end_date - timedelta(days=days - 1)
+
+            # Current window sales
+            sales = await self.sales_repo.get_sales_by_date_range(start_date, end_date)
+
+            # Build a price cache to avoid repeated DB hits
+            price_cache = {}
+            async def get_price(mid: int) -> float:
+                if mid in price_cache:
+                    return price_cache[mid]
+                mi = await self.menu_repo.get_by_id(mid)
+                price = float(mi.price) if mi and mi.price is not None else 0.0
+                price_cache[mid] = price
+                return price
+
+            # Aggregate by day and by item
+            from collections import defaultdict
+            daily = defaultdict(lambda: {"sales": 0.0, "orders": 0, "customers": 0})
+            per_item = defaultdict(lambda: {"units": 0, "revenue": 0.0, "name": ""})
+
+            for s in sales:
+                d = s.sale_timestamp.date()
+                qty = int(s.quantity_sold or 0)
+                price = await get_price(int(s.menu_item_id))
+                rev = qty * price
+                daily[d]["sales"] += rev
+                # Approximate orders and customers as quantity sold when order granularity not present
+                daily[d]["orders"] += qty
+                daily[d]["customers"] += qty
+
+                # Per-item aggregation
+                per_item[int(s.menu_item_id)]["units"] += qty
+                per_item[int(s.menu_item_id)]["revenue"] += rev
+                if not per_item[int(s.menu_item_id)]["name"]:
+                    mi = await self.menu_repo.get_by_id(int(s.menu_item_id))
+                    per_item[int(s.menu_item_id)]["name"] = getattr(mi, "name", f"Item {s.menu_item_id}")
+
+            # Compose daily series for the window
+            daily_sales = []
+            cur = start_date
+            total_sales = 0.0
+            total_orders = 0
+            total_customers = 0
+            while cur <= end_date:
+                day_data = daily.get(cur, {"sales": 0.0, "orders": 0, "customers": 0})
+                daily_sales.append({
+                    "date": cur.isoformat(),
+                    "sales": round(day_data["sales"], 2),
+                    "orders": int(day_data["orders"]),
+                    "customers": int(day_data["customers"]),
+                })
+                total_sales += day_data["sales"]
+                total_orders += day_data["orders"]
+                total_customers += day_data["customers"]
+                cur += timedelta(days=1)
+
+            avg_order_value = (total_sales / total_orders) if total_orders > 0 else 0.0
+
+            # WoW deltas: previous window of equal length
+            prev_end = start_date - timedelta(days=1)
+            prev_start = prev_end - timedelta(days=days - 1)
+            prev_sales_rows = await self.sales_repo.get_sales_by_date_range(prev_start, prev_end)
+            prev_total_sales = 0.0
+            prev_total_orders = 0
+            prev_total_customers = 0
+            for s in prev_sales_rows:
+                qty = int(s.quantity_sold or 0)
+                price = await get_price(int(s.menu_item_id))
+                prev_total_sales += qty * price
+                prev_total_orders += qty
+                prev_total_customers += qty
+
+            def pct_change(cur_val: float, prev_val: float) -> float:
+                if prev_val == 0:
+                    return 100.0 if cur_val > 0 else 0.0
+                return (cur_val - prev_val) / prev_val * 100.0
+
+            wow_sales_change = pct_change(total_sales, prev_total_sales)
+            wow_orders_change = pct_change(float(total_orders), float(prev_total_orders))
+            wow_customers_change = pct_change(float(total_customers), float(prev_total_customers))
+            wow_avg_change = pct_change(avg_order_value, (prev_total_sales / prev_total_orders) if prev_total_orders > 0 else 0.0)
+
+            # Top/Bottom items by units (use revenue as secondary sort)
+            items_sorted = sorted(
+                per_item.values(), key=lambda x: (x["units"], x["revenue"]), reverse=True
+            )
+            def to_perf(it):
+                return {
+                    "name": it["name"],
+                    "units": int(it["units"]),
+                    "revenue": round(it["revenue"], 2),
+                    "trend": "neutral",
+                    "change": 0.0,
+                }
+            top_items = list(map(to_perf, items_sorted[:5]))
+            bottom_items = list(map(to_perf, list(reversed(items_sorted))[:5])) if items_sorted else []
+
+            # Hourly pattern placeholder (can be filled from sales timestamps later)
+            hourly_pattern = [0] * 24
+
+            return {
+                "summary": {
+                    "total_sales": round(total_sales, 2),
+                    "total_orders": int(total_orders),
+                    "avg_order_value": round(avg_order_value, 2),
+                    "total_customers": int(total_customers),
+                    "wow_sales_change": round(wow_sales_change, 2),
+                    "wow_orders_change": round(wow_orders_change, 2),
+                    "wow_avg_change": round(wow_avg_change, 2),
+                    "wow_customers_change": round(wow_customers_change, 2),
+                },
+                "daily_sales": daily_sales,
+                "top_items": top_items,
+                "bottom_items": bottom_items,
+                "hourly_pattern": hourly_pattern,
+            }
+        except Exception as e:
+            logger.error(f"Error in get_quick_analytics: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to fetch quick analytics")
+
     async def get_daily_overview_data(self):
-        if self.subscription_tier == 'basic':
-            data = await self._get_basic_overview()
-            # Wrap into Pydantic DTO for consistent typing
-            return DailyOverviewOut(**data)
-        # Later: add 'plus', 'pro', etc.
+        # Return the basic overview for all tiers to ensure a valid response.
+        # Pro/Master dashboards use a separate /pro-overview endpoint.
+        data = await self._get_basic_overview()
+        return DailyOverviewOut(**data)
 
     @log_method("Get basic overview")
     async def _get_basic_overview(self):

@@ -1,1 +1,0 @@
-I would like to change the name of the template that get's downloaded in the basic to the date or something. 
