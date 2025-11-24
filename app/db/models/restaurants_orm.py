@@ -12,7 +12,7 @@ def default_sales_channels():
 class Restaurant(Base):
     __tablename__ = "restaurants"
 
-    restaurant_id = Column(BigInteger, primary_key=True, index=True)
+    restaurant_id = Column(INTEGER(11), primary_key=True, autoincrement=True, index=True)
     name = Column(String(100), nullable=False)
     phone = Column(String(20))
     address = Column(Text)
@@ -94,3 +94,4 @@ class Restaurant(Base):
     devices = relationship("Device", back_populates="restaurant")
     order_items = relationship("OrderItem", back_populates="restaurant")
     order_item_modifiers = relationship("OrderItemModifier", back_populates="restaurant")
+    forecast_run_ledgers = relationship("ForecastRunLedger", back_populates="restaurant")

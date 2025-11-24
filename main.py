@@ -41,6 +41,7 @@ from app.db.models import (
     devices_orm,
     forecast_accuracy_orm,
     forecast_breakdown_orm,
+    forecast_run_ledger_orm,
     forecasts_orm,
     ingredient_supplier_orm,
     inventory_usage_log_orm,
