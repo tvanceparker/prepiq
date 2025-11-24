@@ -4,6 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.ingredients_repo import IngredientRepository
 from app.services.inventory_stats_service import InventoryStatsService
 from app.repositories.alerts_repo import AlertRepository
+from app.core.logging import logger
+from app.utils.logger_helpers import log_method
 import math
 
 
@@ -34,6 +36,7 @@ class ReorderForecastEngine:
         self.alert_repo = AlertRepository(db,restaurant_id)
         self._abc_cache: Dict[int, str] = {}
 
+    @log_method("Reorder: Safety Stock")
     async def calculate_safety_stock(
         self, ingredient_id: int, lead_time: int
     ) -> Decimal:
@@ -52,11 +55,12 @@ class ReorderForecastEngine:
             self.SERVICE_LEVEL_Z * stddev_usage * Decimal(math.sqrt(lead_time))
         )
         safety_stock = safety_stock.quantize(Decimal("0.01"))
-        print(
-            f"[SAFETY STOCK] Ingredient {ingredient_id}: StdDev Usage={stddev_usage}, Lead Time={lead_time} days, Safety Stock={safety_stock}"
+        logger.debug(
+            f"[REORDER] SafetyStock ingredient={ingredient_id} stddev={stddev_usage} lead_time={lead_time} value={safety_stock}"
         )
         return safety_stock
 
+    @log_method("Reorder: Reorder Point")
     async def calculate_reorder_point(self, ingredient_id: int) -> Decimal:
         """
         Calculate the reorder point for an ingredient based on average daily usage, lead time, and safety stock.
@@ -74,11 +78,12 @@ class ReorderForecastEngine:
         lead_demand = avg_daily_usage * Decimal(lead_time)
         safety_stock = await self.calculate_safety_stock(ingredient_id, lead_time)
         reorder_point = (lead_demand + safety_stock).quantize(Decimal("0.01"))
-        print(
-            f"[REORDER POINT] Ingredient {ingredient_id}: Avg Daily Usage={avg_daily_usage}, Lead Time={lead_time}, Lead Demand={lead_demand}, Safety Stock={safety_stock}, Reorder Point={reorder_point}"
+        logger.debug(
+            f"[REORDER] ReorderPoint ingredient={ingredient_id} avg_usage={avg_daily_usage} lead_time={lead_time} safety={safety_stock} point={reorder_point}"
         )
         return reorder_point
 
+    @log_method("Reorder: Max Order")
     async def calculate_max_order(
         self, ingredient_id: int, current_stock: Decimal
     ) -> Decimal:
@@ -96,13 +101,14 @@ class ReorderForecastEngine:
         if max_stock is not None:
             max_allowed = max_stock - current_stock
             max_allowed = max(max_allowed, Decimal(0))
-            print(
-                f"[MAX ORDER] Ingredient {ingredient_id}: Max Stock={max_stock}, Current Stock={current_stock}, Max Allowed Order={max_allowed}"
+            logger.debug(
+                f"[REORDER] MaxOrder ingredient={ingredient_id} max_stock={max_stock} current={current_stock} allowed={max_allowed}"
             )
             return max_allowed
-        print(f"[MAX ORDER] Ingredient {ingredient_id}: No max stock limit set; treating as unlimited.")
+        logger.debug(f"[REORDER] MaxOrder ingredient={ingredient_id} no_limit")
         return Decimal("Infinity")
 
+    @log_method("Reorder: Suggest Quantity")
     async def suggest_reorder_quantity(
         self,
         ingredient_id: int,
@@ -134,13 +140,13 @@ class ReorderForecastEngine:
         moq = await self.stats_service.get_moq(ingredient_id)
 
         reorder_point = lead_demand + safety_stock
-        print(
-            f"[SUGGEST REORDER] Ingredient {ingredient_id}: ABC Class={abc_class}, Current Stock={current_stock} {current_unit}, Lead Demand={lead_demand}, Shelf Demand={shelf_demand}, Safety Stock={safety_stock}, MOQ={moq}"
+        logger.debug(
+            f"[REORDER] Suggest ingredient={ingredient_id} abc={abc_class} current={current_stock}{current_unit} lead_demand={lead_demand} shelf_demand={shelf_demand} safety={safety_stock} moq={moq}"
         )
 
         if current_stock >= reorder_point:
-            print(
-                f"[NO REORDER] Ingredient {ingredient_id}: Current stock ({current_stock}) >= reorder point ({reorder_point}), no order needed."
+            logger.debug(
+                f"[REORDER] Skip ingredient={ingredient_id} current>reorder_point current={current_stock} point={reorder_point}"
             )
             return Decimal("0.00")
         else:
@@ -149,8 +155,8 @@ class ReorderForecastEngine:
         reorder_target = lead_demand + shelf_demand + safety_stock
         raw_order_qty = reorder_target - current_stock
 
-        print(
-            f"[ORDER QTY CALC] Ingredient {ingredient_id}: Reorder Target={reorder_target}, Raw Order Qty={raw_order_qty}"
+        logger.debug(
+            f"[REORDER] Calc ingredient={ingredient_id} target={reorder_target} raw={raw_order_qty}"
         )
 
         if abc_class == "A":
@@ -164,11 +170,12 @@ class ReorderForecastEngine:
         order_qty = min(order_qty, max_allowed)
 
         order_qty = max(order_qty, Decimal("0")).quantize(Decimal("0.01"))
-        print(
-            f"[FINAL ORDER QTY] Ingredient {ingredient_id}: After ABC and Max Stock constraints, Suggested Order Qty = {order_qty} {unit}"
+        logger.debug(
+            f"[REORDER] Final ingredient={ingredient_id} qty={order_qty} unit={unit}"
         )
         return order_qty
 
+    @log_method("Reorder: Classify Single ABC")
     async def classify_abc_item(self, ingredient_id: int) -> str:
         """
         Classify an ingredient into an ABC category based on its usage and cost.
@@ -181,19 +188,20 @@ class ReorderForecastEngine:
         """
         cached = self._abc_cache.get(ingredient_id)
         if cached:
-            print(
-                f"[ABC CLASSIFICATION] Ingredient {ingredient_id}: Using cached classification '{cached}'"
+            logger.debug(
+                f"[REORDER] ABC Cached ingredient={ingredient_id} class={cached}"
             )
             return cached
 
         ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
         abc = ingredient.abc_class or "C"
         self._abc_cache[ingredient_id] = abc
-        print(
-            f"[ABC CLASSIFICATION] Ingredient {ingredient_id}: Retrieved classification '{abc}' from database"
+        logger.debug(
+            f"[REORDER] ABC DB ingredient={ingredient_id} class={abc}"
         )
         return abc
 
+    @log_method("Reorder: Classify All ABC")
     async def classify_all_ingredients(self, days: int = 90):
         """
         Automatically classify all ingredients based on their consumption value (usage * cost)
@@ -216,14 +224,14 @@ class ReorderForecastEngine:
             usage_data.append((ingredient.ingredient_id, value, ingredient.abc_class))
 
         if not usage_data:
-            print("[ABC CLASSIFICATION] No ingredients found to classify.")
+            logger.info("[REORDER] ABC classify none_found")
             return
 
         usage_data.sort(key=lambda x: x[1], reverse=True)
         total_value = sum(v for _, v, _ in usage_data)
         if total_value == 0:
-            print(
-                f"[ABC CLASSIFICATION] Total consumption value is zero across last {days} days; defaulting all to 'C'."
+            logger.info(
+                f"[REORDER] ABC classify zero_total_value days={days} default_all=C"
             )
 
         cumulative = Decimal("0")
@@ -242,14 +250,15 @@ class ReorderForecastEngine:
 
             if current_class != abc:
                 await self.ingredient_repo.update(ingredient_id, {"abc_class": abc})
-                print(
-                    f"[ABC CLASSIFICATION] Ingredient {ingredient_id}: Updated from '{current_class}' to '{abc}' (value={value}, cumulative_pct={pct})"
+                logger.debug(
+                    f"[REORDER] ABC update ingredient={ingredient_id} from={current_class} to={abc} value={value} pct={pct}"
                 )
             else:
-                print(
-                    f"[ABC CLASSIFICATION] Ingredient {ingredient_id}: Remains '{abc}' (value={value}, cumulative_pct={pct})"
+                logger.debug(
+                    f"[REORDER] ABC unchanged ingredient={ingredient_id} class={abc} value={value} pct={pct}"
                 )
 
+    @log_method("Reorder: Low Stock Alert")
     async def create_low_stock_alert(self, ingredient_id: int, current_stock: Decimal, reorder_point: Decimal):
         ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
         message = (
@@ -266,4 +275,4 @@ class ReorderForecastEngine:
             "is_acknowledged": 0,
         }
         await self.alert_repo.create(alert_data)
-        print(f"[ALERT CREATED] {message}")
+        logger.info(f"[REORDER] AlertCreated ingredient={ingredient_id} current={current_stock} reorder_point={reorder_point}")

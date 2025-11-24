@@ -70,7 +70,69 @@ class EODService:
         self.inventory_stats = InventoryStatsService(
             db=db, restaurant_id=restaurant_id, subscription_tier=subscription_tier
         )
-        print(f'init end of day')
+        logger.debug('[EOD] init service restaurant=%s tier=%s', self.restaurant_id, self.subscription_tier)
+        from app.repositories.eod_run_ledger_repo import EODRunLedgerRepository
+        self.ledger_repo = EODRunLedgerRepository(db, restaurant_id)
+        self._purchase_order_suggestions = []
+
+    # ------------------------- Internal Stage Helpers -------------------------
+    async def _stage_sales_deduction(self, run_date, ledger) -> int:
+        if ledger.sales_deducted:
+            logger.debug('[EOD] Skip sales_deduction already complete date=%s', run_date)
+            return 0
+        t0 = datetime.utcnow()
+        usage_summary = await self.aggregate_daily_sales(run_date)
+        if usage_summary:
+            await self.deduct_ingredients_from_inventory(usage_summary)
+        await self.ledger_repo.mark_stage_complete(ledger, 'sales_deducted', int((datetime.utcnow()-t0).total_seconds()*1000))
+        return len(usage_summary or [])
+
+    async def _stage_spoilage(self, run_date, ledger):
+        # simple placeholder spoilage stage does not have its own flag; folded into sales_deduction timing if needed.
+        await self.auto_deduct_spoilage(run_date)
+
+    async def _stage_forecast(self, run_date, ledger, forecast_horizon_days, reorder_horizon_days) -> Dict[int, dict]:
+        if ledger.forecast_completed:
+            logger.debug('[EOD] Skip forecast already complete date=%s', run_date)
+            return {}
+        t0 = datetime.utcnow()
+        ingredient_forecast = await self.generate_forecast(forecast_horizon_days, reorder_horizon_days)
+        # Record accuracy (daily + rolling) using forecasting engine advanced methods
+        try:
+            await self.forecasting_engine.evaluate_and_record_daily_forecast_accuracy(run_date)
+            await self.forecasting_engine.evaluate_and_record_accuracy(run_date)
+        except Exception as e:
+            logger.warning('[EOD] Forecast accuracy evaluation failed date=%s error=%s', run_date, e)
+        await self.ledger_repo.mark_stage_complete(ledger, 'forecast_completed', int((datetime.utcnow()-t0).total_seconds()*1000))
+        return ingredient_forecast
+
+    async def _stage_reorder(self, ledger, ingredient_forecast) -> int:
+        if ledger.reorder_completed:
+            logger.debug('[EOD] Skip reorder already complete')
+            return 0
+        if not ingredient_forecast:
+            logger.info('[EOD] No ingredient forecast; skip reorder stage')
+            await self.ledger_repo.mark_stage_complete(ledger, 'reorder_completed', 0)
+            return 0
+        t0 = datetime.utcnow()
+        await self.reorder_engine.classify_all_ingredients()
+        suggestions = await self.generate_suggested_purchase_orders(ingredient_forecast)
+        self._purchase_order_suggestions = suggestions
+        await self.ledger_repo.mark_stage_complete(ledger, 'reorder_completed', int((datetime.utcnow()-t0).total_seconds()*1000))
+        return len(suggestions or [])
+
+    async def _stage_po_write(self, ledger) -> int:
+        if ledger.po_written:
+            logger.debug('[EOD] Skip po_write already complete')
+            return 0
+        if not self._purchase_order_suggestions:
+            logger.info('[EOD] No PO suggestions to write')
+            await self.ledger_repo.mark_stage_complete(ledger, 'po_written', 0)
+            return 0
+        t0 = datetime.utcnow()
+        await self.write_purchase_orders_to_db()
+        await self.ledger_repo.mark_stage_complete(ledger, 'po_written', int((datetime.utcnow()-t0).total_seconds()*1000))
+        return len(self._purchase_order_suggestions)
 
     async def process_batch_recipe_production(self, date: date) -> None:
         # Find all preps that were scheduled but not completed
@@ -362,20 +424,20 @@ class EODService:
         return ingredient_forecast
 
     async def generate_suggested_purchase_orders(self, ingredient_forecast) -> None:
-        print(f"\n=== Generating suggested purchase orders ===")
+        logger.info("[EOD] Generating suggested purchase orders")
         purchase_orders = []
 
         ingredient_ids = set(ingredient_forecast.keys())
-        print(f"[INFO] Ingredient IDs to process: {ingredient_ids}")
+        logger.debug(f"[EOD] Ingredient IDs to process: {ingredient_ids}")
 
         for ingredient_id in ingredient_ids:
-            print(f"\n--- Processing Ingredient {ingredient_id} ---")
+            logger.debug(f"[EOD] Processing ingredient={ingredient_id}")
 
             suppliers = await self.ingredient_supplier_repo.get_all_by_ingredient_id(
                 ingredient_id
             )
             if not suppliers:
-                print(f"[WARN] No suppliers found for ingredient {ingredient_id}")
+                logger.warning(f"[EOD] No suppliers found ingredient={ingredient_id}")
                 continue
 
             preferred_suppliers = [s for s in suppliers if s.preferred]
@@ -407,8 +469,8 @@ class EODService:
                 inventory_unit = None
 
             reorder_days = lead_time + shelf_life
-            print(
-                f"[INFO] Lead time: {lead_time}, Shelf life: {shelf_life}, Reorder days: {reorder_days}"
+            logger.debug(
+                f"[EOD] LeadTime ingredient={ingredient_id} lead={lead_time} shelf_life={shelf_life} reorder_days={reorder_days}"
             )
 
             if reorder_days <= 0:
@@ -426,10 +488,7 @@ class EODService:
             )
             unit = ingredient_forecast[ingredient_id].get("unit", "?")
 
-            print(f"[DEBUG] Unit: {unit}")
-            print(f"[DEBUG] Lead window: {lead_window}")
-            print(f"[DEBUG] Shelf window: {shelf_window}")
-            print(f"[DEBUG] Daily forecast: {daily_forecast}")
+            logger.debug(f"[EOD] ForecastWindows ingredient={ingredient_id} unit={unit} lead_window={lead_window} shelf_window={shelf_window}")
 
             lead_demand = sum(qty for day, qty in daily_forecast if day in lead_window)
             shelf_demand = sum(
@@ -437,8 +496,8 @@ class EODService:
             )
             total_demand = lead_demand + shelf_demand
 
-            print(
-                f"[RESULT] Lead demand: {lead_demand}, Shelf demand: {shelf_demand}, Total demand: {total_demand}"
+            logger.debug(
+                f"[EOD] Demand ingredient={ingredient_id} lead={lead_demand} shelf={shelf_demand} total={total_demand}"
             )
 
             reorder_qty = await self.reorder_engine.suggest_reorder_quantity(
@@ -450,39 +509,33 @@ class EODService:
                 lead_time=lead_time,
             )
 
-            print(f"[INFO] Suggested reorder quantity: {reorder_qty}")
+            logger.debug(f"[EOD] Suggested reorder qty ingredient={ingredient_id} qty={reorder_qty}")
 
             if reorder_qty <= 0:
-                print(
-                    f"[SKIP] Reorder quantity is 0 or less for ingredient {ingredient_id}"
-                )
+                logger.debug(f"[EOD] Skip PO generation ingredient={ingredient_id} qty<=0")
                 continue
 
             try:
                 converted_qty = convert_unit(
                     reorder_qty, from_unit=inventory_unit, to_unit=supplier_unit
                 )
-                print(
-                    f"[INFO] Converted quantity from {inventory_unit} to {supplier_unit}: {converted_qty}"
+                logger.debug(
+                    f"[EOD] Conversion ingredient={ingredient_id} {inventory_unit}->{supplier_unit} qty={converted_qty}"
                 )
             except Exception as e:
-                print(
-                    f"[ERROR] Unit conversion failed for ingredient {ingredient_id}: {e}"
-                )
+                logger.warning(f"[EOD] Unit conversion failed ingredient={ingredient_id} error={e}")
                 continue
 
             quantity_per_pack = pack_size * quantity_per_pack_item
             if quantity_per_pack <= 0:
-                print(
-                    f"[ERROR] Invalid pack configuration for ingredient {ingredient_id}"
-                )
+                logger.warning(f"[EOD] Invalid pack config ingredient={ingredient_id}")
                 continue
 
             packs_to_order = math.ceil(converted_qty / quantity_per_pack)
             total_quantity_ordered = packs_to_order * quantity_per_pack
 
-            print(
-                f"[INFO] Suggested packs: {packs_to_order}, Total quantity ordered: {total_quantity_ordered}"
+            logger.debug(
+                f"[EOD] Packs ingredient={ingredient_id} packs={packs_to_order} total_qty={total_quantity_ordered}"
             )
 
             purchase_orders.append(
@@ -506,9 +559,7 @@ class EODService:
                 }
             )
 
-        print(f"\n=== Purchase Order Suggestions ===")
-        for po in purchase_orders:
-            print(po)
+        logger.info(f"[EOD] Generated {len(purchase_orders)} purchase order suggestions")
 
         self.purchase_order_suggestions = purchase_orders
         return purchase_orders
@@ -516,7 +567,7 @@ class EODService:
     async def write_purchase_orders_to_db(self) -> None:
         """Writes purchase orders to DB, grouped by supplier, including total prices."""
         if not self.purchase_order_suggestions:
-            print("No purchase order suggestions to write.")
+            logger.info("[EOD] No purchase order suggestions to write")
             return
 
         orders_by_supplier = defaultdict(list)
@@ -577,59 +628,10 @@ class EODService:
                 {"total_order_price": total_order_price}
             )
         
-        print("Purchase orders written successfully.")
+        logger.info("[EOD] Purchase orders written successfully")
 
     from datetime import date, timedelta
 
-    async def evaluate_forecast_accuracy(self) -> None:
-        """
-        Evaluate forecast accuracy for yesterday by comparing forecasted vs actual sales.
-        Write results to daily_forecast_accuracy.
-        """
-        #! This function still needs to be worked on and tested
-        yesterday = date.today() - timedelta(days=1)
-
-        # Step 1: Get actual sales and forecasted sales
-        actuals = await self.sales_repo.get_by_date(yesterday)
-        forecasts = await self.forecasting_engine.get_forecast_for_date(yesterday)
-
-        # Step 2: Match actuals and forecasts by (restaurant_id, menu_item_id)
-        for key, predicted_quantity in forecasts.items():
-            restaurant_id, menu_item_id = key
-            actual_quantity = actuals.get(key, 0)
-
-            # Step 3: Calculate error metrics
-            forecast_error = predicted_quantity - actual_quantity
-            error_percentage = (
-                round((forecast_error / predicted_quantity) * 100, 2)
-                if predicted_quantity else 0.0
-            )
-
-            # Step 4: Get breakdown_id for this forecasted record
-            breakdown_id = await self.forecast_repo.get_breakdown_id(
-                restaurant_id=restaurant_id,
-                menu_item_id=menu_item_id,
-                forecast_date=yesterday,
-            )
-
-            if breakdown_id is None:
-                # Optionally log or raise error
-                print(f"⚠️ No breakdown found for {restaurant_id}-{menu_item_id} on {yesterday}")
-                continue
-
-            # Step 5: Write to daily_forecast_accuracy table
-            await self.forecast_accuracy_repo.insert_daily_accuracy(
-                breakdown_id=breakdown_id,
-                restaurant_id=restaurant_id,
-                menu_item_id=menu_item_id,
-                forecast_date=yesterday,
-                predicted_quantity=predicted_quantity,
-                actual_quantity=actual_quantity,
-                forecast_error=forecast_error,
-                error_percentage=error_percentage,
-            )
-
-        print(f"✅ Forecast accuracy evaluated for {yesterday}")
 
     @log_method("Finalize End Of Day Summary")
     async def finalize_end_of_day_summary(
@@ -645,66 +647,57 @@ class EODService:
                 date,
                 self.subscription_tier,
             )
+            ledger = await self.ledger_repo.get_or_create(run_date=date)
+            await self.ledger_repo.mark_running(ledger)
 
-            processed_usage = 0
-            purchase_order_count = 0
-            forecasted_ingredients = 0
+            usage_count = 0
+            forecast_count = 0
+            po_suggestions = 0
+            po_written = 0
 
             if self.subscription_tier == 'basic':
+                logger.info('[EOD] Basic tier run - minimal processing')
                 try:
-                    logger.info("[EOD] Initializing Basic Forecasting Engine...")
-                    self.basic_forecasting_engine = ForecastingEngineBasic(
-                        self.db, self.restaurant_id
-                    )
+                    self.basic_forecasting_engine = ForecastingEngineBasic(self.db, self.restaurant_id)
                     await self.basic_forecasting_engine.run(date)
                 except Exception as e:
-                    logger.error(f"[EOD] Error: {e}", exc_info=True)
-
+                    logger.error('[EOD] Basic engine failure error=%s', e, exc_info=True)
             elif self.subscription_tier == 'master':
-                usage_summary = await self.aggregate_daily_sales(date)
-                processed_usage = len(usage_summary or [])
+                # Sales & deduction
+                usage_count = await self._stage_sales_deduction(date, ledger)
+                await self._stage_spoilage(date, ledger)
+                if commit:
+                    await self.db.commit()
 
-                if usage_summary:
-                    await self.deduct_ingredients_from_inventory(usage_summary)
+                # Forecast
+                ingredient_forecast = await self._stage_forecast(date, ledger, forecast_horizon_days, reorder_horizon_days)
+                forecast_count = len(ingredient_forecast or {})
+                if commit:
+                    await self.db.commit()
 
-                await self.auto_deduct_spoilage(date)
+                # Reorder suggestions
+                po_suggestions = await self._stage_reorder(ledger, ingredient_forecast)
+                if commit:
+                    await self.db.commit()
 
-                ingredient_forecast = await self.generate_forecast(
-                    forecast_horizon_days=forecast_horizon_days,
-                    reorder_horizon_days=reorder_horizon_days,
-                )
-
-                forecasted_ingredients = len(ingredient_forecast or {})
-
-                if not ingredient_forecast:
-                    logger.warning(
-                        "[EOD] Forecast returned no ingredient demand. Skipping reorder generation."
-                    )
-                else:
-                    await self.reorder_engine.classify_all_ingredients()
-
-                    purchase_suggestions = await self.generate_suggested_purchase_orders(
-                        ingredient_forecast
-                    )
-
-                    purchase_order_count = len(purchase_suggestions or [])
-
-                    if purchase_suggestions:
-                        await self.write_purchase_orders_to_db()
-                    else:
-                        logger.info(
-                            "[EOD] No purchase suggestions produced after forecasting."
-                        )
-
+                # Write POs
+                po_written = await self._stage_po_write(ledger)
+                if commit:
+                    await self.db.commit()
             else:
-                raise ValueError(f"Unknown subscription tier: {self.subscription_tier}")
+                raise ValueError(f'Unknown subscription tier: {self.subscription_tier}')
 
-            logger.info(f"[EOD] Summary finalized successfully for {date}")
+            # Finalize ledger
+            await self.ledger_repo.finalize(ledger)
+            if commit:
+                await self.db.commit()
 
+            logger.info('[EOD] Summary finalized successfully date=%s usage=%s forecasted=%s posuggest=%s powritten=%s',
+                        date, usage_count, forecast_count, po_suggestions, po_written)
             return {
-                "usage_summary_count": processed_usage,
-                "forecasted_ingredients": forecasted_ingredients,
-                "purchase_orders_created": purchase_order_count,
+                'usage_summary_count': usage_count,
+                'forecasted_ingredients': forecast_count,
+                'purchase_orders_created': po_written,
             }
 
         except Exception as e:
@@ -718,5 +711,4 @@ class EODService:
         """Check if any sales data exists for given date."""
         return await self.sales_repo.sales_exist_for_dates([date])
     
-    async def write_forecast_to_db(self,forecast_results):
-        pass
+    # Legacy placeholder removed; forecasting engine handles its own persistence.

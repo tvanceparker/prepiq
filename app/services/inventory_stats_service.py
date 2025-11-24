@@ -12,6 +12,8 @@ from app.repositories.inventory_usage_log_repo import InventoryUsageLogRepositor
 from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
 from app.repositories.ingredients_repo import IngredientRepository
 from app.services.forecasting_engine import ForecastingEngine
+from app.core.logging import logger
+from app.utils.logger_helpers import log_method
 
 
 class InventoryStatsService:
@@ -38,6 +40,7 @@ class InventoryStatsService:
         self.ingredient_supplier_repo = IngredientSupplierRepository(db, restaurant_id)
         self.forecasting_engine = ForecastingEngine(db, restaurant_id)
 
+    @log_method("InventoryStats: Average Daily Usage")
     async def get_average_daily_usage(
         self, ingredient_id: int, days: int = 30
     ) -> Decimal:
@@ -56,12 +59,12 @@ class InventoryStatsService:
         )
         if len(usage_data) >= 14:
             daily_totals = [float(usage) for _, usage in usage_data]
-            print(
-                f"[AVG DAILY USAGE] Ingredient {ingredient_id}: Using inventory logs, days={days}, samples={len(daily_totals)}"
+            logger.debug(
+                f"[INV STATS] AvgDaily ingredient={ingredient_id} source=logs days={days} samples={len(daily_totals)}"
             )
         else:
-            print(
-                f"[AVG DAILY USAGE FALLBACK] Ingredient {ingredient_id}: Insufficient logs ({len(usage_data)}), using sales-derived usage"
+            logger.debug(
+                f"[INV STATS] AvgDaily Fallback ingredient={ingredient_id} log_samples={len(usage_data)} using=sales-derived"
             )
             usage_by_ingredient = (
                 await self.forecasting_engine.derive_ingredient_usage_from_sales(days)
@@ -70,17 +73,18 @@ class InventoryStatsService:
             daily_totals = list(ingredient_usage.values())
 
         if not daily_totals:
-            print(
-                f"[AVG DAILY USAGE] Ingredient {ingredient_id}: No usage data available, returning 0"
+            logger.info(
+                f"[INV STATS] AvgDaily ingredient={ingredient_id} no_usage_data returning=0"
             )
             return Decimal("0")
 
         avg_usage = Decimal(mean(daily_totals)).quantize(Decimal("0.01"))
-        print(
-            f"[AVG DAILY USAGE] Ingredient {ingredient_id}: Average daily usage calculated as {avg_usage}"
+        logger.debug(
+            f"[INV STATS] AvgDaily ingredient={ingredient_id} value={avg_usage}"
         )
         return avg_usage
 
+    @log_method("InventoryStats: Std Dev Usage")
     async def get_std_dev_usage(self, ingredient_id: int, days: int = 30) -> Decimal:
         """
         Calculate the standard deviation of ingredient usage over a given number of days.
@@ -97,12 +101,12 @@ class InventoryStatsService:
         )
         if len(usage_data) >= 14:
             daily_totals = [float(usage) for _, usage in usage_data]
-            print(
-                f"[STD DEV USAGE] Ingredient {ingredient_id}: Using inventory logs, days={days}, samples={len(daily_totals)}"
+            logger.debug(
+                f"[INV STATS] StdDev ingredient={ingredient_id} source=logs days={days} samples={len(daily_totals)}"
             )
         else:
-            print(
-                f"[STD DEV USAGE FALLBACK] Ingredient {ingredient_id}: Insufficient logs ({len(usage_data)}), using sales-derived std dev"
+            logger.debug(
+                f"[INV STATS] StdDev Fallback ingredient={ingredient_id} log_samples={len(usage_data)} using=sales-derived"
             )
             usage_by_ingredient = (
                 await self.forecasting_engine.derive_ingredient_usage_from_sales(days)
@@ -111,17 +115,18 @@ class InventoryStatsService:
             daily_totals = list(ingredient_usage.values())
 
         if len(daily_totals) < 2:
-            print(
-                f"[STD DEV USAGE] Ingredient {ingredient_id}: Not enough data to calculate std dev, returning 0"
+            logger.info(
+                f"[INV STATS] StdDev ingredient={ingredient_id} insufficient_samples returning=0"
             )
             return Decimal("0")
 
         std_dev = Decimal(pstdev(daily_totals)).quantize(Decimal("0.01"))
-        print(
-            f"[STD DEV USAGE] Ingredient {ingredient_id}: Standard deviation calculated as {std_dev}"
+        logger.debug(
+            f"[INV STATS] StdDev ingredient={ingredient_id} value={std_dev}"
         )
         return std_dev
 
+    @log_method("InventoryStats: Current Inventory")
     async def get_current_inventory(self, ingredient_id: int) -> tuple[Decimal, str]:
         """
         Retrieve the current inventory quantity and unit for a given ingredient.
@@ -134,17 +139,18 @@ class InventoryStatsService:
         """
         inventory = await self.inventory_repo.get_inventory_by_ingredient(ingredient_id)
         if not inventory:
-            print(
-                f"[CURRENT INVENTORY] Ingredient {ingredient_id}: No inventory record found, returning 0"
+            logger.info(
+                f"[INV STATS] CurrentInventory ingredient={ingredient_id} missing returning=0"
             )
             return Decimal("0.00"), ""
         qty = Decimal(inventory.quantity_on_hand or 0).quantize(Decimal("0.01"))
         unit = inventory.unit or ""
-        print(
-            f"[CURRENT INVENTORY] Ingredient {ingredient_id}: Quantity on hand = {qty} {unit}"
+        logger.debug(
+            f"[INV STATS] CurrentInventory ingredient={ingredient_id} qty={qty} unit={unit}"
         )
         return qty, unit
 
+    @log_method("InventoryStats: Lead Time")
     async def get_lead_time_days(self, ingredient_id: int) -> int:
         """
         Get the lead time (in days) from the preferred or lowest-priority supplier.
@@ -163,11 +169,12 @@ class InventoryStatsService:
             if supplier and supplier.lead_time_days is not None
             else 1
         )
-        print(
-            f"[LEAD TIME] Ingredient {ingredient_id}: Lead time retrieved as {lead_time} days"
+        logger.debug(
+            f"[INV STATS] LeadTime ingredient={ingredient_id} days={lead_time}"
         )
         return lead_time
 
+    @log_method("InventoryStats: MOQ")
     async def get_moq(self, ingredient_id: int) -> Decimal:
         """
         Get the minimum order quantity (MOQ) from the preferred or lowest-priority supplier.
@@ -186,9 +193,10 @@ class InventoryStatsService:
             if supplier and supplier.min_order_quantity is not None
             else Decimal("1")
         )
-        print(f"[MOQ] Ingredient {ingredient_id}: Minimum order quantity set to {moq}")
+        logger.debug(f"[INV STATS] MOQ ingredient={ingredient_id} moq={moq}")
         return moq
 
+    @log_method("InventoryStats: Max Stock Level")
     async def get_max_stock_level(self, ingredient_id: int) -> Optional[Decimal]:
         """
         Get the maximum stock level defined for the ingredient, if available.
@@ -202,13 +210,14 @@ class InventoryStatsService:
         ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
         if ingredient and ingredient.max_stock_level is not None:
             max_stock = Decimal(ingredient.max_stock_level)
-            print(
-                f"[MAX STOCK] Ingredient {ingredient_id}: Max stock level = {max_stock}"
+            logger.debug(
+                f"[INV STATS] MaxStock ingredient={ingredient_id} max={max_stock}"
             )
             return max_stock
-        print(f"[MAX STOCK] Ingredient {ingredient_id}: No max stock level defined")
+        logger.debug(f"[INV STATS] MaxStock ingredient={ingredient_id} none_defined")
         return None
 
+    @log_method("InventoryStats: Shelf Life")
     async def get_shelf_life_days(self, ingredient_id: int) -> int:
         """
         Retrieve the shelf life in days for the specified ingredient.
@@ -225,11 +234,12 @@ class InventoryStatsService:
             if ingredient and ingredient.shelf_life_days is not None
             else 30
         )
-        print(
-            f"[SHELF LIFE] Ingredient {ingredient_id}: Shelf life = {shelf_life} days"
+        logger.debug(
+            f"[INV STATS] ShelfLife ingredient={ingredient_id} days={shelf_life}"
         )
         return shelf_life
 
+    @log_method("InventoryStats: Total Usage Window")
     async def get_total_usage_last_n_days(
         self, ingredient_id: int, days: int = 90
     ) -> Decimal:
@@ -249,19 +259,19 @@ class InventoryStatsService:
 
         if usage_data:
             total = sum(Decimal(usage) for _, usage in usage_data)
-            print(
-                f"[TOTAL USAGE] Ingredient {ingredient_id}: Using inventory logs with {len(usage_data)} samples"
+            logger.debug(
+                f"[INV STATS] TotalUsage ingredient={ingredient_id} source=logs samples={len(usage_data)} days={days}"
             )
         else:
-            print(
-                f"[TOTAL USAGE FALLBACK] Ingredient {ingredient_id}: No inventory usage logs, deriving from sales"
+            logger.debug(
+                f"[INV STATS] TotalUsage Fallback ingredient={ingredient_id} using=sales-derived days={days}"
             )
             usage_by_ingredient = await self.forecasting_engine.derive_ingredient_usage_from_sales(days)
             ingredient_usage = usage_by_ingredient.get(ingredient_id, {})
             total = sum(Decimal(value) for value in ingredient_usage.values())
 
         total = total.quantize(Decimal("0.01"))
-        print(
-            f"[TOTAL USAGE] Ingredient {ingredient_id}: Total usage over last {days} days = {total}"
+        logger.debug(
+            f"[INV STATS] TotalUsage ingredient={ingredient_id} days={days} total={total}"
         )
         return total

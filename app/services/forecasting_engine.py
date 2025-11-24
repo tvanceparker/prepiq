@@ -38,7 +38,7 @@ from app.services.utils.model_path import load_model, save_model
 from app.services.utils.unit_conversion import convert_unit, normalize_unit
 from app.utils.logger_helpers import log_method
 
-
+#! We need to make sure this also keeps a ledger like eod_service right? 
 class ForecastingEngine:
     """
     Advanced forecasting engine used by Pro/Master tiers.
@@ -1133,7 +1133,7 @@ class ForecastingEngine:
             yield_qty = Decimal(batch_recipe.yield_quantity or 1)
 
             batch_ingredients = (
-                await self.batch_recipe_ingredient_repo.get_by_batch_recipe_id(
+                await self.batch_recipe_ingredients_repo.get_by_batch_recipe_id(
                     batch_recipe_id
                 )
             )
