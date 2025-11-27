@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.services.pos_service import POSService
+from app.services.internal_pos_service import InternalPOSService
 from app.schemas.pos_dto import DeviceRegistrationRequest, PaymentRequest
 from app.repositories.devices_repo import DevicesRepository
 from app.repositories.restaurants_repo import RestaurantRepository
@@ -25,8 +25,8 @@ class TestPOSService:
 
     @pytest.fixture
     def pos_service(self, mock_db, mock_repos):
-        """Create POSService with mocked dependencies"""
-        service = POSService(mock_db, 1, 'pro', 1)
+        """Create InternalPOSService with mocked dependencies"""
+        service = InternalPOSService(mock_db, 1, 'pro', 1)
         # Override the repositories with mocks
         service.devices_repo = mock_repos['devices']
         service.restaurant_repo = mock_repos['restaurant']

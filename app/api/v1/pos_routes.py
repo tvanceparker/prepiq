@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Body
-from app.services.pos_service import POSService
+from app.services.internal_pos_service import InternalPOSService
 from app.services.order_service import OrderService
 from app.api.dependencies import get_waiter_service, build_service
 from app.schemas.pos_dto import (
@@ -14,13 +14,13 @@ from app.schemas.pos_dto import (
 from app.schemas.order_dto import OrderCreate, OrderResponse
 from app.utils.logger_helpers import log_route
 
-router = APIRouter(prefix="/pos", tags=["POS"])
+router = APIRouter(prefix="/pos", tags=["Internal POS"])
 
 @router.post("/devices/register", response_model=DeviceSettingsResponse)
 @log_route("Register Device")
 async def register_device(
     registration: DeviceRegistrationRequest,
-    pos_service: POSService = Depends(get_waiter_service)
+    pos_service: InternalPOSService = Depends(get_waiter_service)
 ):
     # Basic device_type validation
     if registration.device_type not in ("pos_terminal", "kitchen_display", "mobile"):
@@ -32,7 +32,7 @@ async def register_device(
 @log_route("Get Device Settings")
 async def get_device_settings(
     device_id: int,
-    pos_service: POSService = Depends(get_waiter_service)
+    pos_service: InternalPOSService = Depends(get_waiter_service)
 ):
     return await pos_service.get_device_settings(device_id)
 
@@ -41,7 +41,7 @@ async def get_device_settings(
 async def update_device_settings(
     device_id: int,
     settings: dict = Body(...),
-    pos_service: POSService = Depends(get_waiter_service)
+    pos_service: InternalPOSService = Depends(get_waiter_service)
 ):
     return await pos_service.update_device_settings(device_id, settings)
 
@@ -49,7 +49,7 @@ async def update_device_settings(
 @log_route("Send Order to Kitchen")
 async def send_order_to_kitchen(
     order: dict = Body(...),
-    pos_service: POSService = Depends(get_waiter_service)
+    pos_service: InternalPOSService = Depends(get_waiter_service)
 ):
     return await pos_service.send_order_to_kitchen(order)
 
@@ -67,7 +67,7 @@ async def create_order(
 @log_route("Create Payment Intent")
 async def create_payment_intent(
     payment_req: PaymentRequest,
-    pos_service: POSService = Depends(get_waiter_service)
+    pos_service: InternalPOSService = Depends(get_waiter_service)
 ):
     return await pos_service.create_payment_intent(payment_req)
 
@@ -75,6 +75,6 @@ async def create_payment_intent(
 @log_route("Confirm Payment")
 async def confirm_payment(
     confirm_req: PaymentConfirmRequest,
-    pos_service: POSService = Depends(get_waiter_service)
+    pos_service: InternalPOSService = Depends(get_waiter_service)
 ):
     return await pos_service.confirm_payment(confirm_req.payment_intent_id)

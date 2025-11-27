@@ -1,0 +1,8 @@
+# Additional dependencies for POS Integration
+# Add these to requirements.txt
+
+# Encryption for OAuth tokens
+cryptography>=41.0.0
+
+# HTTP client for POS API calls
+httpx>=0.25.0

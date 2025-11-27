@@ -163,7 +163,8 @@ from app.services.admin_service import AdminService
 from app.services.settings_service import SettingsService
 from app.services.alerts_service import AlertsService
 from app.services.team_service import TeamService
-from app.services.pos_service import POSService
+from app.services.internal_pos_service import InternalPOSService
+from app.services.pos_integration_service import POSIntegrationService
 from app.services.kitchen_service import KitchenService
 from app.services.order_service import OrderService
 
@@ -180,7 +181,9 @@ get_settings_service = build_service(SettingsService)
 get_alert_service = build_service(AlertsService)
 get_team_service = build_service(TeamService)
 get_order_service = build_service(OrderService)
-get_pos_service = build_service(POSService)
-# backwards-compat alias
-get_waiter_service = get_pos_service
+get_internal_pos_service = build_service(InternalPOSService)
+get_pos_integration_service = build_service(POSIntegrationService)
+# backwards-compat alias (for internal POS)
+get_waiter_service = get_internal_pos_service
+get_pos_service = get_internal_pos_service
 get_kitchen_service = build_service(KitchenService)

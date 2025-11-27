@@ -1,3 +1,10 @@
+# app/services/internal_pos_service.py
+"""
+Internal POS Service - for restaurants using PrepIQ as their primary POS.
+This is a fallback for restaurants without external POS systems (Square, Toast, etc.).
+Most restaurants should use POSIntegrationService instead.
+"""
+
 from app.core.logging import logger
 from app.utils.logger_helpers import log_method
 import os
@@ -15,8 +22,12 @@ from app.repositories.restaurants_repo import RestaurantRepository
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 
-class POSService:
-    """Lightweight POS orchestration with optional Stripe or mock payments and kitchen dispatch."""
+class InternalPOSService:
+    """
+    Internal POS orchestration with optional Stripe or mock payments and kitchen dispatch.
+    
+    Use this service when pos_provider == 'none' (restaurant not using external POS).
+    """
 
     def __init__(self, db, restaurant_id: int, subscription_tier: str, employee_id: int):
         self.db = db

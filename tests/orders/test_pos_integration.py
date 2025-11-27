@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.order_service import OrderService
-from app.services.pos_service import POSService
+from app.services.internal_pos_service import InternalPOSService
 from app.services.auth_service import AuthService
 from app.schemas.order_dto import OrderCreate, OrderItemCreate
 from app.schemas.pos_dto import DeviceRegistrationRequest
@@ -18,7 +18,7 @@ class TestPOSIntegration:
     def services(self, mock_db):
         """Create all services with shared mock db"""
         order_service = OrderService(mock_db, 1, 'pro', 1)
-        pos_service = POSService(mock_db, 1, 'pro', 1)
+        pos_service = InternalPOSService(mock_db, 1, 'pro', 1)
         auth_service = AuthService(mock_db)
 
         return {

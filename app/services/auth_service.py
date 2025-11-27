@@ -6,7 +6,6 @@ from app.repositories.devices_repo import DevicesRepository
 from app.utils.security import verify_password, create_access_token, create_device_token
 from app.utils.logger_helpers import log_method
 from app.core.logging import logger
-from app.services.pos_service import POSService
 from datetime import datetime
 class AuthService:
     def __init__(self, db: AsyncSession):

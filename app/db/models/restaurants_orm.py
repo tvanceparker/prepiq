@@ -1,6 +1,6 @@
 # app/db/models/restaurants_orm.py
 
-from sqlalchemy import Column, BigInteger, String, Text, Enum, JSON, Date, Boolean, DECIMAL
+from sqlalchemy import Column, BigInteger, String, Text, Enum, JSON, Date, Boolean, DECIMAL, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.mysql import INTEGER
 from sqlalchemy.ext.declarative import declarative_base
@@ -39,6 +39,20 @@ class Restaurant(Base):
     has_pos_display = Column(Boolean, default=False)  # True if restaurant has dedicated POS terminals
     has_kitchen_display = Column(Boolean, default=False)  # True if restaurant has dedicated kitchen displays
     default_ui_layout = Column(String(16), default='auto')  # Default UI layout for devices
+    
+    # External POS Integration fields
+    pos_provider = Column(Enum('none', 'square', 'toast', 'clover'), nullable=False, default='none')
+    pos_connected = Column(Boolean, default=False)
+    pos_access_token = Column(Text, nullable=True)  # Encrypted token
+    pos_refresh_token = Column(Text, nullable=True)  # Encrypted refresh token
+    pos_location_id = Column(String(255), nullable=True)  # Provider's location identifier
+    pos_merchant_id = Column(String(255), nullable=True)  # Provider's merchant/account ID
+    pos_last_sync = Column(DateTime, nullable=True)
+    pos_sync_enabled = Column(Boolean, default=True)
+    pos_webhook_secret = Column(String(255), nullable=True)  # For webhook signature verification
+    pos_sync_orders = Column(Boolean, default=True)  # Sync order data
+    pos_sync_payments = Column(Boolean, default=True)  # Sync payment data
+    pos_sync_menu = Column(Boolean, default=False)  # Sync menu items from POS
 
 
     ingredients = relationship("Ingredient", back_populates="restaurant")

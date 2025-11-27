@@ -24,8 +24,10 @@ from app.api.v1 import (
     team_routes,
     orders_routes,
     pos_routes,
+    pos_webhooks,
     kitchen_routes,
 )
+from app.api.v1 import pos_mappings_routes
 from app.utils.eod_runner import run_eod_jobs
 # from app.db import models  # <- Register all models
 from app.db.models import (
@@ -77,6 +79,8 @@ from app.db.models import (
     order_items_orm,
     order_item_modifiers_orm,
     payments_orm,
+    pos_item_mappings_orm,
+    pos_merchant_mappings_orm,
 )
 # import logging
 # logging.basicConfig()
@@ -122,6 +126,8 @@ app.add_middleware(AuthExtractionMiddleware)
 # Include routers after app creation
 app.include_router(kitchen_routes.router, prefix="/api/v1")
 app.include_router(pos_routes.router, prefix="/api/v1")
+app.include_router(pos_webhooks.router, prefix="/api/v1")  # POS webhook routes
+app.include_router(pos_mappings_routes.router, prefix="/api/v1")  # POS mappings routes
 app.include_router(orders_routes.router, prefix="/api/v1")
 # app.include_router(websocket_routes.router)
 app.include_router(team_routes.router, prefix="/api/v1")

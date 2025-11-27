@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from app.services.settings_service import SettingsService
-from app.api.dependencies import get_settings_service, check_permissions
+from app.services.pos_integration_service import POSIntegrationService
+from app.api.dependencies import get_settings_service, check_permissions, build_service
 from app.schemas.settings_dto import (RestaurantSettingsDTO, UpdateRestaurantSettingsDTO, 
                                       ChangePasswordDTO, ChangeEmailDTO, ChangePhoneDTO,
                                         PreferencesDTO, UpdatePreferencesDTO, AccountInfoDTO,
@@ -83,6 +84,85 @@ async def get_account_info(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e)
         )
+
+
+# ========== POS Integration Settings ==========
+
+@router.get("/pos/oauth-url")
+@log_route("Get POS OAuth URL")
+async def get_pos_oauth_url(
+    provider: str = Query(..., description="POS provider: square, toast, clover"),
+    redirect_uri: str = Query(..., description="OAuth callback URL"),
+    state: str = Query(..., description="CSRF state token"),
+    pos_service: POSIntegrationService = Depends(build_service(POSIntegrationService))
+):
+    """
+    Generate OAuth authorization URL for POS provider connection.
+    Frontend should redirect user to this URL.
+    """
+    try:
+        oauth_url = await pos_service.get_oauth_authorization_url(provider, redirect_uri, state)
+        return {"oauth_url": oauth_url, "provider": provider}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/pos/oauth-callback")
+@log_route("POS OAuth Callback")
+async def pos_oauth_callback(
+    provider: str = Query(..., description="POS provider"),
+    code: str = Query(..., description="Authorization code from OAuth"),
+    redirect_uri: str = Query(..., description="OAuth redirect URI"),
+    pos_service: POSIntegrationService = Depends(build_service(POSIntegrationService))
+):
+    """
+    Complete OAuth flow after user grants access.
+    This endpoint exchanges the authorization code for access tokens.
+    """
+    try:
+        result = await pos_service.complete_oauth_flow(provider, code, redirect_uri)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[POS OAuth] Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="OAuth flow failed")
+
+
+@router.post("/pos/disconnect")
+@log_route("Disconnect POS")
+async def disconnect_pos(
+    pos_service: POSIntegrationService = Depends(build_service(POSIntegrationService))
+):
+    """Disconnect current POS provider and revoke tokens."""
+    result = await pos_service.disconnect_provider()
+    return result
+
+
+@router.get("/pos/sync-status")
+@log_route("Get POS Sync Status")
+async def get_pos_sync_status(
+    pos_service: POSIntegrationService = Depends(build_service(POSIntegrationService))
+):
+    """Get current POS integration status and last sync info."""
+    status_info = await pos_service.get_sync_status()
+    return status_info
+
+
+@router.post("/pos/sync-now")
+@log_route("Trigger POS Sync")
+async def trigger_pos_sync(
+    days_back: int = Query(7, description="Number of days to sync backwards"),
+    pos_service: POSIntegrationService = Depends(build_service(POSIntegrationService))
+):
+    """Manually trigger order sync from POS provider."""
+    from datetime import datetime, timedelta
+    
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=days_back)
+    
+    result = await pos_service.sync_orders(start_date, end_date)
+    return result
 
 
 #-------------Role Permissions----------------------
