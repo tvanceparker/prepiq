@@ -1,5 +1,5 @@
 // src/pages/pos/components/POSBasic.tsx
-import React, { Fragment, useState } from 'react';
+import React, { Fragment, useState, useEffect } from 'react';
 import {
   Alert,
   Box,
@@ -12,8 +12,16 @@ import {
   Grid,
   Paper,
   Typography,
+  Drawer,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
-import { Payment as PaymentIcon, ShoppingCart as CartIcon } from '@mui/icons-material';
+import {
+  Payment as PaymentIcon,
+  ShoppingCart as CartIcon,
+  PointOfSale as DrawerIcon,
+  Menu as MenuIcon,
+} from '@mui/icons-material';
 import { usePOS } from '../hooks/usePOS';
 import { useOrders } from '../hooks/useOrders';
 import { useDevice } from '../../../contexts/DeviceContext';
@@ -21,7 +29,9 @@ import OrderCard from './OrderCard';
 import PaymentTerminal from './PaymentTerminal';
 import MenuItemGrid from './MenuItemGrid';
 import ModifierEditor from './ModifierEditor';
-import { StatusUpdater, OrderItem, MenuItemType } from '../../../interfaces/pos';
+import CashDrawerPanel from './CashDrawerPanel';
+import { StatusUpdater, OrderItem, MenuItemType, CashDrawerSession } from '../../../interfaces/pos';
+import { cashDrawer } from '../../../api/pos';
 
 const KitchenDisplayMode: React.FC<{
   activeOrders: any[];
@@ -280,6 +290,30 @@ const POSBasic: React.FC = () => {
   const [modifierEditorOpen, setModifierEditorOpen] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastOrderId, setLastOrderId] = useState<number | undefined>(undefined);
+
+  // Cash drawer state
+  const [cashDrawerOpen, setCashDrawerOpen] = useState(false);
+  const [cashDrawerSession, setCashDrawerSession] = useState<CashDrawerSession | null>(null);
+
+  // Fetch current cash drawer session on mount
+  useEffect(() => {
+    fetchCurrentSession();
+  }, []);
+
+  const fetchCurrentSession = async () => {
+    try {
+      const session = await cashDrawer.getCurrentSession();
+      setCashDrawerSession(session);
+    } catch (err) {
+      // No active session, which is fine
+      setCashDrawerSession(null);
+    }
+  };
+
+  const handleDrawerSessionChange = (session: CashDrawerSession | null) => {
+    setCashDrawerSession(session);
+  };
 
   const addItemToOrder = (menuItem: MenuItemType) => {
     const existing = currentOrder.find(i => i.menu_item_id === menuItem.menu_item_id);
@@ -334,7 +368,7 @@ const POSBasic: React.FC = () => {
         })),
       }));
 
-      await createOrder({
+      const result = await createOrder({
         sales_channel: 'in_person',
         items: apiItems,
         subtotal,
@@ -342,6 +376,12 @@ const POSBasic: React.FC = () => {
         discount: 0,
         total,
       });
+
+      // Store the order ID for payment
+      if (result?.order_id) {
+        setLastOrderId(result.order_id);
+      }
+
       setCurrentOrder([]);
       refreshOrders();
     } catch (err: any) {
@@ -360,9 +400,31 @@ const POSBasic: React.FC = () => {
   return (
     <Fragment>
       <Box sx={{ flexGrow: 1, p: 3 }}>
-        <Typography variant="h4" gutterBottom>
-          Point of Sale - {device?.device_name} ({deviceInfo.type})
-        </Typography>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography variant="h4">
+            Point of Sale - {device?.device_name} ({deviceInfo.type})
+          </Typography>
+          <Box display="flex" gap={1} alignItems="center">
+            {/* Cash Drawer Status Indicator */}
+            <Tooltip title={cashDrawerSession ? 'Cash drawer is open' : 'Cash drawer is closed'}>
+              <Chip
+                icon={<DrawerIcon />}
+                label={
+                  cashDrawerSession
+                    ? `Drawer Open: $${cashDrawerSession.current_balance?.toFixed(2) || '0.00'}`
+                    : 'Drawer Closed'
+                }
+                color={cashDrawerSession ? 'success' : 'default'}
+                variant={cashDrawerSession ? 'filled' : 'outlined'}
+                onClick={() => setCashDrawerOpen(true)}
+                sx={{ cursor: 'pointer' }}
+              />
+            </Tooltip>
+            <IconButton onClick={() => setCashDrawerOpen(true)}>
+              <MenuIcon />
+            </IconButton>
+          </Box>
+        </Box>
 
         {error && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
@@ -443,9 +505,13 @@ const POSBasic: React.FC = () => {
         open={showPayment}
         onClose={() => setShowPayment(false)}
         amount={calculateTotal()}
+        orderId={lastOrderId}
+        cashDrawerSession={cashDrawerSession}
         onPaymentComplete={() => {
           setShowPayment(false);
           setCurrentOrder([]);
+          setLastOrderId(undefined);
+          fetchCurrentSession(); // Refresh drawer balance
         }}
       />
       <ModifierEditor
@@ -464,6 +530,19 @@ const POSBasic: React.FC = () => {
           setEditingModifiersFor(null);
         }}
       />
+
+      {/* Cash Drawer Side Panel */}
+      <Drawer
+        anchor="right"
+        open={cashDrawerOpen}
+        onClose={() => setCashDrawerOpen(false)}
+        PaperProps={{ sx: { width: { xs: '100%', sm: 450 } } }}
+      >
+        <CashDrawerPanel
+          onClose={() => setCashDrawerOpen(false)}
+          onSessionChange={handleDrawerSessionChange}
+        />
+      </Drawer>
     </Fragment>
   );
 };

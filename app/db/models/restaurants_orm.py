@@ -53,6 +53,10 @@ class Restaurant(Base):
     pos_sync_orders = Column(Boolean, default=True)  # Sync order data
     pos_sync_payments = Column(Boolean, default=True)  # Sync payment data
     pos_sync_menu = Column(Boolean, default=False)  # Sync menu items from POS
+    # Internal POS settings
+    pos_mode = Column(Enum('none', 'internal', 'external'), nullable=False, default='none')
+    stripe_terminal_location_id = Column(String(255), nullable=True)
+    cash_drawer_enabled = Column(Boolean, default=False)
 
 
     ingredients = relationship("Ingredient", back_populates="restaurant")
@@ -109,3 +113,7 @@ class Restaurant(Base):
     order_items = relationship("OrderItem", back_populates="restaurant")
     order_item_modifiers = relationship("OrderItemModifier", back_populates="restaurant")
     forecast_run_ledgers = relationship("ForecastRunLedger", back_populates="restaurant")
+    # POS & Cash Drawer
+    stripe_terminal_readers = relationship("StripeTerminalReader", back_populates="restaurant")
+    cash_drawer_sessions = relationship("CashDrawerSession", back_populates="restaurant")
+    cash_drawer_transactions = relationship("CashDrawerTransaction", back_populates="restaurant")

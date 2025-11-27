@@ -153,4 +153,75 @@ class SettingsService:
             "restaurant_latitude": float(restaurant_lat) if restaurant_lat is not None else None,
             "restaurant_longitude": float(restaurant_lon) if restaurant_lon is not None else None,
         }
-    
+
+    # =============================================================================
+    # POS Mode Settings
+    # =============================================================================
+
+    @log_method("Get POS Mode Settings")
+    async def get_pos_mode_settings(self) -> dict:
+        """Get the current POS mode configuration for the restaurant."""
+        restaurant = await self.restaurant_repo.get_by_id(self.restaurant_id)
+        if not restaurant:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+        
+        # Check if there are any terminal readers
+        from app.repositories.stripe_terminal_readers_repo import StripeTerminalReaderRepository
+        reader_repo = StripeTerminalReaderRepository(self.db, self.restaurant_id)
+        readers = await reader_repo.list_readers()
+        
+        return {
+            "pos_mode": restaurant.pos_mode or "none",
+            "pos_provider": restaurant.pos_provider,
+            "cash_drawer_enabled": restaurant.cash_drawer_enabled or False,
+            "stripe_terminal_location_id": restaurant.stripe_terminal_location_id,
+            "has_terminal_readers": len(readers) > 0
+        }
+
+    @log_method("Update POS Mode Settings")
+    async def update_pos_mode_settings(
+        self,
+        pos_mode: str,
+        pos_provider: str = None,
+        cash_drawer_enabled: bool = True
+    ) -> dict:
+        """
+        Update the POS mode configuration.
+        
+        Args:
+            pos_mode: 'internal' or 'external'
+            pos_provider: For external mode, the provider name (square, toast, clover)
+            cash_drawer_enabled: Whether cash drawer tracking is enabled
+        """
+        if pos_mode not in ("none", "internal", "external"):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid pos_mode. Must be 'none', 'internal', or 'external'"
+            )
+        
+        if pos_mode == "external" and pos_provider not in ("square", "toast", "clover"):
+            raise HTTPException(
+                status_code=400,
+                detail="For external mode, pos_provider must be 'square', 'toast', or 'clover'"
+            )
+        
+        update_data = {
+            "pos_mode": pos_mode,
+            "cash_drawer_enabled": cash_drawer_enabled
+        }
+        
+        # Only set provider if external mode
+        if pos_mode == "external":
+            update_data["pos_provider"] = pos_provider
+        elif pos_mode in ("internal", "none"):
+            # Clear provider when switching to internal or none - use 'none' string, not None/null
+            update_data["pos_provider"] = "none"
+        
+        await self.restaurant_repo.update(self.restaurant_id, update_data)
+        await self.log_activity("pos_mode_updated", {
+            "pos_mode": pos_mode,
+            "pos_provider": pos_provider,
+            "cash_drawer_enabled": cash_drawer_enabled
+        })
+        
+        return await self.get_pos_mode_settings()

@@ -165,4 +165,33 @@ async def trigger_pos_sync(
     return result
 
 
+@router.get("/pos/mode")
+@log_route("Get POS Mode Settings")
+async def get_pos_mode_settings(
+    settings_service: SettingsService = Depends(get_settings_service)
+):
+    """Get the current POS mode configuration for the restaurant."""
+    return await settings_service.get_pos_mode_settings()
+
+
+@router.put("/pos/mode")
+@log_route("Update POS Mode Settings")
+async def update_pos_mode_settings(
+    pos_mode: str = Query(..., description="POS mode: internal or external"),
+    pos_provider: str = Query(None, description="Provider for external mode: square, toast, clover"),
+    cash_drawer_enabled: bool = Query(True, description="Enable cash drawer tracking"),
+    settings_service: SettingsService = Depends(get_settings_service)
+):
+    """
+    Update restaurant POS mode configuration.
+    - internal: Use PrepIQ as the primary POS
+    - external: Use external POS (Square, Toast, Clover)
+    """
+    return await settings_service.update_pos_mode_settings(
+        pos_mode=pos_mode,
+        pos_provider=pos_provider,
+        cash_drawer_enabled=cash_drawer_enabled
+    )
+
+
 #-------------Role Permissions----------------------

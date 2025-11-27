@@ -167,6 +167,8 @@ from app.services.internal_pos_service import InternalPOSService
 from app.services.pos_integration_service import POSIntegrationService
 from app.services.kitchen_service import KitchenService
 from app.services.order_service import OrderService
+from app.services.cash_drawer_service import CashDrawerService
+from app.services.stripe_terminal_service import StripeTerminalService
 
 
 get_menu_service = build_service(MenuService)
@@ -183,6 +185,8 @@ get_team_service = build_service(TeamService)
 get_order_service = build_service(OrderService)
 get_internal_pos_service = build_service(InternalPOSService)
 get_pos_integration_service = build_service(POSIntegrationService)
+get_cash_drawer_service = build_service(CashDrawerService)
+get_stripe_terminal_service = build_service(StripeTerminalService)
 # backwards-compat alias (for internal POS)
 get_waiter_service = get_internal_pos_service
 get_pos_service = get_internal_pos_service

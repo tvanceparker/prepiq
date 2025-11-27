@@ -81,6 +81,10 @@ from app.db.models import (
     payments_orm,
     pos_item_mappings_orm,
     pos_merchant_mappings_orm,
+    # Cash drawer and terminal reader models
+    stripe_terminal_readers_orm,
+    cash_drawer_sessions_orm,
+    cash_drawer_transactions_orm,
 )
 # import logging
 # logging.basicConfig()

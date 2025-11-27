@@ -20,3 +20,4 @@ class Device(Base):
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     restaurant = relationship("Restaurant", back_populates="devices")
+    cash_drawer_sessions = relationship("CashDrawerSession", back_populates="device")

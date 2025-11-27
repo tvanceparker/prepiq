@@ -131,15 +131,38 @@ prepiq/
 - REST clients live in `frontend/src/api/`, with an Axios instance adding JWT Authorization headers.
 - Feature-specific API wrappers (e.g., `dashboard.ts`, `inventory.js`) encapsulate endpoint calls.
 - Hooks (e.g., `pages/dashboard/hooks`) compose TanStack Query calls and handle caching/invalidation.
-- Interfaces are in the `frontend/interface/` and that's where we get the types and things, they should have the same name as the module that uses them. 
+- Interfaces are in the `frontend/interface/` and that's where we get the types and things, they should have the same name as the module that uses them.
 
-### 3.5 Forms & Components
+### 3.5 Hooks Organization (IMPORTANT)
+
+- **Every page with complex data fetching or state management should have a dedicated hooks file** in a `hooks/` folder colocated with the page.
+- Hooks file naming: `use<PageName>.ts` (e.g., `useIntegrationSettings.ts`, `useAccountSettings.ts`, `useDashboard.ts`).
+- The hook should encapsulate:
+  - All `useQuery` and `useMutation` calls (TanStack Query)
+  - Snackbar/notification state
+  - Handler functions for user actions
+  - Computed/derived state
+- The page component should only handle:
+  - Local UI state (dialogs open/closed, form inputs)
+  - JSX rendering
+  - Importing and using the hook
+- This keeps page components clean and focused on presentation while hooks handle data logic.
+- Example structure:
+
+  ```text
+  pages/settings/
+  ├── IntegrationSettings.tsx    # UI component (~400 lines)
+  ├── hooks/
+  │   └── useIntegrationSettings.ts  # Data/logic hook (~250 lines)
+  ```
+
+### 3.6 Forms & Components
 
 - Forms typically use Formik + Yup for validation (`forms/` helpers).
 - Custom components wrap MUI primitives for buttons, modals, tables, tags, etc. Migration goal: convert all `.jsx` components to TypeScript `.tsx` and remove Tailwind classnames.
 - Charts: `react-chartjs-2`, Recharts, and custom visualizations housed in `pages/sales/charts/`.
 
-### 3.6 Testing & Quality
+### 3.7 Testing & Quality
 
 - Unit tests with React Testing Library (`App.test.js`, `setupTests.js`).
 - E2E/regression tests planned via Playwright (dev dependency already installed).
