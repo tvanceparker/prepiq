@@ -248,9 +248,9 @@ const styles = StyleSheet.create({
   container: {
     padding: 12,
     marginHorizontal: 16,
+    marginTop: 12,
     marginBottom: 12,
     borderRadius: 12,
-    zIndex: 1,
   },
   header: {
     flexDirection: 'row',
