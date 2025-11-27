@@ -53,7 +53,7 @@ export default function WasteLogs(): React.ReactElement {
   const getDateRange = () => {
     const end = new Date();
     const start = new Date();
-    
+
     switch (dateRange) {
       case 'today':
         start.setHours(0, 0, 0, 0);
@@ -65,7 +65,7 @@ export default function WasteLogs(): React.ReactElement {
         start.setMonth(start.getMonth() - 1);
         break;
     }
-    
+
     return {
       startDate: start.toISOString().split('T')[0],
       endDate: end.toISOString().split('T')[0],
@@ -75,7 +75,13 @@ export default function WasteLogs(): React.ReactElement {
   const { startDate, endDate } = getDateRange();
 
   // Queries & mutations
-  const { logs: wasteLogs = [], loading: isLoading, refresh, createWasteLog, creating } = useWasteLogs({ start_date: startDate, end_date: endDate });
+  const {
+    logs: wasteLogs = [],
+    loading: isLoading,
+    refresh,
+    createWasteLog,
+    creating,
+  } = useWasteLogs({ start_date: startDate, end_date: endDate });
   const { ingredients = [] } = usePrepIngredients();
 
   // Pull to refresh
@@ -171,7 +177,11 @@ export default function WasteLogs(): React.ReactElement {
               </Text>
             </View>
             {item.notes && (
-              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }} numberOfLines={1}>
+              <Text
+                variant="bodySmall"
+                style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
+                numberOfLines={1}
+              >
                 {item.notes}
               </Text>
             )}
@@ -231,19 +241,25 @@ export default function WasteLogs(): React.ReactElement {
             <Text variant="titleMedium" style={{ color: '#f44336', fontWeight: '700' }}>
               {stats.count}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Entries</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Entries
+            </Text>
           </View>
           <View style={styles.statItem}>
             <Text variant="titleMedium" style={{ fontWeight: '700' }}>
               {stats.totalQuantity.toFixed(1)}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Units Lost</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Units Lost
+            </Text>
           </View>
           <View style={styles.statItem}>
             <Text variant="titleMedium" style={{ color: '#ff9800', fontWeight: '700' }}>
               ${stats.estimatedCost.toFixed(0)}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Est. Cost</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Est. Cost
+            </Text>
           </View>
         </View>
       </Surface>
@@ -251,12 +267,11 @@ export default function WasteLogs(): React.ReactElement {
       {/* Waste Logs List */}
       {wasteLogs.length === 0 ? (
         <View style={styles.emptyState}>
-          <MaterialCommunityIcons
-            name="leaf"
-            size={64}
-            color={theme.colors.onSurfaceVariant}
-          />
-          <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}>
+          <MaterialCommunityIcons name="leaf" size={64} color={theme.colors.onSurfaceVariant} />
+          <Text
+            variant="titleMedium"
+            style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}
+          >
             No waste logged
           </Text>
           <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}>
@@ -269,9 +284,7 @@ export default function WasteLogs(): React.ReactElement {
           keyExtractor={item => item.waste_log_id?.toString() || Math.random().toString()}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         />
       )}
 
@@ -315,7 +328,9 @@ export default function WasteLogs(): React.ReactElement {
               </View>
 
               {/* Reason Selector */}
-              <Text variant="bodyMedium" style={{ marginBottom: 8 }}>Reason *</Text>
+              <Text variant="bodyMedium" style={{ marginBottom: 8 }}>
+                Reason *
+              </Text>
               <View style={styles.reasonButtons}>
                 {WASTE_REASONS.map(reason => (
                   <Chip

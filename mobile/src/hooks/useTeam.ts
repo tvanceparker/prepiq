@@ -45,23 +45,19 @@ export function useEmployees() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: EmployeeUpdate }) =>
-      updateEmployee(id, data),
+    mutationFn: ({ id, data }: { id: number; data: EmployeeUpdate }) => updateEmployee(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team', 'employees'] });
     },
   });
 
   // Group by role
-  const employeesByRole = (employeesQuery.data ?? []).reduce(
-    (acc, emp) => {
-      const role = emp.role_name || 'Unassigned';
-      if (!acc[role]) acc[role] = [];
-      acc[role].push(emp);
-      return acc;
-    },
-    {} as Record<string, Employee[]>
-  );
+  const employeesByRole = (employeesQuery.data ?? []).reduce((acc, emp) => {
+    const role = emp.role_name || 'Unassigned';
+    if (!acc[role]) acc[role] = [];
+    acc[role].push(emp);
+    return acc;
+  }, {} as Record<string, Employee[]>);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['team', 'employees'] });
@@ -121,9 +117,7 @@ export function useClockEvents(options: UseClockEventsOptions) {
   });
 
   // Find current open clock event (no clock_out)
-  const currentClockEvent = (eventsQuery.data ?? []).find(
-    (event) => !event.clock_out
-  );
+  const currentClockEvent = (eventsQuery.data ?? []).find(event => !event.clock_out);
 
   // Calculate total hours
   const totalHours = (eventsQuery.data ?? []).reduce(
@@ -188,25 +182,19 @@ export function useShiftSchedule(options: UseShiftScheduleOptions) {
   });
 
   // Group shifts by date
-  const shiftsByDate = (scheduleQuery.data?.shifts ?? []).reduce(
-    (acc, shift) => {
-      if (!acc[shift.shift_date]) acc[shift.shift_date] = [];
-      acc[shift.shift_date].push(shift);
-      return acc;
-    },
-    {} as Record<string, ShiftSchedule[]>
-  );
+  const shiftsByDate = (scheduleQuery.data?.shifts ?? []).reduce((acc, shift) => {
+    if (!acc[shift.shift_date]) acc[shift.shift_date] = [];
+    acc[shift.shift_date].push(shift);
+    return acc;
+  }, {} as Record<string, ShiftSchedule[]>);
 
   // Group shifts by employee
-  const shiftsByEmployee = (scheduleQuery.data?.shifts ?? []).reduce(
-    (acc, shift) => {
-      const empId = shift.employee_id;
-      if (!acc[empId]) acc[empId] = [];
-      acc[empId].push(shift);
-      return acc;
-    },
-    {} as Record<number, ShiftSchedule[]>
-  );
+  const shiftsByEmployee = (scheduleQuery.data?.shifts ?? []).reduce((acc, shift) => {
+    const empId = shift.employee_id;
+    if (!acc[empId]) acc[empId] = [];
+    acc[empId].push(shift);
+    return acc;
+  }, {} as Record<number, ShiftSchedule[]>);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['team', 'shifts'] });

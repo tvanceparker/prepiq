@@ -60,8 +60,7 @@ export default function PurchaseOrders(): React.JSX.Element {
     const query = searchQuery.toLowerCase();
     return purchaseOrders.filter(
       po =>
-        po.order_id?.toString().includes(query) ||
-        po.supplier_name?.toLowerCase().includes(query)
+        po.order_id?.toString().includes(query) || po.supplier_name?.toLowerCase().includes(query)
     );
   }, [purchaseOrders, searchQuery]);
 
@@ -154,20 +153,32 @@ export default function PurchaseOrders(): React.JSX.Element {
 
         <View style={styles.cardDetails}>
           <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="package-variant" size={14} color={theme.colors.onSurfaceVariant} />
+            <MaterialCommunityIcons
+              name="package-variant"
+              size={14}
+              color={theme.colors.onSurfaceVariant}
+            />
             <Text variant="bodySmall" style={styles.detailText}>
               {item.items?.length || 0} items
             </Text>
           </View>
           <View style={styles.detailItem}>
-            <MaterialCommunityIcons name="currency-usd" size={14} color={theme.colors.onSurfaceVariant} />
+            <MaterialCommunityIcons
+              name="currency-usd"
+              size={14}
+              color={theme.colors.onSurfaceVariant}
+            />
             <Text variant="bodySmall" style={styles.detailText}>
               ${item.total_order_price?.toFixed(2) || '0.00'}
             </Text>
           </View>
           {item.expected_delivery_date && (
             <View style={styles.detailItem}>
-              <MaterialCommunityIcons name="calendar" size={14} color={theme.colors.onSurfaceVariant} />
+              <MaterialCommunityIcons
+                name="calendar"
+                size={14}
+                color={theme.colors.onSurfaceVariant}
+              />
               <Text variant="bodySmall" style={styles.detailText}>
                 {new Date(item.expected_delivery_date).toLocaleDateString()}
               </Text>
@@ -219,8 +230,8 @@ export default function PurchaseOrders(): React.JSX.Element {
               showSelectedCheck={false}
               mode={statusFilter === status ? 'flat' : 'outlined'}
             >
-              {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
-              {' '}({statusCounts[status] || 0})
+              {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)} (
+              {statusCounts[status] || 0})
             </Chip>
           ))}
         </View>
@@ -234,7 +245,10 @@ export default function PurchaseOrders(): React.JSX.Element {
             size={64}
             color={theme.colors.onSurfaceVariant}
           />
-          <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}>
+          <Text
+            variant="titleMedium"
+            style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}
+          >
             No purchase orders found
           </Text>
         </View>
@@ -245,9 +259,7 @@ export default function PurchaseOrders(): React.JSX.Element {
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           stickySectionHeadersEnabled
         />
       )}
@@ -315,7 +327,9 @@ export default function PurchaseOrders(): React.JSX.Element {
                 <List.Item
                   key={index}
                   title={item.ingredient_name || `Item ${index + 1}`}
-                  description={`Qty: ${item.quantity_ordered} | Unit: $${item.unit_price?.toFixed(2)}`}
+                  description={`Qty: ${item.quantity_ordered} | Unit: $${item.unit_price?.toFixed(
+                    2
+                  )}`}
                   right={() => (
                     <Text variant="bodyMedium" style={{ fontWeight: '600' }}>
                       ${((item.quantity_ordered || 0) * (item.unit_price || 0)).toFixed(2)}

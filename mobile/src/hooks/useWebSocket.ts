@@ -34,10 +34,13 @@ export function useWebSocket({
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [status, setStatus] = useState<WebSocketStatus>('disconnected');
 
-  const updateStatus = useCallback((newStatus: WebSocketStatus) => {
-    setStatus(newStatus);
-    onStatusChange?.(newStatus);
-  }, [onStatusChange]);
+  const updateStatus = useCallback(
+    (newStatus: WebSocketStatus) => {
+      setStatus(newStatus);
+      onStatusChange?.(newStatus);
+    },
+    [onStatusChange]
+  );
 
   const connect = useCallback(async () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -56,7 +59,7 @@ export function useWebSocket({
 
       // Construct WebSocket URL
       const wsUrl = `${WS_BASE_URL}/ws/${room}?restaurant_id=${restaurantId}&token=${token}`;
-      
+
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -66,7 +69,7 @@ export function useWebSocket({
         updateStatus('connected');
       };
 
-      ws.onmessage = (event) => {
+      ws.onmessage = event => {
         try {
           const data = JSON.parse(event.data);
           onMessage?.(data);
@@ -75,12 +78,12 @@ export function useWebSocket({
         }
       };
 
-      ws.onerror = (error) => {
+      ws.onerror = error => {
         console.error('[WebSocket] Error:', error);
         updateStatus('error');
       };
 
-      ws.onclose = (event) => {
+      ws.onclose = event => {
         console.log(`[WebSocket] Disconnected from ${room} room`, event.code, event.reason);
         updateStatus('disconnected');
         wsRef.current = null;

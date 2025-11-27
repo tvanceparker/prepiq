@@ -24,18 +24,15 @@ const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'S
 
 export default function ShiftManager() {
   const theme = useTheme();
-  const {
-    employees,
-    loading: isLoadingEmployees,
-  } = useEmployees();
-  
+  const { employees, loading: isLoadingEmployees } = useEmployees();
+
   // Default to current week
   const today = new Date();
   const startOfWeek = new Date(today);
   startOfWeek.setDate(today.getDate() - today.getDay());
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(startOfWeek.getDate() + 6);
-  
+
   const {
     shifts,
     loading: isLoadingShifts,
@@ -46,7 +43,7 @@ export default function ShiftManager() {
     startDate: startOfWeek.toISOString().split('T')[0],
     endDate: endOfWeek.toISOString().split('T')[0],
   });
-  
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingShift, setEditingShift] = useState<ShiftSchedule | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<number | null>(null);
@@ -123,7 +120,11 @@ export default function ShiftManager() {
   const sections = Object.entries(groupedShifts)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, data]) => ({
-      title: new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+      title: new Date(date).toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+      }),
       data,
     }));
 
@@ -161,7 +162,7 @@ export default function ShiftManager() {
       ) : (
         <SectionList
           sections={sections}
-          keyExtractor={(item) => String(item.shift_id)}
+          keyExtractor={item => String(item.shift_id)}
           renderSectionHeader={({ section }) => (
             <View style={[styles.sectionHeader, { backgroundColor: theme.colors.surfaceVariant }]}>
               <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant }}>
@@ -206,7 +207,11 @@ export default function ShiftManager() {
               <Text variant="labelMedium" style={styles.dialogLabel}>
                 Employee
               </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.empScroll}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.empScroll}
+              >
                 {(employees || []).map((emp: Employee) => (
                   <Chip
                     key={emp.employee_id}

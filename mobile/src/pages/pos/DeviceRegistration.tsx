@@ -20,13 +20,8 @@ type DeviceType = 'pos_terminal' | 'kitchen_display' | 'mobile';
 
 export default function DeviceRegistration() {
   const theme = useTheme();
-  const {
-    devices,
-    isLoadingDevices,
-    registerDevice,
-    isRegisteringDevice,
-    unregisterDevice,
-  } = usePOS();
+  const { devices, isLoadingDevices, registerDevice, isRegisteringDevice, unregisterDevice } =
+    usePOS();
 
   const [deviceName, setDeviceName] = useState('');
   const [deviceType, setDeviceType] = useState<DeviceType>('pos_terminal');
@@ -80,7 +75,10 @@ export default function DeviceRegistration() {
       <Text variant="headlineMedium" style={[styles.title, { color: theme.colors.onBackground }]}>
         Device Registration
       </Text>
-      <Text variant="bodyMedium" style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}>
+      <Text
+        variant="bodyMedium"
+        style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}
+      >
         Register POS terminals, kitchen displays, and waiter tablets
       </Text>
 
@@ -96,12 +94,15 @@ export default function DeviceRegistration() {
             placeholder="e.g., Front Counter POS"
             style={styles.input}
           />
-          <Text variant="labelMedium" style={[styles.label, { color: theme.colors.onSurfaceVariant }]}>
+          <Text
+            variant="labelMedium"
+            style={[styles.label, { color: theme.colors.onSurfaceVariant }]}
+          >
             Device Type
           </Text>
           <SegmentedButtons
             value={deviceType}
-            onValueChange={(v) => setDeviceType(v as DeviceType)}
+            onValueChange={v => setDeviceType(v as DeviceType)}
             buttons={[
               { value: 'pos_terminal', label: 'POS', icon: 'point-of-sale' },
               { value: 'kitchen_display', label: 'Kitchen', icon: 'chef-hat' },
@@ -137,7 +138,7 @@ export default function DeviceRegistration() {
                   description={`${device.device_type?.replace('_', ' ')} • ${
                     device.is_active ? 'Active' : 'Inactive'
                   }`}
-                  left={(props) => <List.Icon {...props} icon={getDeviceIcon(device.device_type)} />}
+                  left={props => <List.Icon {...props} icon={getDeviceIcon(device.device_type)} />}
                   right={() => (
                     <Button
                       mode="text"

@@ -47,8 +47,7 @@ export function useMenuItems() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: MenuItemUpdate }) =>
-      updateMenuItem(id, data),
+    mutationFn: ({ id, data }: { id: number; data: MenuItemUpdate }) => updateMenuItem(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['menu', 'items'] });
     },

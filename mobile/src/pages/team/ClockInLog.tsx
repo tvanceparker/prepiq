@@ -36,13 +36,13 @@ export default function ClockInLog(): React.ReactElement {
   const getDateRange = () => {
     const end = new Date();
     const start = new Date();
-    
+
     if (dateRange === 'today') {
       start.setHours(0, 0, 0, 0);
     } else {
       start.setDate(start.getDate() - 7);
     }
-    
+
     return {
       startDate: start.toISOString().split('T')[0],
       endDate: end.toISOString().split('T')[0],
@@ -52,17 +52,17 @@ export default function ClockInLog(): React.ReactElement {
   const { startDate, endDate } = getDateRange();
 
   // Queries & mutations
-  const { 
-    events: clockEvents = [], 
-    loading: isLoading, 
-    clockIn, 
+  const {
+    events: clockEvents = [],
+    loading: isLoading,
+    clockIn,
     clockingIn,
-    clockOut, 
+    clockOut,
     clockingOut,
     currentClockEvent,
-    totalHours: workedHours
+    totalHours: workedHours,
   } = useClockEvents({ employeeId: currentEmployeeId, startDate, endDate });
-  
+
   const { employees = [] } = useEmployees();
 
   // Pull to refresh
@@ -105,7 +105,11 @@ export default function ClockInLog(): React.ReactElement {
     return Object.entries(grouped)
       .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
       .map(([title, data]) => ({
-        title: new Date(title).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+        title: new Date(title).toLocaleDateString('en-US', {
+          weekday: 'long',
+          month: 'short',
+          day: 'numeric',
+        }),
         data,
       }));
   }, [clockEvents]);
@@ -113,7 +117,7 @@ export default function ClockInLog(): React.ReactElement {
   // Handle clock in/out
   const handleClock = async (type: 'clock_in' | 'clock_out') => {
     if (!currentEmployeeId) return;
-    
+
     if (type === 'clock_in') {
       await clockIn({ employeeId: currentEmployeeId });
     } else if (currentClockEvent) {
@@ -143,10 +147,7 @@ export default function ClockInLog(): React.ReactElement {
       <Card style={styles.card} mode="outlined">
         <Card.Content style={styles.cardContent}>
           <View
-            style={[
-              styles.eventIndicator,
-              { backgroundColor: isComplete ? '#4caf50' : '#ff9800' },
-            ]}
+            style={[styles.eventIndicator, { backgroundColor: isComplete ? '#4caf50' : '#ff9800' }]}
           >
             <MaterialCommunityIcons
               name={isComplete ? 'check-circle' : 'clock-outline'}
@@ -176,7 +177,10 @@ export default function ClockInLog(): React.ReactElement {
               </Chip>
             </View>
             {item.duration_hours !== undefined && (
-              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}>
+              <Text
+                variant="bodySmall"
+                style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
+              >
                 Duration: {item.duration_hours.toFixed(1)} hours
               </Text>
             )}
@@ -234,19 +238,25 @@ export default function ClockInLog(): React.ReactElement {
             <Text variant="titleMedium" style={{ color: '#4caf50', fontWeight: '700' }}>
               {stats.currentlyIn}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>On Clock</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              On Clock
+            </Text>
           </View>
           <View style={styles.statItem}>
             <Text variant="titleMedium" style={{ fontWeight: '700' }}>
               {stats.totalEvents}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Events</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Events
+            </Text>
           </View>
           <View style={styles.statItem}>
             <Text variant="titleMedium" style={{ color: theme.colors.primary, fontWeight: '700' }}>
               {stats.totalHours}h
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Worked</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Worked
+            </Text>
           </View>
         </View>
       </Surface>
@@ -259,7 +269,10 @@ export default function ClockInLog(): React.ReactElement {
             size={64}
             color={theme.colors.onSurfaceVariant}
           />
-          <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}>
+          <Text
+            variant="titleMedium"
+            style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}
+          >
             No clock events
           </Text>
           <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}>
@@ -273,9 +286,7 @@ export default function ClockInLog(): React.ReactElement {
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           stickySectionHeadersEnabled
         />
       )}
@@ -289,7 +300,10 @@ export default function ClockInLog(): React.ReactElement {
               <Text variant="bodyLarge">
                 Current status: {isClockedIn ? 'Clocked In' : 'Clocked Out'}
               </Text>
-              <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}>
+              <Text
+                variant="bodyMedium"
+                style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}
+              >
                 {new Date().toLocaleString()}
               </Text>
             </View>

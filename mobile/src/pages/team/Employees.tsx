@@ -42,7 +42,15 @@ export default function Employees(): React.ReactElement {
   });
 
   // Queries & mutations
-  const { employees = [], loading: isLoading, refresh, createEmployee, creating, updateEmployee, updating } = useEmployees();
+  const {
+    employees = [],
+    loading: isLoading,
+    refresh,
+    createEmployee,
+    creating,
+    updateEmployee,
+    updating,
+  } = useEmployees();
 
   // Pull to refresh
   const onRefresh = useCallback(async () => {
@@ -170,7 +178,11 @@ export default function Employees(): React.ReactElement {
                 {item.name}
               </Text>
               {!isActive && (
-                <Chip compact style={styles.inactiveChip} textStyle={{ fontSize: 10, color: '#fff' }}>
+                <Chip
+                  compact
+                  style={styles.inactiveChip}
+                  textStyle={{ fontSize: 10, color: '#fff' }}
+                >
                   Inactive
                 </Chip>
               )}
@@ -189,7 +201,11 @@ export default function Employees(): React.ReactElement {
             <View style={styles.contactInfo}>
               {item.email && (
                 <View style={styles.contactRow}>
-                  <MaterialCommunityIcons name="email" size={12} color={theme.colors.onSurfaceVariant} />
+                  <MaterialCommunityIcons
+                    name="email"
+                    size={12}
+                    color={theme.colors.onSurfaceVariant}
+                  />
                   <Text variant="bodySmall" style={styles.contactText} numberOfLines={1}>
                     {item.email}
                   </Text>
@@ -197,7 +213,11 @@ export default function Employees(): React.ReactElement {
               )}
               {item.phone && (
                 <View style={styles.contactRow}>
-                  <MaterialCommunityIcons name="phone" size={12} color={theme.colors.onSurfaceVariant} />
+                  <MaterialCommunityIcons
+                    name="phone"
+                    size={12}
+                    color={theme.colors.onSurfaceVariant}
+                  />
                   <Text variant="bodySmall" style={styles.contactText}>
                     {item.phone}
                   </Text>
@@ -253,7 +273,10 @@ export default function Employees(): React.ReactElement {
             size={64}
             color={theme.colors.onSurfaceVariant}
           />
-          <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}>
+          <Text
+            variant="titleMedium"
+            style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}
+          >
             No employees found
           </Text>
           <Button mode="contained" onPress={openCreate} style={{ marginTop: 16 }}>
@@ -266,9 +289,7 @@ export default function Employees(): React.ReactElement {
           keyExtractor={item => item.employee_id.toString()}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         />
       )}
 

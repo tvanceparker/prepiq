@@ -41,7 +41,9 @@ export const getAllOrders = async (params?: {
   if (params?.limit) queryParams.append('limit', params.limit.toString());
   if (params?.offset) queryParams.append('offset', params.offset.toString());
   const queryString = queryParams.toString();
-  return get<{ orders: Order[]; total_count: number }>(`/orders${queryString ? `?${queryString}` : ''}`);
+  return get<{ orders: Order[]; total_count: number }>(
+    `/orders${queryString ? `?${queryString}` : ''}`
+  );
 };
 
 export const completeOrder = async (orderId: number): Promise<OrderResponse> => {

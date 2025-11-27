@@ -59,7 +59,7 @@ export interface UsePOSReturn {
   terminalReaders: any[];
   terminalReadersLoading: boolean;
   processTerminalPayment: (request: TerminalPaymentRequest) => Promise<any>;
-  
+
   // Devices
   devices: POSDevice[];
   isLoadingDevices: boolean;
@@ -80,15 +80,12 @@ export function usePOS(): UsePOSReturn {
   });
 
   // Group menu items by category
-  const menuItemsByCategory = (menuItemsQuery.data ?? []).reduce(
-    (acc, item) => {
-      const category = item.category || 'Other';
-      if (!acc[category]) acc[category] = [];
-      acc[category].push(item);
-      return acc;
-    },
-    {} as Record<string, MenuItemType[]>
-  );
+  const menuItemsByCategory = (menuItemsQuery.data ?? []).reduce((acc, item) => {
+    const category = item.category || 'Other';
+    if (!acc[category]) acc[category] = [];
+    acc[category].push(item);
+    return acc;
+  }, {} as Record<string, MenuItemType[]>);
 
   // Fetch POS settings
   const posSettingsQuery = useQuery({
@@ -148,13 +145,11 @@ export function usePOS(): UsePOSReturn {
 
   // Cart operations
   const addToCart = useCallback((item: MenuItemType) => {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.menu_item_id === item.menu_item_id);
+    setCart(prev => {
+      const existing = prev.find(i => i.menu_item_id === item.menu_item_id);
       if (existing) {
-        return prev.map((i) =>
-          i.menu_item_id === item.menu_item_id
-            ? { ...i, quantity: i.quantity + 1 }
-            : i
+        return prev.map(i =>
+          i.menu_item_id === item.menu_item_id ? { ...i, quantity: i.quantity + 1 } : i
         );
       }
       return [...prev, { ...item, quantity: 1 }];
@@ -162,20 +157,19 @@ export function usePOS(): UsePOSReturn {
   }, []);
 
   const removeFromCart = useCallback((menuItemId: number) => {
-    setCart((prev) => prev.filter((i) => i.menu_item_id !== menuItemId));
+    setCart(prev => prev.filter(i => i.menu_item_id !== menuItemId));
   }, []);
 
-  const updateCartItemQuantity = useCallback((menuItemId: number, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(menuItemId);
-      return;
-    }
-    setCart((prev) =>
-      prev.map((i) =>
-        i.menu_item_id === menuItemId ? { ...i, quantity } : i
-      )
-    );
-  }, [removeFromCart]);
+  const updateCartItemQuantity = useCallback(
+    (menuItemId: number, quantity: number) => {
+      if (quantity <= 0) {
+        removeFromCart(menuItemId);
+        return;
+      }
+      setCart(prev => prev.map(i => (i.menu_item_id === menuItemId ? { ...i, quantity } : i)));
+    },
+    [removeFromCart]
+  );
 
   const clearCart = useCallback(() => {
     setCart([]);
@@ -203,7 +197,7 @@ export function usePOS(): UsePOSReturn {
     const total = subtotal + tax;
 
     const order = {
-      items: cart.map((item) => ({
+      items: cart.map(item => ({
         menu_item_id: item.menu_item_id,
         quantity: item.quantity,
         unit_price: item.price,
@@ -221,7 +215,7 @@ export function usePOS(): UsePOSReturn {
 
   const sendToKitchen = async () => {
     const order = {
-      items: cart.map((item) => ({
+      items: cart.map(item => ({
         menu_item_id: item.menu_item_id,
         name: item.name,
         quantity: item.quantity,
@@ -300,7 +294,7 @@ export function usePOS(): UsePOSReturn {
     terminalReaders: terminalReadersQuery.data ?? [],
     terminalReadersLoading: terminalReadersQuery.isLoading,
     processTerminalPayment: terminalPaymentMutation.mutateAsync,
-    
+
     // Devices
     devices: devicesQuery.data ?? [],
     isLoadingDevices: devicesQuery.isLoading,

@@ -1,14 +1,7 @@
 // src/pages/pos/components/CartPanel.tsx
 import React from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import {
-  Card,
-  Text,
-  Button,
-  IconButton,
-  Divider,
-  useTheme,
-} from 'react-native-paper';
+import { Card, Text, Button, IconButton, Divider, useTheme } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { MenuItem } from '../../../interfaces/orders';
 
@@ -41,10 +34,7 @@ const CartPanel: React.FC<CartPanelProps> = ({
 }) => {
   const theme = useTheme();
 
-  const subtotal = items.reduce(
-    (sum, item) => sum + item.unit_price * item.quantity,
-    0
-  );
+  const subtotal = items.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
   const tax = subtotal * 0.0825; // 8.25% tax
   const total = subtotal + tax;
 
@@ -95,7 +85,10 @@ const CartPanel: React.FC<CartPanelProps> = ({
                       </Text>
                     </View>
                     {item.modifiers && item.modifiers.length > 0 && (
-                      <Text variant="bodySmall" style={{ color: theme.colors.primary, marginTop: 4 }}>
+                      <Text
+                        variant="bodySmall"
+                        style={{ color: theme.colors.primary, marginTop: 4 }}
+                      >
                         {item.modifiers.length} modifier(s)
                       </Text>
                     )}
@@ -149,7 +142,10 @@ const CartPanel: React.FC<CartPanelProps> = ({
               <Text variant="titleMedium" style={{ fontWeight: '700' }}>
                 Total
               </Text>
-              <Text variant="titleMedium" style={{ fontWeight: '700', color: theme.colors.primary }}>
+              <Text
+                variant="titleMedium"
+                style={{ fontWeight: '700', color: theme.colors.primary }}
+              >
                 ${total.toFixed(2)}
               </Text>
             </View>

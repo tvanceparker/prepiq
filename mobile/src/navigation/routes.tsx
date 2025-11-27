@@ -81,25 +81,25 @@ const routeComponents: Record<string, React.ComponentType<any>> = {
   kitchen: KitchenDisplay,
   'pos_device-registration': DeviceRegistration,
   // Inventory pages
-  'inventory_table': InventoryList,
+  inventory_table: InventoryList,
   'inventory_stock-movements': StockMovements,
-  'inventory_pos': PurchaseOrders,
-  'inventory_suppliers': Suppliers,
+  inventory_pos: PurchaseOrders,
+  inventory_suppliers: Suppliers,
   // Menu pages
-  'menu_builder': MenuBuilder,
+  menu_builder: MenuBuilder,
   'menu_recipe-editor': RecipeEditor,
   'menu_prep-batches': PrepBatches,
   'menu_ingredient-costing': IngredientCatalog,
   // Prep pages
-  'prep_schedule': PrepSchedule,
+  prep_schedule: PrepSchedule,
   'prep_waste-logs': WasteLogs,
-  'prep_logs': PrepLogs,
+  prep_logs: PrepLogs,
   'prep_batch-recipes': BatchRecipes,
   // Team pages
   'team_clock-in': ClockInLog,
-  'team_shifts': ShiftManager,
-  'team_insights': TeamInsights,
-  'team_employees': Employees,
+  team_shifts: ShiftManager,
+  team_insights: TeamInsights,
+  team_employees: Employees,
   // Admin pages
   'admin_tenant-info': TenantInfo,
   'admin_activity-logs': ActivityLogs,
@@ -110,12 +110,12 @@ const routeComponents: Record<string, React.ComponentType<any>> = {
   // Analytics pages
   'analytics_ingredient-trends': IngredientTrends,
   'analytics_dish-profitability': DishProfitability,
-  'analytics_waste': WasteDashboard,
-  'analytics_insights': InsightsOptimization,
+  analytics_waste: WasteDashboard,
+  analytics_insights: InsightsOptimization,
   // Settings pages
   settings_restaurant: RestaurantSettings,
   'settings_account-settings': AccountSettings,
-  'settings_integrations': IntegrationSettings,
+  settings_integrations: IntegrationSettings,
 };
 
 export function AppRoutes() {

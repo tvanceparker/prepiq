@@ -7,14 +7,14 @@ import { Employee } from '../../interfaces/team';
 
 export default function TeamInsights() {
   const theme = useTheme();
-  
+
   // Get current week date range
   const today = new Date();
   const startOfWeek = new Date(today);
   startOfWeek.setDate(today.getDate() - today.getDay());
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(startOfWeek.getDate() + 6);
-  
+
   const { employees, loading: isLoadingEmployees } = useEmployees();
   const { insights, loading: isLoadingInsights } = useTeamInsights({
     start_date: startOfWeek.toISOString().split('T')[0],
@@ -42,7 +42,10 @@ export default function TeamInsights() {
       <Text variant="headlineMedium" style={[styles.title, { color: theme.colors.onBackground }]}>
         Team Insights
       </Text>
-      <Text variant="bodyMedium" style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}>
+      <Text
+        variant="bodyMedium"
+        style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}
+      >
         Labor hours and team performance metrics
       </Text>
 
@@ -85,7 +88,7 @@ export default function TeamInsights() {
                 <List.Item
                   title="Active Employees"
                   description="Currently active staff"
-                  left={(props) => <List.Icon {...props} icon="account-clock" />}
+                  left={props => <List.Icon {...props} icon="account-clock" />}
                   right={() => (
                     <Text variant="titleMedium" style={{ color: theme.colors.primary }}>
                       {insights.active_employees ?? 0}
@@ -96,7 +99,7 @@ export default function TeamInsights() {
                 <List.Item
                   title="Total Hours Worked"
                   description="Accumulated work time"
-                  left={(props) => <List.Icon {...props} icon="clock-outline" />}
+                  left={props => <List.Icon {...props} icon="clock-outline" />}
                   right={() => (
                     <Text variant="titleMedium" style={{ color: theme.colors.secondary }}>
                       {insights.total_hours_worked?.toFixed(1) ?? 0}h
@@ -107,7 +110,7 @@ export default function TeamInsights() {
                 <List.Item
                   title="Avg Hours per Employee"
                   description="Average work time"
-                  left={(props) => <List.Icon {...props} icon="chart-line" />}
+                  left={props => <List.Icon {...props} icon="chart-line" />}
                   right={() => (
                     <Text variant="titleMedium" style={{ color: theme.colors.tertiary }}>
                       {insights.avg_hours_per_employee?.toFixed(1) ?? 0}h
@@ -123,13 +126,17 @@ export default function TeamInsights() {
             <Card style={styles.card} mode="outlined">
               <Card.Title
                 title="This Week"
-                right={() => <Chip compact icon="calendar-week">Week Stats</Chip>}
+                right={() => (
+                  <Chip compact icon="calendar-week">
+                    Week Stats
+                  </Chip>
+                )}
               />
               <Card.Content>
                 <List.Item
                   title="Total Labor Cost"
                   description="All employees combined"
-                  left={(props) => <List.Icon {...props} icon="currency-usd" />}
+                  left={props => <List.Icon {...props} icon="currency-usd" />}
                   right={() => (
                     <Text variant="titleMedium" style={{ color: theme.colors.primary }}>
                       ${insights.total_labor_cost?.toFixed(2) ?? '0.00'}
@@ -140,7 +147,7 @@ export default function TeamInsights() {
                 <List.Item
                   title="Total Shifts"
                   description="This week"
-                  left={(props) => <List.Icon {...props} icon="calendar-check" />}
+                  left={props => <List.Icon {...props} icon="calendar-check" />}
                   right={() => (
                     <Text variant="titleMedium" style={{ color: theme.colors.secondary }}>
                       {insights.total_shifts ?? 0}
@@ -151,7 +158,7 @@ export default function TeamInsights() {
                 <List.Item
                   title="On-Time Rate"
                   description="Clock-in punctuality"
-                  left={(props) => <List.Icon {...props} icon="clock-check" />}
+                  left={props => <List.Icon {...props} icon="clock-check" />}
                   right={() => (
                     <Text variant="titleMedium" style={{ color: theme.colors.tertiary }}>
                       {(insights.on_time_rate * 100)?.toFixed(0) ?? 0}%

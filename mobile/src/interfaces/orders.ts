@@ -92,4 +92,10 @@ export interface MenuItemsResponse {
   total_count: number;
 }
 
-export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+export type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'preparing'
+  | 'ready'
+  | 'completed'
+  | 'cancelled';

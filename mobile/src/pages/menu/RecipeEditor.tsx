@@ -37,7 +37,9 @@ export default function RecipeEditor() {
   const [category, setCategory] = useState('');
   const [prepTime, setPrepTime] = useState('');
   const [instructions, setInstructions] = useState('');
-  const [selectedIngredients, setSelectedIngredients] = useState<{ ingredient_id: number; quantity: string }[]>([]);
+  const [selectedIngredients, setSelectedIngredients] = useState<
+    { ingredient_id: number; quantity: string }[]
+  >([]);
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
 
   const openCreate = () => {
@@ -57,7 +59,7 @@ export default function RecipeEditor() {
     setPrepTime(recipe.prep_time_minutes?.toString() || '');
     setInstructions(recipe.description || '');
     setSelectedIngredients(
-      (recipe.ingredients || []).map((ri) => ({
+      (recipe.ingredients || []).map(ri => ({
         ingredient_id: ri.ingredient_id,
         quantity: ri.quantity?.toString() || '',
       }))
@@ -79,8 +81,8 @@ export default function RecipeEditor() {
         yield_unit: 'batch',
         prep_time_minutes: prepTime ? parseInt(prepTime, 10) : undefined,
         ingredients: selectedIngredients
-          .filter((si) => si.ingredient_id && si.quantity)
-          .map((si) => ({
+          .filter(si => si.ingredient_id && si.quantity)
+          .map(si => ({
             ingredient_id: si.ingredient_id,
             quantity: parseFloat(si.quantity),
             unit: 'each', // Default unit
@@ -110,10 +112,12 @@ export default function RecipeEditor() {
   };
 
   // Group recipes (Recipe interface doesn't have category)
-  const sections = [{
-    title: 'All Recipes',
-    data: recipes || [],
-  }];
+  const sections = [
+    {
+      title: 'All Recipes',
+      data: recipes || [],
+    },
+  ];
 
   const getIngredientName = (id: number) => {
     const ing = (ingredients || []).find((i: Ingredient) => i.ingredient_id === id);
@@ -162,7 +166,9 @@ export default function RecipeEditor() {
                 title={item.recipe_name}
                 subtitle={
                   item.prep_time_minutes
-                    ? `Prep: ${item.prep_time_minutes} min • ${item.ingredients?.length || 0} ingredients`
+                    ? `Prep: ${item.prep_time_minutes} min • ${
+                        item.ingredients?.length || 0
+                      } ingredients`
                     : `${item.ingredients?.length || 0} ingredients`
                 }
                 right={() => (
@@ -184,7 +190,11 @@ export default function RecipeEditor() {
 
       {/* Create/Edit Dialog */}
       <Portal>
-        <Dialog visible={dialogOpen} onDismiss={() => setDialogOpen(false)} style={{ maxHeight: '90%' }}>
+        <Dialog
+          visible={dialogOpen}
+          onDismiss={() => setDialogOpen(false)}
+          style={{ maxHeight: '90%' }}
+        >
           <Dialog.Title>{editingRecipe ? 'Edit Recipe' : 'New Recipe'}</Dialog.Title>
           <Dialog.ScrollArea>
             <ScrollView contentContainerStyle={styles.dialogContent}>
@@ -226,7 +236,11 @@ export default function RecipeEditor() {
               </Text>
               {selectedIngredients.map((si, idx) => (
                 <View key={idx} style={styles.ingredientRow}>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ingChips}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.ingChips}
+                  >
                     {(ingredients || []).slice(0, 10).map((ing: Ingredient) => (
                       <Chip
                         key={ing.ingredient_id}
@@ -246,7 +260,7 @@ export default function RecipeEditor() {
                   <TextInput
                     label="Qty"
                     value={si.quantity}
-                    onChangeText={(v) => {
+                    onChangeText={v => {
                       const updated = [...selectedIngredients];
                       updated[idx].quantity = v;
                       setSelectedIngredients(updated);
@@ -259,14 +273,21 @@ export default function RecipeEditor() {
                   <IconButton
                     icon="close"
                     size={18}
-                    onPress={() => setSelectedIngredients(selectedIngredients.filter((_, i) => i !== idx))}
+                    onPress={() =>
+                      setSelectedIngredients(selectedIngredients.filter((_, i) => i !== idx))
+                    }
                   />
                 </View>
               ))}
               <Button
                 mode="text"
                 icon="plus"
-                onPress={() => setSelectedIngredients([...selectedIngredients, { ingredient_id: 0, quantity: '' }])}
+                onPress={() =>
+                  setSelectedIngredients([
+                    ...selectedIngredients,
+                    { ingredient_id: 0, quantity: '' },
+                  ])
+                }
               >
                 Add Ingredient
               </Button>

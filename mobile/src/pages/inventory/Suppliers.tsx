@@ -64,9 +64,7 @@ export default function Suppliers(): React.JSX.Element {
     if (!searchQuery) return suppliers;
     const query = searchQuery.toLowerCase();
     return suppliers.filter(
-      s =>
-        s.name.toLowerCase().includes(query) ||
-        s.contact_email?.toLowerCase().includes(query)
+      s => s.name.toLowerCase().includes(query) || s.contact_email?.toLowerCase().includes(query)
     );
   }, [suppliers, searchQuery]);
 
@@ -122,7 +120,11 @@ export default function Suppliers(): React.JSX.Element {
             </Text>
             {item.contact_email && (
               <View style={styles.contactRow}>
-                <MaterialCommunityIcons name="email" size={14} color={theme.colors.onSurfaceVariant} />
+                <MaterialCommunityIcons
+                  name="email"
+                  size={14}
+                  color={theme.colors.onSurfaceVariant}
+                />
                 <Text variant="bodySmall" style={styles.contactText}>
                   {item.contact_email}
                 </Text>
@@ -130,7 +132,11 @@ export default function Suppliers(): React.JSX.Element {
             )}
             {item.contact_phone && (
               <View style={styles.contactRow}>
-                <MaterialCommunityIcons name="phone" size={14} color={theme.colors.onSurfaceVariant} />
+                <MaterialCommunityIcons
+                  name="phone"
+                  size={14}
+                  color={theme.colors.onSurfaceVariant}
+                />
                 <Text variant="bodySmall" style={styles.contactText}>
                   {item.contact_phone}
                 </Text>
@@ -140,13 +146,22 @@ export default function Suppliers(): React.JSX.Element {
 
           <View style={styles.cardActions}>
             <IconButton icon="pencil" size={18} onPress={() => openEdit(item)} />
-            <IconButton icon="delete" size={18} iconColor="#f44336" onPress={() => setDeleteConfirm(item)} />
+            <IconButton
+              icon="delete"
+              size={18}
+              iconColor="#f44336"
+              onPress={() => setDeleteConfirm(item)}
+            />
           </View>
         </View>
 
         {item.address && (
           <View style={[styles.contactRow, { marginTop: 8 }]}>
-            <MaterialCommunityIcons name="map-marker" size={14} color={theme.colors.onSurfaceVariant} />
+            <MaterialCommunityIcons
+              name="map-marker"
+              size={14}
+              color={theme.colors.onSurfaceVariant}
+            />
             <Text variant="bodySmall" style={styles.contactText} numberOfLines={2}>
               {item.address}
             </Text>
@@ -195,7 +210,10 @@ export default function Suppliers(): React.JSX.Element {
             size={64}
             color={theme.colors.onSurfaceVariant}
           />
-          <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}>
+          <Text
+            variant="titleMedium"
+            style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}
+          >
             No suppliers found
           </Text>
           <Button mode="contained" onPress={openCreate} style={{ marginTop: 16 }}>
@@ -208,9 +226,7 @@ export default function Suppliers(): React.JSX.Element {
           keyExtractor={item => item.supplier_id.toString()}
           renderItem={renderSupplier}
           contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         />
       )}
 

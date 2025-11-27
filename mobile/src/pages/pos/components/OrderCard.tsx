@@ -90,7 +90,10 @@ const OrderCard: React.FC<OrderCardProps> = ({ order, onStatusUpdate, compact = 
             size={14}
             color={theme.colors.onSurfaceVariant}
           />
-          <Text variant="bodySmall" style={[styles.timeText, { color: theme.colors.onSurfaceVariant }]}>
+          <Text
+            variant="bodySmall"
+            style={[styles.timeText, { color: theme.colors.onSurfaceVariant }]}
+          >
             {order.created_at ? new Date(order.created_at).toLocaleTimeString() : '--:--'}
           </Text>
         </View>

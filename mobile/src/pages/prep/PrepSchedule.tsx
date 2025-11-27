@@ -67,7 +67,7 @@ export default function PrepSchedule(): React.JSX.Element {
   // Date helpers
   const today = new Date().toISOString().split('T')[0];
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-  
+
   // Group by status
   const sections: PrepSection[] = React.useMemo(() => {
     const pending = scheduleItems.filter((item: PrepScheduleItem) => item.status !== 'completed');
@@ -116,11 +116,12 @@ export default function PrepSchedule(): React.JSX.Element {
   };
 
   // Stats
-  const completedCount = scheduleItems.filter((i: PrepScheduleItem) => i.status === 'completed').length;
+  const completedCount = scheduleItems.filter(
+    (i: PrepScheduleItem) => i.status === 'completed'
+  ).length;
   const pendingCount = scheduleItems.length - completedCount;
-  const completionRate = scheduleItems.length > 0
-    ? Math.round((completedCount / scheduleItems.length) * 100)
-    : 0;
+  const completionRate =
+    scheduleItems.length > 0 ? Math.round((completedCount / scheduleItems.length) * 100) : 0;
 
   const renderSectionHeader = ({ section }: { section: PrepSection }) => (
     <View style={[styles.sectionHeader, { backgroundColor: theme.colors.background }]}>
@@ -139,7 +140,10 @@ export default function PrepSchedule(): React.JSX.Element {
   );
 
   const renderItem = ({ item }: { item: PrepScheduleItem }) => (
-    <Card style={[styles.card, item.status === 'completed' && styles.completedCard]} mode="outlined">
+    <Card
+      style={[styles.card, item.status === 'completed' && styles.completedCard]}
+      mode="outlined"
+    >
       <Card.Content style={styles.cardContent}>
         <Checkbox
           status={item.status === 'completed' ? 'checked' : 'unchecked'}
@@ -160,16 +164,30 @@ export default function PrepSchedule(): React.JSX.Element {
             </Text>
             {item.scheduled_date && (
               <>
-                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}> • </Text>
-                <MaterialCommunityIcons name="calendar" size={12} color={theme.colors.onSurfaceVariant} />
-                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 2 }}>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  {' '}
+                  •{' '}
+                </Text>
+                <MaterialCommunityIcons
+                  name="calendar"
+                  size={12}
+                  color={theme.colors.onSurfaceVariant}
+                />
+                <Text
+                  variant="bodySmall"
+                  style={{ color: theme.colors.onSurfaceVariant, marginLeft: 2 }}
+                >
                   {new Date(item.scheduled_date).toLocaleDateString()}
                 </Text>
               </>
             )}
           </View>
           {item.notes && (
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }} numberOfLines={1}>
+            <Text
+              variant="bodySmall"
+              style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
+              numberOfLines={1}
+            >
               {item.notes}
             </Text>
           )}
@@ -242,7 +260,10 @@ export default function PrepSchedule(): React.JSX.Element {
             size={64}
             color={theme.colors.onSurfaceVariant}
           />
-          <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}>
+          <Text
+            variant="titleMedium"
+            style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}
+          >
             No prep items scheduled
           </Text>
           <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}>
@@ -259,9 +280,7 @@ export default function PrepSchedule(): React.JSX.Element {
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           stickySectionHeadersEnabled
         />
       )}
@@ -281,7 +300,9 @@ export default function PrepSchedule(): React.JSX.Element {
             <TextInput
               label="Batch Recipe ID *"
               value={formData.batch_recipe_id ? formData.batch_recipe_id.toString() : ''}
-              onChangeText={text => setFormData(f => ({ ...f, batch_recipe_id: parseInt(text) || 0 }))}
+              onChangeText={text =>
+                setFormData(f => ({ ...f, batch_recipe_id: parseInt(text) || 0 }))
+              }
               mode="outlined"
               keyboardType="number-pad"
               style={styles.input}

@@ -22,7 +22,13 @@ import { BatchRecipeData } from '../../interfaces/prep';
 
 export default function BatchRecipes() {
   const theme = useTheme();
-  const { recipes: batchRecipes, loading: isLoadingBatchRecipes, createRecipe: createBatchRecipe, updateRecipe: updateBatchRecipe, deleteRecipe: deleteBatchRecipe } = useBatchRecipes();
+  const {
+    recipes: batchRecipes,
+    loading: isLoadingBatchRecipes,
+    createRecipe: createBatchRecipe,
+    updateRecipe: updateBatchRecipe,
+    deleteRecipe: deleteBatchRecipe,
+  } = useBatchRecipes();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<BatchRecipeData | null>(null);
@@ -35,10 +41,12 @@ export default function BatchRecipes() {
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
 
   // All batch recipes in one section (BatchRecipeData doesn't have category)
-  const sections = [{
-    title: 'All Batch Recipes',
-    data: batchRecipes || [],
-  }];
+  const sections = [
+    {
+      title: 'All Batch Recipes',
+      data: batchRecipes || [],
+    },
+  ];
 
   const openCreate = () => {
     setEditingBatch(null);
@@ -126,7 +134,11 @@ export default function BatchRecipes() {
         <SectionList
           sections={sections}
           keyExtractor={(item: BatchRecipeData) => String(item.batch_recipe_id || item.batch_name)}
-          renderSectionHeader={({ section }: { section: { title: string; data: BatchRecipeData[] } }) => (
+          renderSectionHeader={({
+            section,
+          }: {
+            section: { title: string; data: BatchRecipeData[] };
+          }) => (
             <View style={[styles.sectionHeader, { backgroundColor: theme.colors.surfaceVariant }]}>
               <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant }}>
                 {section.title}
@@ -180,13 +192,15 @@ export default function BatchRecipes() {
               <List.Item
                 title="Yield"
                 description={`${detailItem?.yield_quantity || '-'} ${detailItem?.yield_unit || ''}`}
-                left={(props) => <List.Icon {...props} icon="scale" />}
+                left={props => <List.Icon {...props} icon="scale" />}
               />
               <Divider />
               <List.Item
                 title="Shelf Life"
-                description={detailItem?.shelf_life_days ? `${detailItem.shelf_life_days} days` : '-'}
-                left={(props) => <List.Icon {...props} icon="calendar" />}
+                description={
+                  detailItem?.shelf_life_days ? `${detailItem.shelf_life_days} days` : '-'
+                }
+                left={props => <List.Icon {...props} icon="calendar" />}
               />
               {detailItem?.description && (
                 <>
@@ -204,7 +218,9 @@ export default function BatchRecipes() {
           <Dialog.Actions>
             <Button
               textColor={theme.colors.error}
-              onPress={() => detailItem?.batch_recipe_id && handleDelete(detailItem.batch_recipe_id)}
+              onPress={() =>
+                detailItem?.batch_recipe_id && handleDelete(detailItem.batch_recipe_id)
+              }
             >
               Delete
             </Button>
@@ -224,7 +240,11 @@ export default function BatchRecipes() {
 
       {/* Create/Edit Dialog */}
       <Portal>
-        <Dialog visible={dialogOpen} onDismiss={() => setDialogOpen(false)} style={{ maxHeight: '90%' }}>
+        <Dialog
+          visible={dialogOpen}
+          onDismiss={() => setDialogOpen(false)}
+          style={{ maxHeight: '90%' }}
+        >
           <Dialog.Title>{editingBatch ? 'Edit Batch Recipe' : 'New Batch Recipe'}</Dialog.Title>
           <Dialog.ScrollArea>
             <View style={styles.dialogContent}>

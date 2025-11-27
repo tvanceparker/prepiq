@@ -25,7 +25,13 @@ const KitchenBasic: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
 
   // Queries
-  const { activeOrders, activeOrdersLoading: isLoading, updateOrderStatus, refreshOrders, isRefetching } = useOrders({ autoRefresh: true, refetchInterval: 5000 });
+  const {
+    activeOrders,
+    activeOrdersLoading: isLoading,
+    updateOrderStatus,
+    refreshOrders,
+    isRefetching,
+  } = useOrders({ autoRefresh: true, refetchInterval: 5000 });
 
   // Handle status updates
   const handleStatusUpdate = async (orderId: number, status: string) => {
@@ -61,18 +67,12 @@ const KitchenBasic: React.FC = () => {
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <MaterialCommunityIcons
-            name="stove"
-            size={32}
-            color={theme.colors.primary}
-          />
+          <MaterialCommunityIcons name="stove" size={32} color={theme.colors.primary} />
           <View style={{ marginLeft: 12 }}>
             <Text variant="headlineSmall" style={{ fontWeight: '600' }}>
               Kitchen Display
@@ -128,10 +128,7 @@ const KitchenBasic: React.FC = () => {
       </Surface>
 
       {/* Ready for Pickup */}
-      <Surface
-        style={[styles.section, styles.readySection]}
-        elevation={1}
-      >
+      <Surface style={[styles.section, styles.readySection]} elevation={1}>
         <View style={styles.sectionHeader}>
           <MaterialCommunityIcons name="check-circle" size={20} color="#4caf50" />
           <Text variant="titleMedium" style={[styles.sectionTitle, { color: '#4caf50' }]}>
@@ -141,9 +138,7 @@ const KitchenBasic: React.FC = () => {
 
         {readyOrders.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={{ color: theme.colors.onSurfaceVariant }}>
-              No orders ready for pickup
-            </Text>
+            <Text style={{ color: theme.colors.onSurfaceVariant }}>No orders ready for pickup</Text>
           </View>
         ) : (
           readyOrders.map(order => (
@@ -151,15 +146,23 @@ const KitchenBasic: React.FC = () => {
               <Card.Content>
                 <View style={styles.readyCardHeader}>
                   <Text variant="titleMedium">Order #{order.order_id}</Text>
-                  <Chip compact style={{ backgroundColor: '#4caf50' }} textStyle={{ color: '#fff' }}>
+                  <Chip
+                    compact
+                    style={{ backgroundColor: '#4caf50' }}
+                    textStyle={{ color: '#fff' }}
+                  >
                     READY
                   </Chip>
                 </View>
                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                   {order.items?.length || 0} items • ${order.total.toFixed(2)}
                 </Text>
-                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}>
-                  Ready at: {order.updated_at ? new Date(order.updated_at).toLocaleTimeString() : '--:--'}
+                <Text
+                  variant="bodySmall"
+                  style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
+                >
+                  Ready at:{' '}
+                  {order.updated_at ? new Date(order.updated_at).toLocaleTimeString() : '--:--'}
                 </Text>
               </Card.Content>
               <Card.Actions>
@@ -183,7 +186,10 @@ const KitchenBasic: React.FC = () => {
         </Text>
         <View style={styles.statsGrid}>
           <View style={styles.statItem}>
-            <Text variant="headlineMedium" style={{ color: theme.colors.primary, fontWeight: '700' }}>
+            <Text
+              variant="headlineMedium"
+              style={{ color: theme.colors.primary, fontWeight: '700' }}
+            >
               {completedCount}
             </Text>
             <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>

@@ -29,7 +29,10 @@ export const createEmployee = async (data: EmployeeCreate): Promise<Employee> =>
   return post<Employee>('/team/employees', data);
 };
 
-export const updateEmployee = async (employeeId: number, data: EmployeeUpdate): Promise<Employee> => {
+export const updateEmployee = async (
+  employeeId: number,
+  data: EmployeeUpdate
+): Promise<Employee> => {
   return patch<Employee>(`/team/employees/${employeeId}`, data);
 };
 
@@ -46,14 +49,19 @@ export const getClockEvents = async (
   if (startDate) params.append('start_date', startDate);
   if (endDate) params.append('end_date', endDate);
   const queryString = params.toString();
-  return get<ClockEvent[]>(`/team/clock-events/${employeeId}${queryString ? `?${queryString}` : ''}`);
+  return get<ClockEvent[]>(
+    `/team/clock-events/${employeeId}${queryString ? `?${queryString}` : ''}`
+  );
 };
 
 export const createClockEvent = async (data: ClockEventCreate): Promise<ClockEvent> => {
   return post<ClockEvent>('/team/clock-events', data);
 };
 
-export const updateClockEvent = async (clockEventId: number, data: ClockEventUpdate): Promise<ClockEvent> => {
+export const updateClockEvent = async (
+  clockEventId: number,
+  data: ClockEventUpdate
+): Promise<ClockEvent> => {
   return patch<ClockEvent>(`/team/clock-events/${clockEventId}`, data);
 };
 
@@ -83,10 +91,14 @@ export const getWeeklySchedule = async (
 ): Promise<{ shifts: ShiftSchedule[]; total_hours: number }> => {
   const params = new URLSearchParams({ start_date: startDate });
   if (endDate) params.append('end_date', endDate);
-  return get<{ shifts: ShiftSchedule[]; total_hours: number }>(`/team/shifts/weekly?${params.toString()}`);
+  return get<{ shifts: ShiftSchedule[]; total_hours: number }>(
+    `/team/shifts/weekly?${params.toString()}`
+  );
 };
 
-export const getShiftsForEmployee = async (employeeId: number | string): Promise<ShiftSchedule[]> => {
+export const getShiftsForEmployee = async (
+  employeeId: number | string
+): Promise<ShiftSchedule[]> => {
   return get<ShiftSchedule[]>(`/team/shifts/${employeeId}`);
 };
 
@@ -94,7 +106,10 @@ export const createScheduledShift = async (data: ShiftScheduleCreate): Promise<S
   return post<ShiftSchedule>('/team/shifts/schedule', data);
 };
 
-export const updateScheduledShift = async (shiftId: number, data: ShiftScheduleUpdate): Promise<ShiftSchedule> => {
+export const updateScheduledShift = async (
+  shiftId: number,
+  data: ShiftScheduleUpdate
+): Promise<ShiftSchedule> => {
   return patch<ShiftSchedule>(`/team/shifts/${shiftId}`, data);
 };
 

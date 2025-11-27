@@ -64,9 +64,7 @@ export default function InventoryList(): React.JSX.Element {
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      items = items.filter(item =>
-        item.name.toLowerCase().includes(query)
-      );
+      items = items.filter(item => item.name.toLowerCase().includes(query));
     }
 
     return items;
@@ -125,11 +123,7 @@ export default function InventoryList(): React.JSX.Element {
             <View style={styles.itemHeader}>
               <View style={styles.itemInfo}>
                 <View style={styles.nameRow}>
-                  <Text
-                    variant="titleSmall"
-                    style={styles.itemName}
-                    numberOfLines={1}
-                  >
+                  <Text variant="titleSmall" style={styles.itemName} numberOfLines={1}>
                     {item.name}
                   </Text>
                 </View>
@@ -230,7 +224,10 @@ export default function InventoryList(): React.JSX.Element {
             size={64}
             color={theme.colors.onSurfaceVariant}
           />
-          <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}>
+          <Text
+            variant="titleMedium"
+            style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}
+          >
             No inventory items found
           </Text>
         </View>
@@ -241,9 +238,7 @@ export default function InventoryList(): React.JSX.Element {
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           stickySectionHeadersEnabled
         />
       )}
@@ -268,7 +263,10 @@ export default function InventoryList(): React.JSX.Element {
 
               <View style={styles.modalStats}>
                 <View style={styles.statItem}>
-                  <Text variant="headlineSmall" style={{ fontWeight: '700', color: theme.colors.primary }}>
+                  <Text
+                    variant="headlineSmall"
+                    style={{ fontWeight: '700', color: theme.colors.primary }}
+                  >
                     {selectedItem.total_quantity}
                   </Text>
                   <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
@@ -287,12 +285,21 @@ export default function InventoryList(): React.JSX.Element {
 
               <Divider />
 
-              <Text variant="titleMedium" style={{ marginTop: 16, marginBottom: 8, fontWeight: '600' }}>
+              <Text
+                variant="titleMedium"
+                style={{ marginTop: 16, marginBottom: 8, fontWeight: '600' }}
+              >
                 Lot Breakdown
               </Text>
 
-              {(!selectedItem.lots || selectedItem.lots.length === 0) ? (
-                <Text style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', paddingVertical: 24 }}>
+              {!selectedItem.lots || selectedItem.lots.length === 0 ? (
+                <Text
+                  style={{
+                    color: theme.colors.onSurfaceVariant,
+                    textAlign: 'center',
+                    paddingVertical: 24,
+                  }}
+                >
                   No active lots
                 </Text>
               ) : (
@@ -300,7 +307,11 @@ export default function InventoryList(): React.JSX.Element {
                   <List.Item
                     key={lot.lot_id || index}
                     title={`Lot #${lot.lot_id || index + 1}`}
-                    description={`Qty: ${lot.quantity} | Expires: ${lot.expiration_date ? new Date(lot.expiration_date).toLocaleDateString() : 'N/A'}`}
+                    description={`Qty: ${lot.quantity} | Expires: ${
+                      lot.expiration_date
+                        ? new Date(lot.expiration_date).toLocaleDateString()
+                        : 'N/A'
+                    }`}
                     left={props => <List.Icon {...props} icon="package-variant" />}
                   />
                 ))

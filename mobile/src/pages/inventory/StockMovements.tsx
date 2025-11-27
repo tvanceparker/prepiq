@@ -33,7 +33,7 @@ export default function StockMovements(): React.JSX.Element {
   const getDateRange = () => {
     const end = new Date();
     const start = new Date();
-    
+
     switch (dateRange) {
       case 'today':
         start.setHours(0, 0, 0, 0);
@@ -45,7 +45,7 @@ export default function StockMovements(): React.JSX.Element {
         start.setMonth(start.getMonth() - 1);
         break;
     }
-    
+
     return {
       startDate: start.toISOString().split('T')[0],
       endDate: end.toISOString().split('T')[0],
@@ -55,7 +55,11 @@ export default function StockMovements(): React.JSX.Element {
   const { startDate, endDate } = getDateRange();
 
   // Queries
-  const { movements, loading: isLoading, sections: movementSections } = useStockMovements({
+  const {
+    movements,
+    loading: isLoading,
+    sections: movementSections,
+  } = useStockMovements({
     startDate,
     endDate,
   });
@@ -77,9 +81,9 @@ export default function StockMovements(): React.JSX.Element {
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      items = items.filter((m: StockMovement) =>
-        m.ingredient_name?.toLowerCase().includes(query) ||
-        m.notes?.toLowerCase().includes(query)
+      items = items.filter(
+        (m: StockMovement) =>
+          m.ingredient_name?.toLowerCase().includes(query) || m.notes?.toLowerCase().includes(query)
       );
     }
 
@@ -91,9 +95,7 @@ export default function StockMovements(): React.JSX.Element {
     const grouped: Record<string, StockMovement[]> = {};
 
     filteredMovements.forEach((movement: StockMovement) => {
-      const date = movement.date
-        ? new Date(movement.date).toLocaleDateString()
-        : 'Unknown Date';
+      const date = movement.date ? new Date(movement.date).toLocaleDateString() : 'Unknown Date';
       if (!grouped[date]) {
         grouped[date] = [];
       }
@@ -171,7 +173,11 @@ export default function StockMovements(): React.JSX.Element {
               {item.ingredient_name || 'Unknown Item'}
             </Text>
             <View style={styles.detailRow}>
-              <Chip compact style={[styles.typeChip, { backgroundColor: style.color }]} textStyle={{ color: '#fff', fontSize: 10 }}>
+              <Chip
+                compact
+                style={[styles.typeChip, { backgroundColor: style.color }]}
+                textStyle={{ color: '#fff', fontSize: 10 }}
+              >
                 {style.label}
               </Chip>
               <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
@@ -179,7 +185,11 @@ export default function StockMovements(): React.JSX.Element {
               </Text>
             </View>
             {item.notes && (
-              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }} numberOfLines={1}>
+              <Text
+                variant="bodySmall"
+                style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
+                numberOfLines={1}
+              >
                 {item.notes}
               </Text>
             )}
@@ -273,25 +283,33 @@ export default function StockMovements(): React.JSX.Element {
             <Text variant="titleMedium" style={{ color: '#4caf50', fontWeight: '700' }}>
               +{stats.totalIn}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>In</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              In
+            </Text>
           </View>
           <View style={styles.statItem}>
             <Text variant="titleMedium" style={{ color: '#f44336', fontWeight: '700' }}>
               -{stats.totalOut}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Out</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Out
+            </Text>
           </View>
           <View style={styles.statItem}>
             <Text variant="titleMedium" style={{ color: '#ff9800', fontWeight: '700' }}>
               {stats.waste}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Waste</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Waste
+            </Text>
           </View>
           <View style={styles.statItem}>
             <Text variant="titleMedium" style={{ fontWeight: '700' }}>
               {stats.count}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Total</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Total
+            </Text>
           </View>
         </View>
       </Surface>
@@ -304,7 +322,10 @@ export default function StockMovements(): React.JSX.Element {
             size={64}
             color={theme.colors.onSurfaceVariant}
           />
-          <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}>
+          <Text
+            variant="titleMedium"
+            style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}
+          >
             No stock movements found
           </Text>
           <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}>
@@ -318,9 +339,7 @@ export default function StockMovements(): React.JSX.Element {
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           stickySectionHeadersEnabled
         />
       )}

@@ -28,7 +28,11 @@ const POSBasic: React.FC = () => {
   // State
   const [cart, setCart] = useState<CartItem[]>([]);
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({
+  const [snackbar, setSnackbar] = useState<{
+    visible: boolean;
+    message: string;
+    type: 'success' | 'error';
+  }>({
     visible: false,
     message: '',
     type: 'success',
@@ -37,7 +41,11 @@ const POSBasic: React.FC = () => {
 
   // Queries
   const { menuItems, menuItemsLoading: menuLoading, createOrder, orderLoading } = usePOS();
-  const { activeOrders, activeOrdersLoading: ordersLoading, updateOrderStatus } = useOrders({ autoRefresh: true });
+  const {
+    activeOrders,
+    activeOrdersLoading: ordersLoading,
+    updateOrderStatus,
+  } = useOrders({ autoRefresh: true });
 
   // Cart handlers
   const addToCart = useCallback((item: MenuItemType) => {
@@ -45,9 +53,7 @@ const POSBasic: React.FC = () => {
       const existing = prev.find(ci => ci.menu_item_id === item.menu_item_id);
       if (existing) {
         return prev.map(ci =>
-          ci.menu_item_id === item.menu_item_id
-            ? { ...ci, quantity: ci.quantity + 1 }
-            : ci
+          ci.menu_item_id === item.menu_item_id ? { ...ci, quantity: ci.quantity + 1 } : ci
         );
       }
       return [
@@ -66,11 +72,7 @@ const POSBasic: React.FC = () => {
     if (quantity <= 0) {
       setCart(prev => prev.filter(ci => ci.menu_item_id !== menuItemId));
     } else {
-      setCart(prev =>
-        prev.map(ci =>
-          ci.menu_item_id === menuItemId ? { ...ci, quantity } : ci
-        )
-      );
+      setCart(prev => prev.map(ci => (ci.menu_item_id === menuItemId ? { ...ci, quantity } : ci)));
     }
   }, []);
 

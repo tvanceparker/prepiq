@@ -48,14 +48,11 @@ export function usePurchaseOrders(options: UsePurchaseOrdersOptions = {}) {
   });
 
   // Group by status for tabs/filters
-  const ordersByStatus = (ordersQuery.data ?? []).reduce(
-    (acc, order) => {
-      if (!acc[order.status]) acc[order.status] = [];
-      acc[order.status].push(order);
-      return acc;
-    },
-    {} as Record<PurchaseOrderStatus, PurchaseOrder[]>
-  );
+  const ordersByStatus = (ordersQuery.data ?? []).reduce((acc, order) => {
+    if (!acc[order.status]) acc[order.status] = [];
+    acc[order.status].push(order);
+    return acc;
+  }, {} as Record<PurchaseOrderStatus, PurchaseOrder[]>);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
@@ -90,8 +87,7 @@ export function usePurchaseOrderDetail(orderId: number | null) {
 
   // Add item mutation
   const addItemMutation = useMutation({
-    mutationFn: (item: Partial<PurchaseOrderItem>) =>
-      addItemToPurchaseOrder(orderId!, item),
+    mutationFn: (item: Partial<PurchaseOrderItem>) => addItemToPurchaseOrder(orderId!, item),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orderId] });
     },
@@ -99,8 +95,7 @@ export function usePurchaseOrderDetail(orderId: number | null) {
 
   // Remove item mutation
   const removeItemMutation = useMutation({
-    mutationFn: (orderItemId: number) =>
-      removeItemFromPurchaseOrder(orderId!, orderItemId),
+    mutationFn: (orderItemId: number) => removeItemFromPurchaseOrder(orderId!, orderItemId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orderId] });
     },

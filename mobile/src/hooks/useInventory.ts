@@ -28,15 +28,12 @@ export function useInventory(options: UseInventoryOptions = {}) {
   });
 
   // Group inventory by category for SectionList
-  const inventoryByCategory = (inventoryQuery.data ?? []).reduce(
-    (acc, item: any) => {
-      const category = item.category || 'Uncategorized';
-      if (!acc[category]) acc[category] = [];
-      acc[category].push(item);
-      return acc;
-    },
-    {} as Record<string, any[]>
-  );
+  const inventoryByCategory = (inventoryQuery.data ?? []).reduce((acc, item: any) => {
+    const category = item.category || 'Uncategorized';
+    if (!acc[category]) acc[category] = [];
+    acc[category].push(item);
+    return acc;
+  }, {} as Record<string, any[]>);
 
   // Get sections for SectionList
   const sections = Object.entries(inventoryByCategory).map(([category, items]) => ({
@@ -63,10 +60,10 @@ export function useInventory(options: UseInventoryOptions = {}) {
     loading: inventoryQuery.isLoading,
     error: inventoryQuery.error,
     isRefetching: inventoryQuery.isRefetching,
-    
+
     adjustInventory: adjustMutation.mutateAsync,
     adjusting: adjustMutation.isPending,
-    
+
     refresh,
   };
 }

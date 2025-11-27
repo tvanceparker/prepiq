@@ -21,8 +21,7 @@ export const fetchAllInventory = async (): Promise<InventoryItemDTO[]> => {
 export const fetchInventoryDetails = async (inventoryId: string | number) =>
   get(`/inventory/details/${inventoryId}`);
 
-export const fetchLotInfo = async (lotId: string | number) => 
-  get(`/inventory/lot-info/${lotId}`);
+export const fetchLotInfo = async (lotId: string | number) => get(`/inventory/lot-info/${lotId}`);
 
 export const fetchUsedUsageLogs = async (lotId: string | number) =>
   get(`/inventory/used-usage-logs/${lotId}`);

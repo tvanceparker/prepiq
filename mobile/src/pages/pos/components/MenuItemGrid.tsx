@@ -1,14 +1,7 @@
 // src/pages/pos/components/MenuItemGrid.tsx
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
-import {
-  Card,
-  Text,
-  Chip,
-  Searchbar,
-  ActivityIndicator,
-  useTheme,
-} from 'react-native-paper';
+import { Card, Text, Chip, Searchbar, ActivityIndicator, useTheme } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { MenuItemType } from '../../../interfaces/pos';
 
@@ -53,8 +46,7 @@ const MenuItemGrid: React.FC<MenuItemGridProps> = ({
       const query = searchQuery.toLowerCase();
       items = items.filter(
         item =>
-          item.name.toLowerCase().includes(query) ||
-          item.description?.toLowerCase().includes(query)
+          item.name.toLowerCase().includes(query) || item.description?.toLowerCase().includes(query)
       );
     }
 
@@ -104,11 +96,7 @@ const MenuItemGrid: React.FC<MenuItemGridProps> = ({
       {/* Items Grid */}
       {filteredItems.length === 0 ? (
         <View style={styles.emptyState}>
-          <MaterialCommunityIcons
-            name="food-off"
-            size={48}
-            color={theme.colors.onSurfaceVariant}
-          />
+          <MaterialCommunityIcons name="food-off" size={48} color={theme.colors.onSurfaceVariant} />
           <Text style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}>
             No menu items found
           </Text>
@@ -119,10 +107,7 @@ const MenuItemGrid: React.FC<MenuItemGridProps> = ({
             <Pressable
               key={item.menu_item_id}
               onPress={() => onAddItem(item)}
-              style={({ pressed }) => [
-                styles.itemWrapper,
-                pressed && styles.itemPressed,
-              ]}
+              style={({ pressed }) => [styles.itemWrapper, pressed && styles.itemPressed]}
             >
               <Card style={styles.itemCard} mode="elevated">
                 <Card.Content style={styles.itemContent}>
@@ -139,7 +124,10 @@ const MenuItemGrid: React.FC<MenuItemGridProps> = ({
                     </Text>
                   )}
                   <View style={styles.itemFooter}>
-                    <Text variant="titleMedium" style={[styles.price, { color: theme.colors.primary }]}>
+                    <Text
+                      variant="titleMedium"
+                      style={[styles.price, { color: theme.colors.primary }]}
+                    >
                       ${item.price.toFixed(2)}
                     </Text>
                     {item.category && (

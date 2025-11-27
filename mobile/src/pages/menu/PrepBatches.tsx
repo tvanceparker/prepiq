@@ -20,7 +20,13 @@ import { BatchRecipeData } from '../../interfaces/prep';
 
 export default function PrepBatches() {
   const theme = useTheme();
-  const { recipes: batchRecipes, loading: isLoadingBatchRecipes, createRecipe: createBatchRecipe, updateRecipe: updateBatchRecipe, deleteRecipe: deleteBatchRecipe } = useBatchRecipes();
+  const {
+    recipes: batchRecipes,
+    loading: isLoadingBatchRecipes,
+    createRecipe: createBatchRecipe,
+    updateRecipe: updateBatchRecipe,
+    deleteRecipe: deleteBatchRecipe,
+  } = useBatchRecipes();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingBatch, setEditingBatch] = useState<BatchRecipeData | null>(null);
@@ -143,7 +149,7 @@ export default function PrepBatches() {
       ) : (
         <FlatList
           data={batchRecipes || []}
-          keyExtractor={(item) => String(item.batch_recipe_id)}
+          keyExtractor={item => String(item.batch_recipe_id)}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
@@ -164,7 +170,11 @@ export default function PrepBatches() {
       <FAB icon="plus" style={styles.fab} onPress={openCreate} label="Add Batch" />
 
       <Portal>
-        <Dialog visible={dialogOpen} onDismiss={() => setDialogOpen(false)} style={{ maxHeight: '90%' }}>
+        <Dialog
+          visible={dialogOpen}
+          onDismiss={() => setDialogOpen(false)}
+          style={{ maxHeight: '90%' }}
+        >
           <Dialog.Title>{editingBatch ? 'Edit Batch Recipe' : 'New Batch Recipe'}</Dialog.Title>
           <Dialog.ScrollArea>
             <View style={styles.dialogContent}>

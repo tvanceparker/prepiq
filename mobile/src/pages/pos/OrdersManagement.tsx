@@ -83,7 +83,14 @@ export default function OrdersManagement(): React.JSX.Element {
     });
 
     // Define order of sections
-    const statusOrder: string[] = ['pending', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'];
+    const statusOrder: string[] = [
+      'pending',
+      'confirmed',
+      'preparing',
+      'ready',
+      'completed',
+      'cancelled',
+    ];
 
     return statusOrder
       .filter(status => grouped[status]?.length > 0)
@@ -164,11 +171,7 @@ export default function OrdersManagement(): React.JSX.Element {
       <Surface style={styles.headerSurface} elevation={1}>
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
-            <MaterialCommunityIcons
-              name="clipboard-list"
-              size={28}
-              color={theme.colors.primary}
-            />
+            <MaterialCommunityIcons name="clipboard-list" size={28} color={theme.colors.primary} />
             <Text variant="titleLarge" style={{ marginLeft: 8, fontWeight: '600' }}>
               Orders
             </Text>
@@ -195,8 +198,8 @@ export default function OrdersManagement(): React.JSX.Element {
               showSelectedCheck={false}
               mode={statusFilter === status ? 'flat' : 'outlined'}
             >
-              {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
-              {' '}({statusCounts[status] || 0})
+              {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)} (
+              {statusCounts[status] || 0})
             </Chip>
           ))}
         </View>
@@ -210,7 +213,10 @@ export default function OrdersManagement(): React.JSX.Element {
             size={64}
             color={theme.colors.onSurfaceVariant}
           />
-          <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}>
+          <Text
+            variant="titleMedium"
+            style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}
+          >
             No orders found
           </Text>
           <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}>
@@ -226,9 +232,7 @@ export default function OrdersManagement(): React.JSX.Element {
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           stickySectionHeadersEnabled
         />
       )}

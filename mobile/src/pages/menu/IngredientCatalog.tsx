@@ -38,15 +38,16 @@ export default function IngredientCatalog() {
     const q = search.toLowerCase();
     return ingredients.filter(
       (i: Ingredient) =>
-        i.name.toLowerCase().includes(q) ||
-        (i.category && i.category.toLowerCase().includes(q))
+        i.name.toLowerCase().includes(q) || (i.category && i.category.toLowerCase().includes(q))
     );
   }, [ingredients, search]);
 
   const sections = useMemo(() => {
-    const categorySet = new Set<string>(filteredIngredients.map((i: Ingredient) => i.category || 'Uncategorized'));
+    const categorySet = new Set<string>(
+      filteredIngredients.map((i: Ingredient) => i.category || 'Uncategorized')
+    );
     const categories = Array.from(categorySet).sort();
-    return categories.map((cat) => ({
+    return categories.map(cat => ({
       title: cat,
       data: filteredIngredients.filter((i: Ingredient) => (i.category || 'Uncategorized') === cat),
     }));
@@ -86,7 +87,10 @@ export default function IngredientCatalog() {
       };
 
       await upsertIngredient(data);
-      setSnackbar({ visible: true, message: editingIngredient ? 'Ingredient updated' : 'Ingredient created' });
+      setSnackbar({
+        visible: true,
+        message: editingIngredient ? 'Ingredient updated' : 'Ingredient created',
+      });
       setDialogOpen(false);
     } catch (err: unknown) {
       const error = err as Error;
@@ -141,7 +145,7 @@ export default function IngredientCatalog() {
       ) : (
         <SectionList
           sections={sections}
-          keyExtractor={(item) => String(item.ingredient_id)}
+          keyExtractor={item => String(item.ingredient_id)}
           renderSectionHeader={({ section }) => (
             <View style={[styles.sectionHeader, { backgroundColor: theme.colors.surfaceVariant }]}>
               <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant }}>

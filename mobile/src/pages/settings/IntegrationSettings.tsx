@@ -87,7 +87,10 @@ export default function IntegrationSettings() {
       <Text variant="headlineMedium" style={[styles.title, { color: theme.colors.onBackground }]}>
         Integration Settings
       </Text>
-      <Text variant="bodyMedium" style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}>
+      <Text
+        variant="bodyMedium"
+        style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}
+      >
         Manage third-party service connections
       </Text>
 
@@ -100,7 +103,7 @@ export default function IntegrationSettings() {
             <Card.Title
               title="POS System"
               titleVariant="titleMedium"
-              left={(props) => <List.Icon {...props} icon="point-of-sale" />}
+              left={props => <List.Icon {...props} icon="point-of-sale" />}
               right={() => (
                 <Chip compact mode={config?.pos_provider ? 'flat' : 'outlined'}>
                   {config?.pos_provider || 'Not Connected'}
@@ -113,7 +116,12 @@ export default function IntegrationSettings() {
               </Text>
             </Card.Content>
             <Card.Actions>
-              <Button mode="outlined" onPress={() => setSnackbar({ visible: true, message: 'POS setup available in web app' })}>
+              <Button
+                mode="outlined"
+                onPress={() =>
+                  setSnackbar({ visible: true, message: 'POS setup available in web app' })
+                }
+              >
                 Configure POS
               </Button>
             </Card.Actions>
@@ -124,7 +132,7 @@ export default function IntegrationSettings() {
             <Card.Title
               title="Stripe Payments"
               titleVariant="titleMedium"
-              left={(props) => <List.Icon {...props} icon="credit-card" />}
+              left={props => <List.Icon {...props} icon="credit-card" />}
             />
             <Card.Content>
               <List.Item
@@ -133,7 +141,7 @@ export default function IntegrationSettings() {
                 right={() => (
                   <Switch
                     value={config?.stripe_enabled || false}
-                    onValueChange={(v) => handleToggle('stripe_enabled', v)}
+                    onValueChange={v => handleToggle('stripe_enabled', v)}
                     disabled={updateMutation.isPending}
                   />
                 )}
@@ -145,7 +153,7 @@ export default function IntegrationSettings() {
                 right={() => (
                   <Switch
                     value={config?.stripe_terminal_enabled || false}
-                    onValueChange={(v) => handleToggle('stripe_terminal_enabled', v)}
+                    onValueChange={v => handleToggle('stripe_terminal_enabled', v)}
                     disabled={updateMutation.isPending || !config?.stripe_enabled}
                   />
                 )}
@@ -159,7 +167,7 @@ export default function IntegrationSettings() {
               <Card.Title
                 title="Weather Integration"
                 titleVariant="titleMedium"
-                left={(props) => <List.Icon {...props} icon="weather-partly-cloudy" />}
+                left={props => <List.Icon {...props} icon="weather-partly-cloudy" />}
                 right={() => (
                   <Chip compact mode={config?.weather_api_key ? 'flat' : 'outlined'}>
                     {config?.weather_api_key ? 'Connected' : 'Not Set'}
@@ -172,7 +180,10 @@ export default function IntegrationSettings() {
                 </Text>
               </Card.Content>
               <Card.Actions>
-                <Button mode="outlined" onPress={() => openDialog('weather', config?.weather_api_key)}>
+                <Button
+                  mode="outlined"
+                  onPress={() => openDialog('weather', config?.weather_api_key)}
+                >
                   {config?.weather_api_key ? 'Update API Key' : 'Add API Key'}
                 </Button>
               </Card.Actions>
@@ -184,7 +195,7 @@ export default function IntegrationSettings() {
             <Card.Title
               title="Data Sync"
               titleVariant="titleMedium"
-              left={(props) => <List.Icon {...props} icon="sync" />}
+              left={props => <List.Icon {...props} icon="sync" />}
             />
             <Card.Content>
               <List.Item
@@ -210,7 +221,10 @@ export default function IntegrationSettings() {
           </Card>
 
           {/* Info Card */}
-          <Card style={[styles.card, { backgroundColor: theme.colors.surfaceVariant }]} mode="contained">
+          <Card
+            style={[styles.card, { backgroundColor: theme.colors.surfaceVariant }]}
+            mode="contained"
+          >
             <Card.Content>
               <View style={styles.infoRow}>
                 <List.Icon icon="information" color={theme.colors.primary} />
@@ -227,9 +241,7 @@ export default function IntegrationSettings() {
       {/* API Key Dialog */}
       <Portal>
         <Dialog visible={!!dialogType} onDismiss={() => setDialogType(null)}>
-          <Dialog.Title>
-            {dialogType === 'weather' ? 'Weather API Key' : 'API Key'}
-          </Dialog.Title>
+          <Dialog.Title>{dialogType === 'weather' ? 'Weather API Key' : 'API Key'}</Dialog.Title>
           <Dialog.Content>
             <TextInput
               label="API Key"
@@ -239,7 +251,10 @@ export default function IntegrationSettings() {
               secureTextEntry
               placeholder="Enter your API key"
             />
-            <Text variant="bodySmall" style={{ marginTop: 8, color: theme.colors.onSurfaceVariant }}>
+            <Text
+              variant="bodySmall"
+              style={{ marginTop: 8, color: theme.colors.onSurfaceVariant }}
+            >
               {dialogType === 'weather'
                 ? 'Get your API key from OpenWeatherMap or your weather provider.'
                 : 'Enter your API key from the provider dashboard.'}

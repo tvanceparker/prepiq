@@ -71,25 +71,19 @@ export function usePrepSchedule(params: PrepScheduleParams = {}) {
   });
 
   // Group by status
-  const scheduleByStatus = (scheduleQuery.data ?? []).reduce(
-    (acc, item) => {
-      if (!acc[item.status]) acc[item.status] = [];
-      acc[item.status].push(item);
-      return acc;
-    },
-    {} as Record<string, PrepScheduleItem[]>
-  );
+  const scheduleByStatus = (scheduleQuery.data ?? []).reduce((acc, item) => {
+    if (!acc[item.status]) acc[item.status] = [];
+    acc[item.status].push(item);
+    return acc;
+  }, {} as Record<string, PrepScheduleItem[]>);
 
   // Group by date
-  const scheduleByDate = (scheduleQuery.data ?? []).reduce(
-    (acc, item) => {
-      const date = item.scheduled_date.split('T')[0];
-      if (!acc[date]) acc[date] = [];
-      acc[date].push(item);
-      return acc;
-    },
-    {} as Record<string, PrepScheduleItem[]>
-  );
+  const scheduleByDate = (scheduleQuery.data ?? []).reduce((acc, item) => {
+    const date = item.scheduled_date.split('T')[0];
+    if (!acc[date]) acc[date] = [];
+    acc[date].push(item);
+    return acc;
+  }, {} as Record<string, PrepScheduleItem[]>);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['prep', 'schedule'] });
@@ -129,15 +123,12 @@ export function usePrepLogs(params: PrepLogParams = {}) {
   });
 
   // Group by date
-  const logsByDate = (logsQuery.data ?? []).reduce(
-    (acc, log) => {
-      const date = log.prepped_at.split('T')[0];
-      if (!acc[date]) acc[date] = [];
-      acc[date].push(log);
-      return acc;
-    },
-    {} as Record<string, PrepLog[]>
-  );
+  const logsByDate = (logsQuery.data ?? []).reduce((acc, log) => {
+    const date = log.prepped_at.split('T')[0];
+    if (!acc[date]) acc[date] = [];
+    acc[date].push(log);
+    return acc;
+  }, {} as Record<string, PrepLog[]>);
 
   // Sections for SectionList
   const sections = Object.entries(logsByDate)
@@ -229,34 +220,25 @@ export function useWasteLogs(params: WasteLogParams = {}) {
   });
 
   // Group by waste type
-  const logsByType = (logsQuery.data ?? []).reduce(
-    (acc, log) => {
-      if (!acc[log.waste_type]) acc[log.waste_type] = [];
-      acc[log.waste_type].push(log);
-      return acc;
-    },
-    {} as Record<string, WasteLog[]>
-  );
+  const logsByType = (logsQuery.data ?? []).reduce((acc, log) => {
+    if (!acc[log.waste_type]) acc[log.waste_type] = [];
+    acc[log.waste_type].push(log);
+    return acc;
+  }, {} as Record<string, WasteLog[]>);
 
   // Group by date
-  const logsByDate = (logsQuery.data ?? []).reduce(
-    (acc, log) => {
-      const date = log.created_at.split('T')[0];
-      if (!acc[date]) acc[date] = [];
-      acc[date].push(log);
-      return acc;
-    },
-    {} as Record<string, WasteLog[]>
-  );
+  const logsByDate = (logsQuery.data ?? []).reduce((acc, log) => {
+    const date = log.created_at.split('T')[0];
+    if (!acc[date]) acc[date] = [];
+    acc[date].push(log);
+    return acc;
+  }, {} as Record<string, WasteLog[]>);
 
   // Calculate total waste by type
-  const totalsByType = Object.entries(logsByType).reduce(
-    (acc, [type, logs]) => {
-      acc[type] = logs.reduce((sum, log) => sum + log.quantity_wasted, 0);
-      return acc;
-    },
-    {} as Record<string, number>
-  );
+  const totalsByType = Object.entries(logsByType).reduce((acc, [type, logs]) => {
+    acc[type] = logs.reduce((sum, log) => sum + log.quantity_wasted, 0);
+    return acc;
+  }, {} as Record<string, number>);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['prep', 'wasteLogs'] });

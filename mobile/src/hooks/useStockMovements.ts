@@ -19,15 +19,12 @@ export function useStockMovements(options: UseStockMovementsOptions) {
   });
 
   // Group by date for SectionList
-  const movementsByDate = (movementsQuery.data ?? []).reduce(
-    (acc, movement) => {
-      const date = movement.date.split('T')[0]; // Get just the date part
-      if (!acc[date]) acc[date] = [];
-      acc[date].push(movement);
-      return acc;
-    },
-    {} as Record<string, StockMovement[]>
-  );
+  const movementsByDate = (movementsQuery.data ?? []).reduce((acc, movement) => {
+    const date = movement.date.split('T')[0]; // Get just the date part
+    if (!acc[date]) acc[date] = [];
+    acc[date].push(movement);
+    return acc;
+  }, {} as Record<string, StockMovement[]>);
 
   // Convert to sections format
   const sections = Object.entries(movementsByDate)
@@ -38,23 +35,17 @@ export function useStockMovements(options: UseStockMovementsOptions) {
     }));
 
   // Group by type for summary
-  const movementsByType = (movementsQuery.data ?? []).reduce(
-    (acc, movement) => {
-      if (!acc[movement.type]) acc[movement.type] = [];
-      acc[movement.type].push(movement);
-      return acc;
-    },
-    {} as Record<string, StockMovement[]>
-  );
+  const movementsByType = (movementsQuery.data ?? []).reduce((acc, movement) => {
+    if (!acc[movement.type]) acc[movement.type] = [];
+    acc[movement.type].push(movement);
+    return acc;
+  }, {} as Record<string, StockMovement[]>);
 
   // Calculate totals by type
-  const totalsByType = Object.entries(movementsByType).reduce(
-    (acc, [type, movements]) => {
-      acc[type] = movements.reduce((sum, m) => sum + m.quantity, 0);
-      return acc;
-    },
-    {} as Record<string, number>
-  );
+  const totalsByType = Object.entries(movementsByType).reduce((acc, [type, movements]) => {
+    acc[type] = movements.reduce((sum, m) => sum + m.quantity, 0);
+    return acc;
+  }, {} as Record<string, number>);
 
   return {
     movements: movementsQuery.data ?? [],

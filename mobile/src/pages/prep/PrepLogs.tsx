@@ -24,9 +24,8 @@ export default function PrepLogs() {
     const completed = schedule.filter((item: PrepScheduleItem) => item.status === 'completed');
     const q = search.toLowerCase();
     if (!q) return completed;
-    return completed.filter(
-      (item: PrepScheduleItem) =>
-        item.batch_recipe_name?.toLowerCase().includes(q)
+    return completed.filter((item: PrepScheduleItem) =>
+      item.batch_recipe_name?.toLowerCase().includes(q)
     );
   }, [schedule, search]);
 
@@ -81,7 +80,7 @@ export default function PrepLogs() {
       ) : (
         <SectionList
           sections={sections}
-          keyExtractor={(item) => String(item.prep_id)}
+          keyExtractor={item => String(item.prep_id)}
           renderSectionHeader={({ section }) => (
             <View style={[styles.sectionHeader, { backgroundColor: theme.colors.surfaceVariant }]}>
               <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant }}>

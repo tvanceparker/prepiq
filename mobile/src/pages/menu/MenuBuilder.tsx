@@ -91,8 +91,7 @@ export default function MenuBuilder(): React.JSX.Element {
       const query = searchQuery.toLowerCase();
       items = items.filter(
         (item: MenuItem) =>
-          item.name.toLowerCase().includes(query) ||
-          item.description?.toLowerCase().includes(query)
+          item.name.toLowerCase().includes(query) || item.description?.toLowerCase().includes(query)
       );
     }
 
@@ -192,13 +191,21 @@ export default function MenuBuilder(): React.JSX.Element {
                 {item.name}
               </Text>
               {!item.is_active && (
-                <Chip compact style={styles.inactiveChip} textStyle={{ fontSize: 10, color: '#fff' }}>
+                <Chip
+                  compact
+                  style={styles.inactiveChip}
+                  textStyle={{ fontSize: 10, color: '#fff' }}
+                >
                   Inactive
                 </Chip>
               )}
             </View>
             {item.description && (
-              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={2}>
+              <Text
+                variant="bodySmall"
+                style={{ color: theme.colors.onSurfaceVariant }}
+                numberOfLines={2}
+              >
                 {item.description}
               </Text>
             )}
@@ -210,7 +217,12 @@ export default function MenuBuilder(): React.JSX.Element {
             </Text>
             <View style={styles.cardActions}>
               <IconButton icon="pencil" size={18} onPress={() => openEdit(item)} />
-              <IconButton icon="delete" size={18} iconColor="#f44336" onPress={() => setDeleteConfirm(item)} />
+              <IconButton
+                icon="delete"
+                size={18}
+                iconColor="#f44336"
+                onPress={() => setDeleteConfirm(item)}
+              />
             </View>
           </View>
         </Card.Content>
@@ -268,12 +280,11 @@ export default function MenuBuilder(): React.JSX.Element {
       {/* Menu List */}
       {sections.length === 0 ? (
         <View style={styles.emptyState}>
-          <MaterialCommunityIcons
-            name="food-off"
-            size={64}
-            color={theme.colors.onSurfaceVariant}
-          />
-          <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}>
+          <MaterialCommunityIcons name="food-off" size={64} color={theme.colors.onSurfaceVariant} />
+          <Text
+            variant="titleMedium"
+            style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}
+          >
             No menu items found
           </Text>
           <Button mode="contained" onPress={openCreate} style={{ marginTop: 16 }}>
@@ -287,9 +298,7 @@ export default function MenuBuilder(): React.JSX.Element {
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           stickySectionHeadersEnabled
         />
       )}

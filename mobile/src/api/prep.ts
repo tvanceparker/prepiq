@@ -16,16 +16,22 @@ import type {
 // Prep Schedule
 // =============================================================================
 
-export const getPrepSchedule = async (params: PrepScheduleParams = {}): Promise<PrepScheduleItem[]> => {
+export const getPrepSchedule = async (
+  params: PrepScheduleParams = {}
+): Promise<PrepScheduleItem[]> => {
   const query = new URLSearchParams(params as any).toString();
   return get<PrepScheduleItem[]>(`/prep/schedule${query ? `?${query}` : ''}`);
 };
 
-export const createPrepSchedule = async (prepData: PrepScheduleCreate): Promise<PrepScheduleItem> => {
+export const createPrepSchedule = async (
+  prepData: PrepScheduleCreate
+): Promise<PrepScheduleItem> => {
   return post<PrepScheduleItem>('/prep/schedule', prepData);
 };
 
-export const updatePrepSchedule = async (prepData: PrepScheduleUpdate): Promise<PrepScheduleItem> => {
+export const updatePrepSchedule = async (
+  prepData: PrepScheduleUpdate
+): Promise<PrepScheduleItem> => {
   if (!prepData?.prep_id) {
     throw new Error('prep_id is required to update prep schedule.');
   }
