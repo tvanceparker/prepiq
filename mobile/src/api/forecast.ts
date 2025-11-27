@@ -1,4 +1,5 @@
 import { get, post, patch } from './index';
+import { BASE_URL } from './config';
 
 export const getUpcomingForecastTable = (startDate: string, endDate: string) =>
   get(`/sales_forecast/upcoming_forecast/table?start_date=${startDate}&end_date=${endDate}`);

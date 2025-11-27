@@ -1,5 +1,5 @@
 import { get, put, post } from './index';
-import type { RestaurantSettings, AccountInfo } from '../../frontend/src/interfaces/settings';
+import type { RestaurantSettings, AccountInfo } from '../interfaces/settings';
 
 export const getRestaurantSettings = async () => get('/settings/restaurant_settings');
 export const updateRestaurantSettings = async (data: Partial<any>) =>

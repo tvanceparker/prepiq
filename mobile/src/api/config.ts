@@ -17,5 +17,8 @@ const HOST = process.env.API_HOST || resolveHost();
 const PORT = process.env.API_PORT || '8000';
 export const BASE_URL = process.env.API_BASE_URL || `http://${HOST}:${PORT}/api/v1`;
 
+// WebSocket base URL (without /api/v1 prefix, using ws:// protocol)
+export const WS_BASE_URL = process.env.WS_BASE_URL || `ws://${HOST}:${PORT}`;
+
 // Keep a second export (some files import API_BASE_URL) pointing at root (no /api/v1) if needed.
 export const API_BASE_URL = BASE_URL.replace(/\/api\/v1$/, '');
