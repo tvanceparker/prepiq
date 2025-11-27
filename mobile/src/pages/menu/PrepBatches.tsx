@@ -15,6 +15,7 @@ import {
   Chip,
   IconButton,
 } from 'react-native-paper';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useBatchRecipes } from '../../hooks/usePrep';
 import { BatchRecipeData } from '../../interfaces/prep';
 
@@ -109,9 +110,10 @@ export default function PrepBatches() {
         subtitle={item.description}
         right={() => (
           <IconButton
-            icon="delete"
+            icon={() => (
+              <MaterialCommunityIcons name="delete" size={20} color={theme.colors.error} />
+            )}
             size={20}
-            iconColor={theme.colors.error}
             onPress={() => item.batch_recipe_id && handleDelete(item.batch_recipe_id)}
           />
         )}
@@ -119,14 +121,28 @@ export default function PrepBatches() {
       <Card.Content>
         <View style={styles.chipRow}>
           {item.yield_quantity && (
-            <Chip icon="scale" compact style={styles.chip}>
-              Yields {item.yield_quantity} {item.yield_unit || 'units'}
-            </Chip>
+            <View style={styles.infoChip}>
+              <MaterialCommunityIcons
+                name="scale"
+                size={14}
+                color={theme.colors.onSurfaceVariant}
+              />
+              <Text variant="labelSmall" style={{ marginLeft: 4 }}>
+                Yields {item.yield_quantity} {item.yield_unit || 'units'}
+              </Text>
+            </View>
           )}
           {item.shelf_life_days && (
-            <Chip icon="calendar" compact style={styles.chip}>
-              {item.shelf_life_days} day shelf
-            </Chip>
+            <View style={styles.infoChip}>
+              <MaterialCommunityIcons
+                name="calendar"
+                size={14}
+                color={theme.colors.onSurfaceVariant}
+              />
+              <Text variant="labelSmall" style={{ marginLeft: 4 }}>
+                {item.shelf_life_days} day shelf
+              </Text>
+            </View>
           )}
         </View>
       </Card.Content>
@@ -167,7 +183,12 @@ export default function PrepBatches() {
         />
       )}
 
-      <FAB icon="plus" style={styles.fab} onPress={openCreate} label="Add Batch" />
+      <FAB
+        icon={() => <MaterialCommunityIcons name="plus" size={24} color={theme.colors.onPrimary} />}
+        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+        onPress={openCreate}
+        label="Add Batch"
+      />
 
       <Portal>
         <Dialog
@@ -286,6 +307,14 @@ const styles = StyleSheet.create({
   },
   chip: {
     marginRight: 4,
+  },
+  infoChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.08)',
   },
   emptyCard: {
     marginTop: 32,

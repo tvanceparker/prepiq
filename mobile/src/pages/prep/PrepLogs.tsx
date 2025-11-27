@@ -1,134 +1,234 @@
 // src/pages/prep/PrepLogs.tsx
-import React, { useState, useMemo } from 'react';
-import { View, StyleSheet, SectionList } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, SectionList, RefreshControl } from 'react-native';
 import {
   Text,
   useTheme,
-  Card,
-  Chip,
+  Surface,
   Searchbar,
   ActivityIndicator,
-  Divider,
+  Card,
+  Chip,
 } from 'react-native-paper';
-import { usePrepSchedule } from '../../hooks/usePrep';
-import type { PrepScheduleItem } from '../../interfaces/prep';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { usePrepLogs } from './hooks/usePrepLogs';
+import { PrepLogCard } from './components/PrepLogCard';
+import { PrepLogFilters } from './components/PrepLogFilters';
+import type { PrepLog } from '../../interfaces/prep';
 
-export default function PrepLogs() {
+interface PrepLogSection {
+  title: string;
+  data: PrepLog[];
+}
+
+export default function PrepLogs(): React.JSX.Element {
   const theme = useTheme();
-  const { schedule, loading } = usePrepSchedule();
-  const [search, setSearch] = useState('');
 
-  // Filter to only show completed items (as logs)
-  const completedItems = useMemo(() => {
-    if (!schedule) return [];
-    const completed = schedule.filter((item: PrepScheduleItem) => item.status === 'completed');
-    const q = search.toLowerCase();
-    if (!q) return completed;
-    return completed.filter((item: PrepScheduleItem) =>
-      item.batch_recipe_name?.toLowerCase().includes(q)
+  const {
+    logs,
+    sections,
+    stats,
+    batchRecipes,
+    loading,
+    refreshing,
+    error,
+    startDate,
+    endDate,
+    statusFilter,
+    batchRecipeFilter,
+    searchQuery,
+    hasActiveFilters,
+    setStartDate,
+    setEndDate,
+    setStatusFilter,
+    setBatchRecipeFilter,
+    setSearchQuery,
+    onRefresh,
+    clearFilters,
+    getStatusColor,
+    getStatusBgColor,
+    getExpiryStatus,
+    formatDate,
+  } = usePrepLogs();
+
+  const renderSectionHeader = ({ section }: { section: PrepLogSection }) => (
+    <View style={[styles.sectionHeader, { backgroundColor: theme.colors.surfaceVariant }]}>
+      <View style={styles.sectionTitleRow}>
+        <MaterialCommunityIcons name="calendar" size={18} color={theme.colors.primary} />
+        <Text variant="titleSmall" style={styles.sectionTitle}>
+          {section.title}
+        </Text>
+      </View>
+      <Chip compact icon="format-list-numbered">
+        {section.data.length} {section.data.length === 1 ? 'entry' : 'entries'}
+      </Chip>
+    </View>
+  );
+
+  const renderItem = ({ item }: { item: PrepLog }) => (
+    <PrepLogCard
+      log={item}
+      getStatusColor={getStatusColor}
+      getStatusBgColor={getStatusBgColor}
+      getExpiryStatus={getExpiryStatus}
+      formatDate={formatDate}
+    />
+  );
+
+  const renderEmptyState = () => (
+    <Card style={styles.emptyCard} mode="outlined">
+      <Card.Content style={styles.emptyContent}>
+        <MaterialCommunityIcons
+          name="clipboard-text-off"
+          size={64}
+          color={theme.colors.onSurfaceVariant}
+        />
+        <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}>
+          No prep logs found
+        </Text>
+        <Text
+          variant="bodyMedium"
+          style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', marginTop: 8 }}
+        >
+          {hasActiveFilters
+            ? 'Try adjusting your filters to see more results'
+            : 'Completed prep tasks will appear here'}
+        </Text>
+        {hasActiveFilters && (
+          <Chip icon="filter-off" style={{ marginTop: 16 }} onPress={clearFilters}>
+            Clear Filters
+          </Chip>
+        )}
+      </Card.Content>
+    </Card>
+  );
+
+  const renderStatsHeader = () => (
+    <Surface style={styles.statsContainer} elevation={1}>
+      <View style={styles.statsRow}>
+        <View style={styles.statItem}>
+          <Text variant="headlineSmall" style={[styles.statValue, { color: '#4caf50' }]}>
+            {stats.completed}
+          </Text>
+          <Text variant="labelSmall" style={styles.statLabel}>
+            Completed
+          </Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text variant="headlineSmall" style={[styles.statValue, { color: '#ff9800' }]}>
+            {stats.inProgress}
+          </Text>
+          <Text variant="labelSmall" style={styles.statLabel}>
+            In Progress
+          </Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text variant="headlineSmall" style={[styles.statValue, { color: '#2196f3' }]}>
+            {stats.scheduled}
+          </Text>
+          <Text variant="labelSmall" style={styles.statLabel}>
+            Scheduled
+          </Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text variant="headlineSmall" style={styles.statValue}>
+            {stats.total}
+          </Text>
+          <Text variant="labelSmall" style={styles.statLabel}>
+            Total
+          </Text>
+        </View>
+      </View>
+    </Surface>
+  );
+
+  if (loading && logs.length === 0) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" />
+        <Text style={{ marginTop: 16, color: theme.colors.onSurfaceVariant }}>
+          Loading prep logs...
+        </Text>
+      </View>
     );
-  }, [schedule, search]);
+  }
 
-  // Group by completion date
-  const sections = useMemo(() => {
-    const grouped: Record<string, PrepScheduleItem[]> = {};
-    completedItems.forEach((item: PrepScheduleItem) => {
-      const dateKey = item.completed_at
-        ? new Date(item.completed_at).toLocaleDateString()
-        : item.scheduled_date || 'Unknown';
-      if (!grouped[dateKey]) grouped[dateKey] = [];
-      grouped[dateKey].push(item);
-    });
-    return Object.entries(grouped)
-      .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
-      .map(([title, data]) => ({ title, data }));
-  }, [completedItems]);
-
-  const formatTime = (dateStr?: string) => {
-    if (!dateStr) return '';
-    return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
+  if (error) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
+        <MaterialCommunityIcons name="alert-circle" size={64} color="#f44336" />
+        <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}>
+          Failed to load prep logs
+        </Text>
+        <Chip icon="refresh" style={{ marginTop: 16 }} onPress={onRefresh}>
+          Try Again
+        </Chip>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={styles.header}>
-        <Text variant="headlineMedium" style={{ color: theme.colors.onBackground }}>
-          Prep Logs
-        </Text>
-        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-          History of completed prep tasks
-        </Text>
-      </View>
+      {/* Header */}
+      <Surface style={styles.headerSurface} elevation={1}>
+        <View style={styles.headerRow}>
+          <View style={styles.headerLeft}>
+            <MaterialCommunityIcons
+              name="clipboard-text-clock"
+              size={28}
+              color={theme.colors.primary}
+            />
+            <View style={styles.headerText}>
+              <Text variant="titleLarge" style={{ fontWeight: '600' }}>
+                Prep Logs
+              </Text>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                Historical records of prep schedules
+              </Text>
+            </View>
+          </View>
+        </View>
 
-      <Searchbar
-        placeholder="Search prep logs..."
-        value={search}
-        onChangeText={setSearch}
-        style={styles.searchbar}
+        {/* Search */}
+        <Searchbar
+          placeholder="Search by recipe or employee..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          style={styles.searchbar}
+        />
+      </Surface>
+
+      {/* Filters */}
+      <PrepLogFilters
+        startDate={startDate}
+        endDate={endDate}
+        statusFilter={statusFilter}
+        batchRecipeFilter={batchRecipeFilter}
+        batchRecipes={batchRecipes}
+        hasActiveFilters={hasActiveFilters}
+        onStartDateChange={setStartDate}
+        onEndDateChange={setEndDate}
+        onStatusChange={setStatusFilter}
+        onBatchRecipeChange={setBatchRecipeFilter}
+        onClearFilters={clearFilters}
       />
 
-      {loading ? (
-        <ActivityIndicator style={styles.loader} size="large" />
-      ) : sections.length === 0 ? (
-        <Card style={styles.emptyCard} mode="outlined">
-          <Card.Content style={styles.emptyContent}>
-            <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant }}>
-              {search ? 'No matching logs' : 'No completed prep tasks yet'}
-            </Text>
-          </Card.Content>
-        </Card>
+      {/* Content */}
+      {sections.length === 0 ? (
+        renderEmptyState()
       ) : (
         <SectionList
           sections={sections}
           keyExtractor={item => String(item.prep_id)}
-          renderSectionHeader={({ section }) => (
-            <View style={[styles.sectionHeader, { backgroundColor: theme.colors.surfaceVariant }]}>
-              <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-                {section.title}
-              </Text>
-              <Chip compact icon="check-circle">
-                {section.data.length} completed
-              </Chip>
-            </View>
-          )}
-          renderItem={({ item }) => (
-            <Card style={styles.logCard} mode="outlined">
-              <Card.Content>
-                <View style={styles.logRow}>
-                  <View style={styles.logInfo}>
-                    <Text variant="titleMedium">{item.batch_recipe_name}</Text>
-                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                      Qty: {item.quantity_to_prep}
-                    </Text>
-                  </View>
-                  <View style={styles.logMeta}>
-                    {item.completed_at && (
-                      <Chip compact icon="clock-check-outline">
-                        {formatTime(item.completed_at)}
-                      </Chip>
-                    )}
-                    {item.assigned_employee_name && (
-                      <Text
-                        variant="bodySmall"
-                        style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
-                      >
-                        By: {item.assigned_employee_name}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-                {item.notes && (
-                  <>
-                    <Divider style={{ marginVertical: 8 }} />
-                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                      Notes: {item.notes}
-                    </Text>
-                  </>
-                )}
-              </Card.Content>
-            </Card>
-          )}
+          renderSectionHeader={renderSectionHeader}
+          renderItem={renderItem}
+          ListHeaderComponent={renderStatsHeader}
           contentContainerStyle={styles.listContent}
+          stickySectionHeadersEnabled
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         />
       )}
     </View>
@@ -139,21 +239,63 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    padding: 16,
-    paddingBottom: 8,
-  },
-  searchbar: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-  },
-  loader: {
+  centered: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  headerSurface: {
+    padding: 16,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerText: {
+    marginLeft: 12,
+  },
+  searchbar: {
+    marginBottom: 0,
+  },
+  statsContainer: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 12,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statValue: {
+    fontWeight: '700',
+  },
+  statLabel: {
+    color: '#757575',
+    marginTop: 4,
+  },
+  statDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: '#e0e0e0',
   },
   listContent: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 100,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -164,19 +306,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 8,
   },
-  logCard: {
-    marginBottom: 8,
-  },
-  logRow: {
+  sectionTitleRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
-  logInfo: {
-    flex: 1,
-  },
-  logMeta: {
-    alignItems: 'flex-end',
+  sectionTitle: {
+    marginLeft: 8,
+    fontWeight: '600',
   },
   emptyCard: {
     margin: 16,

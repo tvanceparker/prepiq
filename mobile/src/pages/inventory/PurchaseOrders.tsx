@@ -209,7 +209,12 @@ export default function PurchaseOrders(): React.JSX.Element {
               Purchase Orders
             </Text>
           </View>
-          <Chip icon="file-document">{purchaseOrders.length}</Chip>
+          <View style={styles.headerChip}>
+            <MaterialCommunityIcons name="file-document" size={16} color={theme.colors.primary} />
+            <Text style={{ marginLeft: 4, color: theme.colors.primary }}>
+              {purchaseOrders.length}
+            </Text>
+          </View>
         </View>
 
         <Searchbar
@@ -266,7 +271,7 @@ export default function PurchaseOrders(): React.JSX.Element {
 
       {/* FAB for new PO */}
       <FAB
-        icon="plus"
+        icon={() => <MaterialCommunityIcons name="plus" size={24} color="#fff" />}
         style={[styles.fab, { backgroundColor: theme.colors.primary }]}
         onPress={() => {
           // Navigation to create PO would go here
@@ -287,7 +292,12 @@ export default function PurchaseOrders(): React.JSX.Element {
                 <Text variant="titleLarge" style={{ fontWeight: '600' }}>
                   {`PO #${selectedPO.order_id}`}
                 </Text>
-                <IconButton icon="close" onPress={() => setSelectedPO(null)} />
+                <IconButton
+                  icon={() => (
+                    <MaterialCommunityIcons name="close" size={24} color={theme.colors.onSurface} />
+                  )}
+                  onPress={() => setSelectedPO(null)}
+                />
               </View>
 
               <Chip
@@ -302,18 +312,39 @@ export default function PurchaseOrders(): React.JSX.Element {
               <List.Item
                 title="Supplier"
                 description={selectedPO.supplier_name || 'Unknown'}
-                left={props => <List.Icon {...props} icon="truck" />}
+                left={() => (
+                  <MaterialCommunityIcons
+                    name="truck"
+                    size={24}
+                    color={theme.colors.primary}
+                    style={{ marginLeft: 8, alignSelf: 'center' }}
+                  />
+                )}
               />
               <List.Item
                 title="Total Amount"
                 description={`$${selectedPO.total_order_price?.toFixed(2) || '0.00'}`}
-                left={props => <List.Icon {...props} icon="currency-usd" />}
+                left={() => (
+                  <MaterialCommunityIcons
+                    name="currency-usd"
+                    size={24}
+                    color={theme.colors.primary}
+                    style={{ marginLeft: 8, alignSelf: 'center' }}
+                  />
+                )}
               />
               {selectedPO.expected_delivery_date && (
                 <List.Item
                   title="Expected Delivery"
                   description={new Date(selectedPO.expected_delivery_date).toLocaleDateString()}
-                  left={props => <List.Icon {...props} icon="calendar" />}
+                  left={() => (
+                    <MaterialCommunityIcons
+                      name="calendar"
+                      size={24}
+                      color={theme.colors.primary}
+                      style={{ marginLeft: 8, alignSelf: 'center' }}
+                    />
+                  )}
                 />
               )}
 
@@ -400,6 +431,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  headerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
   },
   headerLeft: {
     flexDirection: 'row',

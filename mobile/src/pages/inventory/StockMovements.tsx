@@ -1,6 +1,6 @@
 // src/pages/inventory/StockMovements.tsx
 import React, { useState, useCallback, useContext } from 'react';
-import { View, StyleSheet, SectionList, RefreshControl } from 'react-native';
+import { View, StyleSheet, SectionList, RefreshControl, ScrollView } from 'react-native';
 import {
   Surface,
   Text,
@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   SegmentedButtons,
   useTheme,
+  Divider,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useStockMovements } from '../../hooks/useStockMovements';
@@ -58,18 +59,24 @@ export default function StockMovements(): React.JSX.Element {
   const {
     movements,
     loading: isLoading,
-    sections: movementSections,
+    totalsByType,
   } = useStockMovements({
     startDate,
     endDate,
   });
 
-  // Pull to refresh - movements auto-refresh on date change
+  // Pull to refresh
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    // Force date range recalculation by toggling state
     setTimeout(() => setRefreshing(false), 500);
   }, []);
+
+  // Get movement types from data
+  const movementTypes = React.useMemo(() => {
+    const types = new Set<string>();
+    movements.forEach(m => types.add(m.type));
+    return ['all', ...Array.from(types)];
+  }, [movements]);
 
   // Filter movements
   const filteredMovements = React.useMemo(() => {
@@ -108,35 +115,32 @@ export default function StockMovements(): React.JSX.Element {
   }, [filteredMovements]);
 
   // Movement type styling
-  const getMovementStyle = (type: string) => {
-    switch (type) {
-      case 'purchase':
-      case 'adjustment_add':
-        return { icon: 'arrow-down', color: '#4caf50', label: 'IN' };
-      case 'sale':
-      case 'usage':
-      case 'adjustment_remove':
-        return { icon: 'arrow-up', color: '#f44336', label: 'OUT' };
-      case 'waste':
-        return { icon: 'delete', color: '#ff9800', label: 'WASTE' };
-      case 'transfer':
-        return { icon: 'swap-horizontal', color: '#2196f3', label: 'TRANSFER' };
-      default:
-        return { icon: 'help-circle', color: '#9e9e9e', label: type.toUpperCase() };
+  const getMovementStyle = (type: string, qty: number) => {
+    // Handle positive quantity types
+    if (type === 'Purchase' || type === 'Adjustment' || qty > 0) {
+      return { icon: 'arrow-down-bold', color: '#4caf50', bgColor: '#e8f5e9' };
     }
+    // Handle negative quantity types
+    if (type === 'Sale' || type === 'Batch Production') {
+      return { icon: 'arrow-up-bold', color: '#2196f3', bgColor: '#e3f2fd' };
+    }
+    if (type === 'Waste') {
+      return { icon: 'delete-outline', color: '#ff9800', bgColor: '#fff3e0' };
+    }
+    return { icon: 'swap-horizontal', color: '#9e9e9e', bgColor: '#f5f5f5' };
   };
 
-  // Stats
+  // Calculate stats from movements
   const stats = React.useMemo(() => {
     let totalIn = 0;
     let totalOut = 0;
     let waste = 0;
 
     movements.forEach((m: StockMovement) => {
-      const qty = m.quantity || 0;
-      if (['Purchase', 'Adjustment'].includes(m.type)) {
+      const qty = Math.abs(m.quantity || 0);
+      if (m.type === 'Purchase' || m.type === 'Adjustment') {
         totalIn += qty;
-      } else if (['Sale', 'Batch Production'].includes(m.type)) {
+      } else if (m.type === 'Sale' || m.type === 'Batch Production') {
         totalOut += qty;
       } else if (m.type === 'Waste') {
         waste += qty;
@@ -152,20 +156,21 @@ export default function StockMovements(): React.JSX.Element {
       <Text variant="titleSmall" style={styles.sectionTitle}>
         {section.title}
       </Text>
-      <Chip compact style={styles.countChip}>
-        {section.data.length}
-      </Chip>
+      <View style={styles.sectionCount}>
+        <Text variant="labelSmall">{section.data.length}</Text>
+      </View>
     </View>
   );
 
   const renderItem = ({ item }: { item: StockMovement }) => {
-    const style = getMovementStyle(item.type);
+    const style = getMovementStyle(item.type, item.quantity);
+    const isPositive = item.type === 'Purchase' || item.type === 'Adjustment' || item.quantity > 0;
 
     return (
       <Card style={styles.card} mode="outlined">
         <Card.Content style={styles.cardContent}>
-          <View style={[styles.movementIndicator, { backgroundColor: style.color }]}>
-            <MaterialCommunityIcons name={style.icon as any} size={20} color="#fff" />
+          <View style={[styles.movementIndicator, { backgroundColor: style.bgColor }]}>
+            <MaterialCommunityIcons name={style.icon as any} size={20} color={style.color} />
           </View>
 
           <View style={styles.movementInfo}>
@@ -173,16 +178,20 @@ export default function StockMovements(): React.JSX.Element {
               {item.ingredient_name || 'Unknown Item'}
             </Text>
             <View style={styles.detailRow}>
-              <Chip
-                compact
-                style={[styles.typeChip, { backgroundColor: style.color }]}
-                textStyle={{ color: '#fff', fontSize: 10 }}
-              >
-                {style.label}
-              </Chip>
-              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                {item.date ? new Date(item.date).toLocaleTimeString() : '--:--'}
-              </Text>
+              <View style={[styles.typeBadge, { backgroundColor: style.bgColor }]}>
+                <Text variant="labelSmall" style={{ color: style.color }}>
+                  {item.type}
+                </Text>
+              </View>
+              {item.source_or_destination && (
+                <Text
+                  variant="labelSmall"
+                  style={{ color: theme.colors.onSurfaceVariant, marginLeft: 8 }}
+                  numberOfLines={1}
+                >
+                  {item.source_or_destination}
+                </Text>
+              )}
             </View>
             {item.notes && (
               <Text
@@ -190,7 +199,7 @@ export default function StockMovements(): React.JSX.Element {
                 style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
                 numberOfLines={1}
               >
-                {item.notes}
+                📝 {item.notes}
               </Text>
             )}
           </View>
@@ -198,17 +207,18 @@ export default function StockMovements(): React.JSX.Element {
           <View style={styles.quantitySection}>
             <Text
               variant="titleMedium"
-              style={[
-                styles.quantity,
-                { color: ['Purchase', 'Adjustment'].includes(item.type) ? '#4caf50' : '#f44336' },
-              ]}
+              style={[styles.quantity, { color: isPositive ? '#4caf50' : '#f44336' }]}
             >
-              {['Purchase', 'Adjustment'].includes(item.type) ? '+' : '-'}
-              {item.quantity}
+              {isPositive ? '+' : ''}{item.quantity}
             </Text>
             <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
               {item.unit || 'units'}
             </Text>
+            {item.running_balance !== null && item.running_balance !== undefined && (
+              <Text variant="labelSmall" style={{ color: theme.colors.outline, marginTop: 2 }}>
+                Bal: {item.running_balance}
+              </Text>
+            )}
           </View>
         </Card.Content>
       </Card>
@@ -257,57 +267,59 @@ export default function StockMovements(): React.JSX.Element {
         />
 
         {/* Type Filter */}
-        <View style={styles.filterRow}>
-          {[
-            { key: 'all', label: 'All' },
-            { key: 'purchase', label: 'Purchases' },
-            { key: 'usage', label: 'Usage' },
-            { key: 'waste', label: 'Waste' },
-          ].map(filter => (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+          {movementTypes.map(type => (
             <Chip
-              key={filter.key}
-              selected={typeFilter === filter.key}
-              onPress={() => setTypeFilter(filter.key)}
+              key={type}
+              selected={typeFilter === type}
+              onPress={() => setTypeFilter(type)}
               style={styles.filterChip}
               showSelectedCheck={false}
-              mode={typeFilter === filter.key ? 'flat' : 'outlined'}
+              mode={typeFilter === type ? 'flat' : 'outlined'}
             >
-              {filter.label}
+              {type === 'all' ? 'All' : type}
             </Chip>
           ))}
-        </View>
+        </ScrollView>
 
         {/* Stats Row */}
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
-            <Text variant="titleMedium" style={{ color: '#4caf50', fontWeight: '700' }}>
-              +{stats.totalIn}
+            <MaterialCommunityIcons name="arrow-down-bold" size={18} color="#4caf50" />
+            <Text variant="titleSmall" style={{ color: '#4caf50', fontWeight: '700', marginLeft: 4 }}>
+              +{stats.totalIn.toFixed(0)}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}>
               In
             </Text>
           </View>
+          <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text variant="titleMedium" style={{ color: '#f44336', fontWeight: '700' }}>
-              -{stats.totalOut}
+            <MaterialCommunityIcons name="arrow-up-bold" size={18} color="#2196f3" />
+            <Text variant="titleSmall" style={{ color: '#2196f3', fontWeight: '700', marginLeft: 4 }}>
+              -{stats.totalOut.toFixed(0)}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}>
               Out
             </Text>
           </View>
+          <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text variant="titleMedium" style={{ color: '#ff9800', fontWeight: '700' }}>
-              {stats.waste}
+            <MaterialCommunityIcons name="delete-outline" size={18} color="#ff9800" />
+            <Text variant="titleSmall" style={{ color: '#ff9800', fontWeight: '700', marginLeft: 4 }}>
+              {stats.waste.toFixed(0)}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}>
               Waste
             </Text>
           </View>
+          <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text variant="titleMedium" style={{ fontWeight: '700' }}>
+            <MaterialCommunityIcons name="format-list-numbered" size={18} color={theme.colors.primary} />
+            <Text variant="titleSmall" style={{ fontWeight: '700', marginLeft: 4 }}>
               {stats.count}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}>
               Total
             </Text>
           </View>
@@ -377,24 +389,29 @@ const styles = StyleSheet.create({
   searchbar: {
     marginBottom: 12,
   },
-  filterRow: {
+  filterScroll: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
     marginBottom: 12,
   },
   filterChip: {
-    marginBottom: 4,
+    marginRight: 8,
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingTop: 8,
+    alignItems: 'center',
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: '#e0e0e0',
   },
   statItem: {
+    flexDirection: 'row',
     alignItems: 'center',
+  },
+  statDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: '#e0e0e0',
   },
   listContent: {
     padding: 16,
@@ -410,8 +427,11 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontWeight: '600',
   },
-  countChip: {
-    height: 22,
+  sectionCount: {
+    backgroundColor: '#e0e0e0',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
   },
   card: {
     marginBottom: 8,
@@ -421,9 +441,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   movementIndicator: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -439,10 +459,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 4,
-    gap: 8,
   },
-  typeChip: {
-    height: 20,
+  typeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
   },
   quantitySection: {
     alignItems: 'flex-end',

@@ -160,6 +160,7 @@ export default function MenuBuilder() {
           onReactivate={handleReactivate}
           isEditing={!!editingItem}
           recipesList={recipesList}
+          availableCategories={categoriesList}
           handleRecipeToggle={handleRecipeToggle}
           editingItem={editingItem}
           onExited={() => {}}

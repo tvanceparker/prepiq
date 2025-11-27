@@ -33,14 +33,24 @@ export const fetchWastedUsageLogs = async (lotId: string | number) =>
 // Suppliers
 // =============================================================================
 
+interface SupplierResponse {
+  success: boolean;
+  data: SupplierDTO[];
+  message: string;
+}
+
 export const fetchAllSuppliers = async (): Promise<SupplierDTO[]> => {
-  return get<SupplierDTO[]>('/inventory/suppliers');
+  const response = await get<SupplierResponse>('/inventory/suppliers');
+  // Handle wrapped response { success, data, message }
+  if (response && typeof response === 'object' && 'data' in response) {
+    return response.data ?? [];
+  }
+  // Fallback if response is already an array
+  return Array.isArray(response) ? response : [];
 };
 
-export const getSuppliersList = async (): Promise<any[]> => {
-  const res = await fetchAllSuppliers();
-  if (res && typeof res === 'object' && 'data' in res) return (res as any).data ?? [];
-  return Array.isArray(res) ? res : [];
+export const getSuppliersList = async (): Promise<SupplierDTO[]> => {
+  return fetchAllSuppliers();
 };
 
 export const createSupplier = async (supplierData: any) =>

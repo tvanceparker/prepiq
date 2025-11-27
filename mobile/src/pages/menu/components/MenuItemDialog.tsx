@@ -142,7 +142,13 @@ export default function MenuItemDialog({
           <Text variant="titleLarge" style={styles.headerTitle}>
             {isEditing ? 'Edit Menu Item' : 'Add Menu Item'}
           </Text>
-          <IconButton icon="close" size={24} onPress={onDismiss} />
+          <IconButton
+            icon={() => (
+              <MaterialCommunityIcons name="close" size={24} color={theme.colors.onSurface} />
+            )}
+            size={24}
+            onPress={onDismiss}
+          />
         </View>
 
         <Divider />
@@ -199,7 +205,13 @@ export default function MenuItemDialog({
                       <TextInput.Icon icon={() => <ActivityIndicator size={16} />} />
                     ) : (
                       <TextInput.Icon
-                        icon={showCategoryMenu ? 'chevron-up' : 'chevron-down'}
+                        icon={() => (
+                          <MaterialCommunityIcons
+                            name={showCategoryMenu ? 'chevron-up' : 'chevron-down'}
+                            size={24}
+                            color={theme.colors.onSurfaceVariant}
+                          />
+                        )}
                         onPress={() => setShowCategoryMenu(!showCategoryMenu)}
                       />
                     )
@@ -216,7 +228,13 @@ export default function MenuItemDialog({
                     setShowCategoryMenu(false);
                   }}
                   title={cat}
-                  leadingIcon="folder"
+                  leadingIcon={() => (
+                    <MaterialCommunityIcons
+                      name="folder"
+                      size={24}
+                      color={theme.colors.onSurfaceVariant}
+                    />
+                  )}
                 />
               ))}
               {isNewCategory && (
@@ -227,7 +245,9 @@ export default function MenuItemDialog({
                       setShowCategoryMenu(false);
                     }}
                     title={`Create "${category.trim()}"`}
-                    leadingIcon="plus"
+                    leadingIcon={() => (
+                      <MaterialCommunityIcons name="plus" size={24} color={theme.colors.primary} />
+                    )}
                     titleStyle={{ color: theme.colors.primary }}
                   />
                 </>
@@ -339,8 +359,13 @@ export default function MenuItemDialog({
                           )}
                         </View>
                         <IconButton
-                          icon={isSelected ? 'check-circle' : 'plus-circle-outline'}
-                          iconColor={isSelected ? theme.colors.primary : theme.colors.outline}
+                          icon={() => (
+                            <MaterialCommunityIcons
+                              name={isSelected ? 'check-circle' : 'plus-circle-outline'}
+                              size={24}
+                              color={isSelected ? theme.colors.primary : theme.colors.outline}
+                            />
+                          )}
                           size={24}
                           onPress={() => toggleRecipe(recipe.recipe_id)}
                         />
@@ -385,7 +410,6 @@ export default function MenuItemDialog({
               onPress={onDelete}
               textColor={theme.colors.error}
               style={[styles.footerButton, { marginRight: 'auto' }]}
-              icon="delete"
             >
               Delete
             </Button>

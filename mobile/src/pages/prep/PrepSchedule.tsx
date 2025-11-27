@@ -1,6 +1,6 @@
 // src/pages/prep/PrepSchedule.tsx
-import React, { useState, useCallback, useContext } from 'react';
-import { View, StyleSheet, SectionList, RefreshControl } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import {
   Surface,
   Text,
@@ -13,197 +13,176 @@ import {
   TextInput,
   FAB,
   IconButton,
-  Checkbox,
+  Divider,
   useTheme,
   SegmentedButtons,
+  Snackbar,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { usePrepSchedule } from '../../hooks/usePrep';
-import { AuthContext } from '../../contexts/AuthContext';
-import { PrepScheduleItem } from '../../interfaces/prep';
-
-interface PrepSection {
-  title: string;
-  data: PrepScheduleItem[];
-}
-
+import { usePrepSchedule, useBatchRecipesForSchedule } from './hooks/usePrepSchedule';
+import type { PrepScheduleItem, BatchRecipe } from '../../interfaces/prep';
 export default function PrepSchedule(): React.JSX.Element {
   const theme = useTheme();
-  const { tier } = useContext(AuthContext) || {};
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Dialogs
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [editingItem, setEditingItem] = useState<PrepScheduleItem | null>(null);
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
 
-  // Form state
-  const [formData, setFormData] = useState({
-    batch_recipe_id: 0,
-    quantity_to_prep: '',
-    notes: '',
-  });
+  // Selected items
+  const [selectedRecipe, setSelectedRecipe] = useState<BatchRecipe | null>(null);
+  const [selectedSchedule, setSelectedSchedule] = useState<PrepScheduleItem | null>(null);
 
-  // Queries & mutations
+  // Form state for create
+  const [createQuantity, setCreateQuantity] = useState('');
+
+  // Form state for update
+  const [updateStatus, setUpdateStatus] = useState<'in_progress' | 'completed'>('in_progress');
+  const [updateActualTime, setUpdateActualTime] = useState('');
+  const [updateBatchCount, setUpdateBatchCount] = useState('');
+
+  // Snackbar
+  const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
+
+  // Queries & mutations - Batch Recipes
+  const {
+    recipes: batchRecipes,
+    loading: loadingRecipes,
+    error: errorRecipes,
+  } = useBatchRecipesForSchedule();
+
+  // Queries & mutations - Prep Schedule
   const {
     schedule: scheduleItems,
-    loading: isLoading,
-    refresh,
+    loading: loadingSchedule,
+    error: errorSchedule,
+    refresh: refreshSchedule,
     createPrep,
     creating,
     updatePrep,
     updating,
     deletePrep,
     deleting,
-    completePrep,
-    completing,
   } = usePrepSchedule({ prep_date: selectedDate });
 
   // Pull to refresh
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    refresh();
+    await refreshSchedule();
     setRefreshing(false);
-  }, [refresh]);
+  }, [refreshSchedule]);
 
   // Date helpers
   const today = new Date().toISOString().split('T')[0];
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-  // Group by status
-  const sections: PrepSection[] = React.useMemo(() => {
-    const pending = scheduleItems.filter((item: PrepScheduleItem) => item.status !== 'completed');
-    const completed = scheduleItems.filter((item: PrepScheduleItem) => item.status === 'completed');
-
-    const result: PrepSection[] = [];
-    if (pending.length > 0) {
-      result.push({ title: 'Pending', data: pending });
-    }
-    if (completed.length > 0) {
-      result.push({ title: 'Completed', data: completed });
-    }
-    return result;
-  }, [scheduleItems]);
-
-  // Toggle completion
-  const handleToggleComplete = async (item: PrepScheduleItem) => {
-    const newStatus = item.status === 'completed' ? 'scheduled' : 'completed';
-    await updatePrep({
-      prep_id: item.prep_id,
-      status: newStatus,
-    });
-  };
-
-  // Open create dialog
-  const openCreate = () => {
-    setFormData({ batch_recipe_id: 0, quantity_to_prep: '', notes: '' });
-    setShowCreateDialog(true);
-  };
-
-  // Handle create
-  const handleCreate = async () => {
-    if (!formData.batch_recipe_id || !formData.quantity_to_prep) return;
-    await createPrep({
-      batch_recipe_id: formData.batch_recipe_id,
-      scheduled_date: selectedDate,
-      quantity_to_prep: parseFloat(formData.quantity_to_prep),
-      notes: formData.notes || undefined,
-    });
-    setShowCreateDialog(false);
-  };
-
-  // Handle delete
-  const handleDelete = async (item: PrepScheduleItem) => {
-    await deletePrep(item.prep_id);
-  };
+  // Separate items by status
+  const pendingItems = scheduleItems.filter(
+    (item: PrepScheduleItem) => item.status !== 'completed'
+  );
+  const completedItems = scheduleItems.filter(
+    (item: PrepScheduleItem) => item.status === 'completed'
+  );
 
   // Stats
-  const completedCount = scheduleItems.filter(
-    (i: PrepScheduleItem) => i.status === 'completed'
-  ).length;
-  const pendingCount = scheduleItems.length - completedCount;
+  const completedCount = completedItems.length;
   const completionRate =
     scheduleItems.length > 0 ? Math.round((completedCount / scheduleItems.length) * 100) : 0;
 
-  const renderSectionHeader = ({ section }: { section: PrepSection }) => (
-    <View style={[styles.sectionHeader, { backgroundColor: theme.colors.background }]}>
-      <MaterialCommunityIcons
-        name={section.title === 'Pending' ? 'clock-outline' : 'check-circle'}
-        size={18}
-        color={section.title === 'Pending' ? '#ff9800' : '#4caf50'}
-      />
-      <Text variant="titleSmall" style={styles.sectionTitle}>
-        {section.title}
-      </Text>
-      <Chip compact style={styles.countChip}>
-        {section.data.length}
-      </Chip>
-    </View>
-  );
+  // --- Create Dialog Handlers ---
+  const openCreateDialog = (recipe: BatchRecipe) => {
+    setSelectedRecipe(recipe);
+    setCreateQuantity('');
+    setShowCreateDialog(true);
+  };
 
-  const renderItem = ({ item }: { item: PrepScheduleItem }) => (
-    <Card
-      style={[styles.card, item.status === 'completed' && styles.completedCard]}
-      mode="outlined"
-    >
-      <Card.Content style={styles.cardContent}>
-        <Checkbox
-          status={item.status === 'completed' ? 'checked' : 'unchecked'}
-          onPress={() => handleToggleComplete(item)}
-        />
+  const handleCreate = async () => {
+    if (!selectedRecipe || !createQuantity) return;
+    const qty = parseFloat(createQuantity);
+    if (isNaN(qty) || qty <= 0) {
+      setSnackbar({ visible: true, message: 'Please enter a valid quantity' });
+      return;
+    }
 
-        <View style={styles.itemInfo}>
-          <Text
-            variant="titleSmall"
-            style={[styles.itemName, item.status === 'completed' && styles.completedText]}
-            numberOfLines={1}
-          >
-            {item.batch_recipe_name || 'Prep Item'}
-          </Text>
-          <View style={styles.detailRow}>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-              {item.quantity_to_prep} to prep
-            </Text>
-            {item.scheduled_date && (
-              <>
-                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                  {' '}
-                  •{' '}
-                </Text>
-                <MaterialCommunityIcons
-                  name="calendar"
-                  size={12}
-                  color={theme.colors.onSurfaceVariant}
-                />
-                <Text
-                  variant="bodySmall"
-                  style={{ color: theme.colors.onSurfaceVariant, marginLeft: 2 }}
-                >
-                  {new Date(item.scheduled_date).toLocaleDateString()}
-                </Text>
-              </>
-            )}
-          </View>
-          {item.notes && (
-            <Text
-              variant="bodySmall"
-              style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
-              numberOfLines={1}
-            >
-              {item.notes}
-            </Text>
-          )}
-        </View>
+    try {
+      await createPrep({
+        batch_recipe_id: selectedRecipe.batch_recipe_id,
+        scheduled_date: selectedDate,
+        quantity_to_prep: qty,
+      });
+      setShowCreateDialog(false);
+      setSnackbar({ visible: true, message: 'Prep schedule created' });
+    } catch (e) {
+      setSnackbar({ visible: true, message: 'Failed to create prep schedule' });
+    }
+  };
 
-        <IconButton
-          icon="delete"
-          size={18}
-          iconColor="#f44336"
-          onPress={() => handleDelete(item)}
-        />
-      </Card.Content>
-    </Card>
-  );
+  // --- Update Dialog Handlers ---
+  const openUpdateDialog = (item: PrepScheduleItem) => {
+    setSelectedSchedule(item);
+    setUpdateStatus(item.status === 'completed' ? 'completed' : 'in_progress');
+    setUpdateActualTime('');
+    setUpdateBatchCount('');
+    setShowUpdateDialog(true);
+  };
 
-  if (isLoading && scheduleItems.length === 0) {
+  const handleUpdate = async () => {
+    if (!selectedSchedule) return;
+
+    // Validate fields if completing
+    if (updateStatus === 'completed') {
+      const time = parseFloat(updateActualTime);
+      const batchCount = parseInt(updateBatchCount, 10);
+      if (isNaN(time) || time <= 0) {
+        setSnackbar({ visible: true, message: 'Please enter a valid actual time' });
+        return;
+      }
+      if (isNaN(batchCount) || batchCount <= 0) {
+        setSnackbar({ visible: true, message: 'Please enter a valid batch count' });
+        return;
+      }
+
+      try {
+        await updatePrep({
+          prep_id: selectedSchedule.prep_id,
+          status: 'completed',
+          prep_time_minutes_actual: time,
+          prep_batch_count: batchCount,
+        } as any);
+        setShowUpdateDialog(false);
+        setSnackbar({ visible: true, message: 'Prep schedule updated' });
+      } catch (e) {
+        setSnackbar({ visible: true, message: 'Failed to update prep schedule' });
+      }
+    } else {
+      try {
+        await updatePrep({
+          prep_id: selectedSchedule.prep_id,
+          status: 'in_progress',
+        });
+        setShowUpdateDialog(false);
+        setSnackbar({ visible: true, message: 'Prep schedule updated' });
+      } catch (e) {
+        setSnackbar({ visible: true, message: 'Failed to update prep schedule' });
+      }
+    }
+  };
+
+  // --- Delete Handler ---
+  const handleDelete = async (item: PrepScheduleItem) => {
+    try {
+      await deletePrep(item.prep_id);
+      setSnackbar({ visible: true, message: 'Prep schedule deleted' });
+    } catch (e) {
+      setSnackbar({ visible: true, message: 'Failed to delete prep schedule' });
+    }
+  };
+
+  // --- Render ---
+  const isLoading = loadingRecipes || loadingSchedule;
+
+  if (isLoading && batchRecipes.length === 0 && scheduleItems.length === 0) {
     return (
       <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" />
@@ -212,117 +191,386 @@ export default function PrepSchedule(): React.JSX.Element {
     );
   }
 
+  const hasError = errorRecipes || errorSchedule;
+  if (hasError) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
+        <MaterialCommunityIcons name="alert-circle" size={48} color={theme.colors.error} />
+        <Text style={{ marginTop: 16, color: theme.colors.error }}>
+          Failed to load data. Please try again.
+        </Text>
+        <Button mode="contained" onPress={onRefresh} style={{ marginTop: 16 }}>
+          Retry
+        </Button>
+      </View>
+    );
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return '#4caf50';
+      case 'in_progress':
+        return '#2196f3';
+      case 'scheduled':
+        return '#ff9800';
+      case 'cancelled':
+        return '#f44336';
+      default:
+        return theme.colors.onSurfaceVariant;
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <Surface style={styles.headerSurface} elevation={1}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerLeft}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {/* Header */}
+        <Surface style={styles.headerSurface} elevation={1}>
+          <View style={styles.headerRow}>
             <MaterialCommunityIcons name="clipboard-check" size={28} color={theme.colors.primary} />
             <Text variant="titleLarge" style={{ marginLeft: 8, fontWeight: '600' }}>
               Prep Schedule
             </Text>
           </View>
-        </View>
 
-        {/* Date Selector */}
-        <SegmentedButtons
-          value={selectedDate}
-          onValueChange={setSelectedDate}
-          buttons={[
-            { value: today, label: 'Today' },
-            { value: tomorrow, label: 'Tomorrow' },
-          ]}
-          style={styles.segmented}
-        />
-
-        {/* Progress Stats */}
-        <View style={styles.progressRow}>
-          <View style={styles.progressBar}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${completionRate}%`, backgroundColor: theme.colors.primary },
-              ]}
-            />
-          </View>
-          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-            {completedCount}/{scheduleItems.length} completed ({completionRate}%)
-          </Text>
-        </View>
-      </Surface>
-
-      {/* Schedule List */}
-      {sections.length === 0 ? (
-        <View style={styles.emptyState}>
-          <MaterialCommunityIcons
-            name="clipboard-text-off"
-            size={64}
-            color={theme.colors.onSurfaceVariant}
+          {/* Date Selector */}
+          <SegmentedButtons
+            value={selectedDate}
+            onValueChange={setSelectedDate}
+            buttons={[
+              { value: today, label: 'Today' },
+              { value: tomorrow, label: 'Tomorrow' },
+            ]}
+            style={styles.segmented}
           />
+
+          {/* Progress Stats */}
+          {scheduleItems.length > 0 && (
+            <View style={styles.progressRow}>
+              <View style={styles.progressBar}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${completionRate}%`, backgroundColor: theme.colors.primary },
+                  ]}
+                />
+              </View>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                {completedCount}/{scheduleItems.length} completed ({completionRate}%)
+              </Text>
+            </View>
+          )}
+        </Surface>
+
+        {/* Batch Recipes Section */}
+        <View style={styles.section}>
+          <Text variant="titleMedium" style={styles.sectionTitle}>
+            Batch Recipes
+          </Text>
           <Text
-            variant="titleMedium"
-            style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}
+            variant="bodySmall"
+            style={{ color: theme.colors.onSurfaceVariant, marginBottom: 12 }}
           >
-            No prep items scheduled
+            Tap a recipe to schedule prep
           </Text>
-          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}>
-            Add items to your prep schedule
-          </Text>
-          <Button mode="contained" onPress={openCreate} style={{ marginTop: 16 }}>
-            Add Prep Item
-          </Button>
+
+          {batchRecipes.length === 0 ? (
+            <Card mode="outlined" style={styles.emptyCard}>
+              <Card.Content style={styles.emptyCardContent}>
+                <MaterialCommunityIcons
+                  name="clipboard-text-off"
+                  size={32}
+                  color={theme.colors.onSurfaceVariant}
+                />
+                <Text
+                  variant="bodyMedium"
+                  style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}
+                >
+                  No batch recipes found
+                </Text>
+              </Card.Content>
+            </Card>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {batchRecipes.map((recipe: BatchRecipe) => (
+                <Card
+                  key={recipe.batch_recipe_id}
+                  mode="outlined"
+                  style={styles.recipeCard}
+                  onPress={() => openCreateDialog(recipe)}
+                >
+                  <Card.Content>
+                    <Text variant="titleSmall" style={{ fontWeight: '600' }} numberOfLines={1}>
+                      {recipe.name}
+                    </Text>
+                    <Text
+                      variant="bodySmall"
+                      style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
+                      numberOfLines={2}
+                    >
+                      {recipe.description || 'No description'}
+                    </Text>
+                    <View style={styles.recipeDetails}>
+                      <Chip icon="scale" style={styles.recipeChip}>
+                        {recipe.yield_quantity} {recipe.yield_unit}
+                      </Chip>
+                      {recipe.estimated_prep_time_minutes && (
+                        <Chip icon="clock-outline" style={styles.recipeChip}>
+                          {recipe.estimated_prep_time_minutes} min
+                        </Chip>
+                      )}
+                    </View>
+                  </Card.Content>
+                </Card>
+              ))}
+            </ScrollView>
+          )}
         </View>
-      ) : (
-        <SectionList
-          sections={sections}
-          keyExtractor={item => item.prep_id.toString()}
-          renderItem={renderItem}
-          renderSectionHeader={renderSectionHeader}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          stickySectionHeadersEnabled
-        />
-      )}
+
+        <Divider style={styles.divider} />
+
+        {/* Current Prep Schedules Section */}
+        <View style={styles.section}>
+          <Text variant="titleMedium" style={styles.sectionTitle}>
+            Current Prep Schedules
+          </Text>
+
+          {scheduleItems.length === 0 ? (
+            <Card mode="outlined" style={styles.emptyCard}>
+              <Card.Content style={styles.emptyCardContent}>
+                <MaterialCommunityIcons
+                  name="calendar-blank"
+                  size={32}
+                  color={theme.colors.onSurfaceVariant}
+                />
+                <Text
+                  variant="bodyMedium"
+                  style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}
+                >
+                  No prep items scheduled for {selectedDate === today ? 'today' : 'tomorrow'}
+                </Text>
+                <Text
+                  variant="bodySmall"
+                  style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
+                >
+                  Tap a batch recipe above to add one
+                </Text>
+              </Card.Content>
+            </Card>
+          ) : (
+            <>
+              {/* Pending Items */}
+              {pendingItems.length > 0 && (
+                <View style={styles.statusSection}>
+                  <View style={styles.statusHeader}>
+                    <MaterialCommunityIcons name="clock-outline" size={18} color="#ff9800" />
+                    <Text variant="titleSmall" style={{ marginLeft: 8, fontWeight: '600' }}>
+                      Pending
+                    </Text>
+                    <Chip style={styles.countChip}>{pendingItems.length}</Chip>
+                  </View>
+                  {pendingItems.map((item: PrepScheduleItem) => (
+                    <Card key={item.prep_id} mode="outlined" style={styles.scheduleCard}>
+                      <Card.Content>
+                        <View style={styles.scheduleHeader}>
+                          <View style={{ flex: 1 }}>
+                            <Text variant="titleSmall" style={{ fontWeight: '600' }}>
+                              {item.batch_recipe_name || 'Unknown Recipe'}
+                            </Text>
+                            <Text
+                              variant="bodySmall"
+                              style={{ color: theme.colors.onSurfaceVariant }}
+                            >
+                              {new Date(item.scheduled_date).toLocaleDateString()}
+                            </Text>
+                          </View>
+                          <Chip
+                            style={{ backgroundColor: getStatusColor(item.status) + '20' }}
+                            textStyle={{ color: getStatusColor(item.status) }}
+                          >
+                            {item.status}
+                          </Chip>
+                        </View>
+
+                        <View style={styles.scheduleDetails}>
+                          <View style={styles.detailItem}>
+                            <Text
+                              variant="labelSmall"
+                              style={{ color: theme.colors.onSurfaceVariant }}
+                            >
+                              Qty Needed
+                            </Text>
+                            <Text variant="bodyMedium" style={{ fontWeight: '600' }}>
+                              {item.quantity_to_prep}
+                            </Text>
+                          </View>
+                          <View style={styles.detailItem}>
+                            <Text
+                              variant="labelSmall"
+                              style={{ color: theme.colors.onSurfaceVariant }}
+                            >
+                              Qty Prepped
+                            </Text>
+                            <Text variant="bodyMedium" style={{ fontWeight: '600' }}>
+                              {item.quantity_prepped ?? '-'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.cardActions}>
+                          <Button
+                            mode="outlined"
+                            onPress={() => openUpdateDialog(item)}
+                            style={styles.actionButton}
+                          >
+                            Update
+                          </Button>
+                          <IconButton
+                            icon="delete"
+                            iconColor="#f44336"
+                            size={20}
+                            onPress={() => handleDelete(item)}
+                          />
+                        </View>
+                      </Card.Content>
+                    </Card>
+                  ))}
+                </View>
+              )}
+
+              {/* Completed Items */}
+              {completedItems.length > 0 && (
+                <View style={styles.statusSection}>
+                  <View style={styles.statusHeader}>
+                    <MaterialCommunityIcons name="check-circle" size={18} color="#4caf50" />
+                    <Text variant="titleSmall" style={{ marginLeft: 8, fontWeight: '600' }}>
+                      Completed
+                    </Text>
+                    <Chip style={styles.countChip}>{completedItems.length}</Chip>
+                  </View>
+                  {completedItems.map((item: PrepScheduleItem) => (
+                    <Card
+                      key={item.prep_id}
+                      mode="outlined"
+                      style={[styles.scheduleCard, styles.completedCard]}
+                    >
+                      <Card.Content>
+                        <View style={styles.scheduleHeader}>
+                          <View style={{ flex: 1 }}>
+                            <Text variant="titleSmall" style={{ fontWeight: '600' }}>
+                              {item.batch_recipe_name || 'Unknown Recipe'}
+                            </Text>
+                            <Text
+                              variant="bodySmall"
+                              style={{ color: theme.colors.onSurfaceVariant }}
+                            >
+                              {new Date(item.scheduled_date).toLocaleDateString()}
+                            </Text>
+                          </View>
+                          <Chip
+                            style={{ backgroundColor: '#4caf5020' }}
+                            textStyle={{ color: '#4caf50' }}
+                          >
+                            completed
+                          </Chip>
+                        </View>
+
+                        <View style={styles.scheduleDetails}>
+                          <View style={styles.detailItem}>
+                            <Text
+                              variant="labelSmall"
+                              style={{ color: theme.colors.onSurfaceVariant }}
+                            >
+                              Qty Needed
+                            </Text>
+                            <Text variant="bodyMedium" style={{ fontWeight: '600' }}>
+                              {item.quantity_to_prep}
+                            </Text>
+                          </View>
+                          <View style={styles.detailItem}>
+                            <Text
+                              variant="labelSmall"
+                              style={{ color: theme.colors.onSurfaceVariant }}
+                            >
+                              Qty Prepped
+                            </Text>
+                            <Text variant="bodyMedium" style={{ fontWeight: '600' }}>
+                              {item.quantity_prepped ?? '-'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.cardActions}>
+                          <Button
+                            mode="text"
+                            onPress={() => openUpdateDialog(item)}
+                            style={styles.actionButton}
+                          >
+                            View Details
+                          </Button>
+                          <IconButton
+                            icon="delete"
+                            iconColor="#f44336"
+                            size={20}
+                            onPress={() => handleDelete(item)}
+                          />
+                        </View>
+                      </Card.Content>
+                    </Card>
+                  ))}
+                </View>
+              )}
+            </>
+          )}
+        </View>
+      </ScrollView>
 
       {/* FAB */}
       <FAB
         icon="plus"
         style={[styles.fab, { backgroundColor: theme.colors.primary }]}
-        onPress={openCreate}
+        onPress={() => {
+          if (batchRecipes.length > 0) {
+            openCreateDialog(batchRecipes[0]);
+          } else {
+            setSnackbar({ visible: true, message: 'No batch recipes available' });
+          }
+        }}
       />
 
       {/* Create Dialog */}
       <Portal>
         <Dialog visible={showCreateDialog} onDismiss={() => setShowCreateDialog(false)}>
-          <Dialog.Title>Add Prep Item</Dialog.Title>
+          <Dialog.Title>Create New Prep Schedule</Dialog.Title>
           <Dialog.Content>
+            {selectedRecipe && (
+              <>
+                <Text variant="titleMedium" style={{ fontWeight: '600' }}>
+                  {selectedRecipe.name}
+                </Text>
+                <Text
+                  variant="bodySmall"
+                  style={{ color: theme.colors.onSurfaceVariant, marginBottom: 16 }}
+                >
+                  Yield: {selectedRecipe.yield_quantity} {selectedRecipe.yield_unit}
+                </Text>
+              </>
+            )}
             <TextInput
-              label="Batch Recipe ID *"
-              value={formData.batch_recipe_id ? formData.batch_recipe_id.toString() : ''}
-              onChangeText={text =>
-                setFormData(f => ({ ...f, batch_recipe_id: parseInt(text) || 0 }))
-              }
-              mode="outlined"
-              keyboardType="number-pad"
-              style={styles.input}
-            />
-            <TextInput
-              label="Quantity to Prep *"
-              value={formData.quantity_to_prep}
-              onChangeText={text => setFormData(f => ({ ...f, quantity_to_prep: text }))}
+              label="Quantity Needed *"
+              value={createQuantity}
+              onChangeText={setCreateQuantity}
               mode="outlined"
               keyboardType="decimal-pad"
               style={styles.input}
+              autoFocus
             />
-            <TextInput
-              label="Notes"
-              value={formData.notes}
-              onChangeText={text => setFormData(f => ({ ...f, notes: text }))}
-              mode="outlined"
-              multiline
-              style={styles.input}
-            />
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Scheduling for: {selectedDate === today ? 'Today' : 'Tomorrow'} ({selectedDate})
+            </Text>
           </Dialog.Content>
           <Dialog.Actions>
             <Button onPress={() => setShowCreateDialog(false)}>Cancel</Button>
@@ -330,13 +578,87 @@ export default function PrepSchedule(): React.JSX.Element {
               mode="contained"
               onPress={handleCreate}
               loading={creating}
-              disabled={!formData.batch_recipe_id || !formData.quantity_to_prep}
+              disabled={!createQuantity || creating}
             >
-              Add
+              Create
             </Button>
           </Dialog.Actions>
         </Dialog>
       </Portal>
+
+      {/* Update Dialog */}
+      <Portal>
+        <Dialog visible={showUpdateDialog} onDismiss={() => setShowUpdateDialog(false)}>
+          <Dialog.Title>Update Prep Schedule</Dialog.Title>
+          <Dialog.Content>
+            {selectedSchedule && (
+              <>
+                <Text variant="titleMedium" style={{ fontWeight: '600' }}>
+                  {selectedSchedule.batch_recipe_name || 'Unknown Recipe'}
+                </Text>
+                <Text
+                  variant="bodySmall"
+                  style={{ color: theme.colors.onSurfaceVariant, marginBottom: 16 }}
+                >
+                  Scheduled: {new Date(selectedSchedule.scheduled_date).toLocaleDateString()}
+                </Text>
+              </>
+            )}
+
+            {/* Status Toggle */}
+            <Text variant="labelMedium" style={{ marginBottom: 8 }}>
+              Status
+            </Text>
+            <SegmentedButtons
+              value={updateStatus}
+              onValueChange={value => setUpdateStatus(value as 'in_progress' | 'completed')}
+              buttons={[
+                { value: 'in_progress', label: 'In Progress' },
+                { value: 'completed', label: 'Completed' },
+              ]}
+              style={{ marginBottom: 16 }}
+            />
+
+            {/* Completion Fields */}
+            {updateStatus === 'completed' && (
+              <>
+                <TextInput
+                  label="Actual Prep Time (minutes) *"
+                  value={updateActualTime}
+                  onChangeText={setUpdateActualTime}
+                  mode="outlined"
+                  keyboardType="number-pad"
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Batch Count *"
+                  value={updateBatchCount}
+                  onChangeText={setUpdateBatchCount}
+                  mode="outlined"
+                  keyboardType="number-pad"
+                  style={styles.input}
+                />
+              </>
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setShowUpdateDialog(false)}>Cancel</Button>
+            <Button mode="contained" onPress={handleUpdate} loading={updating} disabled={updating}>
+              Save
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+
+      {/* Snackbar */}
+      <Snackbar
+        visible={snackbar.visible}
+        onDismiss={() => setSnackbar({ ...snackbar, visible: false })}
+        duration={3000}
+        action={{ label: 'OK', onPress: () => setSnackbar({ ...snackbar, visible: false }) }}
+      >
+        {snackbar.message}
+      </Snackbar>
     </View>
   );
 }
@@ -349,6 +671,10 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 16,
+  },
+  scrollContent: {
+    paddingBottom: 100,
   },
   headerSurface: {
     padding: 16,
@@ -357,13 +683,8 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
   },
   segmented: {
     marginBottom: 12,
@@ -383,53 +704,73 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 4,
   },
-  listContent: {
+  section: {
     padding: 16,
-    paddingBottom: 100,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
   },
   sectionTitle: {
-    flex: 1,
-    marginLeft: 8,
     fontWeight: '600',
+    marginBottom: 4,
+  },
+  divider: {
+    marginHorizontal: 16,
+  },
+  emptyCard: {
+    marginTop: 8,
+  },
+  emptyCardContent: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  recipeCard: {
+    width: 200,
+    marginRight: 12,
+  },
+  recipeDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+    gap: 4,
+  },
+  recipeChip: {
+    marginRight: 4,
+  },
+  statusSection: {
+    marginTop: 16,
+  },
+  statusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   countChip: {
-    height: 22,
+    marginLeft: 'auto',
   },
-  card: {
+  scheduleCard: {
     marginBottom: 8,
   },
   completedCard: {
-    opacity: 0.7,
+    opacity: 0.8,
   },
-  cardContent: {
+  scheduleHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  scheduleDetails: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  detailItem: {
+    flex: 1,
+  },
+  cardActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 4,
   },
-  itemInfo: {
-    flex: 1,
-    marginLeft: 8,
-  },
-  itemName: {
-    fontWeight: '600',
-  },
-  completedText: {
-    textDecorationLine: 'line-through',
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  actionButton: {
+    marginRight: 8,
   },
   fab: {
     position: 'absolute',
@@ -438,8 +779,5 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 12,
-  },
-  row: {
-    flexDirection: 'row',
   },
 });

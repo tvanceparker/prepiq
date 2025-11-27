@@ -1,6 +1,6 @@
 // src/pages/inventory/InventoryList.tsx
 import React, { useState, useCallback, useContext } from 'react';
-import { View, StyleSheet, SectionList, RefreshControl, Pressable } from 'react-native';
+import { View, StyleSheet, SectionList, RefreshControl, Pressable, ScrollView } from 'react-native';
 import {
   Surface,
   Text,
@@ -11,19 +11,19 @@ import {
   Button,
   Portal,
   Modal,
-  List,
   Divider,
   IconButton,
   useTheme,
+  ProgressBar,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useInventory, useLotInfo } from '../../hooks/useInventory';
 import { AuthContext } from '../../contexts/AuthContext';
-import { InventoryItemDTO, InventoryLotDTO } from '../../interfaces/inventory';
+import { InventoryItem, LotBreakdown } from '../../interfaces/inventory';
 
 interface InventorySection {
   title: string;
-  data: InventoryItemDTO[];
+  data: InventoryItem[];
 }
 
 export default function InventoryList(): React.JSX.Element {
@@ -32,16 +32,19 @@ export default function InventoryList(): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [selectedItem, setSelectedItem] = useState<InventoryItemDTO | null>(null);
+  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [selectedLotId, setSelectedLotId] = useState<number | null>(null);
   const [showLotModal, setShowLotModal] = useState(false);
+  const [showLotDetailModal, setShowLotDetailModal] = useState(false);
 
   // Queries
   const { inventory, loading: isLoading, refresh } = useInventory();
+  const { lotInfo, usedLogs, wastedLogs, loading: lotLoading } = useLotInfo(selectedLotId);
 
   // Pull to refresh
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    refresh();
+    await refresh();
     setRefreshing(false);
   }, [refresh]);
 
@@ -64,7 +67,7 @@ export default function InventoryList(): React.JSX.Element {
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      items = items.filter(item => item.name.toLowerCase().includes(query));
+      items = items.filter(item => item.ingredient_name?.toLowerCase().includes(query));
     }
 
     return items;
@@ -72,7 +75,7 @@ export default function InventoryList(): React.JSX.Element {
 
   // Group by category for SectionList
   const sections: InventorySection[] = React.useMemo(() => {
-    const grouped: Record<string, InventoryItemDTO[]> = {};
+    const grouped: Record<string, InventoryItem[]> = {};
 
     filteredInventory.forEach(item => {
       const category = item.category || 'Uncategorized';
@@ -87,17 +90,29 @@ export default function InventoryList(): React.JSX.Element {
       .map(([title, data]) => ({ title, data }));
   }, [filteredInventory]);
 
-  // Open lot detail modal
-  const handleViewLots = (item: InventoryItemDTO) => {
+  // Open lot breakdown modal
+  const handleViewLots = (item: InventoryItem) => {
     setSelectedItem(item);
     setShowLotModal(true);
   };
 
+  // Open lot detail modal (for a specific lot)
+  const handleViewLotDetail = (lotId: number) => {
+    setSelectedLotId(lotId);
+    setShowLotDetailModal(true);
+  };
+
   // Stock level indicator
   const getStockLevel = (quantity: number, reorderPoint: number = 10) => {
-    if (quantity <= 0) return { color: '#f44336', label: 'Out of Stock' };
-    if (quantity <= reorderPoint) return { color: '#ff9800', label: 'Low Stock' };
-    return { color: '#4caf50', label: 'In Stock' };
+    if (quantity <= 0) return { color: '#f44336', label: 'Out of Stock', icon: 'alert-circle' };
+    if (quantity <= reorderPoint) return { color: '#ff9800', label: 'Low Stock', icon: 'alert' };
+    return { color: '#4caf50', label: 'In Stock', icon: 'check-circle' };
+  };
+
+  // Format date helper
+  const formatDate = (dateStr: string | null | undefined) => {
+    if (!dateStr) return 'N/A';
+    return new Date(dateStr).toLocaleDateString();
   };
 
   const renderSectionHeader = ({ section }: { section: InventorySection }) => (
@@ -106,15 +121,16 @@ export default function InventoryList(): React.JSX.Element {
       <Text variant="titleSmall" style={styles.sectionTitle}>
         {section.title}
       </Text>
-      <Chip compact style={styles.countChip}>
-        {section.data.length}
-      </Chip>
+      <View style={styles.sectionCount}>
+        <Text variant="labelSmall">{section.data.length}</Text>
+      </View>
     </View>
   );
 
-  const renderItem = ({ item }: { item: InventoryItemDTO }) => {
-    const stockLevel = getStockLevel(item.total_quantity);
-    const lotsCount = item.lots?.length || 0;
+  const renderItem = ({ item }: { item: InventoryItem }) => {
+    const stockLevel = getStockLevel(item.quantity_on_hand);
+    const lotsCount = item.packaging_breakdown?.length || 0;
+    const isBatchRecipe = item.batch_recipe_id !== null;
 
     return (
       <Card style={styles.itemCard} mode="outlined">
@@ -123,8 +139,16 @@ export default function InventoryList(): React.JSX.Element {
             <View style={styles.itemHeader}>
               <View style={styles.itemInfo}>
                 <View style={styles.nameRow}>
-                  <Text variant="titleSmall" style={styles.itemName} numberOfLines={1}>
-                    {item.name}
+                  <Text
+                    variant="titleSmall"
+                    style={[
+                      styles.itemName,
+                      isBatchRecipe && { color: theme.colors.primary, fontWeight: '700' },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {item.ingredient_name}
+                    {isBatchRecipe && ' (Batch)'}
                   </Text>
                 </View>
                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
@@ -133,8 +157,8 @@ export default function InventoryList(): React.JSX.Element {
               </View>
 
               <View style={styles.quantitySection}>
-                <Text variant="titleLarge" style={[styles.quantity, { color: stockLevel.color }]}>
-                  {item.total_quantity}
+                <Text variant="headlineMedium" style={[styles.quantity, { color: stockLevel.color }]}>
+                  {item.quantity_on_hand}
                 </Text>
                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                   {item.unit}
@@ -143,25 +167,93 @@ export default function InventoryList(): React.JSX.Element {
             </View>
 
             <View style={styles.itemFooter}>
-              <Chip
-                compact
-                style={[styles.stockChip, { backgroundColor: stockLevel.color }]}
-                textStyle={{ color: '#fff', fontSize: 10 }}
-              >
-                {stockLevel.label}
-              </Chip>
+              <View style={[styles.statusBadge, { backgroundColor: `${stockLevel.color}15` }]}>
+                <MaterialCommunityIcons name={stockLevel.icon as any} size={14} color={stockLevel.color} />
+                <Text variant="labelSmall" style={{ color: stockLevel.color, marginLeft: 4 }}>
+                  {stockLevel.label}
+                </Text>
+              </View>
 
-              {lotsCount > 0 && (
-                <Button
-                  mode="text"
-                  compact
-                  icon="package-variant"
-                  onPress={() => handleViewLots(item)}
-                >
-                  {lotsCount} lot{lotsCount > 1 ? 's' : ''}
-                </Button>
-              )}
+              <Pressable style={styles.lotsButton} onPress={() => handleViewLots(item)}>
+                <MaterialCommunityIcons name="package-variant" size={16} color={theme.colors.primary} />
+                <Text variant="labelMedium" style={{ color: theme.colors.primary, marginLeft: 4 }}>
+                  {lotsCount} lot{lotsCount !== 1 ? 's' : ''}
+                </Text>
+              </Pressable>
             </View>
+          </Card.Content>
+        </Pressable>
+      </Card>
+    );
+  };
+
+  // Render lot item in the breakdown modal
+  const renderLotItem = (lot: LotBreakdown, index: number) => {
+    const usagePercent = lot.quantity > 0 ? ((lot.quantity - lot.remaining_quantity) / lot.quantity) * 100 : 0;
+
+    return (
+      <Card key={lot.lot_id || index} style={styles.lotCard} mode="outlined">
+        <Pressable onPress={() => handleViewLotDetail(lot.lot_id)}>
+          <Card.Content>
+            <View style={styles.lotHeader}>
+              <View style={styles.lotTitleRow}>
+                <MaterialCommunityIcons name="package-variant" size={18} color={theme.colors.primary} />
+                <Text variant="titleSmall" style={{ marginLeft: 6, fontWeight: '600' }}>
+                  Lot #{lot.lot_id}
+                </Text>
+              </View>
+              <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                {formatDate(lot.delivery_date)}
+              </Text>
+            </View>
+
+            {/* Usage Progress Bar */}
+            <View style={styles.progressSection}>
+              <View style={styles.progressLabelRow}>
+                <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  {lot.remaining_quantity} / {lot.quantity} remaining
+                </Text>
+                <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  {Math.round(100 - usagePercent)}%
+                </Text>
+              </View>
+              <ProgressBar
+                progress={lot.remaining_quantity / Math.max(lot.quantity, 1)}
+                color={theme.colors.primary}
+                style={styles.progressBar}
+              />
+            </View>
+
+            {/* Lot Stats */}
+            <View style={styles.lotStatsRow}>
+              <View style={styles.lotStat}>
+                <MaterialCommunityIcons name="plus-circle" size={14} color="#4caf50" />
+                <Text variant="labelSmall" style={{ marginLeft: 4, color: '#4caf50' }}>
+                  +{lot.added_quantity || 0}
+                </Text>
+              </View>
+              <View style={styles.lotStat}>
+                <MaterialCommunityIcons name="minus-circle" size={14} color="#2196f3" />
+                <Text variant="labelSmall" style={{ marginLeft: 4, color: '#2196f3' }}>
+                  -{lot.used_quantity || 0}
+                </Text>
+              </View>
+              <View style={styles.lotStat}>
+                <MaterialCommunityIcons name="delete" size={14} color="#ff9800" />
+                <Text variant="labelSmall" style={{ marginLeft: 4, color: '#ff9800' }}>
+                  -{lot.wasted_quantity || 0}
+                </Text>
+              </View>
+            </View>
+
+            {/* Packaging Info */}
+            {lot.pack_size && (
+              <View style={styles.packagingRow}>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  📦 {lot.packages_received_total || 0} packs received • ~{lot.approx_packages_remaining || 0} remaining
+                </Text>
+              </View>
+            )}
           </Card.Content>
         </Pressable>
       </Card>
@@ -188,7 +280,12 @@ export default function InventoryList(): React.JSX.Element {
               Inventory
             </Text>
           </View>
-          <Chip icon="package-variant">{inventory.length} items</Chip>
+          <View style={styles.headerItemCount}>
+            <MaterialCommunityIcons name="package-variant" size={16} color={theme.colors.primary} />
+            <Text style={{ marginLeft: 4, color: theme.colors.primary }}>
+              {inventory.length} items
+            </Text>
+          </View>
         </View>
 
         {/* Search */}
@@ -200,8 +297,8 @@ export default function InventoryList(): React.JSX.Element {
         />
 
         {/* Category Filters */}
-        <View style={styles.filterScroll}>
-          {categories.slice(0, 5).map(category => (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+          {categories.map(category => (
             <Chip
               key={category}
               selected={categoryFilter === category}
@@ -213,7 +310,7 @@ export default function InventoryList(): React.JSX.Element {
               {category === 'all' ? 'All' : category}
             </Chip>
           ))}
-        </View>
+        </ScrollView>
       </Surface>
 
       {/* Inventory List */}
@@ -234,7 +331,7 @@ export default function InventoryList(): React.JSX.Element {
       ) : (
         <SectionList
           sections={sections}
-          keyExtractor={item => item.inventory_id?.toString() || item.name}
+          keyExtractor={item => item.inventory_id?.toString() || item.ingredient_name}
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={styles.listContent}
@@ -243,7 +340,7 @@ export default function InventoryList(): React.JSX.Element {
         />
       )}
 
-      {/* Lot Detail Modal */}
+      {/* Lot Breakdown Modal */}
       <Portal>
         <Modal
           visible={showLotModal}
@@ -251,23 +348,34 @@ export default function InventoryList(): React.JSX.Element {
           contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}
         >
           {selectedItem && (
-            <>
+            <ScrollView>
               <View style={styles.modalHeader}>
-                <Text variant="titleLarge" style={{ fontWeight: '600' }}>
-                  {selectedItem.name}
-                </Text>
-                <IconButton icon="close" onPress={() => setShowLotModal(false)} />
+                <View>
+                  <Text variant="titleLarge" style={{ fontWeight: '600' }}>
+                    {selectedItem.ingredient_name}
+                  </Text>
+                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                    {selectedItem.category || 'Uncategorized'}
+                  </Text>
+                </View>
+                <IconButton
+                  icon={() => (
+                    <MaterialCommunityIcons name="close" size={24} color={theme.colors.onSurface} />
+                  )}
+                  onPress={() => setShowLotModal(false)}
+                />
               </View>
 
               <Divider />
 
+              {/* Summary Stats */}
               <View style={styles.modalStats}>
                 <View style={styles.statItem}>
                   <Text
                     variant="headlineSmall"
                     style={{ fontWeight: '700', color: theme.colors.primary }}
                   >
-                    {selectedItem.total_quantity}
+                    {selectedItem.quantity_on_hand}
                   </Text>
                   <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                     On Hand ({selectedItem.unit})
@@ -275,7 +383,7 @@ export default function InventoryList(): React.JSX.Element {
                 </View>
                 <View style={styles.statItem}>
                   <Text variant="headlineSmall" style={{ fontWeight: '700' }}>
-                    {selectedItem.lots?.length || 0}
+                    {selectedItem.packaging_breakdown?.length || 0}
                   </Text>
                   <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                     Active Lots
@@ -287,37 +395,134 @@ export default function InventoryList(): React.JSX.Element {
 
               <Text
                 variant="titleMedium"
-                style={{ marginTop: 16, marginBottom: 8, fontWeight: '600' }}
+                style={{ marginTop: 16, marginBottom: 12, fontWeight: '600' }}
               >
-                Lot Breakdown
+                FIFO Lot Breakdown
               </Text>
 
-              {!selectedItem.lots || selectedItem.lots.length === 0 ? (
-                <Text
-                  style={{
-                    color: theme.colors.onSurfaceVariant,
-                    textAlign: 'center',
-                    paddingVertical: 24,
-                  }}
-                >
-                  No active lots
-                </Text>
+              {!selectedItem.packaging_breakdown || selectedItem.packaging_breakdown.length === 0 ? (
+                <View style={styles.emptyLots}>
+                  <MaterialCommunityIcons name="package-variant-closed" size={48} color={theme.colors.outline} />
+                  <Text style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}>
+                    No active lots for this item
+                  </Text>
+                </View>
               ) : (
-                selectedItem.lots.map((lot: InventoryLotDTO, index: number) => (
-                  <List.Item
-                    key={lot.lot_id || index}
-                    title={`Lot #${lot.lot_id || index + 1}`}
-                    description={`Qty: ${lot.quantity} | Expires: ${
-                      lot.expiration_date
-                        ? new Date(lot.expiration_date).toLocaleDateString()
-                        : 'N/A'
-                    }`}
-                    left={props => <List.Icon {...props} icon="package-variant" />}
-                  />
-                ))
+                selectedItem.packaging_breakdown.map((lot, index) => renderLotItem(lot, index))
               )}
-            </>
+            </ScrollView>
           )}
+        </Modal>
+
+        {/* Lot Detail Modal (shows usage/waste logs) */}
+        <Modal
+          visible={showLotDetailModal}
+          onDismiss={() => setShowLotDetailModal(false)}
+          contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}
+        >
+          <ScrollView>
+            <View style={styles.modalHeader}>
+              <Text variant="titleLarge" style={{ fontWeight: '600' }}>
+                Lot #{selectedLotId} Details
+              </Text>
+              <IconButton
+                icon={() => (
+                  <MaterialCommunityIcons name="close" size={24} color={theme.colors.onSurface} />
+                )}
+                onPress={() => setShowLotDetailModal(false)}
+              />
+            </View>
+
+            <Divider />
+
+            {lotLoading ? (
+              <View style={styles.centered}>
+                <ActivityIndicator size="large" />
+              </View>
+            ) : (
+              <>
+                {lotInfo && (
+                  <View style={styles.lotInfoSection}>
+                    <Text variant="titleSmall" style={{ fontWeight: '600', marginBottom: 8 }}>
+                      Lot Information
+                    </Text>
+                    <View style={styles.infoRow}>
+                      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Delivery Date:</Text>
+                      <Text variant="bodyMedium">{formatDate(lotInfo.delivery_date)}</Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Received Qty:</Text>
+                      <Text variant="bodyMedium">{lotInfo.received_quantity}</Text>
+                    </View>
+                    {lotInfo.spoilage_expected_date && (
+                      <View style={styles.infoRow}>
+                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Expected Spoilage:</Text>
+                        <Text variant="bodyMedium">{formatDate(lotInfo.spoilage_expected_date)}</Text>
+                      </View>
+                    )}
+                    {lotInfo.supplier?.supplier_name && (
+                      <View style={styles.infoRow}>
+                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Supplier:</Text>
+                        <Text variant="bodyMedium">{lotInfo.supplier.supplier_name}</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                <Divider style={{ marginVertical: 12 }} />
+
+                {/* Used Logs */}
+                <Text variant="titleSmall" style={{ fontWeight: '600', marginBottom: 8, color: '#2196f3' }}>
+                  Usage Logs ({usedLogs.length})
+                </Text>
+                {usedLogs.length === 0 ? (
+                  <Text variant="bodySmall" style={{ color: theme.colors.outline, marginBottom: 12 }}>
+                    No usage logs
+                  </Text>
+                ) : (
+                  usedLogs.slice(0, 5).map((log, idx) => (
+                    <View key={log.usage_id || idx} style={styles.logItem}>
+                      <View>
+                        <Text variant="bodySmall">{log.usage_type}</Text>
+                        <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                          {formatDate(log.used_date)}
+                        </Text>
+                      </View>
+                      <Text variant="bodyMedium" style={{ color: '#2196f3' }}>
+                        -{log.used_quantity} {log.unit}
+                      </Text>
+                    </View>
+                  ))
+                )}
+
+                <Divider style={{ marginVertical: 12 }} />
+
+                {/* Waste Logs */}
+                <Text variant="titleSmall" style={{ fontWeight: '600', marginBottom: 8, color: '#ff9800' }}>
+                  Waste Logs ({wastedLogs.length})
+                </Text>
+                {wastedLogs.length === 0 ? (
+                  <Text variant="bodySmall" style={{ color: theme.colors.outline }}>
+                    No waste logs
+                  </Text>
+                ) : (
+                  wastedLogs.slice(0, 5).map((log, idx) => (
+                    <View key={log.usage_id || idx} style={styles.logItem}>
+                      <View>
+                        <Text variant="bodySmall">{log.usage_type}</Text>
+                        <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                          {formatDate(log.used_date)}
+                        </Text>
+                      </View>
+                      <Text variant="bodyMedium" style={{ color: '#ff9800' }}>
+                        -{log.used_quantity} {log.unit}
+                      </Text>
+                    </View>
+                  ))
+                )}
+              </>
+            )}
+          </ScrollView>
         </Modal>
       </Portal>
     </View>
@@ -332,6 +537,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
   },
   headerSurface: {
     padding: 16,
@@ -344,6 +550,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
+  headerItemCount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
+  },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -353,11 +567,9 @@ const styles = StyleSheet.create({
   },
   filterScroll: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
   },
   filterChip: {
-    marginBottom: 4,
+    marginRight: 8,
   },
   listContent: {
     padding: 16,
@@ -373,11 +585,14 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontWeight: '600',
   },
-  countChip: {
-    height: 22,
+  sectionCount: {
+    backgroundColor: '#e0e0e0',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
   },
   itemCard: {
-    marginBottom: 8,
+    marginBottom: 10,
   },
   itemHeader: {
     flexDirection: 'row',
@@ -405,10 +620,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 12,
   },
-  stockChip: {
-    height: 22,
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
+  },
+  lotsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   emptyState: {
     flex: 1,
@@ -419,12 +644,12 @@ const styles = StyleSheet.create({
     margin: 16,
     borderRadius: 12,
     padding: 16,
-    maxHeight: '80%',
+    maxHeight: '85%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
   modalStats: {
@@ -435,11 +660,66 @@ const styles = StyleSheet.create({
   statItem: {
     alignItems: 'center',
   },
-  lotChips: {
-    flexDirection: 'row',
-    gap: 4,
+  emptyLots: {
+    alignItems: 'center',
+    paddingVertical: 32,
   },
-  lotChip: {
-    height: 24,
+  lotCard: {
+    marginBottom: 10,
+  },
+  lotHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  lotTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressSection: {
+    marginVertical: 8,
+  },
+  progressLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  progressBar: {
+    height: 6,
+    borderRadius: 3,
+  },
+  lotStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    gap: 16,
+    marginTop: 8,
+  },
+  lotStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  packagingRow: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  lotInfoSection: {
+    paddingVertical: 12,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  logItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
 });

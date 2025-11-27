@@ -19,9 +19,37 @@ export interface InventoryItemDTO {
   lots?: InventoryLotDTO[];
 }
 
+export interface SupplierIngredient {
+  ingredient_supplier_id: number;
+  ingredient_id: number;
+  ingredient_name: string;
+  unit: string;
+  cost_per_unit: number;
+  lead_time_days?: number | null;
+  spoilage_rate?: number | null;
+  shelf_life_days?: number | null;
+  preferred: boolean;
+  min_order_quantity?: number | null;
+  supplier_priority?: number | null;
+  pack_size?: number | null;
+  quantity_per_pack_item?: number | null;
+}
+
 export interface SupplierDTO {
   supplier_id: number;
   name: string;
+  type?: string | null;
+  region?: string | null;
+  contact_info?: string | null;
+  rating?: number | null;
+  website?: string | null;
+  is_active?: boolean;
+  supplier_feedback?: string | null;
+  contract_status?: string | null;
+  contract_start_date?: string | null;
+  contract_end_date?: string | null;
+  ingredients?: SupplierIngredient[];
+  // Legacy fields for backwards compatibility
   contact_email?: string | null;
   contact_phone?: string | null;
   address?: string | null;

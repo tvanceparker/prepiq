@@ -9,7 +9,7 @@ import {
   adjustInventory,
   getInventoryAdjustments,
 } from '../api/inventory';
-import type { InventoryItem, LotInfo } from '../interfaces/inventory';
+import type { InventoryItem, LotInfo, UsageLog } from '../interfaces/inventory';
 
 export interface UseInventoryOptions {
   autoRefresh?: boolean;
@@ -20,26 +20,31 @@ export function useInventory(options: UseInventoryOptions = {}) {
   const queryClient = useQueryClient();
   const { autoRefresh = false, refetchInterval = 60000 } = options;
 
-  // Fetch all inventory
+  // Fetch all inventory - returns InventoryItem[] with packaging_breakdown
   const inventoryQuery = useQuery({
     queryKey: ['inventory', 'all'],
     queryFn: fetchAllInventory,
     refetchInterval: autoRefresh ? refetchInterval : false,
   });
 
+  // Cast the data to InventoryItem[] since that's what the backend returns
+  const inventory = (inventoryQuery.data ?? []) as unknown as InventoryItem[];
+
   // Group inventory by category for SectionList
-  const inventoryByCategory = (inventoryQuery.data ?? []).reduce((acc, item: any) => {
+  const inventoryByCategory = inventory.reduce((acc, item) => {
     const category = item.category || 'Uncategorized';
     if (!acc[category]) acc[category] = [];
     acc[category].push(item);
     return acc;
-  }, {} as Record<string, any[]>);
+  }, {} as Record<string, InventoryItem[]>);
 
   // Get sections for SectionList
-  const sections = Object.entries(inventoryByCategory).map(([category, items]) => ({
-    title: category,
-    data: items,
-  }));
+  const sections = Object.entries(inventoryByCategory)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([category, items]) => ({
+      title: category,
+      data: items,
+    }));
 
   // Adjustment mutation
   const adjustMutation = useMutation({
@@ -54,7 +59,7 @@ export function useInventory(options: UseInventoryOptions = {}) {
   };
 
   return {
-    inventory: inventoryQuery.data ?? [],
+    inventory,
     inventoryByCategory,
     sections,
     loading: inventoryQuery.isLoading,
@@ -83,28 +88,28 @@ export function useInventoryDetails(inventoryId: number | null) {
   };
 }
 
-// Hook for fetching lot information
+// Hook for fetching lot information with usage logs
 export function useLotInfo(lotId: number | null) {
   const lotQuery = useQuery({
     queryKey: ['inventory', 'lot', lotId],
-    queryFn: () => fetchLotInfo(lotId!),
+    queryFn: () => fetchLotInfo(lotId!) as Promise<LotInfo>,
     enabled: lotId !== null,
   });
 
   const usedLogsQuery = useQuery({
     queryKey: ['inventory', 'lot', lotId, 'used'],
-    queryFn: () => fetchUsedUsageLogs(lotId!),
+    queryFn: () => fetchUsedUsageLogs(lotId!) as Promise<UsageLog[]>,
     enabled: lotId !== null,
   });
 
   const wastedLogsQuery = useQuery({
     queryKey: ['inventory', 'lot', lotId, 'wasted'],
-    queryFn: () => fetchWastedUsageLogs(lotId!),
+    queryFn: () => fetchWastedUsageLogs(lotId!) as Promise<UsageLog[]>,
     enabled: lotId !== null,
   });
 
   return {
-    lotInfo: lotQuery.data,
+    lotInfo: lotQuery.data ?? null,
     usedLogs: usedLogsQuery.data ?? [],
     wastedLogs: wastedLogsQuery.data ?? [],
     loading: lotQuery.isLoading || usedLogsQuery.isLoading || wastedLogsQuery.isLoading,

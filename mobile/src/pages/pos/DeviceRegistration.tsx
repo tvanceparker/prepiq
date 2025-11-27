@@ -13,6 +13,7 @@ import {
   Divider,
   ActivityIndicator,
 } from 'react-native-paper';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { usePOS } from '../../hooks/usePOS';
 import type { POSDevice } from '../../interfaces/pos';
 
@@ -138,7 +139,14 @@ export default function DeviceRegistration() {
                   description={`${device.device_type?.replace('_', ' ')} • ${
                     device.is_active ? 'Active' : 'Inactive'
                   }`}
-                  left={props => <List.Icon {...props} icon={getDeviceIcon(device.device_type)} />}
+                  left={() => (
+                    <MaterialCommunityIcons
+                      name={getDeviceIcon(device.device_type) as any}
+                      size={24}
+                      color={theme.colors.primary}
+                      style={{ marginLeft: 8, alignSelf: 'center' }}
+                    />
+                  )}
                   right={() => (
                     <Button
                       mode="text"

@@ -16,6 +16,7 @@ import {
   Portal,
   Dialog,
 } from 'react-native-paper';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api';
 import { AuthContext } from '../../contexts/AuthContext';
@@ -103,7 +104,14 @@ export default function IntegrationSettings() {
             <Card.Title
               title="POS System"
               titleVariant="titleMedium"
-              left={props => <List.Icon {...props} icon="point-of-sale" />}
+              left={() => (
+                <MaterialCommunityIcons
+                  name="point-of-sale"
+                  size={24}
+                  color={theme.colors.primary}
+                  style={{ marginLeft: 16 }}
+                />
+              )}
               right={() => (
                 <Chip compact mode={config?.pos_provider ? 'flat' : 'outlined'}>
                   {config?.pos_provider || 'Not Connected'}
@@ -132,7 +140,14 @@ export default function IntegrationSettings() {
             <Card.Title
               title="Stripe Payments"
               titleVariant="titleMedium"
-              left={props => <List.Icon {...props} icon="credit-card" />}
+              left={() => (
+                <MaterialCommunityIcons
+                  name="credit-card"
+                  size={24}
+                  color={theme.colors.primary}
+                  style={{ marginLeft: 16 }}
+                />
+              )}
             />
             <Card.Content>
               <List.Item
@@ -167,7 +182,14 @@ export default function IntegrationSettings() {
               <Card.Title
                 title="Weather Integration"
                 titleVariant="titleMedium"
-                left={props => <List.Icon {...props} icon="weather-partly-cloudy" />}
+                left={() => (
+                  <MaterialCommunityIcons
+                    name="weather-partly-cloudy"
+                    size={24}
+                    color={theme.colors.primary}
+                    style={{ marginLeft: 16 }}
+                  />
+                )}
                 right={() => (
                   <Chip compact mode={config?.weather_api_key ? 'flat' : 'outlined'}>
                     {config?.weather_api_key ? 'Connected' : 'Not Set'}
@@ -195,7 +217,14 @@ export default function IntegrationSettings() {
             <Card.Title
               title="Data Sync"
               titleVariant="titleMedium"
-              left={props => <List.Icon {...props} icon="sync" />}
+              left={() => (
+                <MaterialCommunityIcons
+                  name="sync"
+                  size={24}
+                  color={theme.colors.primary}
+                  style={{ marginLeft: 16 }}
+                />
+              )}
             />
             <Card.Content>
               <List.Item

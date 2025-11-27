@@ -73,7 +73,13 @@ export default function MenuItemCard({
             {item.category ? ` | Category: ${item.category}` : ''}
           </Text>
         </View>
-        <IconButton icon="pencil" size={20} onPress={() => onEdit(item)} />
+        <IconButton
+          icon={() => (
+            <MaterialCommunityIcons name="pencil" size={20} color={theme.colors.onSurface} />
+          )}
+          size={20}
+          onPress={() => onEdit(item)}
+        />
       </Card.Content>
 
       {/* Expandable Section Toggle */}
@@ -176,25 +182,21 @@ export default function MenuItemCard({
 
           {/* Card Actions */}
           <View style={styles.cardActions}>
-            <Chip
-              compact
-              icon="pencil"
-              mode="outlined"
-              onPress={() => onEdit(item)}
-              style={styles.actionChip}
-            >
-              Edit
-            </Chip>
-            <Chip
-              compact
-              icon="delete"
-              mode="outlined"
+            <Pressable style={styles.actionChip} onPress={() => onEdit(item)}>
+              <MaterialCommunityIcons name="pencil" size={16} color={theme.colors.primary} />
+              <Text variant="labelSmall" style={{ color: theme.colors.primary, marginLeft: 4 }}>
+                Edit
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.actionChip, styles.deleteChip]}
               onPress={() => onDelete(item)}
-              style={[styles.actionChip, { borderColor: '#f44336' }]}
-              textStyle={{ color: '#f44336' }}
             >
-              Delete
-            </Chip>
+              <MaterialCommunityIcons name="delete" size={16} color="#f44336" />
+              <Text variant="labelSmall" style={{ color: '#f44336', marginLeft: 4 }}>
+                Delete
+              </Text>
+            </Pressable>
           </View>
         </View>
       )}
@@ -289,6 +291,15 @@ const styles = StyleSheet.create({
     borderTopColor: '#e0e0e0',
   },
   actionChip: {
-    height: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#ccc',
+  },
+  deleteChip: {
+    borderColor: '#f44336',
   },
 });

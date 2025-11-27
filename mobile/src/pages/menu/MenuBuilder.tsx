@@ -221,7 +221,15 @@ export default function MenuBuilder({ navigation }: { navigation?: any }): React
               Menu Builder
             </Text>
           </View>
-          <Chip icon="silverware">{allItems.length} items</Chip>
+          <View style={styles.headerChip}>
+            <MaterialCommunityIcons
+              name="silverware"
+              size={16}
+              color={theme.colors.onSurfaceVariant}
+              style={{ marginRight: 4 }}
+            />
+            <Text variant="labelMedium">{allItems.length} items</Text>
+          </View>
         </View>
 
         <Searchbar
@@ -278,7 +286,7 @@ export default function MenuBuilder({ navigation }: { navigation?: any }): React
 
       {/* FAB */}
       <FAB
-        icon="plus"
+        icon={() => <MaterialCommunityIcons name="plus" size={24} color={theme.colors.onPrimary} />}
         style={[styles.fab, { backgroundColor: theme.colors.primary }]}
         onPress={openCreate}
       />
@@ -387,5 +395,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 16,
     bottom: 16,
+  },
+  headerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.08)',
   },
 });

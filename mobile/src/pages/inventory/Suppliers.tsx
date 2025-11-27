@@ -1,6 +1,6 @@
 // src/pages/inventory/Suppliers.tsx
-import React, { useState, useCallback, useContext } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import React, { useState, useCallback, useContext, useMemo } from 'react';
+import { View, StyleSheet, FlatList, RefreshControl, ScrollView } from 'react-native';
 import {
   Surface,
   Text,
@@ -15,28 +15,71 @@ import {
   FAB,
   IconButton,
   useTheme,
+  List,
+  Divider,
+  Switch,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSuppliers } from '../../hooks/useSuppliers';
+import { updateIngredientSupplier } from '../../api/inventory';
 import { AuthContext } from '../../contexts/AuthContext';
-import { SupplierDTO } from '../../interfaces/inventory';
+import type { SupplierDTO, SupplierIngredient } from '../../interfaces/inventory';
+
+interface SnackbarState {
+  visible: boolean;
+  message: string;
+  type: 'success' | 'error';
+}
 
 export default function Suppliers(): React.JSX.Element {
   const theme = useTheme();
   const { tier } = useContext(AuthContext) || {};
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterActive, setFilterActive] = useState(true);
+
+  // Dialog states
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<SupplierDTO | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<SupplierDTO | null>(null);
 
-  // Form state
+  // Detail view state
+  const [expandedSupplierId, setExpandedSupplierId] = useState<number | null>(null);
+
+  // Ingredient editing state
+  const [editingIngredient, setEditingIngredient] = useState<SupplierIngredient | null>(null);
+  const [ingredientForm, setIngredientForm] = useState({
+    unit: '',
+    cost_per_unit: '',
+    lead_time_days: '',
+    spoilage_rate: '',
+    shelf_life_days: '',
+    preferred: false,
+    min_order_quantity: '',
+    supplier_priority: '',
+    pack_size: '',
+    quantity_per_pack_item: '',
+  });
+  const [savingIngredient, setSavingIngredient] = useState(false);
+
+  // Snackbar state
+  const [snackbar, setSnackbar] = useState<SnackbarState>({
+    visible: false,
+    message: '',
+    type: 'success',
+  });
+
+  // Form state for supplier
   const [formData, setFormData] = useState({
     name: '',
-    contact_email: '',
-    contact_phone: '',
-    address: '',
-    notes: '',
+    type: '',
+    region: '',
+    contact_info: '',
+    rating: '',
+    website: '',
+    is_active: true,
+    supplier_feedback: '',
+    contract_status: 'Active',
   });
 
   // Queries & mutations
@@ -55,22 +98,38 @@ export default function Suppliers(): React.JSX.Element {
   // Pull to refresh
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    refresh();
+    await refresh();
     setRefreshing(false);
   }, [refresh]);
 
-  // Filter suppliers
-  const filteredSuppliers = React.useMemo(() => {
-    if (!searchQuery) return suppliers;
-    const query = searchQuery.toLowerCase();
-    return suppliers.filter(
-      s => s.name.toLowerCase().includes(query) || s.contact_email?.toLowerCase().includes(query)
-    );
-  }, [suppliers, searchQuery]);
+  // Filter suppliers by active status and search
+  const filteredSuppliers = useMemo(() => {
+    let result = suppliers.filter(s => (s.is_active ?? true) === filterActive);
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(
+        s =>
+          s.name.toLowerCase().includes(query) ||
+          s.type?.toLowerCase().includes(query) ||
+          s.region?.toLowerCase().includes(query)
+      );
+    }
+    return result;
+  }, [suppliers, filterActive, searchQuery]);
 
   // Open create dialog
   const openCreate = () => {
-    setFormData({ name: '', contact_email: '', contact_phone: '', address: '', notes: '' });
+    setFormData({
+      name: '',
+      type: '',
+      region: '',
+      contact_info: '',
+      rating: '',
+      website: '',
+      is_active: true,
+      supplier_feedback: '',
+      contract_status: 'Active',
+    });
     setShowCreateDialog(true);
   };
 
@@ -79,97 +138,375 @@ export default function Suppliers(): React.JSX.Element {
     setEditingSupplier(supplier);
     setFormData({
       name: supplier.name,
-      contact_email: supplier.contact_email || '',
-      contact_phone: supplier.contact_phone || '',
-      address: supplier.address || '',
-      notes: supplier.notes || '',
+      type: supplier.type || '',
+      region: supplier.region || '',
+      contact_info: supplier.contact_info || '',
+      rating: supplier.rating?.toString() || '',
+      website: supplier.website || '',
+      is_active: supplier.is_active ?? true,
+      supplier_feedback: supplier.supplier_feedback || '',
+      contract_status: supplier.contract_status || 'Active',
     });
   };
 
   // Handle create
   const handleCreate = async () => {
     if (!formData.name.trim()) return;
-    await createSupplier(formData);
-    setShowCreateDialog(false);
+    try {
+      await createSupplier({
+        ...formData,
+        rating: formData.rating ? parseFloat(formData.rating) : undefined,
+      });
+      setShowCreateDialog(false);
+      setSnackbar({ visible: true, message: 'Supplier created successfully', type: 'success' });
+    } catch (e: any) {
+      setSnackbar({
+        visible: true,
+        message: e.message || 'Failed to create supplier',
+        type: 'error',
+      });
+    }
   };
 
   // Handle update
   const handleUpdate = async () => {
     if (!editingSupplier || !formData.name.trim()) return;
-    await updateSupplier({
-      ...formData,
-      supplier_id: editingSupplier.supplier_id,
-    });
-    setEditingSupplier(null);
+    try {
+      await updateSupplier({
+        supplier_id: editingSupplier.supplier_id,
+        ...formData,
+        rating: formData.rating ? parseFloat(formData.rating) : undefined,
+      });
+      setEditingSupplier(null);
+      setSnackbar({ visible: true, message: 'Supplier updated successfully', type: 'success' });
+    } catch (e: any) {
+      setSnackbar({
+        visible: true,
+        message: e.message || 'Failed to update supplier',
+        type: 'error',
+      });
+    }
   };
 
   // Handle delete
   const handleDelete = async () => {
     if (!deleteConfirm) return;
-    await deleteSupplier(deleteConfirm.supplier_id);
-    setDeleteConfirm(null);
+    try {
+      await deleteSupplier(deleteConfirm.supplier_id);
+      setDeleteConfirm(null);
+      setSnackbar({ visible: true, message: 'Supplier deleted successfully', type: 'success' });
+    } catch (e: any) {
+      setSnackbar({
+        visible: true,
+        message: e.message || 'Failed to delete supplier',
+        type: 'error',
+      });
+    }
   };
 
-  const renderSupplier = ({ item }: { item: SupplierDTO }) => (
-    <Card style={styles.card} mode="outlined">
-      <Card.Content>
-        <View style={styles.cardHeader}>
-          <View style={styles.supplierInfo}>
-            <Text variant="titleMedium" style={styles.supplierName}>
-              {item.name}
-            </Text>
-            {item.contact_email && (
-              <View style={styles.contactRow}>
-                <MaterialCommunityIcons
-                  name="email"
-                  size={14}
-                  color={theme.colors.onSurfaceVariant}
-                />
-                <Text variant="bodySmall" style={styles.contactText}>
-                  {item.contact_email}
-                </Text>
-              </View>
-            )}
-            {item.contact_phone && (
-              <View style={styles.contactRow}>
-                <MaterialCommunityIcons
-                  name="phone"
-                  size={14}
-                  color={theme.colors.onSurfaceVariant}
-                />
-                <Text variant="bodySmall" style={styles.contactText}>
-                  {item.contact_phone}
-                </Text>
-              </View>
-            )}
-          </View>
+  // Toggle expanded supplier
+  const toggleExpand = (supplierId: number) => {
+    setExpandedSupplierId(expandedSupplierId === supplierId ? null : supplierId);
+  };
 
-          <View style={styles.cardActions}>
-            <IconButton icon="pencil" size={18} onPress={() => openEdit(item)} />
-            <IconButton
-              icon="delete"
-              size={18}
-              iconColor="#f44336"
-              onPress={() => setDeleteConfirm(item)}
-            />
-          </View>
-        </View>
+  // Open ingredient edit dialog
+  const openIngredientEdit = (ing: SupplierIngredient) => {
+    setEditingIngredient(ing);
+    setIngredientForm({
+      unit: ing.unit || '',
+      cost_per_unit: ing.cost_per_unit?.toString() || '',
+      lead_time_days: ing.lead_time_days?.toString() || '',
+      spoilage_rate: ing.spoilage_rate?.toString() || '',
+      shelf_life_days: ing.shelf_life_days?.toString() || '',
+      preferred: ing.preferred || false,
+      min_order_quantity: ing.min_order_quantity?.toString() || '',
+      supplier_priority: ing.supplier_priority?.toString() || '',
+      pack_size: ing.pack_size?.toString() || '',
+      quantity_per_pack_item: ing.quantity_per_pack_item?.toString() || '',
+    });
+  };
 
-        {item.address && (
-          <View style={[styles.contactRow, { marginTop: 8 }]}>
-            <MaterialCommunityIcons
-              name="map-marker"
-              size={14}
-              color={theme.colors.onSurfaceVariant}
-            />
-            <Text variant="bodySmall" style={styles.contactText} numberOfLines={2}>
-              {item.address}
-            </Text>
+  // Save ingredient supplier changes
+  const handleSaveIngredient = async () => {
+    if (!editingIngredient) return;
+    setSavingIngredient(true);
+    try {
+      await updateIngredientSupplier({
+        ingredient_supplier_id: editingIngredient.ingredient_supplier_id,
+        unit: ingredientForm.unit || null,
+        cost_per_unit: ingredientForm.cost_per_unit
+          ? parseFloat(ingredientForm.cost_per_unit)
+          : null,
+        lead_time_days: ingredientForm.lead_time_days
+          ? parseInt(ingredientForm.lead_time_days)
+          : null,
+        spoilage_rate: ingredientForm.spoilage_rate
+          ? parseFloat(ingredientForm.spoilage_rate)
+          : null,
+        shelf_life_days: ingredientForm.shelf_life_days
+          ? parseInt(ingredientForm.shelf_life_days)
+          : null,
+        preferred: ingredientForm.preferred,
+        min_order_quantity: ingredientForm.min_order_quantity
+          ? parseInt(ingredientForm.min_order_quantity)
+          : null,
+        supplier_priority: ingredientForm.supplier_priority
+          ? parseInt(ingredientForm.supplier_priority)
+          : null,
+        pack_size: ingredientForm.pack_size ? parseInt(ingredientForm.pack_size) : null,
+        quantity_per_pack_item: ingredientForm.quantity_per_pack_item
+          ? parseFloat(ingredientForm.quantity_per_pack_item)
+          : null,
+      });
+      setSnackbar({ visible: true, message: 'Ingredient updated successfully', type: 'success' });
+      setEditingIngredient(null);
+      refresh();
+    } catch (e: any) {
+      setSnackbar({
+        visible: true,
+        message: e.message || 'Failed to update ingredient',
+        type: 'error',
+      });
+    } finally {
+      setSavingIngredient(false);
+    }
+  };
+
+  // Group ingredients by category (first letter of name as simple grouping)
+  const groupIngredients = (ingredients: SupplierIngredient[]) => {
+    const groups: Record<string, SupplierIngredient[]> = {};
+    ingredients.forEach(ing => {
+      const category = ing.ingredient_name?.charAt(0).toUpperCase() || 'Other';
+      if (!groups[category]) groups[category] = [];
+      groups[category].push(ing);
+    });
+    return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+  };
+
+  const renderSupplier = ({ item }: { item: SupplierDTO }) => {
+    const isExpanded = expandedSupplierId === item.supplier_id;
+    const ingredientGroups = groupIngredients(item.ingredients || []);
+    const ingredientCount = item.ingredients?.length || 0;
+
+    return (
+      <Card style={styles.card} mode="outlined">
+        {/* Header - tap to expand */}
+        <Card.Content>
+          <View style={styles.cardHeader}>
+            <View style={styles.supplierInfo}>
+              <View style={styles.nameRow}>
+                <Text variant="titleMedium" style={styles.supplierName}>
+                  {item.name}
+                </Text>
+                {item.is_active ? (
+                  <Chip
+                    compact
+                    mode="flat"
+                    style={[styles.statusChip, { backgroundColor: '#e8f5e9' }]}
+                    textStyle={{ color: '#2e7d32', fontSize: 10 }}
+                  >
+                    Active
+                  </Chip>
+                ) : (
+                  <Chip
+                    compact
+                    mode="flat"
+                    style={[styles.statusChip, { backgroundColor: '#ffebee' }]}
+                    textStyle={{ color: '#c62828', fontSize: 10 }}
+                  >
+                    Inactive
+                  </Chip>
+                )}
+              </View>
+
+              {/* Info chips row */}
+              <View style={styles.infoRow}>
+                {item.type && (
+                  <Chip
+                    icon={() => (
+                      <MaterialCommunityIcons name="tag" size={14} color={theme.colors.primary} />
+                    )}
+                    style={styles.infoChip}
+                    textStyle={styles.infoChipText}
+                  >
+                    {item.type}
+                  </Chip>
+                )}
+                {item.region && (
+                  <Chip
+                    icon={() => (
+                      <MaterialCommunityIcons
+                        name="map-marker"
+                        size={14}
+                        color={theme.colors.primary}
+                      />
+                    )}
+                    style={styles.infoChip}
+                    textStyle={styles.infoChipText}
+                  >
+                    {item.region}
+                  </Chip>
+                )}
+                {item.rating != null && item.rating > 0 && (
+                  <Chip
+                    icon={() => <MaterialCommunityIcons name="star" size={14} color="#ffc107" />}
+                    style={styles.infoChip}
+                    textStyle={styles.infoChipText}
+                  >
+                    {item.rating.toFixed(1)}
+                  </Chip>
+                )}
+                {ingredientCount > 0 && (
+                  <Chip
+                    icon={() => (
+                      <MaterialCommunityIcons
+                        name="package-variant"
+                        size={14}
+                        color={theme.colors.primary}
+                      />
+                    )}
+                    style={styles.infoChip}
+                    textStyle={styles.infoChipText}
+                  >
+                    {ingredientCount} items
+                  </Chip>
+                )}
+              </View>
+
+              {item.contact_info && (
+                <View style={styles.contactRow}>
+                  <MaterialCommunityIcons
+                    name="card-account-phone"
+                    size={14}
+                    color={theme.colors.onSurfaceVariant}
+                  />
+                  <Text variant="bodySmall" style={styles.contactText}>
+                    {item.contact_info}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.cardActions}>
+              <IconButton
+                icon={() => (
+                  <MaterialCommunityIcons name="pencil" size={18} color={theme.colors.primary} />
+                )}
+                size={18}
+                onPress={() => openEdit(item)}
+              />
+              <IconButton
+                icon={() => (
+                  <MaterialCommunityIcons
+                    name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={20}
+                    color={theme.colors.onSurfaceVariant}
+                  />
+                )}
+                size={18}
+                onPress={() => toggleExpand(item.supplier_id)}
+              />
+            </View>
           </View>
+        </Card.Content>
+
+        {/* Expanded content - ingredients */}
+        {isExpanded && (
+          <>
+            <Divider />
+            <Card.Content style={styles.expandedContent}>
+              {ingredientCount === 0 ? (
+                <Text
+                  variant="bodySmall"
+                  style={{ color: theme.colors.onSurfaceVariant, fontStyle: 'italic' }}
+                >
+                  No ingredients from this supplier
+                </Text>
+              ) : (
+                ingredientGroups.map(([letter, ingredients]) => (
+                  <View key={letter} style={styles.ingredientGroup}>
+                    <Text variant="labelSmall" style={styles.groupHeader}>
+                      {letter}
+                    </Text>
+                    {ingredients.map(ing => (
+                      <List.Item
+                        key={`ing-${ing.ingredient_supplier_id}`}
+                        title={ing.ingredient_name}
+                        description={`$${ing.cost_per_unit?.toFixed(2) || '0.00'}/${
+                          ing.unit || 'unit'
+                        } • ${ing.lead_time_days || 0}d lead`}
+                        left={() => (
+                          <View style={styles.ingredientIcon}>
+                            {ing.preferred ? (
+                              <MaterialCommunityIcons name="star" size={16} color="#ffc107" />
+                            ) : (
+                              <MaterialCommunityIcons
+                                name="package-variant"
+                                size={16}
+                                color={theme.colors.onSurfaceVariant}
+                              />
+                            )}
+                          </View>
+                        )}
+                        right={() => (
+                          <IconButton
+                            icon={() => (
+                              <MaterialCommunityIcons
+                                name="pencil"
+                                size={18}
+                                color={theme.colors.primary}
+                              />
+                            )}
+                            size={16}
+                            onPress={() => openIngredientEdit(ing)}
+                          />
+                        )}
+                        style={styles.ingredientItem}
+                        titleStyle={styles.ingredientTitle}
+                        descriptionStyle={styles.ingredientDesc}
+                      />
+                    ))}
+                  </View>
+                ))
+              )}
+
+              {/* Contract Info */}
+              {(item.contract_status || item.website) && (
+                <View style={styles.contractInfo}>
+                  <Divider style={{ marginVertical: 8 }} />
+                  <View style={styles.contractRow}>
+                    {item.contract_status && (
+                      <View style={styles.contractItem}>
+                        <MaterialCommunityIcons
+                          name="file-document"
+                          size={14}
+                          color={theme.colors.onSurfaceVariant}
+                        />
+                        <Text variant="bodySmall" style={{ marginLeft: 4 }}>
+                          {item.contract_status}
+                        </Text>
+                      </View>
+                    )}
+                    {item.website && (
+                      <View style={styles.contractItem}>
+                        <MaterialCommunityIcons name="web" size={14} color={theme.colors.primary} />
+                        <Text
+                          variant="bodySmall"
+                          style={{ marginLeft: 4, color: theme.colors.primary }}
+                        >
+                          Website
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
+            </Card.Content>
+          </>
         )}
-      </Card.Content>
-    </Card>
-  );
+      </Card>
+    );
+  };
 
   if (isLoading && suppliers.length === 0) {
     return (
@@ -191,7 +528,21 @@ export default function Suppliers(): React.JSX.Element {
               Suppliers
             </Text>
           </View>
-          <Chip icon="account-group">{suppliers.length}</Chip>
+          <View style={styles.headerRight}>
+            <View style={styles.filterToggle}>
+              <Text
+                variant="bodySmall"
+                style={{ color: theme.colors.onSurfaceVariant, marginRight: 4 }}
+              >
+                {filterActive ? 'Active' : 'Inactive'}
+              </Text>
+              <Switch
+                value={filterActive}
+                onValueChange={setFilterActive}
+                color={theme.colors.primary}
+              />
+            </View>
+          </View>
         </View>
 
         <Searchbar
@@ -200,6 +551,32 @@ export default function Suppliers(): React.JSX.Element {
           onChangeText={setSearchQuery}
           style={styles.searchbar}
         />
+
+        {/* Stats row */}
+        <View style={styles.statsRow}>
+          <Chip
+            compact
+            icon={() => (
+              <MaterialCommunityIcons name="account-group" size={14} color={theme.colors.primary} />
+            )}
+            style={styles.statChip}
+          >
+            {filteredSuppliers.length} suppliers
+          </Chip>
+          <Chip
+            compact
+            icon={() => (
+              <MaterialCommunityIcons
+                name="package-variant"
+                size={14}
+                color={theme.colors.primary}
+              />
+            )}
+            style={styles.statChip}
+          >
+            {filteredSuppliers.reduce((sum, s) => sum + (s.ingredients?.length || 0), 0)} items
+          </Chip>
+        </View>
       </Surface>
 
       {/* Suppliers List */}
@@ -214,7 +591,7 @@ export default function Suppliers(): React.JSX.Element {
             variant="titleMedium"
             style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}
           >
-            No suppliers found
+            No {filterActive ? 'active' : 'inactive'} suppliers found
           </Text>
           <Button mode="contained" onPress={openCreate} style={{ marginTop: 16 }}>
             Add Supplier
@@ -232,48 +609,83 @@ export default function Suppliers(): React.JSX.Element {
 
       {/* FAB */}
       <FAB
-        icon="plus"
+        icon={() => <MaterialCommunityIcons name="plus" size={24} color="#fff" />}
         style={[styles.fab, { backgroundColor: theme.colors.primary }]}
         onPress={openCreate}
       />
 
-      {/* Create Dialog */}
+      {/* Dialogs */}
       <Portal>
+        {/* Create Dialog */}
         <Dialog visible={showCreateDialog} onDismiss={() => setShowCreateDialog(false)}>
           <Dialog.Title>Add Supplier</Dialog.Title>
-          <Dialog.Content>
-            <TextInput
-              label="Name *"
-              value={formData.name}
-              onChangeText={text => setFormData(f => ({ ...f, name: text }))}
-              mode="outlined"
-              style={styles.input}
-            />
-            <TextInput
-              label="Email"
-              value={formData.contact_email}
-              onChangeText={text => setFormData(f => ({ ...f, contact_email: text }))}
-              mode="outlined"
-              keyboardType="email-address"
-              style={styles.input}
-            />
-            <TextInput
-              label="Phone"
-              value={formData.contact_phone}
-              onChangeText={text => setFormData(f => ({ ...f, contact_phone: text }))}
-              mode="outlined"
-              keyboardType="phone-pad"
-              style={styles.input}
-            />
-            <TextInput
-              label="Address"
-              value={formData.address}
-              onChangeText={text => setFormData(f => ({ ...f, address: text }))}
-              mode="outlined"
-              multiline
-              style={styles.input}
-            />
-          </Dialog.Content>
+          <Dialog.ScrollArea style={{ maxHeight: 400 }}>
+            <ScrollView>
+              <View style={styles.dialogContent}>
+                <TextInput
+                  label="Name *"
+                  value={formData.name}
+                  onChangeText={text => setFormData(f => ({ ...f, name: text }))}
+                  mode="outlined"
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Type"
+                  value={formData.type}
+                  onChangeText={text => setFormData(f => ({ ...f, type: text }))}
+                  mode="outlined"
+                  placeholder="e.g., Produce, Meat, Dairy"
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Region"
+                  value={formData.region}
+                  onChangeText={text => setFormData(f => ({ ...f, region: text }))}
+                  mode="outlined"
+                  placeholder="e.g., Local, Regional, National"
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Contact Info"
+                  value={formData.contact_info}
+                  onChangeText={text => setFormData(f => ({ ...f, contact_info: text }))}
+                  mode="outlined"
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Rating (1-5)"
+                  value={formData.rating}
+                  onChangeText={text => setFormData(f => ({ ...f, rating: text }))}
+                  mode="outlined"
+                  keyboardType="decimal-pad"
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Website"
+                  value={formData.website}
+                  onChangeText={text => setFormData(f => ({ ...f, website: text }))}
+                  mode="outlined"
+                  keyboardType="url"
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Contract Status"
+                  value={formData.contract_status}
+                  onChangeText={text => setFormData(f => ({ ...f, contract_status: text }))}
+                  mode="outlined"
+                  placeholder="e.g., Active, Pending, Expired"
+                  style={styles.input}
+                />
+                <View style={styles.switchRow}>
+                  <Text>Active</Text>
+                  <Switch
+                    value={formData.is_active}
+                    onValueChange={val => setFormData(f => ({ ...f, is_active: val }))}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+          </Dialog.ScrollArea>
           <Dialog.Actions>
             <Button onPress={() => setShowCreateDialog(false)}>Cancel</Button>
             <Button
@@ -290,40 +702,86 @@ export default function Suppliers(): React.JSX.Element {
         {/* Edit Dialog */}
         <Dialog visible={!!editingSupplier} onDismiss={() => setEditingSupplier(null)}>
           <Dialog.Title>Edit Supplier</Dialog.Title>
-          <Dialog.Content>
-            <TextInput
-              label="Name *"
-              value={formData.name}
-              onChangeText={text => setFormData(f => ({ ...f, name: text }))}
-              mode="outlined"
-              style={styles.input}
-            />
-            <TextInput
-              label="Email"
-              value={formData.contact_email}
-              onChangeText={text => setFormData(f => ({ ...f, contact_email: text }))}
-              mode="outlined"
-              keyboardType="email-address"
-              style={styles.input}
-            />
-            <TextInput
-              label="Phone"
-              value={formData.contact_phone}
-              onChangeText={text => setFormData(f => ({ ...f, contact_phone: text }))}
-              mode="outlined"
-              keyboardType="phone-pad"
-              style={styles.input}
-            />
-            <TextInput
-              label="Address"
-              value={formData.address}
-              onChangeText={text => setFormData(f => ({ ...f, address: text }))}
-              mode="outlined"
-              multiline
-              style={styles.input}
-            />
-          </Dialog.Content>
+          <Dialog.ScrollArea style={{ maxHeight: 400 }}>
+            <ScrollView>
+              <View style={styles.dialogContent}>
+                <TextInput
+                  label="Name *"
+                  value={formData.name}
+                  onChangeText={text => setFormData(f => ({ ...f, name: text }))}
+                  mode="outlined"
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Type"
+                  value={formData.type}
+                  onChangeText={text => setFormData(f => ({ ...f, type: text }))}
+                  mode="outlined"
+                  placeholder="e.g., Produce, Meat, Dairy"
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Region"
+                  value={formData.region}
+                  onChangeText={text => setFormData(f => ({ ...f, region: text }))}
+                  mode="outlined"
+                  placeholder="e.g., Local, Regional, National"
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Contact Info"
+                  value={formData.contact_info}
+                  onChangeText={text => setFormData(f => ({ ...f, contact_info: text }))}
+                  mode="outlined"
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Rating (1-5)"
+                  value={formData.rating}
+                  onChangeText={text => setFormData(f => ({ ...f, rating: text }))}
+                  mode="outlined"
+                  keyboardType="decimal-pad"
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Website"
+                  value={formData.website}
+                  onChangeText={text => setFormData(f => ({ ...f, website: text }))}
+                  mode="outlined"
+                  keyboardType="url"
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Contract Status"
+                  value={formData.contract_status}
+                  onChangeText={text => setFormData(f => ({ ...f, contract_status: text }))}
+                  mode="outlined"
+                  placeholder="e.g., Active, Pending, Expired"
+                  style={styles.input}
+                />
+                <TextInput
+                  label="Supplier Feedback"
+                  value={formData.supplier_feedback}
+                  onChangeText={text => setFormData(f => ({ ...f, supplier_feedback: text }))}
+                  mode="outlined"
+                  multiline
+                  numberOfLines={2}
+                  style={styles.input}
+                />
+                <View style={styles.switchRow}>
+                  <Text>Active</Text>
+                  <Switch
+                    value={formData.is_active}
+                    onValueChange={val => setFormData(f => ({ ...f, is_active: val }))}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+          </Dialog.ScrollArea>
           <Dialog.Actions>
+            <Button textColor="#f44336" onPress={() => setDeleteConfirm(editingSupplier)}>
+              Delete
+            </Button>
             <Button onPress={() => setEditingSupplier(null)}>Cancel</Button>
             <Button
               mode="contained"
@@ -341,6 +799,9 @@ export default function Suppliers(): React.JSX.Element {
           <Dialog.Title>Delete Supplier</Dialog.Title>
           <Dialog.Content>
             <Text>Are you sure you want to delete "{deleteConfirm?.name}"?</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.error, marginTop: 8 }}>
+              This will also remove all ingredient-supplier associations.
+            </Text>
           </Dialog.Content>
           <Dialog.Actions>
             <Button onPress={() => setDeleteConfirm(null)}>Cancel</Button>
@@ -353,6 +814,146 @@ export default function Suppliers(): React.JSX.Element {
               Delete
             </Button>
           </Dialog.Actions>
+        </Dialog>
+
+        {/* Ingredient Edit Dialog */}
+        <Dialog visible={!!editingIngredient} onDismiss={() => setEditingIngredient(null)}>
+          <Dialog.Title>Edit: {editingIngredient?.ingredient_name}</Dialog.Title>
+          <Dialog.ScrollArea style={{ maxHeight: 450 }}>
+            <ScrollView>
+              <View style={styles.dialogContent}>
+                <View style={styles.formRow}>
+                  <TextInput
+                    label="Unit"
+                    value={ingredientForm.unit}
+                    onChangeText={v => setIngredientForm(f => ({ ...f, unit: v }))}
+                    mode="outlined"
+                    style={styles.halfInput}
+                    dense
+                  />
+                  <TextInput
+                    label="Cost/Unit ($)"
+                    value={ingredientForm.cost_per_unit}
+                    onChangeText={v => setIngredientForm(f => ({ ...f, cost_per_unit: v }))}
+                    mode="outlined"
+                    keyboardType="decimal-pad"
+                    style={styles.halfInput}
+                    dense
+                  />
+                </View>
+                <View style={styles.formRow}>
+                  <TextInput
+                    label="Lead Time (days)"
+                    value={ingredientForm.lead_time_days}
+                    onChangeText={v => setIngredientForm(f => ({ ...f, lead_time_days: v }))}
+                    mode="outlined"
+                    keyboardType="number-pad"
+                    style={styles.halfInput}
+                    dense
+                  />
+                  <TextInput
+                    label="Shelf Life (days)"
+                    value={ingredientForm.shelf_life_days}
+                    onChangeText={v => setIngredientForm(f => ({ ...f, shelf_life_days: v }))}
+                    mode="outlined"
+                    keyboardType="number-pad"
+                    style={styles.halfInput}
+                    dense
+                  />
+                </View>
+                <View style={styles.formRow}>
+                  <TextInput
+                    label="Spoilage Rate (%)"
+                    value={ingredientForm.spoilage_rate}
+                    onChangeText={v => setIngredientForm(f => ({ ...f, spoilage_rate: v }))}
+                    mode="outlined"
+                    keyboardType="decimal-pad"
+                    style={styles.halfInput}
+                    dense
+                  />
+                  <TextInput
+                    label="Min Order Qty"
+                    value={ingredientForm.min_order_quantity}
+                    onChangeText={v => setIngredientForm(f => ({ ...f, min_order_quantity: v }))}
+                    mode="outlined"
+                    keyboardType="number-pad"
+                    style={styles.halfInput}
+                    dense
+                  />
+                </View>
+                <View style={styles.formRow}>
+                  <TextInput
+                    label="Pack Size"
+                    value={ingredientForm.pack_size}
+                    onChangeText={v => setIngredientForm(f => ({ ...f, pack_size: v }))}
+                    mode="outlined"
+                    keyboardType="number-pad"
+                    style={styles.halfInput}
+                    dense
+                  />
+                  <TextInput
+                    label="Qty Per Pack"
+                    value={ingredientForm.quantity_per_pack_item}
+                    onChangeText={v =>
+                      setIngredientForm(f => ({ ...f, quantity_per_pack_item: v }))
+                    }
+                    mode="outlined"
+                    keyboardType="decimal-pad"
+                    style={styles.halfInput}
+                    dense
+                  />
+                </View>
+                <TextInput
+                  label="Supplier Priority"
+                  value={ingredientForm.supplier_priority}
+                  onChangeText={v => setIngredientForm(f => ({ ...f, supplier_priority: v }))}
+                  mode="outlined"
+                  keyboardType="number-pad"
+                  style={styles.input}
+                  dense
+                />
+                <View style={styles.switchRow}>
+                  <View style={styles.switchLabel}>
+                    <MaterialCommunityIcons
+                      name="star"
+                      size={20}
+                      color={ingredientForm.preferred ? '#ffc107' : theme.colors.onSurfaceVariant}
+                    />
+                    <Text style={{ marginLeft: 8 }}>Preferred Supplier</Text>
+                  </View>
+                  <Switch
+                    value={ingredientForm.preferred}
+                    onValueChange={v => setIngredientForm(f => ({ ...f, preferred: v }))}
+                    color={theme.colors.primary}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+          </Dialog.ScrollArea>
+          <Dialog.Actions>
+            <Button onPress={() => setEditingIngredient(null)}>Cancel</Button>
+            <Button mode="contained" onPress={handleSaveIngredient} loading={savingIngredient}>
+              Save
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* Snackbar */}
+        <Dialog
+          visible={snackbar.visible}
+          onDismiss={() => setSnackbar(s => ({ ...s, visible: false }))}
+          style={{ position: 'absolute', bottom: 80 }}
+        >
+          <Dialog.Content>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <MaterialCommunityIcons
+                name={snackbar.type === 'success' ? 'check-circle' : 'alert-circle'}
+                size={20}
+                color={snackbar.type === 'success' ? '#4caf50' : '#f44336'}
+              />
+              <Text style={{ marginLeft: 8 }}>{snackbar.message}</Text>
+            </View>
+          </Dialog.Content>
         </Dialog>
       </Portal>
     </View>
@@ -383,8 +984,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  filterToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   searchbar: {
-    marginBottom: 0,
+    marginBottom: 8,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  statChip: {
+    backgroundColor: 'transparent',
   },
   listContent: {
     padding: 16,
@@ -400,14 +1016,36 @@ const styles = StyleSheet.create({
   supplierInfo: {
     flex: 1,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
   supplierName: {
     fontWeight: '600',
-    marginBottom: 4,
+  },
+  statusChip: {
+    height: 24,
+    marginLeft: 4,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+    marginTop: 6,
+  },
+  infoChip: {
+    backgroundColor: '#f5f5f5',
+  },
+  infoChipText: {
+    fontSize: 12,
   },
   contactRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
+    marginTop: 4,
   },
   contactText: {
     marginLeft: 6,
@@ -415,6 +1053,44 @@ const styles = StyleSheet.create({
   },
   cardActions: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  expandedContent: {
+    paddingTop: 8,
+  },
+  ingredientGroup: {
+    marginBottom: 8,
+  },
+  groupHeader: {
+    color: '#666',
+    marginBottom: 4,
+    fontWeight: '600',
+  },
+  ingredientItem: {
+    paddingVertical: 4,
+    paddingLeft: 0,
+  },
+  ingredientTitle: {
+    fontSize: 14,
+  },
+  ingredientDesc: {
+    fontSize: 12,
+  },
+  ingredientIcon: {
+    width: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  contractInfo: {
+    marginTop: 4,
+  },
+  contractRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  contractItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   emptyState: {
     flex: 1,
@@ -426,7 +1102,33 @@ const styles = StyleSheet.create({
     right: 16,
     bottom: 16,
   },
+  dialogContent: {
+    padding: 8,
+  },
   input: {
     marginBottom: 12,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 12,
+  },
+  formRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  halfInput: {
+    flex: 1,
+  },
+  switchLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });

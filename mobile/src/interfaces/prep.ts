@@ -1,5 +1,13 @@
 // src/interfaces/prep.ts
 
+export interface Ingredient {
+  ingredient_id: number;
+  name: string;
+  category?: string;
+  unit?: string;
+  cost_per_unit?: number;
+}
+
 export interface PrepLogParams {
   start_date?: string;
   end_date?: string;
@@ -46,20 +54,85 @@ export interface PrepScheduleUpdate {
   assigned_employee_id?: number;
   status?: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
   notes?: string;
+  prep_time_minutes_actual?: number;
+  prep_batch_count?: number;
 }
 
 export interface PrepLog {
-  prep_log_id: number;
   prep_id: number;
   batch_recipe_id: number;
   batch_recipe_name?: string;
-  quantity_prepped: number;
-  prepped_by_employee_id: number;
+  prep_date: string;
+  quantity_needed: number;
+  quantity_prepped: number | null;
+  prep_batch_count: number | null;
+  prep_time_minutes_estimated: number | null;
+  prep_time_minutes_actual: number | null;
+  assigned_employee_id: number | null;
+  assigned_employee_name: string | null;
+  status: string;
+  created_at: string | null;
+  expiry_date: string | null;
+  // Legacy fields for backwards compatibility
+  prep_log_id?: number;
+  prepped_by_employee_id?: number;
   prepped_by_employee_name?: string;
-  prepped_at: string;
+  prepped_at?: string;
   notes?: string;
 }
 
+export interface BatchRecipeIngredient {
+  ingredient_id: number;
+  ingredient_name?: string;
+  quantity_used: number;
+  unit: string;
+}
+
+export interface BatchRecipe {
+  batch_recipe_id: number;
+  name: string;
+  description?: string;
+  yield_quantity: number;
+  yield_unit: string;
+  estimated_prep_time_minutes?: number;
+  shelf_life_days?: number;
+  ingredients: BatchRecipeIngredient[];
+  used_in_recipes?: Array<{
+    recipe_id: number;
+    recipe_name: string;
+    recipe_description?: string;
+  }>;
+}
+
+export interface BatchRecipeCreate {
+  name: string;
+  description?: string;
+  yield_quantity: number;
+  yield_unit: string;
+  estimated_prep_time_minutes?: number;
+  shelf_life_days?: number;
+  ingredients?: Array<{
+    ingredient_id: number;
+    quantity_used: number;
+    unit: string;
+  }>;
+}
+
+export interface BatchRecipeUpdate {
+  name?: string;
+  description?: string;
+  yield_quantity?: number;
+  yield_unit?: string;
+  estimated_prep_time_minutes?: number;
+  shelf_life_days?: number;
+  ingredients?: Array<{
+    ingredient_id: number;
+    quantity_used: number;
+    unit: string;
+  }>;
+}
+
+// Legacy interface for backwards compatibility
 export interface BatchRecipeData {
   batch_recipe_id?: number;
   batch_name: string;

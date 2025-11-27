@@ -9,22 +9,28 @@ export interface MenuItemIngredient {
 
 export interface Recipe {
   recipe_id: number;
-  recipe_name: string;
+  name: string; // Backend returns 'name', not 'recipe_name'
+  recipe_name?: string; // Alias for compatibility
   description?: string;
-  yield_quantity: number;
-  yield_unit: string;
+  yield_quantity?: number;
+  yield_unit?: string;
   prep_time_minutes?: number;
   ingredients: RecipeIngredient[];
+  restaurant_id?: number;
   created_at?: string;
   updated_at?: string;
 }
 
 export interface RecipeIngredient {
   recipe_ingredient_id?: number;
-  ingredient_id: number;
-  ingredient_name?: string;
-  quantity: number;
-  unit: string;
+  ingredient_id?: number;
+  reference_id?: number; // Backend uses reference_id
+  name?: string; // Backend returns 'name' for ingredient name
+  ingredient_name?: string; // Alias for compatibility
+  quantity?: number;
+  quantity_used?: number; // Backend uses quantity_used
+  unit?: string;
+  type?: string; // 'ingredient' or 'batch_recipe'
 }
 
 // Recipe with ingredients (as returned from backend)
