@@ -1,33 +1,32 @@
 // src/pages/menu/MenuBuilder.tsx
 import React, { useState, useCallback, useContext } from 'react';
-import { View, StyleSheet, SectionList, RefreshControl, Pressable } from 'react-native';
+import { View, StyleSheet, SectionList, RefreshControl } from 'react-native';
 import {
   Surface,
   Text,
   Searchbar,
-  Card,
   Button,
   Chip,
   ActivityIndicator,
   Portal,
   Dialog,
-  TextInput,
   FAB,
-  IconButton,
-  Switch,
   useTheme,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useMenuItems } from '../../hooks/useMenu';
+import { useMenuItems, useRecipes, useCategories } from '../../hooks/useMenu';
 import { AuthContext } from '../../contexts/AuthContext';
 import { MenuItem } from '../../interfaces/menu';
+import MenuItemCard from './components/MenuItemCard';
+import MenuHintBox from './components/MenuHintBox';
+import MenuItemDialog from './components/MenuItemDialog';
 
 interface MenuSection {
   title: string;
   data: MenuItem[];
 }
 
-export default function MenuBuilder(): React.JSX.Element {
+export default function MenuBuilder({ navigation }: { navigation?: any }): React.JSX.Element {
   const theme = useTheme();
   const { tier } = useContext(AuthContext) || {};
   const [refreshing, setRefreshing] = useState(false);
@@ -36,15 +35,7 @@ export default function MenuBuilder(): React.JSX.Element {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<MenuItem | null>(null);
-
-  // Form state
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    price: '',
-    category: '',
-    is_active: true,
-  });
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   // Queries & mutations
   const {
@@ -58,6 +49,12 @@ export default function MenuBuilder(): React.JSX.Element {
     deleteMenuItem,
     deleting,
   } = useMenuItems();
+
+  // Get available recipes for dropdown
+  const { recipes: availableRecipes, loading: recipesLoading } = useRecipes();
+
+  // Get available categories
+  const { categories: availableCategories, loading: categoriesLoading } = useCategories();
 
   // Pull to refresh
   const onRefresh = useCallback(() => {
@@ -91,7 +88,8 @@ export default function MenuBuilder(): React.JSX.Element {
       const query = searchQuery.toLowerCase();
       items = items.filter(
         (item: MenuItem) =>
-          item.name.toLowerCase().includes(query) || item.description?.toLowerCase().includes(query)
+          (item.menu_item_name || item.name || '').toLowerCase().includes(query) ||
+          item.description?.toLowerCase().includes(query)
       );
     }
 
@@ -117,56 +115,68 @@ export default function MenuBuilder(): React.JSX.Element {
 
   // Open create dialog
   const openCreate = () => {
-    setFormData({ name: '', description: '', price: '', category: '', is_active: true });
+    setEditingItem(null);
     setShowCreateDialog(true);
   };
 
   // Open edit dialog
   const openEdit = (item: MenuItem) => {
     setEditingItem(item);
-    setFormData({
-      name: item.name,
-      description: item.description || '',
-      price: item.price.toString(),
-      category: item.category || '',
-      is_active: item.is_active !== false,
-    });
+    setShowCreateDialog(true);
   };
 
-  // Handle create
-  const handleCreate = async () => {
-    if (!formData.name.trim() || !formData.price) return;
-    await createMenuItem({
-      name: formData.name,
-      description: formData.description || undefined,
-      price: parseFloat(formData.price),
-      category: formData.category || undefined,
-      is_active: formData.is_active,
-    });
+  // Handle save from dialog
+  const handleSave = async (data: {
+    name: string;
+    description?: string;
+    price: number;
+    category?: string;
+    is_active: boolean;
+    recipes: number[];
+  }) => {
+    if (editingItem) {
+      // Update existing item
+      await updateMenuItem({
+        id: editingItem.menu_item_id,
+        data,
+      });
+    } else {
+      // Create new item
+      await createMenuItem(data);
+    }
     setShowCreateDialog(false);
-  };
-
-  // Handle update
-  const handleUpdate = async () => {
-    if (!editingItem || !formData.name.trim() || !formData.price) return;
-    await updateMenuItem({
-      id: editingItem.menu_item_id,
-      data: {
-        name: formData.name,
-        description: formData.description || undefined,
-        price: parseFloat(formData.price),
-        category: formData.category || undefined,
-        is_active: formData.is_active,
-      },
-    });
     setEditingItem(null);
   };
 
-  // Handle delete
+  // Handle dialog dismiss
+  const handleDismiss = () => {
+    setShowCreateDialog(false);
+    setEditingItem(null);
+  };
+
+  // Handle delete from dialog
+  const handleDeleteFromDialog = () => {
+    if (editingItem) {
+      setDeleteConfirm(editingItem);
+      setShowCreateDialog(false);
+    }
+  };
+
+  // Handle delete confirmation
   const handleDelete = async () => {
     if (!deleteConfirm) return;
     await deleteMenuItem(deleteConfirm.menu_item_id);
     setDeleteConfirm(null);
+  };
+
+  // Toggle expanded card
+  const handleToggle = (id: number) => {
+    setExpandedId(prev => (prev === id ? null : id));
+  };
+
+  // Navigate to recipe editor
+  const navigateToRecipes = () => {
+    navigation?.navigate?.('menu_recipe-editor');
   };
 
   const renderSectionHeader = ({ section }: { section: MenuSection }) => (
@@ -182,52 +192,13 @@ export default function MenuBuilder(): React.JSX.Element {
   );
 
   const renderItem = ({ item }: { item: MenuItem }) => (
-    <Card style={styles.card} mode="outlined">
-      <Pressable onPress={() => openEdit(item)}>
-        <Card.Content style={styles.cardContent}>
-          <View style={styles.itemInfo}>
-            <View style={styles.nameRow}>
-              <Text variant="titleSmall" style={styles.itemName} numberOfLines={1}>
-                {item.name}
-              </Text>
-              {!item.is_active && (
-                <Chip
-                  compact
-                  style={styles.inactiveChip}
-                  textStyle={{ fontSize: 10, color: '#fff' }}
-                >
-                  Inactive
-                </Chip>
-              )}
-            </View>
-            {item.description && (
-              <Text
-                variant="bodySmall"
-                style={{ color: theme.colors.onSurfaceVariant }}
-                numberOfLines={2}
-              >
-                {item.description}
-              </Text>
-            )}
-          </View>
-
-          <View style={styles.priceSection}>
-            <Text variant="titleMedium" style={[styles.price, { color: theme.colors.primary }]}>
-              ${item.price.toFixed(2)}
-            </Text>
-            <View style={styles.cardActions}>
-              <IconButton icon="pencil" size={18} onPress={() => openEdit(item)} />
-              <IconButton
-                icon="delete"
-                size={18}
-                iconColor="#f44336"
-                onPress={() => setDeleteConfirm(item)}
-              />
-            </View>
-          </View>
-        </Card.Content>
-      </Pressable>
-    </Card>
+    <MenuItemCard
+      item={item}
+      expanded={expandedId === item.menu_item_id}
+      onToggle={() => handleToggle(item.menu_item_id)}
+      onEdit={openEdit}
+      onDelete={item => setDeleteConfirm(item)}
+    />
   );
 
   if (isLoading && allItems.length === 0) {
@@ -280,6 +251,7 @@ export default function MenuBuilder(): React.JSX.Element {
       {/* Menu List */}
       {sections.length === 0 ? (
         <View style={styles.emptyState}>
+          <MenuHintBox onNavigateToRecipes={navigateToRecipes} />
           <MaterialCommunityIcons name="food-off" size={64} color={theme.colors.onSurfaceVariant} />
           <Text
             variant="titleMedium"
@@ -297,6 +269,7 @@ export default function MenuBuilder(): React.JSX.Element {
           keyExtractor={item => item.menu_item_id.toString()}
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
+          ListHeaderComponent={<MenuHintBox onNavigateToRecipes={navigateToRecipes} />}
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           stickySectionHeadersEnabled
@@ -311,83 +284,28 @@ export default function MenuBuilder(): React.JSX.Element {
       />
 
       {/* Create/Edit Dialog */}
-      <Portal>
-        <Dialog
-          visible={showCreateDialog || !!editingItem}
-          onDismiss={() => {
-            setShowCreateDialog(false);
-            setEditingItem(null);
-          }}
-        >
-          <Dialog.Title>{editingItem ? 'Edit Menu Item' : 'Add Menu Item'}</Dialog.Title>
-          <Dialog.ScrollArea style={{ maxHeight: 400 }}>
-            <View style={{ padding: 16 }}>
-              <TextInput
-                label="Name *"
-                value={formData.name}
-                onChangeText={text => setFormData(f => ({ ...f, name: text }))}
-                mode="outlined"
-                style={styles.input}
-              />
-              <TextInput
-                label="Price *"
-                value={formData.price}
-                onChangeText={text => setFormData(f => ({ ...f, price: text }))}
-                mode="outlined"
-                keyboardType="decimal-pad"
-                left={<TextInput.Affix text="$" />}
-                style={styles.input}
-              />
-              <TextInput
-                label="Category"
-                value={formData.category}
-                onChangeText={text => setFormData(f => ({ ...f, category: text }))}
-                mode="outlined"
-                style={styles.input}
-              />
-              <TextInput
-                label="Description"
-                value={formData.description}
-                onChangeText={text => setFormData(f => ({ ...f, description: text }))}
-                mode="outlined"
-                multiline
-                numberOfLines={3}
-                style={styles.input}
-              />
-              <View style={styles.switchRow}>
-                <Text variant="bodyMedium">Active</Text>
-                <Switch
-                  value={formData.is_active}
-                  onValueChange={value => setFormData(f => ({ ...f, is_active: value }))}
-                />
-              </View>
-            </View>
-          </Dialog.ScrollArea>
-          <Dialog.Actions>
-            <Button
-              onPress={() => {
-                setShowCreateDialog(false);
-                setEditingItem(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              mode="contained"
-              onPress={editingItem ? handleUpdate : handleCreate}
-              loading={creating || updating}
-              disabled={!formData.name.trim() || !formData.price}
-            >
-              {editingItem ? 'Save' : 'Create'}
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
+      <MenuItemDialog
+        visible={showCreateDialog}
+        editingItem={editingItem}
+        availableRecipes={availableRecipes || []}
+        availableCategories={availableCategories || []}
+        recipesLoading={recipesLoading}
+        categoriesLoading={categoriesLoading}
+        saving={creating || updating}
+        onSave={handleSave}
+        onDismiss={handleDismiss}
+        onDelete={editingItem ? handleDeleteFromDialog : undefined}
+      />
 
-        {/* Delete Confirmation */}
+      {/* Delete Confirmation */}
+      <Portal>
         <Dialog visible={!!deleteConfirm} onDismiss={() => setDeleteConfirm(null)}>
           <Dialog.Title>Delete Menu Item</Dialog.Title>
           <Dialog.Content>
-            <Text>Are you sure you want to delete "{deleteConfirm?.name}"?</Text>
+            <Text>
+              Are you sure you want to delete "
+              {deleteConfirm?.menu_item_name || deleteConfirm?.name}"?
+            </Text>
           </Dialog.Content>
           <Dialog.Actions>
             <Button onPress={() => setDeleteConfirm(null)}>Cancel</Button>
@@ -459,56 +377,15 @@ const styles = StyleSheet.create({
   countChip: {
     height: 22,
   },
-  card: {
-    marginBottom: 8,
-  },
-  cardContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  itemInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  itemName: {
-    fontWeight: '600',
-  },
-  inactiveChip: {
-    height: 20,
-    backgroundColor: '#9e9e9e',
-  },
-  priceSection: {
-    alignItems: 'flex-end',
-  },
-  price: {
-    fontWeight: '700',
-  },
-  cardActions: {
-    flexDirection: 'row',
-    marginTop: 4,
-  },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 16,
   },
   fab: {
     position: 'absolute',
     right: 16,
     bottom: 16,
-  },
-  input: {
-    marginBottom: 12,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
   },
 });

@@ -1,6 +1,7 @@
 import { get, post, put, patch, del } from './index';
 
 export const getMenuItems = () => get('/menu/get_menu_items');
+export const getCategories = (): Promise<string[]> => get('/menu/categories');
 export const createMenuItem = (data: any) => post('/menu/create', data);
 export const updateMenuItem = (menuItemId: number | string, data: any) =>
   patch(`/menu/menu_items/${menuItemId}`, data);

@@ -27,16 +27,25 @@ export interface RecipeIngredient {
   unit: string;
 }
 
+// Recipe with ingredients (as returned from backend)
+export interface MenuItemRecipe {
+  recipe_id: number;
+  recipe_name: string;
+  ingredients: MenuItemIngredient[];
+}
+
 export interface MenuItem {
   menu_item_id: number;
-  restaurant_id: number;
-  name: string;
+  restaurant_id?: number;
+  menu_item_name: string; // Backend returns menu_item_name
+  name?: string; // Alias for compatibility
   price: number;
   category?: string;
   description?: string;
   is_active: boolean;
   recipe_id?: number;
   recipe?: Recipe;
+  recipes?: MenuItemRecipe[]; // Backend returns recipes array
   created_at?: string;
   updated_at?: string;
 }
@@ -48,6 +57,7 @@ export interface MenuItemCreate {
   description?: string;
   is_active?: boolean;
   recipe_id?: number;
+  recipes?: number[]; // Array of recipe IDs
 }
 
 export interface MenuItemUpdate {
@@ -57,6 +67,7 @@ export interface MenuItemUpdate {
   description?: string;
   is_active?: boolean;
   recipe_id?: number;
+  recipes?: number[]; // Array of recipe IDs
 }
 
 export interface BatchRecipe {

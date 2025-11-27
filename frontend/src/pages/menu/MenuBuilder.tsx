@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState } from 'react';
 import {
   Box,
   Typography,
@@ -9,16 +9,17 @@ import {
   InputLabel,
   Grid,
   CircularProgress,
-} from "@mui/material";
-import useMenuForm from "./hooks/useMenuForm";
-import MenuCard from "./components/MenuCard";
-import MenuModal from "./components/MenuModal";
-import HintBox from "./components/MenuHintBox";
+} from '@mui/material';
+import useMenuForm from './hooks/useMenuForm';
+import MenuCard from './components/MenuCard';
+import MenuModal from './components/MenuModal';
+import HintBox from './components/MenuHintBox';
 
 export default function MenuBuilder() {
   const {
     menuItems,
     recipesList,
+    categoriesList,
     formData,
     setFormData,
     editingItem,
@@ -38,25 +39,24 @@ export default function MenuBuilder() {
 
   const handleModalClose = () => setEditingItem(null);
 
-  const handleToggle = (id) =>
-    setExpandedId((prev) => (prev === id ? null : id));
+  const handleToggle = id => setExpandedId(prev => (prev === id ? null : id));
 
   const handleAddNew = () =>
     setEditingItem({
-      menu_item_name: "",
-      price: "",
-      category: "",
+      menu_item_name: '',
+      price: '',
+      category: '',
       recipes: [],
     });
 
   return (
-    <Box sx={{ px: 4, py: 6, maxWidth: "1440px", mx: "auto" }}>
+    <Box sx={{ px: 4, py: 6, maxWidth: '1440px', mx: 'auto' }}>
       {/* Header */}
       <Box
         sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
           mb: 6,
         }}
       >
@@ -76,19 +76,19 @@ export default function MenuBuilder() {
       {/* Filters */}
       <Box
         sx={{
-          display: "flex",
-          flexWrap: "wrap",
+          display: 'flex',
+          flexWrap: 'wrap',
           gap: 2,
-          alignItems: "center",
+          alignItems: 'center',
           mb: 6,
         }}
       >
         <FormControl sx={{ minWidth: 150 }}>
           <InputLabel>Show</InputLabel>
           <Select
-            value={showInactive ? "all" : "active"}
+            value={showInactive ? 'all' : 'active'}
             label="Show"
-            onChange={(e) => setShowInactive(e.target.value === "all")}
+            onChange={e => setShowInactive(e.target.value === 'all')}
           >
             <MenuItem value="active">Active Only</MenuItem>
             <MenuItem value="all">All (Active + Inactive)</MenuItem>
@@ -98,11 +98,9 @@ export default function MenuBuilder() {
         <FormControl sx={{ minWidth: 180 }}>
           <InputLabel>Sort</InputLabel>
           <Select
-            value={sortBy === "abc" ? "az" : "category"}
+            value={sortBy === 'abc' ? 'az' : 'category'}
             label="Sort"
-            onChange={(e) =>
-              setSortBy(e.target.value === "az" ? "abc" : "category")
-            }
+            onChange={e => setSortBy(e.target.value === 'az' ? 'abc' : 'category')}
           >
             <MenuItem value="az">A-Z</MenuItem>
             <MenuItem value="category">By Category</MenuItem>
@@ -112,7 +110,7 @@ export default function MenuBuilder() {
 
       {/* Content */}
       {loading ? (
-        <Box sx={{ textAlign: "center" }}>
+        <Box sx={{ textAlign: 'center' }}>
           <CircularProgress />
           <Typography mt={2}>Loading menu items...</Typography>
         </Box>
@@ -129,7 +127,7 @@ export default function MenuBuilder() {
               <Typography>No menu items found.</Typography>
             ) : (
               <Grid container spacing={3}>
-                {menuItems.map((item) => (
+                {menuItems.map(item => (
                   <Grid
                     key={item.menu_item_id}
                     item

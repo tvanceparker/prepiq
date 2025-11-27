@@ -3,6 +3,7 @@ import { get, post, put, patch, del } from './index';
 
 // Menu Items
 export const getMenuItems = () => get('/menu/get_menu_items');
+export const getCategories = () => get<string[]>('/menu/categories');
 export const createMenuItem = (data: any) => post('/menu/create', data);
 export const updateMenuItem = (menuItemId: number, data: any) =>
   patch(`/menu/menu_items/${menuItemId}`, data);

@@ -23,6 +23,12 @@ async def get_menu_items(menu_service: MenuService = Depends(get_menu_service)):
     return await menu_service.get_all_menu_items()
 
 
+@router.get("/categories")
+async def get_categories(menu_service: MenuService = Depends(get_menu_service)):
+    """Get all unique categories for menu items."""
+    return await menu_service.get_all_categories()
+
+
 @router.get("/batch_recipes/get_all_batch_recipes")
 async def get_all_batch_recipes(menu_service: MenuService = Depends(get_menu_service)):
     return await menu_service.get_all_batch_recipes()

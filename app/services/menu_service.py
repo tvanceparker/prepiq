@@ -54,6 +54,15 @@ class MenuService:
         self.error_log_repo = ErrorLogRepository(db, restaurant_id)
         self.supplier_repo = SupplierRepository(db, restaurant_id)
 
+    async def get_all_categories(self) -> list[str]:
+        """Get all unique categories from menu items for this restaurant."""
+        menu_items = await self.menu_repo.get_all()
+        categories = set()
+        for item in menu_items:
+            if item.category:
+                categories.add(item.category)
+        return sorted(list(categories))
+
     async def get_all_recipes(self):
         return await self.recipe_repo.get_all()
 

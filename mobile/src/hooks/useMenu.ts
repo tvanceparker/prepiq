@@ -2,6 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getMenuItems,
+  getCategories,
   createMenuItem,
   updateMenuItem,
   deleteMenuItem,
@@ -153,6 +154,30 @@ export function useRecipes() {
     deleteRecipe: deleteMutation.mutateAsync,
     deleting: deleteMutation.isPending,
 
+    refresh,
+  };
+}
+
+// =============================================================================
+// Categories Hook
+// =============================================================================
+
+export function useCategories() {
+  const queryClient = useQueryClient();
+
+  const categoriesQuery = useQuery({
+    queryKey: ['menu', 'categories'],
+    queryFn: getCategories,
+  });
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['menu', 'categories'] });
+  };
+
+  return {
+    categories: categoriesQuery.data ?? [],
+    loading: categoriesQuery.isLoading,
+    error: categoriesQuery.error,
     refresh,
   };
 }

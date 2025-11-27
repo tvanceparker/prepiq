@@ -12,6 +12,7 @@ import {
   ListItem,
   Checkbox,
   FormControlLabel,
+  Autocomplete,
 } from '@mui/material';
 
 export default function MenuModal({
@@ -24,6 +25,7 @@ export default function MenuModal({
   onReactivate,
   isEditing,
   recipesList,
+  availableCategories = [],
   handleRecipeToggle,
   editingItem,
   onExited,
@@ -74,14 +76,30 @@ export default function MenuModal({
             margin="normal"
           />
 
-          <TextField
-            label="Category"
-            name="category"
-            value={formData.category}
-            onChange={handleChange}
-            placeholder="Enter category"
-            fullWidth
-            margin="normal"
+          <Autocomplete
+            freeSolo
+            options={availableCategories}
+            value={formData.category || ''}
+            onChange={(event, newValue) => {
+              setFormData(f => ({ ...f, category: newValue || '' }));
+            }}
+            onInputChange={(event, newInputValue) => {
+              setFormData(f => ({ ...f, category: newInputValue || '' }));
+            }}
+            renderInput={params => (
+              <TextField
+                {...params}
+                label="Category"
+                placeholder="Enter or select category"
+                fullWidth
+                margin="normal"
+                helperText={
+                  formData.category && !availableCategories.includes(formData.category)
+                    ? '✨ New category will be created'
+                    : ''
+                }
+              />
+            )}
           />
 
           <Box

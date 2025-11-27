@@ -5,6 +5,8 @@ import AppLayout from '../components/AppLayout';
 import DailyOverview from '../pages/dashboard/DailyOverview';
 import AlertsFeed from '../pages/dashboard/AlertsFeed';
 import MenuItemQuickEntry from '../pages/dashboard/MenuItemQuickEntry';
+import LiveOperations from '../pages/dashboard/LiveOperations';
+import QuickAnalytics from '../pages/dashboard/QuickAnalytics';
 // Sales
 import UpcomingForecast from '../pages/sales/UpcomingForecast';
 import ForecastAccuracy from '../pages/sales/ForecastAccuracy';
@@ -68,6 +70,8 @@ const routeComponents: Record<string, React.ComponentType<any>> = {
   'dashboard_daily-overview': DailyOverview,
   dashboard_alerts: AlertsFeed,
   'dashboard_menu-item-entry': MenuItemQuickEntry,
+  'dashboard_live-operations': LiveOperations,
+  'dashboard_quick-analytics': QuickAnalytics,
   // Sales pages
   sales_upcoming: UpcomingForecast,
   'sales_forecast-accuracy': ForecastAccuracy,
