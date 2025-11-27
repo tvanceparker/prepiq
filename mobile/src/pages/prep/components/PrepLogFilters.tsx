@@ -1,18 +1,8 @@
 // src/pages/prep/components/PrepLogFilters.tsx
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
-import {
-  Surface,
-  Text,
-  Chip,
-  Menu,
-  Divider,
-  useTheme,
-  Portal,
-  Modal,
-  Button,
-} from 'react-native-paper';
-import { Calendar } from 'react-native-calendars';
+import { Surface, Text, Chip, Menu, Divider, useTheme, Portal } from 'react-native-paper';
+import { DatePickerModal } from 'react-native-paper-dates';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { BatchRecipe } from '../../../interfaces/prep';
 
@@ -63,17 +53,21 @@ export function PrepLogFilters({
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
-  const selectedRecipe = batchRecipes.find((r) => r.batch_recipe_id === batchRecipeFilter);
-  const selectedStatus = STATUS_OPTIONS.find((s) => s.value === statusFilter);
+  const selectedRecipe = batchRecipes.find(r => r.batch_recipe_id === batchRecipeFilter);
+  const selectedStatus = STATUS_OPTIONS.find(s => s.value === statusFilter);
 
-  const handleStartDateSelect = (day: { dateString: string }) => {
-    onStartDateChange(day.dateString);
+  const handleStartDateConfirm = (params: { date: Date | undefined }) => {
     setShowStartPicker(false);
+    if (params.date) {
+      onStartDateChange(params.date.toISOString().split('T')[0]);
+    }
   };
 
-  const handleEndDateSelect = (day: { dateString: string }) => {
-    onEndDateChange(day.dateString);
+  const handleEndDateConfirm = (params: { date: Date | undefined }) => {
     setShowEndPicker(false);
+    if (params.date) {
+      onEndDateChange(params.date.toISOString().split('T')[0]);
+    }
   };
 
   const formatDisplayDate = (dateStr: string) => {
@@ -160,7 +154,7 @@ export function PrepLogFilters({
             </Pressable>
           }
         >
-          {STATUS_OPTIONS.map((option) => (
+          {STATUS_OPTIONS.map(option => (
             <Menu.Item
               key={option.value}
               onPress={() => {
@@ -207,7 +201,7 @@ export function PrepLogFilters({
           />
           <Divider />
           <ScrollView style={{ maxHeight: 300 }}>
-            {batchRecipes.map((recipe) => (
+            {batchRecipes.map(recipe => (
               <Menu.Item
                 key={recipe.batch_recipe_id}
                 onPress={() => {
@@ -221,46 +215,30 @@ export function PrepLogFilters({
         </Menu>
       </ScrollView>
 
-      {/* Date Pickers */}
+      {/* Date Pickers - wrapped in Portal for proper layering */}
       <Portal>
-        <Modal
+        <DatePickerModal
+          locale="en"
+          mode="single"
           visible={showStartPicker}
           onDismiss={() => setShowStartPicker(false)}
-          contentContainerStyle={styles.modalContainer}
-        >
-          <Text variant="titleMedium" style={styles.modalTitle}>
-            Select Start Date
-          </Text>
-          <Calendar
-            onDayPress={handleStartDateSelect}
-            markedDates={startDate ? { [startDate]: { selected: true } } : {}}
-            theme={{
-              selectedDayBackgroundColor: theme.colors.primary,
-              todayTextColor: theme.colors.primary,
-            }}
-          />
-          <Button onPress={() => setShowStartPicker(false)}>Cancel</Button>
-        </Modal>
+          date={startDate ? new Date(startDate) : undefined}
+          onConfirm={handleStartDateConfirm}
+          label="Select Start Date"
+          saveLabel="Select"
+        />
       </Portal>
       <Portal>
-        <Modal
+        <DatePickerModal
+          locale="en"
+          mode="single"
           visible={showEndPicker}
           onDismiss={() => setShowEndPicker(false)}
-          contentContainerStyle={styles.modalContainer}
-        >
-          <Text variant="titleMedium" style={styles.modalTitle}>
-            Select End Date
-          </Text>
-          <Calendar
-            onDayPress={handleEndDateSelect}
-            markedDates={endDate ? { [endDate]: { selected: true } } : {}}
-            theme={{
-              selectedDayBackgroundColor: theme.colors.primary,
-              todayTextColor: theme.colors.primary,
-            }}
-          />
-          <Button onPress={() => setShowEndPicker(false)}>Cancel</Button>
-        </Modal>
+          date={endDate ? new Date(endDate) : undefined}
+          onConfirm={handleEndDateConfirm}
+          label="Select End Date"
+          saveLabel="Select"
+        />
       </Portal>
     </Surface>
   );
@@ -270,8 +248,9 @@ const styles = StyleSheet.create({
   container: {
     padding: 12,
     marginHorizontal: 16,
-    marginBottom: 8,
+    marginBottom: 12,
     borderRadius: 12,
+    zIndex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -299,17 +278,6 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     marginRight: 8,
-  },
-  modalContainer: {
-    backgroundColor: 'white',
-    margin: 20,
-    borderRadius: 12,
-    padding: 16,
-  },
-  modalTitle: {
-    textAlign: 'center',
-    marginBottom: 12,
-    fontWeight: '600',
   },
 });
 

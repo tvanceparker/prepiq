@@ -8,6 +8,10 @@ import RootNavigator from './navigation/RootNavigator';
 import { PaperProvider } from 'react-native-paper';
 import { lightTheme, darkTheme, LightTheme, DarkTheme } from './theme';
 import { StatusBar } from 'expo-status-bar';
+import { en, registerTranslation } from 'react-native-paper-dates';
+
+// Register English locale for date picker
+registerTranslation('en', en);
 
 const queryClient = new QueryClient();
 
