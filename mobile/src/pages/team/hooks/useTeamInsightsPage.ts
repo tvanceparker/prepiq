@@ -19,7 +19,11 @@ export function useTeamInsightsPage() {
 
   // Queries
   const { employees = [], loading: loadingEmployees } = useEmployees();
-  const { insights, loading: loadingInsights, isRefetching } = useTeamInsights({
+  const {
+    insights,
+    loading: loadingInsights,
+    isRefetching,
+  } = useTeamInsights({
     start_date: startDate,
     end_date: endDate,
   });

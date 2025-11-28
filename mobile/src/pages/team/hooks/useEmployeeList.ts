@@ -146,7 +146,7 @@ export function useEmployeeList() {
   // Update form field
   const updateFormField = useCallback(
     <K extends keyof EmployeeFormData>(field: K, value: EmployeeFormData[K]) => {
-      setFormData((prev) => ({ ...prev, [field]: value }));
+      setFormData(prev => ({ ...prev, [field]: value }));
     },
     []
   );
@@ -179,7 +179,7 @@ export function useEmployeeList() {
 
   // Dismiss snackbar
   const dismissSnackbar = useCallback(() => {
-    setSnackbar((s) => ({ ...s, visible: false }));
+    setSnackbar(s => ({ ...s, visible: false }));
   }, []);
 
   return {

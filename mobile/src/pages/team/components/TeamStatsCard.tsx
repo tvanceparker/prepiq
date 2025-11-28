@@ -29,22 +29,12 @@ export function TeamStatsCard({
   return (
     <Card style={styles.card} mode="outlined">
       {title && (
-        <Card.Title
-          title={title}
-          titleVariant="titleMedium"
-          titleStyle={{ fontWeight: '600' }}
-        />
+        <Card.Title title={title} titleVariant="titleMedium" titleStyle={{ fontWeight: '600' }} />
       )}
       <Card.Content>
         <View style={[styles.statsRow, { flexWrap: 'wrap' }]}>
           {stats.map((stat, index) => (
-            <View
-              key={index}
-              style={[
-                styles.statItem,
-                { width: `${100 / columns}%` },
-              ]}
-            >
+            <View key={index} style={[styles.statItem, { width: `${100 / columns}%` }]}>
               {stat.icon && (
                 <MaterialCommunityIcons
                   name={stat.icon}

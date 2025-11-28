@@ -66,15 +66,12 @@ export function useShiftManager() {
 
   // Group shifts by date for SectionList
   const sections: ShiftSection[] = useMemo(() => {
-    const grouped = shifts.reduce(
-      (acc, shift) => {
-        const date = shift.shift_date;
-        if (!acc[date]) acc[date] = [];
-        acc[date].push(shift);
-        return acc;
-      },
-      {} as Record<string, ShiftSchedule[]>
-    );
+    const grouped = shifts.reduce((acc, shift) => {
+      const date = shift.shift_date;
+      if (!acc[date]) acc[date] = [];
+      acc[date].push(shift);
+      return acc;
+    }, {} as Record<string, ShiftSchedule[]>);
 
     return Object.entries(grouped)
       .sort(([a], [b]) => a.localeCompare(b))
@@ -99,7 +96,7 @@ export function useShiftManager() {
 
   // Week navigation
   const goToPreviousWeek = useCallback(() => {
-    setCurrentWeekStart((prev) => {
+    setCurrentWeekStart(prev => {
       const newStart = new Date(prev);
       newStart.setDate(prev.getDate() - 7);
       return newStart;
@@ -107,7 +104,7 @@ export function useShiftManager() {
   }, []);
 
   const goToNextWeek = useCallback(() => {
-    setCurrentWeekStart((prev) => {
+    setCurrentWeekStart(prev => {
       const newStart = new Date(prev);
       newStart.setDate(prev.getDate() + 7);
       return newStart;
@@ -201,7 +198,7 @@ export function useShiftManager() {
   // Update form field
   const updateFormField = useCallback(
     <K extends keyof ShiftFormData>(field: K, value: ShiftFormData[K]) => {
-      setFormData((prev) => ({ ...prev, [field]: value }));
+      setFormData(prev => ({ ...prev, [field]: value }));
     },
     []
   );
@@ -240,7 +237,7 @@ export function useShiftManager() {
 
   // Dismiss snackbar
   const dismissSnackbar = useCallback(() => {
-    setSnackbar((s) => ({ ...s, visible: false }));
+    setSnackbar(s => ({ ...s, visible: false }));
   }, []);
 
   return {

@@ -65,11 +65,7 @@ export function PerformerCard({ performer, rank }: PerformerCardProps): React.JS
 
         <View style={styles.statsGrid}>
           <View style={styles.statItem}>
-            <MaterialCommunityIcons
-              name="clock-outline"
-              size={16}
-              color={theme.colors.primary}
-            />
+            <MaterialCommunityIcons name="clock-outline" size={16} color={theme.colors.primary} />
             <Text variant="titleSmall" style={styles.statValue}>
               {performer.total_hours.toFixed(1)}h
             </Text>
@@ -93,11 +89,7 @@ export function PerformerCard({ performer, rank }: PerformerCardProps): React.JS
           </View>
 
           <View style={styles.statItem}>
-            <MaterialCommunityIcons
-              name="timer-outline"
-              size={16}
-              color={theme.colors.tertiary}
-            />
+            <MaterialCommunityIcons name="timer-outline" size={16} color={theme.colors.tertiary} />
             <Text variant="titleSmall" style={styles.statValue}>
               {performer.avg_shift_duration.toFixed(1)}h
             </Text>
@@ -116,7 +108,10 @@ export function PerformerCard({ performer, rank }: PerformerCardProps): React.JS
               compact
               style={[
                 styles.rateChip,
-                { backgroundColor: onTimeRate >= 90 ? '#e8f5e9' : onTimeRate >= 70 ? '#fff8e1' : '#ffebee' },
+                {
+                  backgroundColor:
+                    onTimeRate >= 90 ? '#e8f5e9' : onTimeRate >= 70 ? '#fff8e1' : '#ffebee',
+                },
               ]}
               textStyle={{
                 fontSize: 10,

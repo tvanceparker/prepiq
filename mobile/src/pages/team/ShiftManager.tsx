@@ -85,7 +85,10 @@ export default function ShiftManager() {
               size={48}
               color={theme.colors.onSurfaceVariant}
             />
-            <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}>
+            <Text
+              variant="bodyLarge"
+              style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}
+            >
               No shifts scheduled
             </Text>
             <Button mode="contained" onPress={openCreate} style={{ marginTop: 16 }}>

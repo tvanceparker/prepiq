@@ -1,10 +1,21 @@
 // src/pages/team/TeamInsights.tsx
 import React from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, useTheme, Card, Chip, ActivityIndicator, List, Divider, Button, SegmentedButtons } from 'react-native-paper';
+import {
+  Text,
+  useTheme,
+  Card,
+  Chip,
+  ActivityIndicator,
+  List,
+  Divider,
+  Button,
+  SegmentedButtons,
+} from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useTeamInsightsPage } from './hooks';
 import { TeamStatsCard, PerformerCard } from './components';
+import type { EmployeePerformance } from '../../interfaces/team';
 
 export default function TeamInsights() {
   const theme = useTheme();
@@ -26,10 +37,30 @@ export default function TeamInsights() {
   } = useTeamInsightsPage();
 
   const summaryStats = [
-    { title: 'Active', value: stats.activeEmployees.toString(), subtitle: 'staff', icon: 'account-check', color: theme.colors.primary },
-    { title: 'Total', value: stats.totalEmployees.toString(), subtitle: 'team', icon: 'account-group', color: theme.colors.secondary },
-    { title: 'Hours', value: `${stats.totalHours}h`, subtitle: 'worked', icon: 'clock-outline', color: '#ff9800' },
-    { title: 'Cost', value: `$${stats.totalLaborCost}`, subtitle: 'labor', icon: 'currency-usd', color: '#4caf50' },
+    {
+      label: 'Active Staff',
+      value: stats.activeEmployees.toString(),
+      icon: 'account-check' as const,
+      color: theme.colors.primary,
+    },
+    {
+      label: 'Total Team',
+      value: stats.totalEmployees.toString(),
+      icon: 'account-group' as const,
+      color: theme.colors.secondary,
+    },
+    {
+      label: 'Hours Worked',
+      value: `${stats.totalHours}h`,
+      icon: 'clock-outline' as const,
+      color: '#ff9800',
+    },
+    {
+      label: 'Labor Cost',
+      value: `$${stats.totalLaborCost}`,
+      icon: 'currency-usd' as const,
+      color: '#4caf50',
+    },
   ];
 
   return (
@@ -51,7 +82,7 @@ export default function TeamInsights() {
       <View style={styles.dateSelector}>
         <SegmentedButtons
           value={datePreset}
-          onValueChange={(value) => {
+          onValueChange={value => {
             if (value === 'week') setThisWeek();
             if (value === 'month') setLastMonth();
           }}
@@ -60,7 +91,10 @@ export default function TeamInsights() {
             { value: 'month', label: 'Last Month' },
           ]}
         />
-        <Text variant="bodySmall" style={[styles.dateRangeText, { color: theme.colors.onSurfaceVariant }]}>
+        <Text
+          variant="bodySmall"
+          style={[styles.dateRangeText, { color: theme.colors.onSurfaceVariant }]}
+        >
           {dateRangeText}
         </Text>
       </View>
@@ -211,10 +245,14 @@ export default function TeamInsights() {
             <Card style={styles.card} mode="outlined">
               <Card.Title
                 title="Top Performers"
-                right={() => <Chip compact icon="star">{topPerformers.length}</Chip>}
+                right={() => (
+                  <Chip compact icon="star">
+                    {topPerformers.length}
+                  </Chip>
+                )}
               />
               <Card.Content>
-                {topPerformers.map((performer, index) => (
+                {topPerformers.map((performer: EmployeePerformance, index: number) => (
                   <React.Fragment key={performer.employee_id || index}>
                     <PerformerCard performer={performer} />
                     {index < topPerformers.length - 1 && <Divider style={{ marginVertical: 8 }} />}
