@@ -1,17 +1,12 @@
 // src/pages/team/hooks/useEmployeeList.ts
 import { useState, useMemo, useCallback } from 'react';
 import { useEmployees } from '../../../hooks/useTeam';
-import type { Employee, EmployeeCreate, EmployeeUpdate } from '../../../interfaces/team';
-
-export interface EmployeeFormData {
-  name: string;
-  email: string;
-  phone: string;
-  role_id: number;
-  hourly_rate: string;
-  is_active: boolean;
-  password: string;
-}
+import type {
+  Employee,
+  EmployeeCreate,
+  EmployeeUpdate,
+  EmployeeFormData,
+} from '../../../interfaces/team';
 
 const INITIAL_FORM_DATA: EmployeeFormData = {
   name: '',

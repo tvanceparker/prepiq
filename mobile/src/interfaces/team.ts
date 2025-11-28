@@ -126,3 +126,39 @@ export interface WeeklyScheduleResponse {
   total_hours: number;
   total_shifts: number;
 }
+
+// =============================================================================
+// UI/Hook Types (used by team page hooks)
+// =============================================================================
+
+export interface ClockSection {
+  title: string;
+  data: ClockEvent[];
+}
+
+export type DateRangeFilter = 'today' | 'week';
+
+export interface EmployeeFormData {
+  name: string;
+  email: string;
+  phone: string;
+  role_id: number;
+  hourly_rate: string;
+  is_active: boolean;
+  password: string;
+}
+
+export interface ShiftSection {
+  title: string;
+  data: ShiftSchedule[];
+}
+
+export interface ShiftFormData {
+  employee_id: number | null;
+  shift_date: string;
+  start_time: string;
+  end_time: string;
+  shift_type: string;
+}
+
+export type DateRangePreset = 'week' | 'month' | 'custom';

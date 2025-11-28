@@ -4,7 +4,12 @@ export { useEmployeeList } from './useEmployeeList';
 export { useShiftManager } from './useShiftManager';
 export { useTeamInsightsPage } from './useTeamInsightsPage';
 
-export type { ClockSection, DateRangeFilter } from './useClockInLog';
-export type { EmployeeFormData } from './useEmployeeList';
-export type { ShiftSection, ShiftFormData } from './useShiftManager';
-export type { DateRangePreset } from './useTeamInsightsPage';
+// Re-export types from interfaces for convenience
+export type {
+  ClockSection,
+  DateRangeFilter,
+  EmployeeFormData,
+  ShiftSection,
+  ShiftFormData,
+  DateRangePreset,
+} from '../../../interfaces/team';

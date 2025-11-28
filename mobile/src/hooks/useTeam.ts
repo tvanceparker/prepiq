@@ -51,8 +51,11 @@ export function useEmployees() {
     },
   });
 
+  // Safely get employees array
+  const employees = Array.isArray(employeesQuery.data) ? employeesQuery.data : [];
+
   // Group by role
-  const employeesByRole = (employeesQuery.data ?? []).reduce((acc, emp) => {
+  const employeesByRole = employees.reduce((acc, emp) => {
     const role = emp.role_name || 'Unassigned';
     if (!acc[role]) acc[role] = [];
     acc[role].push(emp);
@@ -64,9 +67,9 @@ export function useEmployees() {
   };
 
   return {
-    employees: employeesQuery.data ?? [],
+    employees,
     employeesByRole,
-    activeEmployees: (employeesQuery.data ?? []).filter(e => e.is_active),
+    activeEmployees: employees.filter(e => e.is_active),
     loading: employeesQuery.isLoading,
     error: employeesQuery.error,
 

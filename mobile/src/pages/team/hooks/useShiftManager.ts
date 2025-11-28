@@ -1,20 +1,13 @@
 // src/pages/team/hooks/useShiftManager.ts
 import { useState, useMemo, useCallback } from 'react';
 import { useEmployees, useShiftSchedule } from '../../../hooks/useTeam';
-import type { Employee, ShiftSchedule, ShiftScheduleCreate } from '../../../interfaces/team';
-
-export interface ShiftSection {
-  title: string;
-  data: ShiftSchedule[];
-}
-
-export interface ShiftFormData {
-  employee_id: number | null;
-  shift_date: string;
-  start_time: string;
-  end_time: string;
-  shift_type: string;
-}
+import type {
+  Employee,
+  ShiftSchedule,
+  ShiftScheduleCreate,
+  ShiftSection,
+  ShiftFormData,
+} from '../../../interfaces/team';
 
 const SHIFT_TYPES = ['morning', 'afternoon', 'evening', 'night', 'full_day', 'regular'];
 

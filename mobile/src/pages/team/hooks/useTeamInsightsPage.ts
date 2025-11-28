@@ -1,9 +1,7 @@
 // src/pages/team/hooks/useTeamInsightsPage.ts
 import { useState, useMemo, useCallback } from 'react';
 import { useEmployees, useTeamInsights } from '../../../hooks/useTeam';
-import type { Employee, TeamInsightsData } from '../../../interfaces/team';
-
-export type DateRangePreset = 'week' | 'month' | 'custom';
+import type { Employee, TeamInsightsData, DateRangePreset } from '../../../interfaces/team';
 
 export function useTeamInsightsPage() {
   // Get current week date range by default
