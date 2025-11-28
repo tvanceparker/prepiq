@@ -1,10 +1,9 @@
 // src/pages/team/ClockInLog.tsx
-import React, { useState, useCallback, useContext } from 'react';
+import React from 'react';
 import { View, StyleSheet, SectionList, RefreshControl } from 'react-native';
 import {
   Surface,
   Text,
-  Card,
   Button,
   Chip,
   ActivityIndicator,
@@ -12,119 +11,36 @@ import {
   Dialog,
   useTheme,
   SegmentedButtons,
-  Avatar,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useClockEvents, useEmployees } from '../../hooks/useTeam';
-import { AuthContext } from '../../contexts/AuthContext';
-import { ClockEvent, Employee } from '../../interfaces/team';
-
-interface ClockSection {
-  title: string;
-  data: ClockEvent[];
-}
+import { useClockInLog, ClockSection } from './hooks';
+import { ClockEventCard } from './components';
+import type { ClockEvent } from '../../interfaces/team';
 
 export default function ClockInLog(): React.ReactElement {
   const theme = useTheme();
-  const { user } = useContext(AuthContext) || {};
-  const currentEmployeeId = user?.user_id || 0;
-  const [refreshing, setRefreshing] = useState(false);
-  const [dateRange, setDateRange] = useState<'today' | 'week'>('today');
-  const [showClockDialog, setShowClockDialog] = useState(false);
 
-  // Calculate date range
-  const getDateRange = () => {
-    const end = new Date();
-    const start = new Date();
-
-    if (dateRange === 'today') {
-      start.setHours(0, 0, 0, 0);
-    } else {
-      start.setDate(start.getDate() - 7);
-    }
-
-    return {
-      startDate: start.toISOString().split('T')[0],
-      endDate: end.toISOString().split('T')[0],
-    };
-  };
-
-  const { startDate, endDate } = getDateRange();
-
-  // Queries & mutations
   const {
-    events: clockEvents = [],
+    // State
+    currentEmployeeId,
+    dateRange,
+    showClockDialog,
+    refreshing,
+    // Data
+    clockEvents,
+    sections,
+    stats,
+    isClockedIn,
     loading: isLoading,
-    clockIn,
     clockingIn,
-    clockOut,
     clockingOut,
-    currentClockEvent,
-    totalHours: workedHours,
-  } = useClockEvents({ employeeId: currentEmployeeId, startDate, endDate });
-
-  const { employees = [] } = useEmployees();
-
-  // Pull to refresh
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    // The hook will auto-refresh via query invalidation
-    setRefreshing(false);
-  }, []);
-
-  // Get employee name
-  const getEmployeeName = (employeeId: number) => {
-    const emp = employees.find((e: Employee) => e.employee_id === employeeId);
-    return emp?.name || 'Unknown';
-  };
-
-  // Check if current user is clocked in
-  const isClockedIn = currentClockEvent && !currentClockEvent.clock_out;
-
-  // Stats
-  const stats = React.useMemo(() => {
-    return {
-      currentlyIn: isClockedIn ? 1 : 0,
-      totalEvents: clockEvents.length,
-      totalHours: workedHours.toFixed(1),
-    };
-  }, [clockEvents, isClockedIn, workedHours]);
-
-  // Group by date
-  const sections: ClockSection[] = React.useMemo(() => {
-    const grouped: Record<string, ClockEvent[]> = {};
-
-    clockEvents.forEach((event: ClockEvent) => {
-      const date = event.clock_in?.split('T')[0] || 'Unknown Date';
-      if (!grouped[date]) {
-        grouped[date] = [];
-      }
-      grouped[date].push(event);
-    });
-
-    return Object.entries(grouped)
-      .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
-      .map(([title, data]) => ({
-        title: new Date(title).toLocaleDateString('en-US', {
-          weekday: 'long',
-          month: 'short',
-          day: 'numeric',
-        }),
-        data,
-      }));
-  }, [clockEvents]);
-
-  // Handle clock in/out
-  const handleClock = async (type: 'clock_in' | 'clock_out') => {
-    if (!currentEmployeeId) return;
-
-    if (type === 'clock_in') {
-      await clockIn({ employeeId: currentEmployeeId });
-    } else if (currentClockEvent) {
-      await clockOut({ clockEventId: currentClockEvent.clock_event_id });
-    }
-    setShowClockDialog(false);
-  };
+    // Actions
+    setDateRange,
+    setShowClockDialog,
+    handleClock,
+    onRefresh,
+    getEmployeeName,
+  } = useClockInLog();
 
   const renderSectionHeader = ({ section }: { section: ClockSection }) => (
     <View style={[styles.sectionHeader, { backgroundColor: theme.colors.background }]}>
@@ -138,57 +54,9 @@ export default function ClockInLog(): React.ReactElement {
     </View>
   );
 
-  const renderItem = ({ item }: { item: ClockEvent }) => {
-    const clockInTime = item.clock_in ? new Date(item.clock_in).toLocaleTimeString() : '--:--';
-    const clockOutTime = item.clock_out ? new Date(item.clock_out).toLocaleTimeString() : 'Active';
-    const isComplete = Boolean(item.clock_out);
-
-    return (
-      <Card style={styles.card} mode="outlined">
-        <Card.Content style={styles.cardContent}>
-          <View
-            style={[styles.eventIndicator, { backgroundColor: isComplete ? '#4caf50' : '#ff9800' }]}
-          >
-            <MaterialCommunityIcons
-              name={isComplete ? 'check-circle' : 'clock-outline'}
-              size={18}
-              color="#fff"
-            />
-          </View>
-
-          <View style={styles.eventInfo}>
-            <Text variant="titleSmall" style={styles.employeeName}>
-              {item.employee_name || getEmployeeName(item.employee_id)}
-            </Text>
-            <View style={styles.timeRow}>
-              <Chip
-                compact
-                style={[styles.typeChip, { backgroundColor: '#4caf50' }]}
-                textStyle={{ color: '#fff', fontSize: 10 }}
-              >
-                IN: {clockInTime}
-              </Chip>
-              <Chip
-                compact
-                style={[styles.typeChip, { backgroundColor: isComplete ? '#f44336' : '#ff9800' }]}
-                textStyle={{ color: '#fff', fontSize: 10 }}
-              >
-                OUT: {clockOutTime}
-              </Chip>
-            </View>
-            {item.duration_hours !== undefined && (
-              <Text
-                variant="bodySmall"
-                style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
-              >
-                Duration: {item.duration_hours.toFixed(1)} hours
-              </Text>
-            )}
-          </View>
-        </Card.Content>
-      </Card>
-    );
-  };
+  const renderItem = ({ item }: { item: ClockEvent }) => (
+    <ClockEventCard event={item} employeeName={getEmployeeName(item.employee_id)} />
+  );
 
   if (isLoading && clockEvents.length === 0) {
     return (
@@ -224,7 +92,7 @@ export default function ClockInLog(): React.ReactElement {
         {/* Date Range Selector */}
         <SegmentedButtons
           value={dateRange}
-          onValueChange={value => setDateRange(value as any)}
+          onValueChange={value => setDateRange(value as 'today' | 'week')}
           buttons={[
             { value: 'today', label: 'Today' },
             { value: 'week', label: 'This Week' },
@@ -389,42 +257,6 @@ const styles = StyleSheet.create({
   },
   countChip: {
     height: 22,
-  },
-  card: {
-    marginBottom: 8,
-  },
-  cardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  eventIndicator: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  eventInfo: {
-    flex: 1,
-  },
-  employeeName: {
-    fontWeight: '600',
-  },
-  typeChip: {
-    alignSelf: 'flex-start',
-    marginTop: 4,
-    height: 20,
-    marginRight: 8,
-  },
-  timeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  timeSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
   },
   emptyState: {
     flex: 1,

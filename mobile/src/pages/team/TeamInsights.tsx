@@ -1,39 +1,36 @@
 // src/pages/team/TeamInsights.tsx
 import React from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, useTheme, Card, Chip, ActivityIndicator, List, Divider } from 'react-native-paper';
+import { Text, useTheme, Card, Chip, ActivityIndicator, List, Divider, Button, SegmentedButtons } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useEmployees, useTeamInsights } from '../../hooks/useTeam';
-import { Employee } from '../../interfaces/team';
+import { useTeamInsightsPage } from './hooks';
+import { TeamStatsCard, PerformerCard } from './components';
 
 export default function TeamInsights() {
   const theme = useTheme();
 
-  // Get current week date range
-  const today = new Date();
-  const startOfWeek = new Date(today);
-  startOfWeek.setDate(today.getDate() - today.getDay());
-  const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setDate(startOfWeek.getDate() + 6);
+  const {
+    // State
+    datePreset,
+    // Data
+    insights,
+    stats,
+    topPerformers,
+    loading,
+    // Display
+    dateRangeText,
+    // Actions
+    setLastWeek,
+    setLastMonth,
+    setThisWeek,
+  } = useTeamInsightsPage();
 
-  const { employees, loading: isLoadingEmployees } = useEmployees();
-  const { insights, loading: isLoadingInsights } = useTeamInsights({
-    start_date: startOfWeek.toISOString().split('T')[0],
-    end_date: endOfWeek.toISOString().split('T')[0],
-  });
-
-  const loading = isLoadingInsights || isLoadingEmployees;
-
-  // Calculate some derived stats
-  const activeEmployees = (employees || []).filter((e: Employee) => e.is_active).length;
-  const totalEmployees = (employees || []).length;
-
-  const formatHours = (mins?: number) => {
-    if (!mins) return '0h';
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  };
+  const summaryStats = [
+    { title: 'Active', value: stats.activeEmployees.toString(), subtitle: 'staff', icon: 'account-check', color: theme.colors.primary },
+    { title: 'Total', value: stats.totalEmployees.toString(), subtitle: 'team', icon: 'account-group', color: theme.colors.secondary },
+    { title: 'Hours', value: `${stats.totalHours}h`, subtitle: 'worked', icon: 'clock-outline', color: '#ff9800' },
+    { title: 'Cost', value: `$${stats.totalLaborCost}`, subtitle: 'labor', icon: 'currency-usd', color: '#4caf50' },
+  ];
 
   return (
     <ScrollView
@@ -50,39 +47,36 @@ export default function TeamInsights() {
         Labor hours and team performance metrics
       </Text>
 
+      {/* Date Range Selector */}
+      <View style={styles.dateSelector}>
+        <SegmentedButtons
+          value={datePreset}
+          onValueChange={(value) => {
+            if (value === 'week') setThisWeek();
+            if (value === 'month') setLastMonth();
+          }}
+          buttons={[
+            { value: 'week', label: 'This Week' },
+            { value: 'month', label: 'Last Month' },
+          ]}
+        />
+        <Text variant="bodySmall" style={[styles.dateRangeText, { color: theme.colors.onSurfaceVariant }]}>
+          {dateRangeText}
+        </Text>
+      </View>
+
       {loading ? (
         <ActivityIndicator style={styles.loader} size="large" />
       ) : (
         <>
           {/* Summary Stats */}
-          <View style={styles.statsRow}>
-            <Card style={styles.statCard} mode="outlined">
-              <Card.Content style={styles.statContent}>
-                <Text variant="displaySmall" style={{ color: theme.colors.primary }}>
-                  {activeEmployees}
-                </Text>
-                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                  Active Staff
-                </Text>
-              </Card.Content>
-            </Card>
-            <Card style={styles.statCard} mode="outlined">
-              <Card.Content style={styles.statContent}>
-                <Text variant="displaySmall" style={{ color: theme.colors.secondary }}>
-                  {totalEmployees}
-                </Text>
-                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                  Total Team
-                </Text>
-              </Card.Content>
-            </Card>
-          </View>
+          <TeamStatsCard stats={summaryStats} />
 
           {/* Today's Stats */}
           {insights && (
             <Card style={styles.card} mode="outlined">
               <Card.Title
-                title="Today's Summary"
+                title="Current Period Summary"
                 right={() => <Chip compact>{new Date().toLocaleDateString()}</Chip>}
               />
               <Card.Content>
@@ -143,14 +137,14 @@ export default function TeamInsights() {
             </Card>
           )}
 
-          {/* Weekly Stats */}
+          {/* Labor Cost Stats */}
           {insights && (
             <Card style={styles.card} mode="outlined">
               <Card.Title
-                title="This Week"
+                title="Labor & Attendance"
                 right={() => (
                   <Chip compact icon="calendar-week">
-                    Week Stats
+                    Period Stats
                   </Chip>
                 )}
               />
@@ -175,7 +169,7 @@ export default function TeamInsights() {
                 <Divider />
                 <List.Item
                   title="Total Shifts"
-                  description="This week"
+                  description="This period"
                   left={() => (
                     <MaterialCommunityIcons
                       name="calendar-check"
@@ -204,10 +198,28 @@ export default function TeamInsights() {
                   )}
                   right={() => (
                     <Text variant="titleMedium" style={{ color: theme.colors.tertiary }}>
-                      {(insights.on_time_rate * 100)?.toFixed(0) ?? 0}%
+                      {((insights.on_time_rate ?? 0) * 100).toFixed(0)}%
                     </Text>
                   )}
                 />
+              </Card.Content>
+            </Card>
+          )}
+
+          {/* Top Performers */}
+          {topPerformers && topPerformers.length > 0 && (
+            <Card style={styles.card} mode="outlined">
+              <Card.Title
+                title="Top Performers"
+                right={() => <Chip compact icon="star">{topPerformers.length}</Chip>}
+              />
+              <Card.Content>
+                {topPerformers.map((performer, index) => (
+                  <React.Fragment key={performer.employee_id || index}>
+                    <PerformerCard performer={performer} />
+                    {index < topPerformers.length - 1 && <Divider style={{ marginVertical: 8 }} />}
+                  </React.Fragment>
+                ))}
               </Card.Content>
             </Card>
           )}
@@ -251,22 +263,17 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   subtitle: {
-    marginBottom: 24,
+    marginBottom: 16,
+  },
+  dateSelector: {
+    marginBottom: 16,
+  },
+  dateRangeText: {
+    textAlign: 'center',
+    marginTop: 8,
   },
   loader: {
     marginTop: 64,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-  },
-  statCard: {
-    flex: 1,
-  },
-  statContent: {
-    alignItems: 'center',
-    paddingVertical: 8,
   },
   card: {
     marginBottom: 16,
