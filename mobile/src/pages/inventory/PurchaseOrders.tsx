@@ -1,6 +1,6 @@
 // src/pages/inventory/PurchaseOrders.tsx
-import React, { useState, useCallback, useContext } from 'react';
-import { View, StyleSheet, SectionList, RefreshControl } from 'react-native';
+import React, { useState, useCallback, useContext, useMemo } from 'react';
+import { View, StyleSheet, SectionList, RefreshControl, ScrollView } from 'react-native';
 import {
   Surface,
   Text,
@@ -18,15 +18,36 @@ import {
   useTheme,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { usePurchaseOrders } from '../../hooks/usePurchaseOrders';
+import {
+  usePurchaseOrders,
+  usePOSuggestions,
+  useIngredientStockLevels,
+  useIngredientSuppliers,
+} from '../../hooks/usePurchaseOrders';
 import { AuthContext } from '../../contexts/AuthContext';
-import { PurchaseOrder, PurchaseOrderStatus } from '../../interfaces/inventory';
+import {
+  PurchaseOrder,
+  PurchaseOrderStatus,
+  IngredientStockLevel,
+  IngredientSupplierOption,
+} from '../../interfaces/inventory';
+import {
+  POMethodSelector,
+  POSupplierConfig,
+  POIngredientBrowser,
+  POSupplierReview,
+  POIngredientReview,
+  WizardMode,
+} from './components/po-wizard';
 
 interface POSection {
   title: string;
   status: PurchaseOrderStatus;
   data: PurchaseOrder[];
 }
+
+type WizardStep = 0 | 1 | 2;
+const WIZARD_STEPS = ['Method', 'Select', 'Review'];
 
 export default function PurchaseOrders(): React.JSX.Element {
   const theme = useTheme();
@@ -36,16 +57,56 @@ export default function PurchaseOrders(): React.JSX.Element {
   const [statusFilter, setStatusFilter] = useState<PurchaseOrderStatus | 'all'>('all');
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
 
-  // Queries
+  // Unified Wizard State
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState<WizardStep>(0);
+  const [wizardMode, setWizardMode] = useState<WizardMode | null>(null);
+
+  // Supplier mode state
+  const [useCachedForecast, setUseCachedForecast] = useState(true);
+  const [horizonDays, setHorizonDays] = useState(7);
+  const [selectedItems, setSelectedItems] = useState<Map<string, number>>(new Map());
+  const [expandedSuppliers, setExpandedSuppliers] = useState<Set<number>>(new Set());
+
+  // Ingredient mode state
+  const [selectedIngredient, setSelectedIngredient] = useState<IngredientStockLevel | null>(null);
+  const [ingredientSupplier, setIngredientSupplier] = useState<IngredientSupplierOption | null>(
+    null
+  );
+  const [ingredientQty, setIngredientQty] = useState(1);
+
+  // Notes
+  const [orderNotes, setOrderNotes] = useState('');
+
+  // Queries & hooks
   const {
     orders: purchaseOrders,
     loading: isLoading,
     refresh,
     updateStatus,
     updatingStatus,
+    createOrder,
   } = usePurchaseOrders({
     status: statusFilter !== 'all' ? statusFilter : undefined,
   });
+
+  const {
+    lastEodDate,
+    generateSuggestions,
+    generating,
+    suggestions,
+    createFromSuggestions,
+    creating,
+    reset: resetSuggestions,
+  } = usePOSuggestions();
+
+  const { stockLevels, loading: stockLoading } = useIngredientStockLevels(
+    wizardOpen && wizardMode === 'ingredient'
+  );
+
+  const { suppliers: ingredientSuppliers, loading: suppliersLoading } = useIngredientSuppliers(
+    selectedIngredient?.ingredient_id ?? null
+  );
 
   // Pull to refresh
   const onRefresh = useCallback(async () => {
@@ -55,7 +116,7 @@ export default function PurchaseOrders(): React.JSX.Element {
   }, [refresh]);
 
   // Filter POs
-  const filteredPOs = React.useMemo(() => {
+  const filteredPOs = useMemo(() => {
     if (!searchQuery) return purchaseOrders;
     const query = searchQuery.toLowerCase();
     return purchaseOrders.filter(
@@ -65,15 +126,13 @@ export default function PurchaseOrders(): React.JSX.Element {
   }, [purchaseOrders, searchQuery]);
 
   // Group by status
-  const sections: POSection[] = React.useMemo(() => {
+  const sections: POSection[] = useMemo(() => {
     const statusOrder: PurchaseOrderStatus[] = ['cart', 'pending', 'delivered', 'cancelled'];
     const grouped: Record<string, PurchaseOrder[]> = {};
 
     filteredPOs.forEach(po => {
       const status = po.status || 'pending';
-      if (!grouped[status]) {
-        grouped[status] = [];
-      }
+      if (!grouped[status]) grouped[status] = [];
       grouped[status].push(po);
     });
 
@@ -108,8 +167,118 @@ export default function PurchaseOrders(): React.JSX.Element {
     setSelectedPO(null);
   };
 
+  // Wizard helpers
+  const closeWizard = useCallback(() => {
+    setWizardOpen(false);
+    setWizardStep(0);
+    setWizardMode(null);
+    resetSuggestions();
+    setSelectedItems(new Map());
+    setSelectedIngredient(null);
+    setIngredientSupplier(null);
+    setIngredientQty(1);
+    setOrderNotes('');
+  }, [resetSuggestions]);
+
+  const openWizard = useCallback(() => {
+    setWizardOpen(true);
+    setWizardStep(0);
+    setWizardMode(null);
+  }, []);
+
+  // Generate suggestions
+  const handleGenerateSuggestions = async () => {
+    try {
+      const result = await generateSuggestions({ horizonDays, useCachedForecast });
+      const allItems = new Map<string, number>();
+      result.all_items.forEach(item => {
+        allItems.set(`${item.supplier_id}-${item.ingredient_id}`, item.quantity_to_order);
+      });
+      setSelectedItems(allItems);
+      const supplierIds = new Set(result.suggestions.map(s => s.supplier_id));
+      setExpandedSuppliers(supplierIds);
+      setWizardStep(2);
+    } catch (error) {
+      console.error('Failed to generate suggestions:', error);
+    }
+  };
+
+  // Create POs from selected suggestions
+  const handleCreateFromSuggestions = async () => {
+    if (!suggestions) return;
+    const selectedItemsList: any[] = [];
+    suggestions.all_items.forEach(item => {
+      const key = `${item.supplier_id}-${item.ingredient_id}`;
+      if (selectedItems.has(key)) {
+        selectedItemsList.push({
+          ...item,
+          quantity_to_order: selectedItems.get(key) || item.quantity_to_order,
+        });
+      }
+    });
+
+    try {
+      await createFromSuggestions({
+        suggestions: selectedItemsList,
+        notes: orderNotes || undefined,
+      });
+      closeWizard();
+      setStatusFilter('cart');
+    } catch (error) {
+      console.error('Failed to create orders:', error);
+    }
+  };
+
+  // Create ingredient order
+  const handleCreateIngredientOrder = async () => {
+    if (!selectedIngredient || !ingredientSupplier) return;
+    try {
+      await createOrder({
+        supplier_id: ingredientSupplier.supplier_id,
+        expected_delivery_date: new Date(
+          Date.now() + ingredientSupplier.lead_time_days * 24 * 60 * 60 * 1000
+        )
+          .toISOString()
+          .split('T')[0],
+        items: [
+          {
+            ingredient_id: selectedIngredient.ingredient_id,
+            quantity_ordered: ingredientQty * ingredientSupplier.pack_size,
+            unit: ingredientSupplier.pack_unit,
+            unit_price: ingredientSupplier.unit_price,
+          },
+        ],
+        notes: orderNotes || undefined,
+      });
+      closeWizard();
+      setStatusFilter('cart');
+    } catch (error) {
+      console.error('Failed to create order:', error);
+    }
+  };
+
+  // Calculate totals for review
+  const reviewTotals = useMemo(() => {
+    if (!suggestions) return { itemCount: 0, total: 0, supplierCount: 0 };
+    let total = 0;
+    let itemCount = 0;
+    const supplierSet = new Set<number>();
+
+    suggestions.all_items.forEach(item => {
+      const key = `${item.supplier_id}-${item.ingredient_id}`;
+      if (selectedItems.has(key)) {
+        const qty = selectedItems.get(key) || item.quantity_to_order;
+        total += qty * item.unit_price;
+        itemCount++;
+        supplierSet.add(item.supplier_id);
+      }
+    });
+
+    return { itemCount, total, supplierCount: supplierSet.size };
+  }, [suggestions, selectedItems]);
+
   // Status counts
-  const statusCounts = React.useMemo(() => {
+  const statusCounts = useMemo(() => {
     const counts: Record<string, number> = { all: purchaseOrders.length };
     purchaseOrders.forEach(po => {
       const status = po.status || 'pending';
@@ -118,6 +287,48 @@ export default function PurchaseOrders(): React.JSX.Element {
     return counts;
   }, [purchaseOrders]);
 
+  // Navigation helpers
+  const canProceed = () => {
+    if (wizardStep === 0) return wizardMode !== null;
+    if (wizardStep === 1 && wizardMode === 'ingredient') {
+      return selectedIngredient !== null && ingredientSupplier !== null;
+    }
+    if (wizardStep === 2) {
+      if (wizardMode === 'supplier') return selectedItems.size > 0;
+      if (wizardMode === 'ingredient') return selectedIngredient && ingredientSupplier;
+    }
+    return true;
+  };
+
+  const handleNext = () => {
+    if (wizardStep === 0) {
+      setWizardStep(1);
+    } else if (wizardStep === 1 && wizardMode === 'ingredient') {
+      setWizardStep(2);
+    }
+  };
+
+  const handleBack = () => {
+    if (wizardStep === 1) {
+      setWizardStep(0);
+      resetSuggestions();
+    } else if (wizardStep === 2) {
+      if (wizardMode === 'supplier') {
+        resetSuggestions();
+      }
+      setWizardStep(1);
+    }
+  };
+
+  const handleCreate = () => {
+    if (wizardMode === 'supplier') {
+      handleCreateFromSuggestions();
+    } else {
+      handleCreateIngredientOrder();
+    }
+  };
+
+  // Render section header
   const renderSectionHeader = ({ section }: { section: POSection }) => (
     <View style={[styles.sectionHeader, { backgroundColor: theme.colors.background }]}>
       <View style={[styles.statusIndicator, { backgroundColor: getStatusColor(section.status) }]} />
@@ -130,6 +341,7 @@ export default function PurchaseOrders(): React.JSX.Element {
     </View>
   );
 
+  // Render PO item
   const renderItem = ({ item }: { item: PurchaseOrder }) => (
     <Card style={styles.card} mode="outlined" onPress={() => setSelectedPO(item)}>
       <Card.Content>
@@ -189,9 +401,78 @@ export default function PurchaseOrders(): React.JSX.Element {
     </Card>
   );
 
+  // Wizard content router
+  const renderWizardContent = () => {
+    if (wizardStep === 0) {
+      return <POMethodSelector selectedMode={wizardMode} onSelectMode={setWizardMode} />;
+    }
+
+    if (wizardMode === 'supplier') {
+      if (wizardStep === 1) {
+        return (
+          <POSupplierConfig
+            useCachedForecast={useCachedForecast}
+            setUseCachedForecast={setUseCachedForecast}
+            horizonDays={horizonDays}
+            setHorizonDays={setHorizonDays}
+            lastEodDate={lastEodDate}
+            onGenerate={handleGenerateSuggestions}
+            isGenerating={generating}
+          />
+        );
+      }
+      if (wizardStep === 2 && suggestions) {
+        return (
+          <POSupplierReview
+            suggestions={suggestions}
+            selectedItems={selectedItems}
+            setSelectedItems={setSelectedItems}
+            expandedSuppliers={expandedSuppliers}
+            setExpandedSuppliers={setExpandedSuppliers}
+            orderNotes={orderNotes}
+            setOrderNotes={setOrderNotes}
+          />
+        );
+      }
+    }
+
+    if (wizardMode === 'ingredient') {
+      if (wizardStep === 1) {
+        return (
+          <POIngredientBrowser
+            stockLevels={stockLevels}
+            stockLoading={stockLoading}
+            selectedIngredient={selectedIngredient}
+            setSelectedIngredient={setSelectedIngredient}
+            ingredientSuppliers={ingredientSuppliers}
+            suppliersLoading={suppliersLoading}
+            ingredientSupplier={ingredientSupplier}
+            setIngredientSupplier={setIngredientSupplier}
+            ingredientQty={ingredientQty}
+            setIngredientQty={setIngredientQty}
+          />
+        );
+      }
+      if (wizardStep === 2 && selectedIngredient && ingredientSupplier) {
+        return (
+          <POIngredientReview
+            selectedIngredient={selectedIngredient}
+            ingredientSupplier={ingredientSupplier}
+            ingredientQty={ingredientQty}
+            orderNotes={orderNotes}
+            setOrderNotes={setOrderNotes}
+          />
+        );
+      }
+    }
+
+    return null;
+  };
+
+  // Loading state
   if (isLoading && purchaseOrders.length === 0) {
     return (
-      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background, flex: 1 }]}>
         <ActivityIndicator size="large" />
         <Text style={{ marginTop: 16 }}>Loading purchase orders...</Text>
       </View>
@@ -209,12 +490,6 @@ export default function PurchaseOrders(): React.JSX.Element {
               Purchase Orders
             </Text>
           </View>
-          <View style={styles.headerChip}>
-            <MaterialCommunityIcons name="file-document" size={16} color={theme.colors.primary} />
-            <Text style={{ marginLeft: 4, color: theme.colors.primary }}>
-              {purchaseOrders.length}
-            </Text>
-          </View>
         </View>
 
         <Searchbar
@@ -225,21 +500,23 @@ export default function PurchaseOrders(): React.JSX.Element {
         />
 
         {/* Status Filter */}
-        <View style={styles.filterRow}>
-          {(['all', 'cart', 'pending', 'delivered', 'cancelled'] as const).map(status => (
-            <Chip
-              key={status}
-              selected={statusFilter === status}
-              onPress={() => setStatusFilter(status as PurchaseOrderStatus | 'all')}
-              style={styles.filterChip}
-              showSelectedCheck={false}
-              mode={statusFilter === status ? 'flat' : 'outlined'}
-            >
-              {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)} (
-              {statusCounts[status] || 0})
-            </Chip>
-          ))}
-        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+          <View style={styles.filterRow}>
+            {(['all', 'cart', 'pending', 'delivered'] as const).map(s => (
+              <Chip
+                key={s}
+                selected={statusFilter === s}
+                onPress={() => setStatusFilter(s as PurchaseOrderStatus | 'all')}
+                style={styles.filterChip}
+                showSelectedCheck={false}
+                mode={statusFilter === s ? 'flat' : 'outlined'}
+              >
+                {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)} (
+                {statusCounts[s] || 0})
+              </Chip>
+            ))}
+          </View>
+        </ScrollView>
       </Surface>
 
       {/* PO List */}
@@ -256,6 +533,9 @@ export default function PurchaseOrders(): React.JSX.Element {
           >
             No purchase orders found
           </Text>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}>
+            Tap the button below to create one
+          </Text>
         </View>
       ) : (
         <SectionList
@@ -269,14 +549,12 @@ export default function PurchaseOrders(): React.JSX.Element {
         />
       )}
 
-      {/* FAB for new PO */}
+      {/* FAB */}
       <FAB
         icon={() => <MaterialCommunityIcons name="plus" size={24} color="#fff" />}
         style={[styles.fab, { backgroundColor: theme.colors.primary }]}
-        onPress={() => {
-          // Navigation to create PO would go here
-        }}
-        label="New PO"
+        onPress={openWizard}
+        label="New Order"
       />
 
       {/* PO Detail Modal */}
@@ -287,7 +565,7 @@ export default function PurchaseOrders(): React.JSX.Element {
           contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}
         >
           {selectedPO && (
-            <>
+            <ScrollView>
               <View style={styles.modalHeader}>
                 <Text variant="titleLarge" style={{ fontWeight: '600' }}>
                   {`PO #${selectedPO.order_id}`}
@@ -362,7 +640,7 @@ export default function PurchaseOrders(): React.JSX.Element {
                     2
                   )}`}
                   right={() => (
-                    <Text variant="bodyMedium" style={{ fontWeight: '600' }}>
+                    <Text variant="bodyMedium" style={{ fontWeight: '600', alignSelf: 'center' }}>
                       ${((item.quantity_ordered || 0) * (item.unit_price || 0)).toFixed(2)}
                     </Text>
                   )}
@@ -371,7 +649,6 @@ export default function PurchaseOrders(): React.JSX.Element {
 
               <Divider style={{ marginVertical: 12 }} />
 
-              {/* Quick Actions */}
               <View style={styles.modalActions}>
                 {selectedPO.status === 'pending' && (
                   <Button
@@ -404,8 +681,136 @@ export default function PurchaseOrders(): React.JSX.Element {
                   </Button>
                 )}
               </View>
-            </>
+            </ScrollView>
           )}
+        </Modal>
+
+        {/* New Order Wizard Modal */}
+        <Modal
+          visible={wizardOpen}
+          onDismiss={closeWizard}
+          contentContainerStyle={[styles.wizardModal, { backgroundColor: theme.colors.surface }]}
+        >
+          {/* Wizard Header */}
+          <View style={styles.wizardHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <MaterialCommunityIcons name="cart-plus" size={24} color={theme.colors.primary} />
+              <Text variant="titleLarge" style={{ fontWeight: '600' }}>
+                New Order
+              </Text>
+            </View>
+            <IconButton
+              icon={() => (
+                <MaterialCommunityIcons name="close" size={24} color={theme.colors.onSurface} />
+              )}
+              onPress={closeWizard}
+            />
+          </View>
+
+          {/* Wizard Progress */}
+          <View style={styles.wizardProgress}>
+            {WIZARD_STEPS.map((step, index) => (
+              <View key={step} style={styles.wizardStep}>
+                <View
+                  style={[
+                    styles.wizardStepCircle,
+                    {
+                      backgroundColor:
+                        index <= wizardStep ? theme.colors.primary : theme.colors.surfaceVariant,
+                    },
+                  ]}
+                >
+                  {index < wizardStep ? (
+                    <MaterialCommunityIcons name="check" size={16} color="#fff" />
+                  ) : (
+                    <Text
+                      style={{
+                        color: index === wizardStep ? '#fff' : theme.colors.onSurfaceVariant,
+                        fontWeight: '600',
+                      }}
+                    >
+                      {index + 1}
+                    </Text>
+                  )}
+                </View>
+                <Text
+                  variant="bodySmall"
+                  style={{
+                    color:
+                      index <= wizardStep ? theme.colors.primary : theme.colors.onSurfaceVariant,
+                    fontWeight: index === wizardStep ? '600' : '400',
+                  }}
+                >
+                  {step}
+                </Text>
+                {index < WIZARD_STEPS.length - 1 && (
+                  <View
+                    style={[
+                      styles.wizardStepLine,
+                      {
+                        backgroundColor:
+                          index < wizardStep ? theme.colors.primary : theme.colors.surfaceVariant,
+                      },
+                    ]}
+                  />
+                )}
+              </View>
+            ))}
+          </View>
+
+          <Divider />
+
+          {/* Wizard Content */}
+          <ScrollView style={{ flex: 1 }}>{renderWizardContent()}</ScrollView>
+
+          {/* Wizard Footer */}
+          <Divider />
+          <View style={styles.wizardFooter}>
+            <Button mode="text" onPress={closeWizard}>
+              Cancel
+            </Button>
+            <View style={{ flex: 1 }} />
+            {wizardStep > 0 && (
+              <Button
+                mode="outlined"
+                onPress={handleBack}
+                icon="arrow-left"
+                style={{ marginRight: 8 }}
+              >
+                Back
+              </Button>
+            )}
+            {wizardStep < 2 ? (
+              <Button
+                mode="contained"
+                onPress={handleNext}
+                disabled={!canProceed()}
+                icon="arrow-right"
+                contentStyle={{ flexDirection: 'row-reverse' }}
+              >
+                {wizardStep === 0
+                  ? 'Continue'
+                  : wizardMode === 'supplier'
+                  ? 'Generate'
+                  : 'Continue'}
+              </Button>
+            ) : (
+              <Button
+                mode="contained"
+                onPress={handleCreate}
+                disabled={!canProceed() || creating}
+                loading={creating}
+                icon="check"
+                buttonColor={theme.colors.primary}
+              >
+                {creating
+                  ? 'Creating...'
+                  : wizardMode === 'supplier'
+                  ? `Create ${reviewTotals.supplierCount} Draft(s)`
+                  : 'Create Draft'}
+              </Button>
+            )}
+          </View>
         </Modal>
       </Portal>
     </View>
@@ -432,14 +837,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  headerChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 16,
-  },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -449,8 +846,8 @@ const styles = StyleSheet.create({
   },
   filterRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
+    paddingRight: 16,
   },
   filterChip: {
     marginBottom: 4,
@@ -538,5 +935,47 @@ const styles = StyleSheet.create({
   },
   modalActions: {
     marginTop: 8,
+  },
+  wizardModal: {
+    margin: 16,
+    borderRadius: 16,
+    maxHeight: '90%',
+    flex: 1,
+  },
+  wizardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    paddingBottom: 8,
+  },
+  wizardProgress: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 16,
+  },
+  wizardStep: {
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  wizardStepCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 4,
+  },
+  wizardStepLine: {
+    width: 40,
+    height: 2,
+    marginHorizontal: 8,
+  },
+  wizardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
   },
 });

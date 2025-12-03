@@ -7,12 +7,20 @@ import {
   updatePurchaseOrderStatus,
   addItemToPurchaseOrder,
   removeItemFromPurchaseOrder,
+  generatePOSuggestions,
+  createPOsFromSuggestions,
+  getIngredientsStockLevels,
+  getIngredientSuppliers,
+  getLastEodDate,
 } from '../api/inventory';
 import type {
   PurchaseOrder,
   PurchaseOrderCreate,
   PurchaseOrderStatus,
   PurchaseOrderItem,
+  POSuggestionsResponse,
+  IngredientStockLevel,
+  IngredientSupplierOption,
 } from '../interfaces/inventory';
 
 export interface UsePurchaseOrdersOptions {
@@ -111,6 +119,85 @@ export function usePurchaseOrderDetail(orderId: number | null) {
 
     removeItem: removeItemMutation.mutateAsync,
     removingItem: removeItemMutation.isPending,
+  };
+}
+
+// Hook for generating PO suggestions
+export function usePOSuggestions() {
+  const queryClient = useQueryClient();
+
+  // Last EOD date query
+  const lastEodQuery = useQuery({
+    queryKey: ['lastEodDate'],
+    queryFn: getLastEodDate,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+
+  // Generate suggestions mutation
+  const generateMutation = useMutation({
+    mutationFn: ({
+      horizonDays,
+      useCachedForecast,
+    }: {
+      horizonDays: number;
+      useCachedForecast: boolean;
+    }) => generatePOSuggestions(horizonDays, useCachedForecast),
+  });
+
+  // Create POs from suggestions mutation
+  const createFromSuggestionsMutation = useMutation({
+    mutationFn: ({ suggestions, notes }: { suggestions: any[]; notes?: string }) =>
+      createPOsFromSuggestions(suggestions, notes),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
+    },
+  });
+
+  return {
+    lastEodDate: lastEodQuery.data?.last_eod_run_date,
+    loadingEodDate: lastEodQuery.isLoading,
+
+    generateSuggestions: generateMutation.mutateAsync,
+    generating: generateMutation.isPending,
+    suggestions: generateMutation.data,
+    generationError: generateMutation.error,
+
+    createFromSuggestions: createFromSuggestionsMutation.mutateAsync,
+    creating: createFromSuggestionsMutation.isPending,
+    creationError: createFromSuggestionsMutation.error,
+
+    reset: () => generateMutation.reset(),
+  };
+}
+
+// Hook for ingredient stock levels
+export function useIngredientStockLevels(enabled: boolean = true) {
+  const stockLevelsQuery = useQuery({
+    queryKey: ['ingredientStockLevels'],
+    queryFn: getIngredientsStockLevels,
+    enabled,
+  });
+
+  return {
+    stockLevels: stockLevelsQuery.data ?? [],
+    loading: stockLevelsQuery.isLoading,
+    error: stockLevelsQuery.error,
+    refetch: stockLevelsQuery.refetch,
+  };
+}
+
+// Hook for ingredient suppliers
+export function useIngredientSuppliers(ingredientId: number | null) {
+  const suppliersQuery = useQuery({
+    queryKey: ['ingredientSuppliers', ingredientId],
+    queryFn: () => getIngredientSuppliers(ingredientId!),
+    enabled: ingredientId !== null,
+  });
+
+  return {
+    suppliers: suppliersQuery.data ?? [],
+    loading: suppliersQuery.isLoading,
+    error: suppliersQuery.error,
   };
 }
 

@@ -161,3 +161,68 @@ export interface UsageLog {
   unit: string;
   usage_type: string;
 }
+
+// --- PO Suggestion Types ---
+export interface POSuggestionItem {
+  ingredient_id: number;
+  ingredient_name: string;
+  ingredient_supplier_id: number;
+  supplier_id: number;
+  supplier_name: string;
+  current_stock: number;
+  raw_quantity_needed: number;
+  quantity_to_order: number; // The final quantity after pack rounding
+  packs_to_order: number;
+  pack_size: number;
+  quantity_per_pack_item: number;
+  unit: string;
+  unit_price: number;
+  line_total: number; // quantity_to_order * unit_price
+  lead_time_days: number;
+  min_order_quantity: number;
+  lead_demand: number;
+  shelf_demand: number;
+}
+
+export interface POSuggestionGroup {
+  supplier_id: number;
+  supplier_name: string;
+  items: POSuggestionItem[];
+  total_cost: number;
+}
+
+export interface POSuggestionsResponse {
+  suggestions: POSuggestionGroup[];
+  all_items: POSuggestionItem[];
+  last_eod_run_date: string | null;
+  forecast_source: 'cached' | 'fresh';
+  horizon_days: number;
+}
+
+export interface IngredientStockLevel {
+  ingredient_id: number;
+  ingredient_name: string;
+  current_stock: number;
+  unit: string;
+  reorder_point: number;
+  status: 'critical' | 'low' | 'warning' | 'ok';
+  supplier_count: number;
+  abc_class: string;
+}
+
+export interface IngredientSupplierOption {
+  ingredient_supplier_id: number;
+  supplier_id: number;
+  supplier_name: string;
+  ingredient_id: number;
+  ingredient_name: string;
+  unit: string;
+  unit_price: number; // cost_per_unit renamed for clarity
+  pack_size: number;
+  pack_unit: string; // The unit for pack_size
+  quantity_per_pack_item: number;
+  min_order_quantity: number;
+  lead_time_days: number;
+  is_preferred: boolean;
+  supplier_priority: number;
+}

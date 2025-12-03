@@ -6,8 +6,11 @@ import {
   PurchaseOrderItem,
   IngredientName,
   PurchaseOrderStatus,
+  POSuggestionsResponse,
+  IngredientStockLevel,
+  IngredientSupplierOption,
 } from '../interfaces/inventory';
-import { get, patch, post } from './index';
+import { get, patch, post, del } from './index';
 export async function createPurchaseOrder(data: PurchaseOrderCreate): Promise<any> {
   return post('/inventory/purchase_orders', data);
 }
@@ -47,10 +50,41 @@ export async function removeItemFromPurchaseOrder(
   order_id: number,
   order_item_id: number
 ): Promise<any> {
-  return await fetch(`/inventory/purchase_orders/${order_id}/items/${order_item_id}`, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-  }).then(res => res.json());
+  return del(`/inventory/purchase_orders/${order_id}/items/${order_item_id}`);
+}
+
+// --- PO Suggestion Generation ---
+export async function generatePOSuggestions(
+  horizonDays: number = 7,
+  useCachedForecast: boolean = true
+): Promise<POSuggestionsResponse> {
+  const params = new URLSearchParams({
+    horizon_days: horizonDays.toString(),
+    use_cached_forecast: useCachedForecast.toString(),
+  });
+  return post(`/inventory/purchase_orders/generate-suggestions?${params.toString()}`, {});
+}
+
+export async function createPOsFromSuggestions(suggestions: any[], notes?: string): Promise<any[]> {
+  return post('/inventory/purchase_orders/create-from-suggestions', {
+    suggestions,
+    notes,
+  });
+}
+
+// --- Ingredient Stock Levels & Suppliers ---
+export async function getIngredientsStockLevels(): Promise<IngredientStockLevel[]> {
+  return get('/inventory/ingredients/stock-levels');
+}
+
+export async function getIngredientSuppliers(
+  ingredientId: number
+): Promise<IngredientSupplierOption[]> {
+  return get(`/inventory/ingredients/${ingredientId}/suppliers`);
+}
+
+export async function getLastEodDate(): Promise<{ last_eod_run_date: string | null }> {
+  return get('/inventory/last-eod-date');
 }
 
 // Stock Movements (TS)

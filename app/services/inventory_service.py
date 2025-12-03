@@ -191,6 +191,384 @@ class InventoryService:
         await poi_repo.delete(order_item_id)
         return {"order_item_id": order_item_id, "removed": True}
 
+    async def generate_purchase_order_suggestions(
+        self, 
+        horizon_days: int = 7, 
+        use_cached_forecast: bool = True
+    ) -> dict:
+        """
+        Generate PO suggestions based on forecast data.
+        
+        Args:
+            horizon_days: Number of days to forecast for ordering
+            use_cached_forecast: If True, use cached forecast from last EOD run.
+                                If False, run fresh forecast (slower but more accurate).
+        
+        Returns:
+            dict with 'suggestions' grouped by supplier, 'last_eod_run_date', and 'forecast_source'
+        """
+        import math
+        from datetime import date, timedelta
+        from decimal import Decimal
+        from app.repositories.restaurants_repo import RestaurantRepository
+        from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
+        from app.repositories.ingredients_repo import IngredientRepository
+        from app.repositories.inventory_repo import InventoryRepository
+        from app.services.reorder_forecast_engine import ReorderForecastEngine
+        from app.services.forecasting_engine import ForecastingEngine
+        from app.repositories.forecast_breakdown_repo import ForecastBreakdownRepository
+        from app.core.logging import logger
+        
+        restaurant_repo = RestaurantRepository(self.db, self.restaurant_id)
+        ingredient_supplier_repo = IngredientSupplierRepository(self.db, self.restaurant_id)
+        ingredient_repo = IngredientRepository(self.db, self.restaurant_id)
+        inventory_repo = InventoryRepository(self.db, self.restaurant_id)
+        reorder_engine = ReorderForecastEngine(self.db, self.restaurant_id, self.subscription_tier)
+        
+        # Get last EOD run date from restaurant
+        restaurant = await restaurant_repo.get_by_id(self.restaurant_id)
+        last_eod_run_date = getattr(restaurant, 'last_eod_run_date', None)
+        
+        ingredient_forecast = {}
+        forecast_source = "cached" if use_cached_forecast else "fresh"
+        
+        if use_cached_forecast and last_eod_run_date:
+            # Use cached forecast from ingredient_forecast_breakdown table
+            forecast_breakdown_repo = ForecastBreakdownRepository(self.db, self.restaurant_id)
+            
+            # Get all ingredients with their forecasts
+            ingredients = await ingredient_repo.get_all()
+            today = date.today()
+            end_date = today + timedelta(days=horizon_days)
+            
+            for ingredient in ingredients:
+                # Get forecast breakdowns for this period
+                breakdowns = await forecast_breakdown_repo.get_forecasts_for_date_range(
+                    today, end_date
+                )
+                
+                # Build daily breakdown for this ingredient
+                daily_breakdown = []
+                for b in breakdowns:
+                    if hasattr(b, 'ingredient_id') and b.ingredient_id == ingredient.ingredient_id:
+                        daily_breakdown.append((b.forecast_date, float(b.forecasted_quantity or 0)))
+                
+                if daily_breakdown:
+                    inventory = await inventory_repo.get_inventory_by_ingredient(ingredient.ingredient_id)
+                    unit = inventory.unit if inventory else "unit"
+                    ingredient_forecast[ingredient.ingredient_id] = {
+                        "daily_breakdown": daily_breakdown,
+                        "unit": unit
+                    }
+        else:
+            # Run fresh forecast
+            forecasting_engine = ForecastingEngine(
+                self.db, self.restaurant_id, self.subscription_tier
+            )
+            await forecasting_engine.initialize()
+            ingredient_forecast = await forecasting_engine.run_forecasting_pipeline(
+                horizon_days=horizon_days,
+                reorder_horizon_days=horizon_days,
+            )
+            forecast_source = "fresh"
+        
+        # Generate suggestions from forecast
+        suggestions_by_supplier = {}
+        all_suggestions = []
+        
+        for ingredient_id in ingredient_forecast.keys():
+            suppliers = await ingredient_supplier_repo.get_all_by_ingredient_id(ingredient_id)
+            if not suppliers:
+                logger.warning(f"[PO_SUGGEST] No suppliers found ingredient={ingredient_id}")
+                continue
+            
+            # Get preferred or lowest priority supplier
+            preferred_suppliers = [s for s in suppliers if s.preferred]
+            if preferred_suppliers:
+                supplier = min(preferred_suppliers, key=lambda s: s.supplier_priority or 0)
+            else:
+                supplier = min(suppliers, key=lambda s: s.supplier_priority or float("inf"))
+            
+            ingredient_supplier_id = supplier.ingredient_supplier_id
+            supplier_id = supplier.supplier_id
+            lead_time = supplier.lead_time_days or 0
+            supplier_unit = supplier.unit
+            min_order_quantity = supplier.min_order_quantity or 0
+            pack_size = supplier.pack_size or 1
+            quantity_per_pack_item = supplier.quantity_per_pack_item or 1
+            
+            inventory = await inventory_repo.get_inventory_by_ingredient(ingredient_id)
+            if inventory:
+                shelf_life = inventory.shelf_life_days or 0
+                inventory_unit = inventory.unit
+                current_stock = float(inventory.quantity_on_hand or 0)
+            else:
+                shelf_life = supplier.shelf_life_days or 0
+                inventory_unit = supplier_unit
+                current_stock = 0
+            
+            reorder_days = lead_time + shelf_life
+            if reorder_days <= 0:
+                continue
+            
+            today = date.today()
+            lead_window = [today + timedelta(days=i) for i in range(lead_time)]
+            shelf_window = [today + timedelta(days=i) for i in range(lead_time, reorder_days)]
+            
+            daily_forecast = ingredient_forecast[ingredient_id].get("daily_breakdown", [])
+            unit = ingredient_forecast[ingredient_id].get("unit", "?")
+            
+            lead_demand = sum(qty for day, qty in daily_forecast if day in lead_window)
+            shelf_demand = sum(qty for day, qty in daily_forecast if day in shelf_window)
+            total_demand = lead_demand + shelf_demand
+            
+            # Calculate reorder quantity
+            reorder_qty = await reorder_engine.suggest_reorder_quantity(
+                ingredient_id=ingredient_id,
+                lead_demand=Decimal(str(lead_demand)),
+                shelf_demand=Decimal(str(shelf_demand)),
+                total_demand=Decimal(str(total_demand)),
+                unit=unit,
+                lead_time=lead_time,
+            )
+            
+            if reorder_qty <= 0:
+                continue
+            
+            # Convert units
+            try:
+                converted_qty = convert_unit(
+                    float(reorder_qty), from_unit=inventory_unit, to_unit=supplier_unit
+                )
+            except Exception as e:
+                logger.warning(f"[PO_SUGGEST] Unit conversion failed ingredient={ingredient_id} error={e}")
+                converted_qty = float(reorder_qty)
+            
+            # Round up to pack sizes
+            quantity_per_pack = pack_size * quantity_per_pack_item
+            if quantity_per_pack <= 0:
+                continue
+            
+            packs_to_order = math.ceil(converted_qty / quantity_per_pack)
+            total_quantity_ordered = packs_to_order * quantity_per_pack
+            
+            # Get ingredient and supplier names
+            ingredient = await ingredient_repo.get_by_id(ingredient_id)
+            ingredient_name = ingredient.name if ingredient else f"Ingredient {ingredient_id}"
+            
+            supplier_obj = await self.supplier_repo.get_by_id(supplier_id)
+            supplier_name = supplier_obj.name if supplier_obj else f"Supplier {supplier_id}"
+            
+            suggestion = {
+                "ingredient_id": ingredient_id,
+                "ingredient_name": ingredient_name,
+                "ingredient_supplier_id": ingredient_supplier_id,
+                "supplier_id": supplier_id,
+                "supplier_name": supplier_name,
+                "current_stock": current_stock,
+                "raw_quantity_needed": float(converted_qty),
+                "quantity_to_order": float(total_quantity_ordered),
+                "packs_to_order": packs_to_order,
+                "pack_size": pack_size,
+                "quantity_per_pack_item": float(quantity_per_pack_item),
+                "unit": supplier_unit,
+                "unit_price": float(supplier.cost_per_unit or 0),
+                "line_total": float(total_quantity_ordered) * float(supplier.cost_per_unit or 0),
+                "lead_time_days": lead_time,
+                "min_order_quantity": min_order_quantity,
+                "lead_demand": float(lead_demand),
+                "shelf_demand": float(shelf_demand),
+            }
+            
+            all_suggestions.append(suggestion)
+            
+            # Group by supplier
+            if supplier_id not in suggestions_by_supplier:
+                suggestions_by_supplier[supplier_id] = {
+                    "supplier_id": supplier_id,
+                    "supplier_name": supplier_name,
+                    "items": [],
+                    "total_cost": 0,
+                }
+            
+            item_cost = float(total_quantity_ordered) * float(supplier.cost_per_unit or 0)
+            suggestions_by_supplier[supplier_id]["items"].append(suggestion)
+            suggestions_by_supplier[supplier_id]["total_cost"] += item_cost
+        
+        return {
+            "suggestions": list(suggestions_by_supplier.values()),
+            "all_items": all_suggestions,
+            "last_eod_run_date": str(last_eod_run_date) if last_eod_run_date else None,
+            "forecast_source": forecast_source,
+            "horizon_days": horizon_days,
+        }
+
+    async def get_ingredient_suppliers(self, ingredient_id: int) -> list:
+        """
+        Get all suppliers for a specific ingredient with pricing and pack details.
+        """
+        from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
+        from app.repositories.ingredients_repo import IngredientRepository
+        
+        ingredient_supplier_repo = IngredientSupplierRepository(self.db, self.restaurant_id)
+        ingredient_repo = IngredientRepository(self.db, self.restaurant_id)
+        
+        ingredient = await ingredient_repo.get_by_id(ingredient_id)
+        if not ingredient:
+            return []
+        
+        suppliers = await ingredient_supplier_repo.get_all_by_ingredient_id(ingredient_id)
+        
+        result = []
+        for s in suppliers:
+            supplier_obj = await self.supplier_repo.get_by_id(s.supplier_id)
+            supplier_name = supplier_obj.name if supplier_obj else f"Supplier {s.supplier_id}"
+            
+            result.append({
+                "ingredient_supplier_id": s.ingredient_supplier_id,
+                "supplier_id": s.supplier_id,
+                "supplier_name": supplier_name,
+                "ingredient_id": ingredient_id,
+                "ingredient_name": ingredient.name,
+                "unit": s.unit,
+                "unit_price": float(s.cost_per_unit or 0),
+                "pack_size": s.pack_size or 1,
+                "pack_unit": s.unit,  # Use the supplier unit as pack unit
+                "quantity_per_pack_item": float(s.quantity_per_pack_item or 1),
+                "min_order_quantity": s.min_order_quantity or 0,
+                "lead_time_days": s.lead_time_days or 0,
+                "is_preferred": s.preferred or False,
+                "supplier_priority": s.supplier_priority or 0,
+            })
+        
+        return result
+
+    async def get_ingredients_with_stock_levels(self) -> list:
+        """
+        Get all ingredients with current stock levels and reorder status.
+        """
+        from app.repositories.ingredients_repo import IngredientRepository
+        from app.repositories.inventory_repo import InventoryRepository
+        from app.services.inventory_stats_service import InventoryStatsService
+        
+        ingredient_repo = IngredientRepository(self.db, self.restaurant_id)
+        inventory_repo = InventoryRepository(self.db, self.restaurant_id)
+        stats_service = InventoryStatsService(self.db, self.restaurant_id, self.subscription_tier)
+        
+        ingredients = await ingredient_repo.get_all()
+        result = []
+        
+        for ing in ingredients:
+            inventory = await inventory_repo.get_inventory_by_ingredient(ing.ingredient_id)
+            
+            current_stock = float(inventory.quantity_on_hand) if inventory else 0
+            unit = inventory.unit if inventory else "unit"
+            
+            # Get reorder point
+            try:
+                reorder_point = await stats_service.get_reorder_point(ing.ingredient_id)
+                reorder_point = float(reorder_point) if reorder_point else 0
+            except:
+                reorder_point = 0
+            
+            # Determine status
+            if current_stock <= 0:
+                status = "critical"
+            elif reorder_point > 0 and current_stock <= reorder_point:
+                status = "low"
+            elif reorder_point > 0 and current_stock <= reorder_point * 1.5:
+                status = "warning"
+            else:
+                status = "ok"
+            
+            # Count suppliers
+            suppliers = await self.ingredient_supplier_repo.get_all_by_ingredient_id(ing.ingredient_id)
+            
+            result.append({
+                "ingredient_id": ing.ingredient_id,
+                "ingredient_name": ing.name,
+                "current_stock": current_stock,
+                "unit": unit,
+                "reorder_point": reorder_point,
+                "status": status,
+                "supplier_count": len(suppliers),
+                "abc_class": ing.abc_class or "C",
+            })
+        
+        # Sort by status priority (critical first) then by name
+        status_order = {"critical": 0, "low": 1, "warning": 2, "ok": 3}
+        result.sort(key=lambda x: (status_order.get(x["status"], 4), x["ingredient_name"]))
+        
+        return result
+
+    async def create_purchase_orders_from_suggestions(
+        self, 
+        suggestions: list, 
+        notes: str = None
+    ) -> list:
+        """
+        Create purchase orders from generated suggestions.
+        Groups items by supplier and creates one PO per supplier with status='cart'.
+        
+        Args:
+            suggestions: List of suggestion items (can be flat list or grouped by supplier)
+            notes: Optional notes to add to all created POs
+        
+        Returns:
+            List of created order IDs
+        """
+        from collections import defaultdict
+        from datetime import date, timedelta
+        
+        # Handle both flat list and grouped format
+        items_by_supplier = defaultdict(list)
+        
+        for item in suggestions:
+            # If it's a grouped supplier object with 'items' array
+            if "items" in item and isinstance(item["items"], list):
+                for sub_item in item["items"]:
+                    supplier_id = sub_item.get("supplier_id")
+                    if supplier_id:
+                        items_by_supplier[supplier_id].append(sub_item)
+            else:
+                # Flat item
+                supplier_id = item.get("supplier_id")
+                if supplier_id:
+                    items_by_supplier[supplier_id].append(item)
+        
+        created_orders = []
+        
+        for supplier_id, items in items_by_supplier.items():
+            if not items:
+                continue
+            
+            # Calculate expected delivery date based on max lead time
+            max_lead_time = max(item.get("lead_time_days", 0) for item in items)
+            expected_delivery = date.today() + timedelta(days=max_lead_time)
+            
+            # Prepare items for create_purchase_order
+            po_items = []
+            for item in items:
+                po_items.append({
+                    "ingredient_id": item["ingredient_id"],
+                    "ingredient_supplier_id": item.get("ingredient_supplier_id"),
+                    "quantity_ordered": item.get("quantity_to_order", item.get("packs_to_order", 1)),
+                    "unit": item.get("unit", "unit"),
+                    "unit_price": item.get("unit_price", 0),
+                })
+            
+            # Create the PO
+            result = await self.create_purchase_order(
+                supplier_id=supplier_id,
+                expected_delivery_date=expected_delivery,
+                items=po_items,
+                notes=notes,
+            )
+            
+            created_orders.append(result)
+        
+        return created_orders
+
     def __init__(self, db: AsyncSession, restaurant_id: int,subscription_tier:str, employee_id: int):
         self.db = db
         self.restaurant_id = restaurant_id

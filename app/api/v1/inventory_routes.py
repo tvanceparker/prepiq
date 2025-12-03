@@ -89,6 +89,91 @@ async def remove_item_from_purchase_order(
     """
     return await inventory_service.remove_item_from_purchase_order(order_id, order_item_id)
 
+@router.post("/purchase_orders/generate-suggestions")
+async def generate_po_suggestions(
+    horizon_days: int = Query(7, ge=1, le=90, description="Number of days to forecast"),
+    use_cached_forecast: bool = Query(True, description="Use cached forecast from last EOD or run fresh"),
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Generate purchase order suggestions based on forecast data.
+    Returns preview grouped by supplier - not persisted until create-from-suggestions is called.
+    
+    - use_cached_forecast=True: Uses existing forecast from last EOD run (faster)
+    - use_cached_forecast=False: Runs fresh forecast pipeline (slower but more accurate)
+    """
+    try:
+        return await inventory_service.generate_purchase_order_suggestions(
+            horizon_days=horizon_days,
+            use_cached_forecast=use_cached_forecast,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating suggestions: {str(e)}")
+
+@router.post("/purchase_orders/create-from-suggestions")
+async def create_pos_from_suggestions(
+    payload: dict,
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Create purchase orders from generated suggestions.
+    Groups items by supplier and creates one PO per supplier with status='cart'.
+    
+    Expected payload:
+    {
+        "suggestions": [...],  // List of suggestion items or grouped suppliers
+        "notes": "Optional notes"
+    }
+    """
+    suggestions = payload.get("suggestions", [])
+    notes = payload.get("notes")
+    
+    if not suggestions:
+        raise HTTPException(status_code=400, detail="No suggestions provided")
+    
+    try:
+        return await inventory_service.create_purchase_orders_from_suggestions(
+            suggestions=suggestions,
+            notes=notes,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating orders: {str(e)}")
+
+@router.get("/ingredients/{ingredient_id}/suppliers")
+async def get_ingredient_suppliers(
+    ingredient_id: int,
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Get all suppliers for a specific ingredient with pricing and pack details.
+    Useful for order-by-ingredient flow where user selects ingredient first.
+    """
+    return await inventory_service.get_ingredient_suppliers(ingredient_id)
+
+@router.get("/ingredients/stock-levels")
+async def get_ingredients_stock_levels(
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Get all ingredients with current stock levels and reorder status.
+    Returns status: 'critical', 'low', 'warning', or 'ok'.
+    """
+    return await inventory_service.get_ingredients_with_stock_levels()
+
+@router.get("/last-eod-date")
+async def get_last_eod_date(
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Get the last EOD run date for the restaurant.
+    Useful for showing when cached forecast data was last generated.
+    """
+    from app.repositories.restaurants_repo import RestaurantRepository
+    restaurant_repo = RestaurantRepository(inventory_service.db, inventory_service.restaurant_id)
+    restaurant = await restaurant_repo.get_by_id(inventory_service.restaurant_id)
+    last_eod = getattr(restaurant, 'last_eod_run_date', None)
+    return {"last_eod_run_date": str(last_eod) if last_eod else None}
+
 # Ingredient names for autocomplete/search
 @router.get("/ingredient_names")
 async def get_ingredient_names(

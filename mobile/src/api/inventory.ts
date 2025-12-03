@@ -8,6 +8,9 @@ import type {
   PurchaseOrderStatus,
   StockMovement,
   IngredientName,
+  POSuggestionsResponse,
+  IngredientStockLevel,
+  IngredientSupplierOption,
 } from '../interfaces/inventory';
 
 // =============================================================================
@@ -146,6 +149,52 @@ export const removeItemFromPurchaseOrder = async (
   order_item_id: number
 ): Promise<void> => {
   return del(`/inventory/purchase_orders/${order_id}/items/${order_item_id}`);
+};
+
+// =============================================================================
+// PO Suggestion Generation
+// =============================================================================
+
+export const generatePOSuggestions = async (
+  horizonDays: number = 7,
+  useCachedForecast: boolean = true
+): Promise<POSuggestionsResponse> => {
+  const params = new URLSearchParams({
+    horizon_days: horizonDays.toString(),
+    use_cached_forecast: useCachedForecast.toString(),
+  });
+  return post<POSuggestionsResponse>(
+    `/inventory/purchase_orders/generate-suggestions?${params.toString()}`,
+    {}
+  );
+};
+
+export const createPOsFromSuggestions = async (
+  suggestions: any[],
+  notes?: string
+): Promise<any[]> => {
+  return post<any[]>('/inventory/purchase_orders/create-from-suggestions', {
+    suggestions,
+    notes,
+  });
+};
+
+// =============================================================================
+// Ingredient Stock Levels & Suppliers
+// =============================================================================
+
+export const getIngredientsStockLevels = async (): Promise<IngredientStockLevel[]> => {
+  return get<IngredientStockLevel[]>('/inventory/ingredients/stock-levels');
+};
+
+export const getIngredientSuppliers = async (
+  ingredientId: number
+): Promise<IngredientSupplierOption[]> => {
+  return get<IngredientSupplierOption[]>(`/inventory/ingredients/${ingredientId}/suppliers`);
+};
+
+export const getLastEodDate = async (): Promise<{ last_eod_run_date: string | null }> => {
+  return get<{ last_eod_run_date: string | null }>('/inventory/last-eod-date');
 };
 
 // =============================================================================
