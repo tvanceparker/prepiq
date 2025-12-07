@@ -9,8 +9,8 @@ from app.services.reorder_forecast_engine import ReorderForecastEngine
 
 
 @pytest.mark.asyncio
-async def test_calculate_safety_stock(mocker):
-    stats_service_mock = mocker.MagicMock()
+async def test_calculate_safety_stock():
+    stats_service_mock = MagicMock()
     stats_service_mock.get_std_dev_usage = AsyncMock(return_value=Decimal("2.5"))
 
     engine = ReorderForecastEngine(db=None, restaurant_id=1)
@@ -22,8 +22,8 @@ async def test_calculate_safety_stock(mocker):
 
 
 @pytest.mark.asyncio
-async def test_calculate_reorder_point(mocker):
-    stats_service_mock = mocker.MagicMock()
+async def test_calculate_reorder_point():
+    stats_service_mock = MagicMock()
     stats_service_mock.get_lead_time_days = AsyncMock(return_value=3)
     stats_service_mock.get_average_daily_usage = AsyncMock(return_value=Decimal("10"))
     engine = ReorderForecastEngine(db=None, restaurant_id=1)
@@ -37,8 +37,8 @@ async def test_calculate_reorder_point(mocker):
 
 
 @pytest.mark.asyncio
-async def test_classify_abc_item_defaults_to_c(mocker):
-    ingredient_repo_mock = mocker.MagicMock()
+async def test_classify_abc_item_defaults_to_c():
+    ingredient_repo_mock = MagicMock()
     ingredient_repo_mock.get_by_id = AsyncMock(
         return_value=type("FakeIngredient", (), {"abc_class": None})()
     )

@@ -160,11 +160,11 @@ class OrderService:
         }
 
     @log_method("Get Active Orders")
-    async def get_active_orders(self):
+    async def get_active_orders(self, include_completed: bool = False):
         """
-        Get orders that are currently active (status: 'open', 'in_progress').
+        Get active orders. Default: open/pending, in_progress/preparing, ready. Optional include_completed.
         """
-        orders = await self.order_repo.get_active_orders()
+        orders = await self.order_repo.get_active_orders(include_completed=include_completed)
         results = []
         for o in orders:
             items = await self.order_item_repo.get_by_order_id(o.order_id)
@@ -183,12 +183,12 @@ class OrderService:
                 for it in items
             ]
             created_iso = o.order_timestamp.isoformat() if getattr(o, "order_timestamp", None) else None
-        results.append(
+            results.append(
                 {
                     "order_id": o.order_id,
                     "external_id": o.external_id,
                     "sales_channel": o.sales_channel,
-            "status": self._to_frontend_status(o.order_status),
+                    "status": self._to_frontend_status(o.order_status),
                     "order_status": o.order_status,
                     "items": items_dto,
                     "subtotal": float(o.subtotal or 0),

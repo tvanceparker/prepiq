@@ -41,6 +41,7 @@ class TestEODPipelineE2E:
         8. Finalize ledger
         """
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         
         # ===== Setup Ledger =====
         service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
@@ -76,6 +77,11 @@ class TestEODPipelineE2E:
             )
         )
         service.inventory_usage_log_repo.create = AsyncMock()
+        async def fake_deduct(usage_summary, reference_type=None, reference_id=None):
+            if usage_summary:
+                await service.inventory_repo.decrement_quantity(sample_inventory[0].inventory_id, Decimal("1"))
+            return {"deducted_items": [{"inventory_id": sample_inventory[0].inventory_id, "ingredient_id": 1001}]}
+        service.inventory_helper.deduct_usage_summary = AsyncMock(side_effect=fake_deduct)
         
         # ===== Stage 3: Forecasting =====
         service.forecasting_engine.initialize = AsyncMock()
@@ -185,6 +191,7 @@ class TestEODPipelineE2E:
     ):
         """Test EOD pipeline handles gracefully when no sales data exists."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         
         service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
         service.ledger_repo.mark_running = AsyncMock()
@@ -224,6 +231,7 @@ class TestEODPipelineE2E:
     ):
         """Test EOD pipeline skips already-completed stages on re-run."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         
         # Mark stages as already complete
         ledger = sample_eod_ledger
@@ -265,6 +273,7 @@ class TestEODPipelineE2E:
     ):
         """Test EOD pipeline handles errors and triggers rollback."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         
         service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
         service.ledger_repo.mark_running = AsyncMock()
@@ -297,6 +306,7 @@ class TestEODPipelineE2E:
     ):
         """Test EOD pipeline tracks timing for each stage."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         
         service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
         service.ledger_repo.mark_running = AsyncMock()

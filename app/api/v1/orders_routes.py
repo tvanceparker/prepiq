@@ -29,9 +29,13 @@ async def get_order(order_id: int, pos_service: OrderService = Depends(get_order
 
 @router.get("/", response_model=List[OrderDTO])
 @log_route("Get Orders")
-async def get_orders(status: str = None, pos_service: OrderService = Depends(get_order_service)):
-    # Only active orders for now
-    return await pos_service.get_active_orders()
+async def get_orders(
+    status: str = None,
+    include_completed: bool = False,
+    pos_service: OrderService = Depends(get_order_service),
+):
+    # Only active orders by default; include_completed enables history-lite.
+    return await pos_service.get_active_orders(include_completed=include_completed)
 
 
 @router.post("/", response_model=OrderResponse)

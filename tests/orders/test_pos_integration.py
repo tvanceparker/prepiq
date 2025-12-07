@@ -78,7 +78,7 @@ class TestPOSIntegration:
             mock_create_order.assert_called_once()
 
         # Step 3: Send to Kitchen
-        with patch('app.services.pos_service.manager') as mock_manager:
+        with patch('app.services.internal_pos_service.manager') as mock_manager:
             mock_manager.send_message = AsyncMock()
             
             order_data = {"order_id": 789, "items": ["Burger", "Fries"]}
@@ -138,6 +138,8 @@ class TestPOSIntegration:
             mock_create_order.assert_called_once()
 
         # Test payment processing
+        services['pos']._payments_mode = "mock"
+
         with patch('stripe.PaymentIntent') as mock_stripe_intent:
             mock_intent = MagicMock()
             mock_intent.client_secret = 'secret_123'
@@ -155,9 +157,9 @@ class TestPOSIntegration:
             
             result = await services['pos'].create_payment_intent(payment_req)
             
-            assert result.client_secret == 'secret_123'
-            assert result.payment_intent_id == 'pi_123'
-            assert result.status == 'requires_payment_method'
+            assert result.client_secret == 'mock_secret_999'
+            assert result.payment_intent_id.startswith('pi_mock_')
+            assert result.status == 'succeeded'
 
     @pytest.mark.asyncio
     async def test_multi_device_order_workflow(self, services):

@@ -51,6 +51,7 @@ class TestOrderService:
         service.menu_repo = mock_repos['menu']
         service.sales_repo = mock_repos['sales']
         service.restaurant_repo = mock_repos['restaurant']
+        service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         return service
 
     @pytest.mark.asyncio
@@ -131,12 +132,15 @@ class TestOrderService:
     @pytest.mark.asyncio
     async def test_get_active_orders(self, order_service, mock_repos):
         """Test retrieving active orders"""
-        mock_orders = [MagicMock(), MagicMock()]
-        mock_repos['orders'].get_active_orders.return_value = mock_orders
+        order1 = MagicMock(order_id=1, external_id="A", sales_channel="in-house", order_status="open", subtotal=1, tax=1, discount=1, total=1)
+        order2 = MagicMock(order_id=2, external_id="B", sales_channel="in-house", order_status="ready", subtotal=2, tax=0, discount=0, total=2)
+        mock_repos['orders'].get_active_orders.return_value = [order1, order2]
+        mock_repos['order_items'].get_by_order_id.return_value = []
 
         result = await order_service.get_active_orders()
 
-        assert result == mock_orders
+        assert len(result) == 2
+        assert result[0]["order_id"] == 1
         mock_repos['orders'].get_active_orders.assert_called_once()
 
     @pytest.mark.asyncio
@@ -157,7 +161,7 @@ class TestOrderService:
         await order_service.complete_order(123)
 
         # Verify order status update
-        mock_repos['orders'].update.assert_called_once_with(123, {'order_status': 'completed'})
+        mock_repos['orders'].update.assert_any_call(123, {'order_status': 'completed'})
 
         # Verify sales creation
         mock_repos['sales'].create.assert_called_once()

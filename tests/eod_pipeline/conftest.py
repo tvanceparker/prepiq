@@ -132,7 +132,7 @@ def sample_menu_items():
 @pytest.fixture
 def sample_ingredients():
     """Sample ingredients for testing."""
-    return [
+    items = [
         Ingredient(
             ingredient_id=1001,
             restaurant_id=1,
@@ -155,6 +155,16 @@ def sample_ingredients():
             abc_class="C",
         ),
     ]
+
+    # Ensure attributes used in tests exist
+    items[0].unit_cost = Decimal("5.00")
+    items[1].unit_cost = Decimal("2.00")
+    items[2].unit_cost = Decimal("3.00")
+    for item in items:
+        item.shelf_life_days = 7
+        item.max_stock_level = Decimal("100.00")
+
+    return items
 
 
 @pytest.fixture

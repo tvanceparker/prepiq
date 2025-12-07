@@ -1,6 +1,9 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
+import json
+from datetime import date
 from app.services.admin_service import AdminService
+from app.schemas.admin_dto import TenantInfoUpdateRequest
 
 @pytest.fixture
 def mock_restaurant():
@@ -17,13 +20,15 @@ def mock_restaurant():
         subscription_tier = "basic"
         subscription_status = "active"
         expiry_date = "2025-12-31"
-        hours_of_operation = '[{"day": "Monday", "open_time": "09:00", "close_time": "17:00", "is_closed": false}]'
+        hours_of_operation = json.dumps([
+            {"day": "Monday", "open_time": "09:00", "close_time": "17:00", "is_closed": False}
+        ])
 
     return MockRestaurant()
 @pytest.fixture
 def admin_service():
     mock_session = AsyncMock()
-    return AdminService(db=mock_session, restaurant_id=1, subscription_tier='basic')
+    return AdminService(db=mock_session, restaurant_id=1, subscription_tier='basic', employee_id=1)
 
 @pytest.mark.asyncio
 async def test_get_tenant_info(monkeypatch, admin_service, mock_restaurant):
@@ -45,11 +50,11 @@ async def test_get_tenant_info(monkeypatch, admin_service, mock_restaurant):
         "zip_code": "12345",
         "subscription_tier": "basic",
         "subscription_status": "active",
-        "expiry_date": "2025-12-31",
+        "expiry_date": date(2025, 12, 31),
         "hours_of_operation": [{"day": "Monday", "open_time": "09:00", "close_time": "17:00", "is_closed": False}],
     }
 
-    assert result == expected
+    assert result.model_dump() == expected
     mock_repo.get_by_id.assert_awaited_once_with(1)
 
 @pytest.mark.asyncio
@@ -84,12 +89,26 @@ async def test_update_tenant_info(admin_service):
         ],
     }
 
-    await admin_service.update_tenant_info(update_payload)
+    await admin_service.update_tenant_info(TenantInfoUpdateRequest(**update_payload))
 
-    mock_repo.update.assert_awaited_once_with(
-        1,
-        {
-            **update_payload,
-            "hours_of_operation": '[{"day": "Tuesday", "open_time": "10:00", "close_time": "18:00", "is_closed": false}]'
-        }
-    )
+    expected_update = {
+        "name": "Updated Name",
+        "phone": "555-666-7777",
+        "email": "new@email.com",
+        "address": "456 Updated Ave",
+        "city": "New City",
+        "state": "NC",
+        "zip_code": "54321",
+        "hours_of_operation": json.dumps(
+            [
+                {
+                    "day": "Tuesday",
+                    "open_time": "10:00",
+                    "close_time": "18:00",
+                    "is_closed": False,
+                }
+            ]
+        ),
+    }
+
+    mock_repo.update.assert_awaited_once_with(1, expected_update)

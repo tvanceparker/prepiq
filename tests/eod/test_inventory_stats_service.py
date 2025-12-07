@@ -13,7 +13,7 @@ from app.services.inventory_stats_service import InventoryStatsService
 
 
 @pytest_asyncio.fixture
-async def service(mocker):
+async def service():
     # Create AsyncSession mock
     db_mock = MagicMock()
 

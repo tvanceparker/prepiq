@@ -13,7 +13,7 @@ class TestSalesForecastService:
         db = AsyncMock()
         restaurant_id = 123
         tier = "basic"
-        svc = SalesForecastService(db, restaurant_id, tier)
+        svc = SalesForecastService(db, restaurant_id, tier, employee_id=1)
 
         # Mock repositories as AsyncMock objects on the service instance
         svc.forecast_breakdown_repo = AsyncMock()
@@ -28,7 +28,7 @@ class TestSalesForecastService:
             MagicMock(menu_item_id=1, forecast_date=date(2025, 6, 1), forecasted_quantity=15),
             MagicMock(menu_item_id=2, forecast_date=date(2025, 6, 1), forecasted_quantity=5),
         ]
-        service.forecast_breakdown_repo.get_by_date_range = AsyncMock(return_value=forecast_rows)
+        service.forecast_breakdown_repo.get_latest_by_date_range = AsyncMock(return_value=forecast_rows)
 
         pizza_mock = MagicMock(menu_item_id=1, is_active=True)
         pizza_mock.name = "Pizza"
@@ -51,7 +51,7 @@ class TestSalesForecastService:
             MagicMock(menu_item_id=1, forecast_date=date(2025,6,1), forecasted_quantity=10),
             MagicMock(menu_item_id=1, forecast_date=date(2025,6,2), forecasted_quantity=5),
         ]
-        service.forecast_breakdown_repo.get_by_date_range = AsyncMock(return_value=forecast_rows)
+        service.forecast_breakdown_repo.get_latest_by_date_range = AsyncMock(return_value=forecast_rows)
 
         item_mock = MagicMock(price=Decimal("10.00"), is_active=True)
         service.menu_repo.get_by_id = AsyncMock(return_value=item_mock)
@@ -69,7 +69,7 @@ class TestSalesForecastService:
             MagicMock(menu_item_id=1, forecast_date=date(2025,6,1), forecasted_quantity=10),
             MagicMock(menu_item_id=1, forecast_date=date(2025,6,2), forecasted_quantity=5),
         ]
-        service.forecast_breakdown_repo.get_by_date_range = AsyncMock(return_value=forecast_rows)
+        service.forecast_breakdown_repo.get_latest_by_date_range = AsyncMock(return_value=forecast_rows)
 
         item_mock = MagicMock(price=Decimal("10.00"), is_active=True)
         service.menu_repo.get_by_id = AsyncMock(return_value=item_mock)
@@ -89,7 +89,7 @@ class TestSalesForecastService:
             MagicMock(menu_item_id=3, forecasted_quantity=5),
             MagicMock(menu_item_id=2, forecasted_quantity=5),
         ]
-        service.forecast_breakdown_repo.get_by_date_range = AsyncMock(return_value=forecast_rows)
+        service.forecast_breakdown_repo.get_latest_by_date_range = AsyncMock(return_value=forecast_rows)
 
         # Prepare menu item mocks with explicit 'name' and 'is_active'
         pizza = MagicMock(menu_item_id=1, is_active=True)

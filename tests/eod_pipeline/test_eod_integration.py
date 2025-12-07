@@ -23,6 +23,10 @@ class TestEODPipelineIntegration:
     ):
         """Test EOD service properly invokes forecasting engine."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
+        service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
+        service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
+        service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         
         # Mock forecast engine
         service.forecasting_engine.initialize = AsyncMock()
@@ -54,6 +58,7 @@ class TestEODPipelineIntegration:
     ):
         """Test forecast output feeds into reorder calculations."""
         eod_service = EODService(mock_db_session, restaurant_id, "master")
+        eod_service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         eod_service.reorder_engine.stats_service = mock_inventory_stats
         
         # Setup ingredient forecast
@@ -78,6 +83,7 @@ class TestEODPipelineIntegration:
                 unit="lb"
             )
         )
+        eod_service.reorder_engine.suggest_reorder_quantity = AsyncMock(return_value=Decimal("10.00"))
         mock_inventory_stats.get_current_inventory.return_value = (Decimal("20.00"), "lb")
         eod_service.reorder_engine.classify_abc_item = AsyncMock(return_value="A")
         eod_service.reorder_engine.calculate_safety_stock = AsyncMock(return_value=Decimal("5.00"))
@@ -154,6 +160,9 @@ class TestEODPipelineIntegration:
             return_value=sample_inventory[0]
         )
         service.inventory_usage_log_repo.create = AsyncMock()
+        service.inventory_helper.deduct_usage_summary = AsyncMock(
+            return_value={"deducted_items": [{"ingredient_id": 1001}]}
+        )
         
         # Execute deduction
         result = await service.deduct_ingredients_from_inventory(usage_summary)
@@ -183,6 +192,7 @@ class TestEODPipelineIntegration:
                 "lead_time_days": 3,
             }
         ]
+        service.purchase_order_suggestions = service._purchase_order_suggestions
         
         # Mock database writes
         mock_order = MagicMock(order_id=7001)
@@ -235,6 +245,7 @@ class TestEODPipelineDataFlow:
         service.inventory_repo.get_inventory_by_ingredient = AsyncMock(
             return_value=MagicMock(shelf_life_days=7, unit="lb")
         )
+            service.reorder_engine.suggest_reorder_quantity = AsyncMock(return_value=Decimal("15.00"))
         mock_inventory_stats.get_current_inventory.return_value = (Decimal("15.00"), "lb")
         service.reorder_engine.classify_abc_item = AsyncMock(return_value="A")
         service.reorder_engine.calculate_safety_stock = AsyncMock(return_value=Decimal("5.00"))
@@ -248,6 +259,7 @@ class TestEODPipelineDataFlow:
         
         # Step 3: Write to database
         service._purchase_order_suggestions = po_suggestions
+        service.purchase_order_suggestions = po_suggestions
         mock_order = MagicMock(order_id=7001)
         service.purchase_order_repo.create = AsyncMock(return_value=mock_order)
         service.purchase_order_item_repo.create = AsyncMock()

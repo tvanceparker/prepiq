@@ -18,7 +18,7 @@ def mock_repos():
     restaurant_id = 123
     tier = "pro"
 
-    service = DashboardService(db, restaurant_id, tier)
+    service = DashboardService(db, restaurant_id, tier, employee_id=1)
     service.sales_repo = mock_sales
     service.menu_repo = mock_menu
     service.forecast_breakdown_repo = mock_forecast

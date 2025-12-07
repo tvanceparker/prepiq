@@ -11,7 +11,7 @@ async def test_get_basic_overview():
     restaurant_id = 1
     subscription_tier = 'basic'
 
-    service = DashboardService(mock_db, restaurant_id, subscription_tier)
+    service = DashboardService(mock_db, restaurant_id, subscription_tier, employee_id=1)
 
     # Mock forecast breakdown data
     service.forecast_breakdown_repo.get_forecasts_by_date = AsyncMock(return_value=[
@@ -34,14 +34,15 @@ async def test_get_basic_overview():
 
     service.menu_repo.get_by_id = AsyncMock(side_effect=get_menu_item_by_id)
 
-    # Mock daily accuracy data
+    # Mock daily accuracy data with numeric predicted/actual to avoid MagicMock math
     service.daily_accuracy_repo.get_by_date = AsyncMock(return_value=[
-        MagicMock(forecast_error=10, actual_quantity=100),
-        MagicMock(forecast_error=5, actual_quantity=50),
+        MagicMock(predicted_quantity=110, actual_quantity=100),
+        MagicMock(predicted_quantity=55, actual_quantity=50),
     ])
 
     # Run the method
     result = await service.get_daily_overview_data()
+    result = result.model_dump()
 
     # Check overall structure
     assert "forecasted_sales_today" in result

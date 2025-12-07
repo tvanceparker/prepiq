@@ -13,13 +13,15 @@ class OrdersRepository(BaseRepository):
         self.restaurant_id = restaurant_id
         super().__init__(db, Order, restaurant_id, pk_field="order_id")
 
-    async def get_active_orders(self):
-        """
-        Get orders with active status ('open', 'in_progress').
-        """
+    async def get_active_orders(self, include_completed: bool = False):
+        """Return active orders (open, in_progress, ready); optionally include completed."""
+        active_statuses = ['open', 'in_progress', 'ready']
+        if include_completed:
+            active_statuses.append('completed')
+
         stmt = select(Order).where(
             Order.restaurant_id == self.restaurant_id,
-            Order.order_status.in_(['open', 'in_progress'])
+            Order.order_status.in_(active_statuses)
         )
         result = await self.db.execute(stmt)
         return result.scalars().all()

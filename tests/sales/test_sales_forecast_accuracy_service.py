@@ -18,7 +18,7 @@ AccuracyRow = namedtuple(
 async def test_get_daily_accuracy_chart_data():
     # Setup
     db = AsyncMock()
-    service = SalesForecastService(db, restaurant_id=1, subscription_tier="basic")
+    service = SalesForecastService(db, restaurant_id=1, subscription_tier="basic", employee_id=1)
 
     # Mock repo return values
     mock_rows = [
@@ -27,7 +27,7 @@ async def test_get_daily_accuracy_chart_data():
         AccuracyRow(forecast_date=date(2025,6,11), menu_item_id=202, error_percentage=20, forecast_error=10,
                     predicted_quantity=None, actual_quantity=None, forecast_period_start=None, forecast_period_end=None),
     ]
-    service.daily_forecast_accuracy_repo.get_by_date_range = AsyncMock(return_value=mock_rows)
+    service.daily_forecast_accuracy_repo.get_latest_by_date_range = AsyncMock(return_value=mock_rows)
     service.menu_repo.get_by_ids = AsyncMock(return_value=[
         MenuItem(menu_item_id=201, name="Burger"),
         MenuItem(menu_item_id=202, name="Fries"),
@@ -44,7 +44,7 @@ async def test_get_daily_accuracy_chart_data():
 @pytest.mark.asyncio
 async def test_get_forecast_accuracy_table():
     db = AsyncMock()
-    service = SalesForecastService(db, restaurant_id=1, subscription_tier="basic")
+    service = SalesForecastService(db, restaurant_id=1, subscription_tier="basic", employee_id=1)
 
     # Mock summary rows
     summary_rows = [
@@ -70,7 +70,7 @@ async def test_get_forecast_accuracy_table():
     ]
 
     service.forecast_accuracy_repo.get_overlapping_date_range = AsyncMock(return_value=summary_rows)
-    service.daily_forecast_accuracy_repo.get_by_date_range = AsyncMock(return_value=daily_rows)
+    service.daily_forecast_accuracy_repo.get_latest_by_date_range = AsyncMock(return_value=daily_rows)
     service.menu_repo.get_by_ids = AsyncMock(return_value=[
         MenuItem(menu_item_id=201, name="Burger"),
         MenuItem(menu_item_id=202, name="Fries"),
@@ -87,7 +87,7 @@ async def test_get_forecast_accuracy_table():
 @pytest.mark.asyncio
 async def test_compute_accuracy_from_raw_data():
     db = AsyncMock()
-    service = SalesForecastService(db, restaurant_id=1, subscription_tier="basic")
+    service = SalesForecastService(db, restaurant_id=1, subscription_tier="basic", employee_id=1)
 
     # Mock forecasts (forecast_date, menu_item_id, forecasted_quantity)
     forecasts = [
@@ -101,7 +101,7 @@ async def test_compute_accuracy_from_raw_data():
         SaleRow(sale_date=date(2025,6,10), menu_item_id=203, quantity_sold=5),
     ]
 
-    service.forecast_breakdown_repo.get_by_date_range = AsyncMock(return_value=forecasts)
+    service.forecast_breakdown_repo.get_latest_by_date_range = AsyncMock(return_value=forecasts)
     service.sale_repo.get_sales_grouped_by_day = AsyncMock(return_value=sales)
     service.menu_repo.get_by_ids = AsyncMock(return_value=[
         MenuItem(menu_item_id=201, name="Burger"),

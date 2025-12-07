@@ -187,6 +187,7 @@ class TestForecastingEngineUnit:
         
         # Mock menu item recipe ingredients
         engine.menu_item_recipe_repo.get_recipe_ids_for_menu_item = AsyncMock(return_value=[301])
+        engine.menu_item_recipe_repo.get_by_menu_item = AsyncMock(return_value=[MagicMock(recipe_id=301)])
         engine.recipe_ingredient_repo.get_by_recipe_id = AsyncMock(return_value=[
             MagicMock(ingredient_type="ingredient", reference_id=1001, quantity_used=Decimal("0.25"))
         ])
@@ -255,6 +256,7 @@ class TestForecastingEngineUnit:
         ))
         engine.batch_recipe_ingredients_repo.get_by_batch_recipe_id = AsyncMock(return_value=[])
         engine.ingredient_repo.get_by_id = AsyncMock(return_value=MagicMock(unit="lb"))
+        engine.menu_item_recipe_repo.get_by_menu_item = AsyncMock(return_value=[MagicMock(recipe_id=301)])
         
         result = await engine.derive_ingredient_usage_from_sales(days=30)
         
