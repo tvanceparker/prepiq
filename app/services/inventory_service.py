@@ -1041,7 +1041,30 @@ class InventoryService:
                 if not lot:
                     raise Exception(f"Lot not found for lot_id={lot_id}")
 
-                # Step 3: Determine if this is an addition or subtraction
+                # Step 3: Compute current remaining across lots (convert to inventory unit)
+                lots = await self.inventory_lot_repo.get_inventory_lots_by_inventory_and_restaurant(
+                    inventory_id
+                )
+                available_lots = [l for l in lots if getattr(l.status, "value", l.status) == "available"]
+
+                lot_remaining_map = {}
+                total_remaining = Decimal("0")
+
+                for l in available_lots:
+                    remaining = await self._compute_lot_remaining(l)
+                    try:
+                        remaining_in_inventory_unit = Decimal(
+                            convert_unit(remaining, l.unit, inventory_item.unit)
+                        )
+                    except Exception:
+                        remaining_in_inventory_unit = remaining
+
+                    lot_remaining_map[l.lot_id] = remaining_in_inventory_unit
+                    total_remaining += remaining_in_inventory_unit
+
+                selected_lot_remaining = lot_remaining_map.get(lot_id, Decimal("0"))
+
+                # Step 4: Determine if this is an addition or subtraction
                 subtract_types = [
                     "waste",
                     "spoilage",
@@ -1052,35 +1075,37 @@ class InventoryService:
                 ]
                 add_types = ["manual_addition"]
 
-                current_quantity = float(inventory_item.quantity_on_hand)
+                requested_qty = Decimal(str(adjustment_quantity))
 
                 if usage_type in subtract_types:
-                    if current_quantity < adjustment_quantity:
+                    if selected_lot_remaining < requested_qty:
+                        raise Exception("Not enough quantity in the selected lot to subtract.")
+                    if total_remaining < requested_qty:
                         raise Exception(
                             "Not enough inventory to subtract the adjustment quantity."
                         )
-                    new_quantity = current_quantity - float(adjustment_quantity)
+                    new_quantity = total_remaining - requested_qty
 
                 elif usage_type in add_types:
-                    new_quantity = current_quantity + float(adjustment_quantity)
+                    new_quantity = total_remaining + requested_qty
 
                 else:
                     raise Exception(f"Unsupported usage_type: {usage_type}")
 
-                # Step 4: Update inventory quantity_on_hand
+                # Step 5: Update inventory quantity_on_hand with reconciled total
                 await self.inventory_repo.update(
                     restaurant_id=self.restaurant_id,
                     inventory_id=inventory_id,
-                    inventory_data={"quantity_on_hand": new_quantity},
+                    inventory_data={"quantity_on_hand": float(new_quantity)},
                 )
 
-                # Step 5: Log the adjustment
+                # Step 6: Log the adjustment
                 usage_log_entry = {
                     "restaurant_id": self.restaurant_id,
                     "inventory_id": inventory_id,
                     "lot_id": lot_id,
                     "ingredient_id": inventory_item.ingredient_id,
-                    "used_quantity": Decimal(adjustment_quantity),
+                    "used_quantity": requested_qty,
                     "unit": inventory_item.unit,
                     "usage_type": usage_type,
                     "reference_type": "lot",
@@ -1101,6 +1126,23 @@ class InventoryService:
                 "success": False,
                 "message": f"Failed to log inventory adjustment: {str(e)}",
             }
+
+    async def _compute_lot_remaining(self, lot) -> Decimal:
+        """Compute remaining quantity for a lot using usage logs (no status filtering)."""
+        usage_logs = await self.inventory_usage_log_repo.get_all_by_lot_id(lot.lot_id)
+        used_quantity = wasted_quantity = added_quantity = Decimal("0.00")
+
+        for log in usage_logs:
+            qty = Decimal(log.used_quantity or 0)
+            if log.usage_type in {"sale", "batch_production", "batch_output"}:
+                used_quantity += qty
+            elif log.usage_type in {"waste", "spoilage", "manual_adjustment"}:
+                wasted_quantity += qty
+            elif log.usage_type == "manual_addition":
+                added_quantity += qty
+
+        lot_qty = Decimal(lot.quantity or 0)
+        return lot_qty - used_quantity - wasted_quantity + added_quantity
 
     async def view_inventory(self) -> List[dict]:
         inventory_items = await self.inventory_repo.get_all()
@@ -1170,7 +1212,8 @@ class InventoryService:
         available_lots = [lot for lot in lots if lot.status.value == "available"]
         
         for lot in sorted(available_lots, key=lambda x: x.delivery_date, reverse=True):
-            lot_qty = Decimal(lot.total_received or 0)
+            # lot.quantity is stored in the inventory unit (already converted on intake)
+            lot_qty = Decimal(lot.quantity or 0)
             used_quantity = wasted_quantity = added_quantity = Decimal("0.00")
 
             # Fetch usage logs for each lot
@@ -1200,6 +1243,7 @@ class InventoryService:
                 "added_quantity": round_decimal(added_quantity),
                 "remaining_quantity": round_decimal(remaining_quantity),
                 "lot_id": lot.lot_id,
+                "unit": lot.unit,
                 **packaging_info,
             })
         print(f'lot breakdown: {lot_breakdown}')

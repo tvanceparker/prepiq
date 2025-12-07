@@ -118,6 +118,7 @@ export interface LotBreakdown {
   wasted_quantity: number;
   added_quantity: number;
   remaining_quantity: number;
+  unit?: string | null;
   ingredient_supplier_id?: number | null;
   supplier_unit?: string | null;
   pack_size?: number | null;

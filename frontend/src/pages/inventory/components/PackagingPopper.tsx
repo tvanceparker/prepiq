@@ -9,6 +9,7 @@ interface PackagingPopperProps {
   batchRecipeId: number | null;
   onClose: () => void;
   onChipClick: (event: React.MouseEvent<HTMLDivElement>, lotId: number, type: string) => void;
+  onAdjustLot: (lotId: number) => void;
 }
 
 const PackagingPopper: React.FC<PackagingPopperProps> = ({
@@ -17,6 +18,7 @@ const PackagingPopper: React.FC<PackagingPopperProps> = ({
   batchRecipeId,
   onClose,
   onChipClick,
+  onAdjustLot,
 }) => {
   const open = Boolean(anchorEl);
   const id = open ? 'packaging-popper' : undefined;
@@ -73,11 +75,20 @@ const PackagingPopper: React.FC<PackagingPopperProps> = ({
                       />
                     </Stack>
                     <Typography variant="body2" color="text.secondary">
-                      Remaining: {lot.remaining_quantity} {lot.supplier_unit}
+                      Remaining: {lot.remaining_quantity} {lot.unit || lot.supplier_unit}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       Approx. Packages Remaining: {lot.approx_packages_remaining}
                     </Typography>
+                    <Stack direction="row" justifyContent="flex-end" mt={1.5}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => onAdjustLot(lot.lot_id)}
+                      >
+                        Adjust this lot
+                      </Button>
+                    </Stack>
                   </Paper>
                 ))
               )}

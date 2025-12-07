@@ -7,10 +7,12 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Snackbar,
   Paper,
   Stack,
   Typography,
   useTheme,
+  Alert,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { MaterialReactTable, type MRT_ColumnDef } from 'material-react-table';
@@ -22,12 +24,22 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { useInventoryTable } from './hooks/useInventoryTable';
 import PackagingPopper from './components/PackagingPopper';
 import ChipInfoPopper from './components/ChipInfoPopper';
+import LotAdjustDialog from './components/LotAdjustDialog';
 import { InventoryItem, LotBreakdown, IngredientStockLevel } from '../../interfaces/inventory';
 
 export default function InventoryTable() {
   const theme = useTheme();
 
-  const { inventory, loading, error, stockLevels, stockLoading, stockError } = useInventoryTable();
+  const {
+    inventory,
+    loading,
+    error,
+    stockLevels,
+    stockLoading,
+    stockError,
+    adjustInventory,
+    adjusting,
+  } = useInventoryTable();
 
   const [filterType, setFilterType] = useState<'all' | 'ingredients' | 'batches'>('all');
 
@@ -40,6 +52,16 @@ export default function InventoryTable() {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [selectedLots, setSelectedLots] = useState<LotBreakdown[]>([]);
   const [batchRecipeId, setBatchRecipeId] = useState<number | null>(null);
+  const [activeInventoryRow, setActiveInventoryRow] = useState<InventoryItem | null>(null);
+
+  const [adjustDialogOpen, setAdjustDialogOpen] = useState(false);
+  const [adjustLotId, setAdjustLotId] = useState<number | null>(null);
+
+  const [toast, setToast] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error';
+  }>({ open: false, message: '', severity: 'success' });
 
   const [chipAnchor, setChipAnchor] = useState<HTMLElement | null>(null);
   const [activeLotId, setActiveLotId] = useState<number | null>(null);
@@ -57,23 +79,56 @@ export default function InventoryTable() {
   );
 
   const handlePackagingClick = useCallback(
-    (
-      event: React.MouseEvent<HTMLButtonElement>,
-      breakdown: LotBreakdown[],
-      batchId: number | null
-    ) => {
+    (event: React.MouseEvent<HTMLButtonElement>, row: InventoryItem) => {
       if (anchorEl) {
         setAnchorEl(null);
         setSelectedLots([]);
         setBatchRecipeId(null);
+        setActiveInventoryRow(null);
       } else {
         setAnchorEl(event.currentTarget);
-        setSelectedLots(breakdown);
-        setBatchRecipeId(batchId);
+        setSelectedLots(row.packaging_breakdown);
+        setBatchRecipeId(row.batch_recipe_id || null);
+        setActiveInventoryRow(row);
       }
     },
     [anchorEl]
   );
+
+  const handlePopperClose = () => {
+    setAnchorEl(null);
+    setSelectedLots([]);
+    setBatchRecipeId(null);
+    setActiveInventoryRow(null);
+  };
+
+  const handleOpenAdjustDialog = (lotId: number) => {
+    if (!activeInventoryRow) return;
+    setAdjustLotId(lotId);
+    setAdjustDialogOpen(true);
+    setAnchorEl(null);
+  };
+
+  const handleAdjustSubmit = async (payload: {
+    inventory_id: number;
+    lot_id: number;
+    adjustment_quantity: number;
+    usage_type: string;
+    notes?: string;
+  }) => {
+    try {
+      await adjustInventory(payload);
+      setToast({ open: true, message: 'Inventory adjusted', severity: 'success' });
+      setAdjustDialogOpen(false);
+    } catch (err: any) {
+      setToast({
+        open: true,
+        message: err?.message || 'Adjustment failed',
+        severity: 'error',
+      });
+      throw err;
+    }
+  };
 
   const filteredInventory = useMemo(() => {
     if (filterType === 'ingredients') {
@@ -198,7 +253,7 @@ export default function InventoryTable() {
               color="primary"
               size="small"
               startIcon={<Inventory2Icon />}
-              onClick={e => handlePackagingClick(e, breakdown, row.batch_recipe_id || null)}
+              onClick={e => handlePackagingClick(e, row)}
             >
               {breakdown?.length || 0}
             </Button>
@@ -543,8 +598,9 @@ export default function InventoryTable() {
         anchorEl={anchorEl}
         lots={selectedLots}
         batchRecipeId={batchRecipeId}
-        onClose={() => setAnchorEl(null)}
+        onClose={handlePopperClose}
         onChipClick={handleChipClick}
+        onAdjustLot={handleOpenAdjustDialog}
       />
       <ChipInfoPopper
         anchorEl={chipAnchor}
@@ -557,6 +613,32 @@ export default function InventoryTable() {
           setChipType(null);
         }}
       />
+
+      {activeInventoryRow && (
+        <LotAdjustDialog
+          open={adjustDialogOpen}
+          onClose={() => setAdjustDialogOpen(false)}
+          inventoryId={activeInventoryRow.inventory_id}
+          inventoryName={activeInventoryRow.ingredient_name}
+          unit={activeInventoryRow.unit}
+          inventoryQuantity={activeInventoryRow.quantity_on_hand}
+          lots={activeInventoryRow.packaging_breakdown}
+          defaultLotId={adjustLotId}
+          loading={adjusting}
+          onSubmit={handleAdjustSubmit}
+        />
+      )}
+
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={3000}
+        onClose={() => setToast({ ...toast, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity={toast.severity} onClose={() => setToast({ ...toast, open: false })}>
+          {toast.message}
+        </Alert>
+      </Snackbar>
     </Stack>
   );
 }

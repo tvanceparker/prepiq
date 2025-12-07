@@ -9,12 +9,15 @@ import {
   ActivityIndicator,
   Card,
   Button,
+  TextInput,
   Portal,
   Modal,
   Divider,
   IconButton,
   useTheme,
   ProgressBar,
+  Snackbar,
+  HelperText,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useInventory, useLotInfo } from '../../hooks/useInventory';
@@ -34,11 +37,27 @@ export default function InventoryList(): React.JSX.Element {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [selectedLotId, setSelectedLotId] = useState<number | null>(null);
+  const [selectedLotRemaining, setSelectedLotRemaining] = useState<number | null>(null);
   const [showLotModal, setShowLotModal] = useState(false);
   const [showLotDetailModal, setShowLotDetailModal] = useState(false);
+  const [snackbar, setSnackbar] = useState<{
+    visible: boolean;
+    message: string;
+    type: 'success' | 'error';
+  }>({ visible: false, message: '', type: 'success' });
+  const [adjustQuantity, setAdjustQuantity] = useState('');
+  const [adjustUsageType, setAdjustUsageType] = useState('manual_adjustment');
+  const [adjustNotes, setAdjustNotes] = useState('');
+  const [adjustError, setAdjustError] = useState<string | null>(null);
 
   // Queries
-  const { inventory, loading: isLoading, refresh } = useInventory();
+  const {
+    inventory,
+    loading: isLoading,
+    refresh,
+    adjustInventory: adjustInventoryMutation,
+    adjusting,
+  } = useInventory();
   const { lotInfo, usedLogs, wastedLogs, loading: lotLoading } = useLotInfo(selectedLotId);
 
   // Pull to refresh
@@ -99,7 +118,66 @@ export default function InventoryList(): React.JSX.Element {
   // Open lot detail modal (for a specific lot)
   const handleViewLotDetail = (lotId: number) => {
     setSelectedLotId(lotId);
+    const lot = selectedItem?.packaging_breakdown?.find(l => l.lot_id === lotId);
+    setSelectedLotRemaining(lot?.remaining_quantity ?? null);
     setShowLotDetailModal(true);
+    setAdjustQuantity('');
+    setAdjustUsageType('manual_adjustment');
+    setAdjustNotes('');
+    setAdjustError(null);
+  };
+
+  const handleAdjustLot = async (params: {
+    quantity: number;
+    usageType: string;
+    notes?: string;
+  }) => {
+    if (!selectedItem || !selectedLotId) {
+      throw new Error('Select a lot first');
+    }
+
+    await adjustInventoryMutation({
+      inventory_id: selectedItem.inventory_id,
+      lot_id: selectedLotId,
+      adjustment_quantity: params.quantity,
+      usage_type: params.usageType,
+      notes: params.notes,
+    });
+
+    setSnackbar({ visible: true, message: 'Adjustment saved', type: 'success' });
+    await refresh();
+  };
+
+  const submitLotAdjustment = async () => {
+    const qty = Number(adjustQuantity);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setAdjustError('Enter a quantity greater than zero');
+      return;
+    }
+    if (
+      adjustUsageType !== 'manual_addition' &&
+      selectedLotRemaining !== null &&
+      selectedLotRemaining !== undefined
+    ) {
+      if (qty > selectedLotRemaining) {
+        setAdjustError('Cannot subtract more than the lot has remaining');
+        return;
+      }
+    }
+
+    try {
+      await handleAdjustLot({
+        quantity: qty,
+        usageType: adjustUsageType,
+        notes: adjustNotes.trim() || undefined,
+      });
+      setAdjustError(null);
+      setAdjustQuantity('');
+      setAdjustNotes('');
+    } catch (err: any) {
+      setAdjustError(err?.message || 'Failed to adjust lot');
+      setSnackbar({ visible: true, message: 'Adjustment failed', type: 'error' });
+    }
   };
 
   // Stock level indicator
@@ -157,7 +235,10 @@ export default function InventoryList(): React.JSX.Element {
               </View>
 
               <View style={styles.quantitySection}>
-                <Text variant="headlineMedium" style={[styles.quantity, { color: stockLevel.color }]}>
+                <Text
+                  variant="headlineMedium"
+                  style={[styles.quantity, { color: stockLevel.color }]}
+                >
                   {item.quantity_on_hand}
                 </Text>
                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
@@ -168,14 +249,22 @@ export default function InventoryList(): React.JSX.Element {
 
             <View style={styles.itemFooter}>
               <View style={[styles.statusBadge, { backgroundColor: `${stockLevel.color}15` }]}>
-                <MaterialCommunityIcons name={stockLevel.icon as any} size={14} color={stockLevel.color} />
+                <MaterialCommunityIcons
+                  name={stockLevel.icon as any}
+                  size={14}
+                  color={stockLevel.color}
+                />
                 <Text variant="labelSmall" style={{ color: stockLevel.color, marginLeft: 4 }}>
                   {stockLevel.label}
                 </Text>
               </View>
 
               <Pressable style={styles.lotsButton} onPress={() => handleViewLots(item)}>
-                <MaterialCommunityIcons name="package-variant" size={16} color={theme.colors.primary} />
+                <MaterialCommunityIcons
+                  name="package-variant"
+                  size={16}
+                  color={theme.colors.primary}
+                />
                 <Text variant="labelMedium" style={{ color: theme.colors.primary, marginLeft: 4 }}>
                   {lotsCount} lot{lotsCount !== 1 ? 's' : ''}
                 </Text>
@@ -189,7 +278,8 @@ export default function InventoryList(): React.JSX.Element {
 
   // Render lot item in the breakdown modal
   const renderLotItem = (lot: LotBreakdown, index: number) => {
-    const usagePercent = lot.quantity > 0 ? ((lot.quantity - lot.remaining_quantity) / lot.quantity) * 100 : 0;
+    const usagePercent =
+      lot.quantity > 0 ? ((lot.quantity - lot.remaining_quantity) / lot.quantity) * 100 : 0;
 
     return (
       <Card key={lot.lot_id || index} style={styles.lotCard} mode="outlined">
@@ -197,7 +287,11 @@ export default function InventoryList(): React.JSX.Element {
           <Card.Content>
             <View style={styles.lotHeader}>
               <View style={styles.lotTitleRow}>
-                <MaterialCommunityIcons name="package-variant" size={18} color={theme.colors.primary} />
+                <MaterialCommunityIcons
+                  name="package-variant"
+                  size={18}
+                  color={theme.colors.primary}
+                />
                 <Text variant="titleSmall" style={{ marginLeft: 6, fontWeight: '600' }}>
                   Lot #{lot.lot_id}
                 </Text>
@@ -250,7 +344,8 @@ export default function InventoryList(): React.JSX.Element {
             {lot.pack_size && (
               <View style={styles.packagingRow}>
                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                  📦 {lot.packages_received_total || 0} packs received • ~{lot.approx_packages_remaining || 0} remaining
+                  📦 {lot.packages_received_total || 0} packs received • ~
+                  {lot.approx_packages_remaining || 0} remaining
                 </Text>
               </View>
             )}
@@ -400,9 +495,14 @@ export default function InventoryList(): React.JSX.Element {
                 FIFO Lot Breakdown
               </Text>
 
-              {!selectedItem.packaging_breakdown || selectedItem.packaging_breakdown.length === 0 ? (
+              {!selectedItem.packaging_breakdown ||
+              selectedItem.packaging_breakdown.length === 0 ? (
                 <View style={styles.emptyLots}>
-                  <MaterialCommunityIcons name="package-variant-closed" size={48} color={theme.colors.outline} />
+                  <MaterialCommunityIcons
+                    name="package-variant-closed"
+                    size={48}
+                    color={theme.colors.outline}
+                  />
                   <Text style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}>
                     No active lots for this item
                   </Text>
@@ -447,22 +547,32 @@ export default function InventoryList(): React.JSX.Element {
                       Lot Information
                     </Text>
                     <View style={styles.infoRow}>
-                      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Delivery Date:</Text>
+                      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                        Delivery Date:
+                      </Text>
                       <Text variant="bodyMedium">{formatDate(lotInfo.delivery_date)}</Text>
                     </View>
                     <View style={styles.infoRow}>
-                      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Received Qty:</Text>
+                      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                        Received Qty:
+                      </Text>
                       <Text variant="bodyMedium">{lotInfo.received_quantity}</Text>
                     </View>
                     {lotInfo.spoilage_expected_date && (
                       <View style={styles.infoRow}>
-                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Expected Spoilage:</Text>
-                        <Text variant="bodyMedium">{formatDate(lotInfo.spoilage_expected_date)}</Text>
+                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                          Expected Spoilage:
+                        </Text>
+                        <Text variant="bodyMedium">
+                          {formatDate(lotInfo.spoilage_expected_date)}
+                        </Text>
                       </View>
                     )}
                     {lotInfo.supplier?.supplier_name && (
                       <View style={styles.infoRow}>
-                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Supplier:</Text>
+                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                          Supplier:
+                        </Text>
                         <Text variant="bodyMedium">{lotInfo.supplier.supplier_name}</Text>
                       </View>
                     )}
@@ -472,11 +582,17 @@ export default function InventoryList(): React.JSX.Element {
                 <Divider style={{ marginVertical: 12 }} />
 
                 {/* Used Logs */}
-                <Text variant="titleSmall" style={{ fontWeight: '600', marginBottom: 8, color: '#2196f3' }}>
+                <Text
+                  variant="titleSmall"
+                  style={{ fontWeight: '600', marginBottom: 8, color: '#2196f3' }}
+                >
                   Usage Logs ({usedLogs.length})
                 </Text>
                 {usedLogs.length === 0 ? (
-                  <Text variant="bodySmall" style={{ color: theme.colors.outline, marginBottom: 12 }}>
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: theme.colors.outline, marginBottom: 12 }}
+                  >
                     No usage logs
                   </Text>
                 ) : (
@@ -498,7 +614,10 @@ export default function InventoryList(): React.JSX.Element {
                 <Divider style={{ marginVertical: 12 }} />
 
                 {/* Waste Logs */}
-                <Text variant="titleSmall" style={{ fontWeight: '600', marginBottom: 8, color: '#ff9800' }}>
+                <Text
+                  variant="titleSmall"
+                  style={{ fontWeight: '600', marginBottom: 8, color: '#ff9800' }}
+                >
                   Waste Logs ({wastedLogs.length})
                 </Text>
                 {wastedLogs.length === 0 ? (
@@ -520,11 +639,82 @@ export default function InventoryList(): React.JSX.Element {
                     </View>
                   ))
                 )}
+
+                <Divider style={{ marginVertical: 12 }} />
+
+                <Text variant="titleSmall" style={{ fontWeight: '600', marginBottom: 8 }}>
+                  Adjust this lot
+                </Text>
+
+                <TextInput
+                  label={`Quantity (${selectedItem?.unit || ''})`}
+                  value={adjustQuantity}
+                  onChangeText={setAdjustQuantity}
+                  keyboardType="decimal-pad"
+                  mode="outlined"
+                  style={{ marginBottom: 8 }}
+                />
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={{ marginVertical: 6 }}
+                >
+                  {[
+                    { key: 'manual_addition', label: 'Add' },
+                    { key: 'manual_adjustment', label: 'Adjust (-)' },
+                    { key: 'waste', label: 'Waste' },
+                    { key: 'spoilage', label: 'Spoilage' },
+                  ].map(option => (
+                    <Button
+                      key={option.key}
+                      mode={adjustUsageType === option.key ? 'contained' : 'outlined'}
+                      style={{ marginRight: 8 }}
+                      onPress={() => setAdjustUsageType(option.key)}
+                      compact
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </ScrollView>
+
+                <TextInput
+                  label="Notes (optional)"
+                  value={adjustNotes}
+                  onChangeText={setAdjustNotes}
+                  mode="outlined"
+                  multiline
+                  numberOfLines={2}
+                  style={{ marginBottom: 4 }}
+                />
+
+                <HelperText type="info">
+                  Lot remaining: {selectedLotRemaining ?? 'N/A'} {selectedItem?.unit || ''}
+                </HelperText>
+
+                {adjustError && <HelperText type="error">{adjustError}</HelperText>}
+
+                <Button
+                  mode="contained"
+                  onPress={submitLotAdjustment}
+                  loading={adjusting}
+                  disabled={adjusting}
+                >
+                  Save adjustment
+                </Button>
               </>
             )}
           </ScrollView>
         </Modal>
       </Portal>
+
+      <Snackbar
+        visible={snackbar.visible}
+        onDismiss={() => setSnackbar({ ...snackbar, visible: false })}
+        duration={2500}
+      >
+        <Text style={{ color: '#fff' }}>{snackbar.message}</Text>
+      </Snackbar>
     </View>
   );
 }

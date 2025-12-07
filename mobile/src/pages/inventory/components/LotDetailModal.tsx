@@ -1,5 +1,5 @@
 // src/pages/inventory/components/LotDetailModal.tsx
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import {
   Portal,
@@ -8,7 +8,10 @@ import {
   Divider,
   IconButton,
   ActivityIndicator,
+  TextInput,
+  Button,
   useTheme,
+  HelperText,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { LotInfo, UsageLog } from '../../../interfaces/inventory';
@@ -22,6 +25,10 @@ interface LotDetailModalProps {
   wastedLogs: UsageLog[];
   loading: boolean;
   formatDate: (dateStr: string | null | undefined) => string;
+  onAdjust: (params: { quantity: number; usageType: string; notes?: string }) => Promise<void>;
+  adjusting: boolean;
+  lotRemaining?: number | null;
+  unit?: string;
 }
 
 export function LotDetailModal({
@@ -33,8 +40,49 @@ export function LotDetailModal({
   wastedLogs,
   loading,
   formatDate,
+  onAdjust,
+  adjusting,
+  lotRemaining,
+  unit,
 }: LotDetailModalProps): React.JSX.Element {
   const theme = useTheme();
+
+  const [quantity, setQuantity] = useState('');
+  const [usageType, setUsageType] = useState('manual_adjustment');
+  const [notes, setNotes] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setQuantity('');
+      setUsageType('manual_adjustment');
+      setNotes('');
+      setError(null);
+    }
+  }, [visible, lotId]);
+
+  const handleSubmit = async () => {
+    const qty = Number(quantity);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setError('Enter a quantity greater than zero');
+      return;
+    }
+    if (usageType !== 'manual_addition' && lotRemaining !== undefined && lotRemaining !== null) {
+      if (qty > lotRemaining) {
+        setError('Cannot subtract more than the lot has remaining');
+        return;
+      }
+    }
+
+    try {
+      await onAdjust({ quantity: qty, usageType, notes: notes.trim() || undefined });
+      setQuantity('');
+      setNotes('');
+      setError(null);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to adjust lot');
+    }
+  };
 
   return (
     <Portal>
@@ -157,6 +205,71 @@ export function LotDetailModal({
                   </View>
                 ))
               )}
+
+              <Divider style={{ marginVertical: 12 }} />
+
+              <Text variant="titleSmall" style={{ fontWeight: '600', marginBottom: 8 }}>
+                Adjust this lot
+              </Text>
+
+              <TextInput
+                label={`Quantity (${unit || ''})`}
+                value={quantity}
+                onChangeText={setQuantity}
+                keyboardType="decimal-pad"
+                mode="outlined"
+              />
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginVertical: 8 }}
+              >
+                {[
+                  { key: 'manual_addition', label: 'Add' },
+                  { key: 'manual_adjustment', label: 'Adjust (-)' },
+                  { key: 'waste', label: 'Waste' },
+                  { key: 'spoilage', label: 'Spoilage' },
+                ].map(option => (
+                  <Button
+                    key={option.key}
+                    mode={usageType === option.key ? 'contained' : 'outlined'}
+                    style={{ marginRight: 8 }}
+                    onPress={() => setUsageType(option.key)}
+                    compact
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </ScrollView>
+
+              <TextInput
+                label="Notes (optional)"
+                value={notes}
+                onChangeText={setNotes}
+                mode="outlined"
+                multiline
+                numberOfLines={2}
+              />
+
+              <HelperText type="info">
+                Lot remaining: {lotRemaining ?? 'N/A'} {unit || ''}
+              </HelperText>
+
+              {error && (
+                <HelperText type="error" visible>
+                  {error}
+                </HelperText>
+              )}
+
+              <Button
+                mode="contained"
+                onPress={handleSubmit}
+                loading={adjusting}
+                disabled={adjusting}
+              >
+                Save adjustment
+              </Button>
             </>
           )}
         </ScrollView>
