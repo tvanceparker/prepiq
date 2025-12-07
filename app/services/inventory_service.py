@@ -70,12 +70,7 @@ class InventoryService:
         poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
         supplier_repo = SupplierRepository(self.db, self.restaurant_id)
         ingredient_repo = IngredientRepository(self.db, self.restaurant_id)
-        filters = {}
-        if status:
-            filters["status"] = status
-        if supplier_id:
-            filters["supplier_id"] = supplier_id
-        pos = await po_repo.get_all(filters)
+        pos = await po_repo.list_purchase_orders(status=status, supplier_id=supplier_id)
         result = []
         for po in pos:
             supplier = await supplier_repo.get_by_id(po.supplier_id)

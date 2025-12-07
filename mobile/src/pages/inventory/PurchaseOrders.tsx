@@ -295,7 +295,7 @@ export default function PurchaseOrders(): React.JSX.Element {
     }
     if (wizardStep === 2) {
       if (wizardMode === 'supplier') return selectedItems.size > 0;
-      if (wizardMode === 'ingredient') return selectedIngredient && ingredientSupplier;
+      if (wizardMode === 'ingredient') return Boolean(selectedIngredient && ingredientSupplier);
     }
     return true;
   };

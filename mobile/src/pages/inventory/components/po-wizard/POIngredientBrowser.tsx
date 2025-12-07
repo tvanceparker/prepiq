@@ -20,13 +20,13 @@ interface POIngredientBrowserProps {
   stockLevels: IngredientStockLevel[];
   stockLoading: boolean;
   selectedIngredient: IngredientStockLevel | null;
-  setSelectedIngredient: (ingredient: IngredientStockLevel | null) => void;
+  setSelectedIngredient: React.Dispatch<React.SetStateAction<IngredientStockLevel | null>>;
   ingredientSuppliers: IngredientSupplierOption[];
   suppliersLoading: boolean;
   ingredientSupplier: IngredientSupplierOption | null;
-  setIngredientSupplier: (supplier: IngredientSupplierOption | null) => void;
+  setIngredientSupplier: React.Dispatch<React.SetStateAction<IngredientSupplierOption | null>>;
   ingredientQty: number;
-  setIngredientQty: (qty: number) => void;
+  setIngredientQty: React.Dispatch<React.SetStateAction<number>>;
 }
 
 const getStockStatusColor = (status: string): string => {
