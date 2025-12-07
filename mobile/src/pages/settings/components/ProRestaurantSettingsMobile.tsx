@@ -2,19 +2,19 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, ScrollView, RefreshControl, Image, Linking, Pressable } from 'react-native';
 import {
   ActivityIndicator,
-  Button,
   Text,
   Chip,
   Snackbar,
   Card,
   Avatar,
   useTheme,
+  Divider,
 } from 'react-native-paper';
 import { useRestaurantSettings } from '../hooks/useRestaurantSettings';
 import BasicRestaurantSettingsModal from './BasicRestaurantSettingsModal';
 import type { RestaurantSettings } from '../../../interfaces/settings';
 
-export default function BasicRestaurantSettingsMobile() {
+export default function ProRestaurantSettingsMobile() {
   const { settings, loading, error, saveSettings, saving, refetch, isFetching } =
     useRestaurantSettings();
   const theme = useTheme();
@@ -87,12 +87,22 @@ export default function BasicRestaurantSettingsMobile() {
         icon: 'timer-sand',
         color: theme.colors.error,
       },
+      {
+        title: 'Inventory Deduction',
+        value:
+          settings?.inventory_deduction_mode === 'real_time'
+            ? 'Real-time (Pro/Master)'
+            : 'End of Day',
+        icon: 'cube-outline',
+        color: settings?.inventory_deduction_mode === 'real_time' ? primary : secondary,
+      },
     ],
     [
       settings?.forecast_length,
       settings?.timezone,
       settings?.eod_run_when_closed,
       settings?.eod_run_after_close_mins,
+      settings?.inventory_deduction_mode,
       primary,
       secondary,
       tertiary,
@@ -121,9 +131,9 @@ export default function BasicRestaurantSettingsMobile() {
     return (
       <View style={{ padding: 16, alignItems: 'center' }}>
         <Text style={{ marginBottom: 12 }}>Error loading settings</Text>
-        <Button mode="contained" onPress={() => refetch()}>
+        <Text onPress={() => refetch()} style={{ color: primary, fontWeight: '600' }}>
           Retry
-        </Button>
+        </Text>
       </View>
     );
   if (!settings) return null;
@@ -241,6 +251,21 @@ export default function BasicRestaurantSettingsMobile() {
       </Card>
 
       <Card style={{ marginBottom: 12 }}>
+        <Card.Title title="Inventory Deductions" />
+        <Card.Content>
+          <Text style={{ marginBottom: 6 }}>
+            {settings.inventory_deduction_mode === 'real_time'
+              ? 'Real-time deductions automatically adjust ingredient and batch inventory when orders complete. Alerts fire on failures.'
+              : 'End-of-day deductions run during the nightly EOD pipeline. Switch to real-time to catch shortages sooner.'}
+          </Text>
+          <Divider style={{ marginVertical: 6 }} />
+          <Text style={{ color: onSurfaceVariant }}>
+            Mode: {settings.inventory_deduction_mode === 'real_time' ? 'Real-time' : 'End of Day'}
+          </Text>
+        </Card.Content>
+      </Card>
+
+      <Card style={{ marginBottom: 12 }}>
         <Card.Title title="Location" />
         <Card.Content>
           <Text style={{ marginBottom: 6 }}>
@@ -248,16 +273,16 @@ export default function BasicRestaurantSettingsMobile() {
             {settings.latitude ? `${settings.latitude}, ${settings.longitude}` : 'Not set'}
           </Text>
           {settings.latitude && settings.longitude ? (
-            <Button
-              mode="outlined"
+            <Text
               onPress={() =>
                 Linking.openURL(
                   `https://www.google.com/maps/search/?api=1&query=${settings.latitude},${settings.longitude}`
                 )
               }
+              style={{ color: primary, fontWeight: '600' }}
             >
               Open in Maps
-            </Button>
+            </Text>
           ) : null}
         </Card.Content>
       </Card>
@@ -269,7 +294,6 @@ export default function BasicRestaurantSettingsMobile() {
         onChange={updateField}
         onClose={close}
         onSave={handleSave}
-        showInventoryMode={false}
       />
 
       <Snackbar

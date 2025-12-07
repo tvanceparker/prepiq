@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import BasicRestaurantSettingsMobile from './components/BasicRestaurantSettingsMobile';
+import ProRestaurantSettingsMobile from './components/ProRestaurantSettingsMobile';
 import { AuthContext } from '../../contexts/AuthContext';
 
 export default function RestaurantSettings() {
-  // could branch by tier later using useContext(AuthContext)
+  const { tier } = useContext(AuthContext);
+
+  if (tier === 'pro' || tier === 'master') return <ProRestaurantSettingsMobile />;
   return <BasicRestaurantSettingsMobile />;
 }

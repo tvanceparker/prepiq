@@ -9,6 +9,7 @@ type Props = {
   onChange: (field: string, value: any) => void;
   onClose: () => void;
   onSave: () => void | Promise<void>;
+  showInventoryMode?: boolean;
 };
 
 export default function BasicRestaurantSettingsModal({
@@ -18,6 +19,7 @@ export default function BasicRestaurantSettingsModal({
   onChange,
   onClose,
   onSave,
+  showInventoryMode = true,
 }: Props) {
   return (
     <Portal>
@@ -46,18 +48,24 @@ export default function BasicRestaurantSettingsModal({
                 onChangeText={v => onChange('eod_run_after_close_mins', parseInt(v || '0', 10))}
                 style={{ marginBottom: 12 }}
               />
-              <Text style={{ fontWeight: '600', marginBottom: 4 }}>Inventory Deduction Mode</Text>
-              <RadioButton.Group
-                value={formData.inventory_deduction_mode || 'eod'}
-                onValueChange={value => onChange('inventory_deduction_mode', value)}
-              >
-                <RadioButton.Item label="End of Day (default)" value="eod" />
-                <RadioButton.Item label="Real-time (Pro/Master)" value="real_time" />
-              </RadioButton.Group>
-              <Text style={{ fontSize: 12, opacity: 0.6, marginBottom: 12 }}>
-                Real-time mode deducts inventory for each completed order and fires alerts on
-                failure.
-              </Text>
+              {showInventoryMode && (
+                <>
+                  <Text style={{ fontWeight: '600', marginBottom: 4 }}>
+                    Inventory Deduction Mode
+                  </Text>
+                  <RadioButton.Group
+                    value={formData.inventory_deduction_mode || 'eod'}
+                    onValueChange={value => onChange('inventory_deduction_mode', value)}
+                  >
+                    <RadioButton.Item label="End of Day (default)" value="eod" />
+                    <RadioButton.Item label="Real-time (Pro/Master)" value="real_time" />
+                  </RadioButton.Group>
+                  <Text style={{ fontSize: 12, opacity: 0.6, marginBottom: 12 }}>
+                    Real-time mode deducts inventory for each completed order and fires alerts on
+                    failure.
+                  </Text>
+                </>
+              )}
               <Text style={{ fontWeight: '600', marginBottom: 4 }}>Sales Channels</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 }}>
                 {(formData.sales_channels || []).map((ch: string, idx: number) => (

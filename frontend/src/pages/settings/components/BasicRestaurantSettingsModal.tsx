@@ -102,26 +102,6 @@ export default function BasicRestaurantSettingsModal({
             margin="normal"
           />
 
-          <TextField
-            select
-            fullWidth
-            label="Inventory Deduction Mode"
-            name="inventory_deduction_mode"
-            value={formData.inventory_deduction_mode ?? 'eod'}
-            onChange={e => onChange('inventory_deduction_mode', e.target.value)}
-            error={!!errors.inventory_deduction_mode}
-            helperText={
-              errors.inventory_deduction_mode ||
-              (formData.inventory_deduction_mode === 'real_time'
-                ? 'Real-time mode deducts inventory when each order completes (Pro/Master).'
-                : 'EOD mode deducts inventory during the nightly end-of-day job.')
-            }
-            margin="normal"
-          >
-            <MenuItem value="eod">End of Day (default)</MenuItem>
-            <MenuItem value="real_time">Real-time (requires Pro/Master)</MenuItem>
-          </TextField>
-
           <Box mt={2}>
             <Typography variant="subtitle1" color="text.secondary" fontWeight="600" gutterBottom>
               Sales Channels
