@@ -64,6 +64,21 @@ class PaymentResponse(BaseModel):
     change_due: Optional[int] = None  # For cash payments, in cents
 
 
+class CompleteOrderPaymentRequest(BaseModel):
+    """Payload to complete an order with payment handling."""
+    amount_cents: Optional[int] = None
+    tip_amount_cents: Optional[int] = None
+    currency: str = "usd"
+    payment_method: PaymentMethodType = PaymentMethodType.CARD
+    cash_tendered_cents: Optional[int] = None
+    session_id: Optional[int] = None  # Optional cash drawer session
+    reader_id: Optional[int] = None  # For card_present / terminal
+    payment_intent_id: Optional[str] = None  # Reuse existing intent if present
+    tip_eligible: bool = True
+    capture_method: str = "automatic"
+    print_receipt: bool = True
+
+
 class PaymentConfirmRequest(BaseModel):
     payment_intent_id: str
 
@@ -326,6 +341,8 @@ class POSModeResponse(BaseModel):
     cash_drawer_enabled: bool
     stripe_terminal_location_id: Optional[str]
     has_terminal_readers: bool
+    terminal_payments_enabled: Optional[bool] = None
+    preferred_terminal_reader_id: Optional[int] = None
 
 
 # POS Item Mapping DTOs

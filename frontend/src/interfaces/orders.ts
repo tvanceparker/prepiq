@@ -98,6 +98,7 @@ export interface OrdersContextType {
   error: string | null;
   createOrder: (order: OrderCreate) => Promise<OrderResponse>;
   updateOrderStatus: (orderId: number, status: string) => Promise<OrderResponse>;
+  updateOrder?: (orderId: number, payload: Partial<Order>) => Promise<OrderResponse>;
   getActiveOrders: () => Promise<ActiveOrdersResponse>;
   getMenuItems: () => Promise<MenuItemsResponse>;
   refreshOrders: () => Promise<void>;

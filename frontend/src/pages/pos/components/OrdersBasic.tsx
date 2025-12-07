@@ -19,12 +19,19 @@ import {
   TableRow,
   CircularProgress,
   Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  MenuItem as MuiMenuItem,
 } from '@mui/material';
 import { Refresh as RefreshIcon, Receipt as ReceiptIcon } from '@mui/icons-material';
 import { useOrders } from '../hooks/useOrders';
 import { useDevice } from '../../../contexts/DeviceContext';
 import OrderCard from './OrderCard';
 import { TabPanelProps } from '../../../interfaces/pos';
+import { Order } from '../../../interfaces/orders';
 
 const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => (
   <div role="tabpanel" hidden={value !== index}>
@@ -33,13 +40,62 @@ const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => (
 );
 
 const OrdersBasic: React.FC = () => {
-  const { activeOrders, isLoading, error, updateOrderStatus, refreshOrders } = useOrders();
+  const { activeOrders, isLoading, error, updateOrderStatus, refreshOrders, updateOrder } = useOrders();
   const { device: deviceInfo } = useDevice();
 
   const [tabValue, setTabValue] = useState(0);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [form, setForm] = useState({
+    status: 'pending',
+    external_id: '',
+    sales_channel: '',
+    subtotal: '',
+    tax: '',
+    discount: '',
+    total: '',
+  });
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
+  };
+
+  const openEdit = (order: Order) => {
+    setEditingOrder(order);
+    setForm({
+      status: order.status || 'pending',
+      external_id: order.external_id || '',
+      sales_channel: order.sales_channel || '',
+      subtotal: String(order.subtotal ?? ''),
+      tax: String(order.tax ?? ''),
+      discount: String(order.discount ?? ''),
+      total: String(order.total ?? ''),
+    });
+    setEditOpen(true);
+  };
+
+  const closeEdit = () => {
+    setEditOpen(false);
+    setEditingOrder(null);
+  };
+
+  const handleFormChange = (field: string, value: string) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingOrder) return;
+    const payload: any = {
+      status: form.status,
+      external_id: form.external_id || undefined,
+      sales_channel: form.sales_channel || undefined,
+      subtotal: form.subtotal === '' ? undefined : parseFloat(form.subtotal),
+      tax: form.tax === '' ? undefined : parseFloat(form.tax),
+      discount: form.discount === '' ? undefined : parseFloat(form.discount),
+      total: form.total === '' ? undefined : parseFloat(form.total),
+    };
+    await updateOrder(editingOrder.order_id, payload);
+    closeEdit();
   };
 
   const getOrdersByStatus = (status: string) => {
@@ -86,6 +142,7 @@ const OrdersBasic: React.FC = () => {
   }
 
   return (
+    <>
     <Box sx={{ flexGrow: 1, p: 3 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">Order Management ({deviceInfo.type})</Typography>
@@ -167,6 +224,14 @@ const OrdersBasic: React.FC = () => {
                       >
                         Complete
                       </Button>
+                      <Button
+                        size="small"
+                        sx={{ ml: 1 }}
+                        variant="text"
+                        onClick={() => openEdit(order)}
+                      >
+                        Edit
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -228,6 +293,85 @@ const OrdersBasic: React.FC = () => {
         </TabPanel>
       </Paper>
     </Box>
+
+    <Dialog open={editOpen} onClose={closeEdit} fullWidth maxWidth="sm">
+      <DialogTitle>Edit Order</DialogTitle>
+      <DialogContent>
+        <TextField
+          margin="dense"
+          label="Status"
+          select
+          fullWidth
+          value={form.status}
+          onChange={e => handleFormChange('status', e.target.value)}
+        >
+          {['pending', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'].map(opt => (
+            <MuiMenuItem key={opt} value={opt}>
+              {opt}
+            </MuiMenuItem>
+          ))}
+        </TextField>
+        <TextField
+          margin="dense"
+          label="External ID"
+          fullWidth
+          value={form.external_id}
+          onChange={e => handleFormChange('external_id', e.target.value)}
+        />
+        <TextField
+          margin="dense"
+          label="Sales Channel"
+          fullWidth
+          value={form.sales_channel}
+          onChange={e => handleFormChange('sales_channel', e.target.value)}
+        />
+        <Grid container spacing={2} mt={1}>
+          <Grid item xs={6}>
+            <TextField
+              label="Subtotal"
+              type="number"
+              fullWidth
+              value={form.subtotal}
+              onChange={e => handleFormChange('subtotal', e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField
+              label="Tax"
+              type="number"
+              fullWidth
+              value={form.tax}
+              onChange={e => handleFormChange('tax', e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField
+              label="Discount"
+              type="number"
+              fullWidth
+              value={form.discount}
+              onChange={e => handleFormChange('discount', e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField
+              label="Total"
+              type="number"
+              fullWidth
+              value={form.total}
+              onChange={e => handleFormChange('total', e.target.value)}
+            />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={closeEdit}>Cancel</Button>
+        <Button variant="contained" onClick={handleSaveEdit} disabled={isLoading}>
+          Save
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 };
 

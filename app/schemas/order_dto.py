@@ -31,6 +31,17 @@ class OrderCreate(BaseModel):
     total: float
 
 
+class OrderUpdate(BaseModel):
+    external_id: Optional[str] = None
+    sales_channel: Optional[str] = None
+    status: Optional[str] = None
+    items: Optional[List[OrderItemCreate]] = None
+    subtotal: Optional[float] = None
+    tax: Optional[float] = None
+    discount: Optional[float] = None
+    total: Optional[float] = None
+
+
 class OrderResponse(BaseModel):
     order_id: int
     status: str

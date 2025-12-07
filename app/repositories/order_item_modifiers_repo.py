@@ -62,3 +62,30 @@ class OrderItemModifiersRepository(BaseRepository):
 
         await self.db.delete(obj)
         return True
+
+    async def delete_by_order_id(self, order_id: int) -> None:
+        result = await self.db.execute(
+            select(OrderItemModifier)
+            .join(OrderItemModifier.order_item)
+            .join(OrderItemModifier.order_item.order)
+            .filter(
+                OrderItemModifier.order_item.order_id == order_id,
+                OrderItemModifier.order_item.order.restaurant_id == self.restaurant_id,
+            )
+        )
+        for obj in result.scalars().all():
+            await self.db.delete(obj)
+
+    async def list_for_order(self, order_id: int):
+        """Return modifiers for a specific order, scoped to restaurant."""
+        from app.db.models.order_items_orm import OrderItem
+
+        result = await self.db.execute(
+            select(OrderItemModifier)
+            .join(OrderItem, OrderItemModifier.order_item_id == OrderItem.order_item_id)
+            .filter(
+                OrderItem.order_id == order_id,
+                OrderItem.restaurant_id == self.restaurant_id,
+            )
+        )
+        return result.scalars().all()

@@ -3,6 +3,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db.models.order_items_orm import OrderItem
+from app.db.models.orders_orm import Order
 from app.repositories.base_repository import BaseRepository
 
 
@@ -14,17 +15,22 @@ class OrderItemsRepository(BaseRepository):
 
     async def get_by_id(self, obj_id: int):
         result = await self.db.execute(
-            select(OrderItem).join(OrderItem.order).filter(
+            select(OrderItem)
+            .join(Order, OrderItem.order)
+            .filter(
                 OrderItem.order_item_id == obj_id,
-                OrderItem.order.restaurant_id == self.restaurant_id
+                Order.restaurant_id == self.restaurant_id,
             )
         )
         return result.scalars().first()
 
     async def get_all(self, skip: int = 0, limit: int = 0):
-        query = select(OrderItem).join(OrderItem.order).filter(
-            OrderItem.order.restaurant_id == self.restaurant_id
-        ).offset(skip)
+        query = (
+            select(OrderItem)
+            .join(Order, OrderItem.order)
+            .filter(Order.restaurant_id == self.restaurant_id)
+            .offset(skip)
+        )
         if limit > 0:
             query = query.limit(limit)
         result = await self.db.execute(query)
@@ -32,9 +38,11 @@ class OrderItemsRepository(BaseRepository):
 
     async def update(self, obj_id: int, update_data):
         result = await self.db.execute(
-            select(OrderItem).join(OrderItem.order).filter(
+            select(OrderItem)
+            .join(Order, OrderItem.order)
+            .filter(
                 OrderItem.order_item_id == obj_id,
-                OrderItem.order.restaurant_id == self.restaurant_id
+                Order.restaurant_id == self.restaurant_id,
             )
         )
         obj = result.scalars().first()
@@ -51,18 +59,34 @@ class OrderItemsRepository(BaseRepository):
 
     async def get_by_order_id(self, order_id: int):
         result = await self.db.execute(
-            select(OrderItem).join(OrderItem.order).filter(
+            select(OrderItem)
+            .join(Order, OrderItem.order)
+            .filter(
                 OrderItem.order_id == order_id,
-                OrderItem.order.restaurant_id == self.restaurant_id
+                Order.restaurant_id == self.restaurant_id,
             )
         )
         return result.scalars().all()
 
+    async def delete_by_order_id(self, order_id: int) -> None:
+        result = await self.db.execute(
+            select(OrderItem)
+            .join(Order, OrderItem.order)
+            .filter(
+                OrderItem.order_id == order_id,
+                Order.restaurant_id == self.restaurant_id,
+            )
+        )
+        for obj in result.scalars().all():
+            await self.db.delete(obj)
+
     async def delete(self, obj_id: int) -> bool:
         result = await self.db.execute(
-            select(OrderItem).join(OrderItem.order).filter(
+            select(OrderItem)
+            .join(Order, OrderItem.order)
+            .filter(
                 OrderItem.order_item_id == obj_id,
-                OrderItem.order.restaurant_id == self.restaurant_id
+                Order.restaurant_id == self.restaurant_id,
             )
         )
         obj = result.scalars().first()

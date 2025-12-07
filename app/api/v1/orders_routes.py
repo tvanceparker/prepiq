@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, Body, HTTPException
 from pydantic import ValidationError
 from app.api.dependencies import get_order_service
-from app.schemas.order_dto import OrderCreate, OrderResponse, OrderDTO, StatusUpdate
+from app.schemas.order_dto import OrderCreate, OrderResponse, OrderDTO, StatusUpdate, OrderUpdate
 from app.schemas.pos_dto import SalesChannelsResponse
 from app.services.order_service import OrderService
 from app.utils.logger_helpers import log_route
@@ -36,6 +36,15 @@ async def get_orders(
 ):
     # Only active orders by default; include_completed enables history-lite.
     return await pos_service.get_active_orders(include_completed=include_completed)
+
+
+@router.put("/{order_id}", response_model=OrderResponse)
+@log_route("Update Order")
+async def update_order(order_id: int, update: OrderUpdate, pos_service: OrderService = Depends(get_order_service)):
+    try:
+        return await pos_service.update_order(order_id, update)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Order not found")
 
 
 @router.post("/", response_model=OrderResponse)

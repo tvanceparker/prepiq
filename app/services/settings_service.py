@@ -193,13 +193,17 @@ class SettingsService:
         from app.repositories.stripe_terminal_readers_repo import StripeTerminalReaderRepository
         reader_repo = StripeTerminalReaderRepository(self.db, self.restaurant_id)
         readers = await reader_repo.list_readers()
+
+        settings_blob = restaurant.settings or {}
         
         return {
             "pos_mode": restaurant.pos_mode or "none",
             "pos_provider": restaurant.pos_provider,
             "cash_drawer_enabled": restaurant.cash_drawer_enabled or False,
             "stripe_terminal_location_id": restaurant.stripe_terminal_location_id,
-            "has_terminal_readers": len(readers) > 0
+            "has_terminal_readers": len(readers) > 0,
+            "terminal_payments_enabled": settings_blob.get("terminal_payments_enabled", False),
+            "preferred_terminal_reader_id": settings_blob.get("preferred_terminal_reader_id"),
         }
 
     @log_method("Update POS Mode Settings")
@@ -207,7 +211,9 @@ class SettingsService:
         self,
         pos_mode: str,
         pos_provider: str = None,
-        cash_drawer_enabled: bool = True
+        cash_drawer_enabled: bool = True,
+        terminal_payments_enabled: bool = None,
+        preferred_terminal_reader_id: int = None,
     ) -> dict:
         """
         Update the POS mode configuration.
@@ -233,6 +239,12 @@ class SettingsService:
             "pos_mode": pos_mode,
             "cash_drawer_enabled": cash_drawer_enabled
         }
+
+        settings_patch = {}
+        if terminal_payments_enabled is not None:
+            settings_patch["terminal_payments_enabled"] = terminal_payments_enabled
+        if preferred_terminal_reader_id is not None:
+            settings_patch["preferred_terminal_reader_id"] = preferred_terminal_reader_id
         
         # Only set provider if external mode
         if pos_mode == "external":
@@ -240,12 +252,21 @@ class SettingsService:
         elif pos_mode in ("internal", "none"):
             # Clear provider when switching to internal or none - use 'none' string, not None/null
             update_data["pos_provider"] = "none"
+
+        if settings_patch:
+            settings_row = await self.restaurant_repo.get_settings()
+            current_settings = {}
+            if settings_row:
+                current_settings = dict(settings_row).get("settings") or {}
+            update_data["settings"] = {**current_settings, **settings_patch}
         
         await self.restaurant_repo.update(self.restaurant_id, update_data)
         await self.log_activity("pos_mode_updated", {
             "pos_mode": pos_mode,
             "pos_provider": pos_provider,
-            "cash_drawer_enabled": cash_drawer_enabled
+            "cash_drawer_enabled": cash_drawer_enabled,
+            "terminal_payments_enabled": terminal_payments_enabled,
+            "preferred_terminal_reader_id": preferred_terminal_reader_id,
         })
         
         return await self.get_pos_mode_settings()

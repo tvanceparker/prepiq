@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Body, Query
+from fastapi import APIRouter, Depends, Body, Query, HTTPException
 from typing import Optional
 from datetime import date
 from app.services.internal_pos_service import InternalPOSService
@@ -41,8 +41,9 @@ from app.schemas.pos_dto import (
     TerminalSimulatePaymentRequest,
     TerminalRefundRequest,
     TerminalRefundResponse,
+    CompleteOrderPaymentRequest,
 )
-from app.schemas.order_dto import OrderCreate, OrderResponse
+from app.schemas.order_dto import OrderCreate, OrderUpdate, OrderResponse, OrderDTO
 from app.utils.logger_helpers import log_route
 
 router = APIRouter(prefix="/pos", tags=["Internal POS"])
@@ -98,6 +99,39 @@ async def create_order(
 ):
     order_id = await order_service.create_order(order)
     return OrderResponse(order_id=order_id, status="created", message="Order created")
+
+
+@router.get("/orders/{order_id}", response_model=OrderDTO)
+@log_route("Get Order")
+async def get_order(
+    order_id: int,
+    order_service: OrderService = Depends(build_service(OrderService)),
+):
+    order = await order_service.get_order_by_id(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return order
+
+
+@router.put("/orders/{order_id}", response_model=OrderResponse)
+@log_route("Update Order")
+async def update_order(
+    order_id: int,
+    order_update: OrderUpdate,
+    order_service: OrderService = Depends(build_service(OrderService)),
+):
+    result = await order_service.update_order(order_id, order_update)
+    return OrderResponse(order_id=order_id, status=result.get("status", "updated"), message=result.get("message"))
+
+
+@router.post("/orders/{order_id}/complete")
+@log_route("Complete Order With Payment")
+async def complete_order_with_payment(
+    order_id: int,
+    payload: CompleteOrderPaymentRequest,
+    order_service: OrderService = Depends(build_service(OrderService)),
+):
+    return await order_service.complete_order_with_payment(order_id, payload)
 
 @router.post("/payments/create-intent")
 @log_route("Create Payment Intent")
