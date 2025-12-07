@@ -1,4 +1,4 @@
-from typing import List
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.orders_repo import OrdersRepository
@@ -11,6 +11,8 @@ from app.repositories.restaurants_repo import RestaurantRepository
 from app.schemas.order_dto import OrderCreate
 from app.utils.logger_helpers import log_method
 from app.sockets.connection_manager import manager
+from app.services.utils.inventory_deduction_helper import InventoryDeductionHelper
+from app.core.logging import logger
 
 
 class OrderService:
@@ -26,6 +28,12 @@ class OrderService:
         self.menu_repo = MenuItemRepository(db, restaurant_id)
         self.sales_repo = SalesRepository(db, restaurant_id)
         self.restaurant_repo = RestaurantRepository(db, restaurant_id)
+        self.inventory_helper = InventoryDeductionHelper(
+            db=db,
+            restaurant_id=restaurant_id,
+            subscription_tier=subscription_tier,
+            employee_id=employee_id,
+        )
 
     # Internal status mapping between DB values and frontend canonical values
     def _to_frontend_status(self, db_status: str) -> str:
@@ -135,6 +143,7 @@ class OrderService:
             "created_at": created_iso,
             "updated_at": created_iso,
             "completed_at": None,
+            "inventory_deduction_state": getattr(order, "inventory_deduction_state", "pending"),
         }
 
     @log_method("Update Order Status")
@@ -189,6 +198,7 @@ class OrderService:
                     "created_at": created_iso,
                     "updated_at": created_iso,
                     "completed_at": None,
+                    "inventory_deduction_state": getattr(o, "inventory_deduction_state", "pending"),
                 }
             )
         return results
@@ -216,6 +226,25 @@ class OrderService:
                 "sales_channel": order.sales_channel,
             }
             await self.sales_repo.create(sale_data)
+
+        if await self._should_use_real_time_deduction():
+            menu_items_payload = [
+                {"menu_item_id": item.menu_item_id, "quantity": float(item.quantity)}
+                for item in items
+            ]
+            helper_result: Optional[Dict[str, Any]] = None
+            try:
+                helper_result = await self.inventory_helper.deduct_for_menu_items(
+                    menu_items=menu_items_payload,
+                    reference_id=order_id,
+                    reference_type="sale",
+                )
+            except Exception as exc:  # pragma: no cover - defensive logging
+                logger.error("[Order] Real-time deduction failed order=%s error=%s", order_id, exc, exc_info=True)
+                helper_result = {"failures": [{"error": str(exc)}]}
+            await self.record_inventory_deduction_state(order_id, helper_result, fallback_state="failed")
+        else:
+            await self.record_inventory_deduction_state(order_id, None, fallback_state="pending")
 
         # Update order status
         await self.update_order_status(order_id, 'completed')
@@ -283,3 +312,29 @@ class OrderService:
                 }
                 for item in active_items
             ]
+
+    async def _should_use_real_time_deduction(self) -> bool:
+        if self.subscription_tier not in ("pro", "master"):
+            return False
+        return await self.inventory_helper.is_real_time_enabled()
+
+    def _derive_deduction_state(self, helper_result: Dict[str, Any]) -> str:
+        if not helper_result:
+            return "failed"
+        if helper_result.get("failures"):
+            return "failed"
+        if helper_result.get("skipped"):
+            return "skipped"
+        return "succeeded"
+
+    async def record_inventory_deduction_state(
+        self,
+        order_id: int,
+        helper_result: Optional[Dict[str, Any]],
+        fallback_state: str = "pending",
+    ) -> str:
+        state = fallback_state
+        if helper_result is not None:
+            state = self._derive_deduction_state(helper_result)
+        await self.order_repo.update(order_id, {"inventory_deduction_state": state})
+        return state

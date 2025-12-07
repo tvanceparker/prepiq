@@ -19,6 +19,7 @@ from app.repositories.pos_item_mappings_repo import POSItemMappingsRepository
 from app.repositories.pos_merchant_mappings_repo import POSMerchantMappingsRepository
 from app.services.order_service import OrderService
 from app.services.pos_menu_matcher import POSMenuMatcher
+from app.services.utils.inventory_deduction_helper import InventoryDeductionHelper
 from app.repositories.sales_repo import SalesRepository
 from app.schemas.order_dto import OrderCreate, OrderItemCreate
 
@@ -54,6 +55,12 @@ class POSIntegrationService:
             restaurant_id=restaurant_id,
             menu_item_repo=self.menu_item_repo,
             pos_item_mappings_repo=self.pos_item_mappings_repo
+        )
+        self.inventory_helper = InventoryDeductionHelper(
+            db=db,
+            restaurant_id=restaurant_id,
+            subscription_tier=subscription_tier,
+            employee_id=employee_id,
         )
     
     async def _get_restaurant(self):
@@ -307,6 +314,11 @@ class POSIntegrationService:
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
         }
+
+    async def _should_use_real_time_deduction(self) -> bool:
+        if self.subscription_tier not in ("pro", "master"):
+            return False
+        return await self.inventory_helper.is_real_time_enabled()
     
     async def _ingest_order(self, order_data: Dict[str, Any]) -> None:
         """
@@ -361,7 +373,8 @@ class POSIntegrationService:
             total=order_data["total"],
         )
         
-        await self.order_service.create_order(order_create)
+        created_order = await self.order_service.create_order(order_create)
+        order_id = created_order.get("order_id") if isinstance(created_order, dict) else None
         
         # Also create sales records for each item (for analytics/forecasting)
         order_timestamp = order_data.get("order_timestamp")
@@ -379,6 +392,39 @@ class POSIntegrationService:
                 "sale_timestamp": order_timestamp,
                 "sales_channel": order_data.get("sales_channel", "in-house"),
             })
+
+        if order_id:
+            if await self._should_use_real_time_deduction():
+                menu_items_payload = [
+                    {"menu_item_id": item.menu_item_id, "quantity": float(item.quantity)}
+                    for item in items
+                ]
+                helper_result: Optional[Dict[str, Any]] = None
+                try:
+                    helper_result = await self.inventory_helper.deduct_for_menu_items(
+                        menu_items=menu_items_payload,
+                        reference_id=order_id,
+                        reference_type="sale",
+                    )
+                except Exception as exc:  # pragma: no cover - defensive logging
+                    logger.error(
+                        "[POS Integration] Real-time deduction failed order=%s error=%s",
+                        order_id,
+                        exc,
+                        exc_info=True,
+                    )
+                    helper_result = {"failures": [{"error": str(exc)}]}
+                await self.order_service.record_inventory_deduction_state(
+                    order_id,
+                    helper_result,
+                    fallback_state="failed",
+                )
+            else:
+                await self.order_service.record_inventory_deduction_state(
+                    order_id,
+                    None,
+                    fallback_state="pending",
+                )
     
     @log_method("POS Integration: Handle Webhook")
     async def handle_webhook_event(

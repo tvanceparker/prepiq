@@ -1,3 +1,5 @@
+export type InventoryDeductionMode = 'eod' | 'real_time';
+
 export interface RestaurantSettings {
   forecast_length: number;
   timezone?: string | null;
@@ -6,6 +8,7 @@ export interface RestaurantSettings {
   sales_channels?: string[];
   latitude?: number | null;
   longitude?: number | null;
+  inventory_deduction_mode: InventoryDeductionMode;
 }
 
 export interface AccountInfo {
@@ -45,6 +48,7 @@ export interface RestaurantSettingsFormData {
   eod_run_when_closed: boolean;
   eod_run_after_close_mins: number;
   sales_channels: string[];
+  inventory_deduction_mode: InventoryDeductionMode;
 }
 
 export interface RestaurantSettingsFormErrors {
@@ -53,6 +57,7 @@ export interface RestaurantSettingsFormErrors {
   eod_run_when_closed?: string;
   eod_run_after_close_mins?: string;
   sales_channels?: string;
+  inventory_deduction_mode?: string;
 }
 
 export interface LabeledValueProps {

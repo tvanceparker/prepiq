@@ -1,3 +1,5 @@
+export type InventoryDeductionMode = 'eod' | 'real_time';
+
 export interface RestaurantSettings {
   forecast_length: number;
   timezone?: string | null;
@@ -6,6 +8,7 @@ export interface RestaurantSettings {
   sales_channels?: string[];
   latitude?: number | null;
   longitude?: number | null;
+  inventory_deduction_mode: InventoryDeductionMode;
 }
 
 export interface AccountInfo {

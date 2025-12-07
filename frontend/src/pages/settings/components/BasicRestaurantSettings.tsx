@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useRestaurantSettings } from '../hooks/useRestaurantSettings';
 import { useUIStore } from '../../../stores/uiStore';
 import BasicRestaurantSettingsModal from './BasicRestaurantSettingsModal';
+import type { RestaurantSettings } from '../../../interfaces/settings';
 
 import {
   Paper,
@@ -24,6 +25,8 @@ import {
   EventRepeat as EODIcon,
   Timer as TimerIcon,
   Storefront as ChannelIcon,
+  Inventory2 as InventoryIcon,
+  NotificationsActive as AlertIcon,
 } from '@mui/icons-material';
 import Button from '../../../components/Button';
 
@@ -77,9 +80,14 @@ export default function BasicRestaurantSettings() {
   const { isEditing, formData, openEditModal, closeEditModal, updateFormField, showSnackbar } =
     useUIStore();
 
+  const applyDefaults = (data: RestaurantSettings): RestaurantSettings => ({
+    ...data,
+    inventory_deduction_mode: data.inventory_deduction_mode ?? 'eod',
+  });
+
   useEffect(() => {
     if (settings && isEditing && !formData) {
-      openEditModal(settings);
+      openEditModal(applyDefaults(settings));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings, isEditing]);
@@ -166,7 +174,7 @@ export default function BasicRestaurantSettings() {
         </Box>
         <Button
           variant="edit"
-          onClick={() => openEditModal(settings)}
+          onClick={() => settings && openEditModal(applyDefaults(settings))}
           requiredPermission="restaurant_settings"
           showIcon={false}
         >
@@ -210,6 +218,22 @@ export default function BasicRestaurantSettings() {
             label="EOD Buffer Time"
             value={`${settings.eod_run_after_close_mins} minutes`}
             color={theme.palette.warning.main}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <SettingItem
+            icon={<InventoryIcon />}
+            label="Inventory Deduction"
+            value={
+              settings.inventory_deduction_mode === 'real_time'
+                ? 'Real-time (Pro/Master)'
+                : 'End of Day'
+            }
+            color={
+              settings.inventory_deduction_mode === 'real_time'
+                ? theme.palette.success.main
+                : theme.palette.info.main
+            }
           />
         </Grid>
         <Grid item xs={12} sm={6} md={8}>
@@ -256,6 +280,17 @@ export default function BasicRestaurantSettings() {
               )}
             </Box>
           </Box>
+        </Grid>
+        <Grid item xs={12}>
+          <Alert
+            icon={<AlertIcon fontSize="inherit" />}
+            severity={settings.inventory_deduction_mode === 'real_time' ? 'success' : 'info'}
+            sx={{ mt: 1 }}
+          >
+            {settings.inventory_deduction_mode === 'real_time'
+              ? 'Real-time deductions automatically adjust ingredient and batch inventory as soon as orders complete. Any failures trigger alerts instantly.'
+              : 'End-of-day deductions run during the nightly EOD pipeline. Switch to real-time to catch shortages sooner and receive immediate alerts.'}
+          </Alert>
         </Grid>
       </Grid>
 

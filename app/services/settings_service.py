@@ -54,8 +54,18 @@ class SettingsService:
             logger.error(f"Failed to log activity '{action}': {e}", exc_info=True)
     @log_method("Get Restaurant Settings")
     async def get_restaurant_settings(self) -> dict:
-        settings = await self.restaurant_repo.get_settings()  # Returns dict-like row
-        return dict(settings)
+        settings_row = await self.restaurant_repo.get_settings()  # Returns dict-like row
+        if not settings_row:
+            return {}
+
+        settings_dict = dict(settings_row)
+        settings_blob = settings_dict.get("settings") or {}
+        # expose inventory deduction mode as top-level field with default fallback
+        settings_dict["inventory_deduction_mode"] = settings_blob.get(
+            "inventory_deduction_mode", "eod"
+        )
+        settings_dict["settings"] = settings_blob
+        return settings_dict
 
     @log_method("Update Restaurant Settings")
     async def update_restaurant_settings(self, update_data: dict):
@@ -65,6 +75,20 @@ class SettingsService:
             update_payload = update_data.dict(exclude_unset=True)
         else:
             update_payload = update_data
+
+        inventory_mode = update_payload.pop("inventory_deduction_mode", None)
+        new_settings_fragment = update_payload.pop("settings", None) or {}
+
+        if inventory_mode is not None:
+            new_settings_fragment["inventory_deduction_mode"] = inventory_mode
+
+        if new_settings_fragment:
+            settings_row = await self.restaurant_repo.get_settings()
+            current_settings = {}
+            if settings_row:
+                current_settings = dict(settings_row).get("settings") or {}
+            merged_settings = {**current_settings, **new_settings_fragment}
+            update_payload["settings"] = merged_settings
 
         await self.restaurant_repo.update(self.restaurant_id, update_payload)
         details = {

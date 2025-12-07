@@ -77,3 +77,14 @@ class InventoryUsageLogRepository(BaseRepository):
         )
         rows = result.scalars().all()
         return rows
+
+    async def exists_for_reference(self, reference_type: str, reference_id: int) -> bool:
+        result = await self.db.execute(
+            select(func.count(InventoryUsageLog.usage_id)).where(
+                InventoryUsageLog.restaurant_id == self.restaurant_id,
+                InventoryUsageLog.reference_type == reference_type,
+                InventoryUsageLog.reference_id == reference_id,
+            )
+        )
+        count = result.scalar_one()
+        return count > 0

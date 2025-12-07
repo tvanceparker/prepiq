@@ -21,6 +21,7 @@ class Order(Base):
     discount = Column(DECIMAL(10, 2), default=0.00)
     total = Column(DECIMAL(10, 2), default=0.00)
     order_metadata = Column(JSON, nullable=True)
+    inventory_deduction_state = Column(String(32), nullable=False, default='pending')
 
     # Relationships
     restaurant = relationship("Restaurant", back_populates="orders")

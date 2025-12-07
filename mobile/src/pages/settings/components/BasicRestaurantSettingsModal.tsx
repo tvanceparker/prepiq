@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import { Dialog, Portal, Button, TextInput } from 'react-native-paper';
+import { Dialog, Portal, Button, TextInput, RadioButton } from 'react-native-paper';
 
 type Props = {
   visible: boolean;
@@ -46,6 +46,18 @@ export default function BasicRestaurantSettingsModal({
                 onChangeText={v => onChange('eod_run_after_close_mins', parseInt(v || '0', 10))}
                 style={{ marginBottom: 12 }}
               />
+              <Text style={{ fontWeight: '600', marginBottom: 4 }}>Inventory Deduction Mode</Text>
+              <RadioButton.Group
+                value={formData.inventory_deduction_mode || 'eod'}
+                onValueChange={value => onChange('inventory_deduction_mode', value)}
+              >
+                <RadioButton.Item label="End of Day (default)" value="eod" />
+                <RadioButton.Item label="Real-time (Pro/Master)" value="real_time" />
+              </RadioButton.Group>
+              <Text style={{ fontSize: 12, opacity: 0.6, marginBottom: 12 }}>
+                Real-time mode deducts inventory for each completed order and fires alerts on
+                failure.
+              </Text>
               <Text style={{ fontWeight: '600', marginBottom: 4 }}>Sales Channels</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 }}>
                 {(formData.sales_channels || []).map((ch: string, idx: number) => (
@@ -69,7 +81,9 @@ export default function BasicRestaurantSettingsModal({
                 placeholder="Type and press enter"
                 style={{ marginBottom: 12 }}
               />
-              <Text style={{ fontSize: 12, opacity: 0.6 }}>Latitude/Longitude not editable here.</Text>
+              <Text style={{ fontSize: 12, opacity: 0.6 }}>
+                Latitude/Longitude not editable here.
+              </Text>
             </>
           )}
         </Dialog.Content>

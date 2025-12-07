@@ -2,6 +2,11 @@ from typing import Optional, List, Dict, Any, Annotated
 from pydantic import BaseModel, EmailStr, Field
 from enum import Enum
 
+class InventoryDeductionMode(str, Enum):
+    eod = "eod"
+    real_time = "real_time"
+
+
 class RestaurantSettingsDTO(BaseModel):
     forecast_length: Annotated[int, Field(ge=3, le=30)]  # 3, 7, 14
     timezone: Optional[str] = None
@@ -16,6 +21,7 @@ class RestaurantSettingsDTO(BaseModel):
     pos_mode: Optional[str] = "register"
     kitchen_mode: Optional[str] = "display_only"
     ui_layout_size: Optional[str] = "auto"
+    inventory_deduction_mode: InventoryDeductionMode = InventoryDeductionMode.eod
 
 class UpdateRestaurantSettingsDTO(BaseModel):
     forecast_length: Optional[Annotated[int, Field(ge=3, le=30)]] = None
@@ -30,6 +36,7 @@ class UpdateRestaurantSettingsDTO(BaseModel):
     pos_mode: Optional[str] = None
     kitchen_mode: Optional[str] = None
     ui_layout_size: Optional[str] = None
+    inventory_deduction_mode: Optional[InventoryDeductionMode] = None
 
 # ---- Account Management ----
 class ChangePasswordDTO(BaseModel):

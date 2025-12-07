@@ -15,6 +15,7 @@ from app.repositories.menu_item_recipes_repo import MenuItemRecipeRepository
 from app.repositories.inventory_repo import InventoryRepository
 from app.repositories.alerts_repo import AlertRepository
 from app.repositories.inventory_usage_log_repo import InventoryUsageLogRepository
+from app.repositories.orders_repo import OrdersRepository
 from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
 from app.repositories.purchase_orders_repo import PurchaseOrderRepository
 from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
@@ -25,6 +26,7 @@ from app.services.reorder_forecast_engine import ReorderForecastEngine
 from app.services.forecasting_engine_basic import ForecastingEngineBasic
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.utils.unit_conversion import convert_unit, normalize_unit
+from app.services.utils.inventory_deduction_helper import InventoryDeductionHelper
 from typing import List, Dict, Optional
 import math
 from decimal import Decimal
@@ -61,6 +63,13 @@ class EODService:
         self.inventory_repo = InventoryRepository(db, restaurant_id)
         self.alert_repo = AlertRepository(db, restaurant_id)
         self.inventory_usage_log_repo = InventoryUsageLogRepository(db, restaurant_id)
+        self.order_repo = OrdersRepository(db, restaurant_id)
+        self.inventory_helper = InventoryDeductionHelper(
+            db=db,
+            restaurant_id=restaurant_id,
+            subscription_tier=subscription_tier,
+            employee_id=employee_id,
+        )
         self.forecasting_engine = ForecastingEngine(
             db=db, restaurant_id=restaurant_id, subscription_tier=subscription_tier
         )
@@ -75,15 +84,31 @@ class EODService:
         self.ledger_repo = EODRunLedgerRepository(db, restaurant_id)
         self._purchase_order_suggestions = []
 
+    async def _is_real_time_deduction_enabled(self) -> bool:
+        if not self.subscription_tier or self.subscription_tier not in ("pro", "master"):
+            return False
+        return await self.inventory_helper.is_real_time_enabled()
+
     # ------------------------- Internal Stage Helpers -------------------------
     async def _stage_sales_deduction(self, run_date, ledger) -> int:
         if ledger.sales_deducted:
             logger.debug('[EOD] Skip sales_deduction already complete date=%s', run_date)
             return 0
+        if await self._is_real_time_deduction_enabled():
+            logger.info(
+                '[EOD] Skipping sales deduction for %s (real-time inventory deductions enabled)',
+                run_date,
+            )
+            await self.ledger_repo.mark_stage_complete(ledger, 'sales_deducted', 0)
+            return 0
         t0 = datetime.utcnow()
         usage_summary = await self.aggregate_daily_sales(run_date)
+        helper_result = None
         if usage_summary:
-            await self.deduct_ingredients_from_inventory(usage_summary)
+            helper_result = await self.deduct_ingredients_from_inventory(usage_summary)
+        has_failures = bool(helper_result.get("failures")) if isinstance(helper_result, dict) else False
+        if not has_failures:
+            await self.order_repo.mark_completed_orders_deducted_for_date(run_date)
         await self.ledger_repo.mark_stage_complete(ledger, 'sales_deducted', int((datetime.utcnow()-t0).total_seconds()*1000))
         return len(usage_summary or [])
 
@@ -235,163 +260,32 @@ class EODService:
     async def deduct_ingredients_from_inventory(
         self, usage_summary: List[dict]
     ) -> dict:
-        """
-        Deduct inventory quantities based on the aggregated sales summary.
-        For batches, find inventory_id via inventory lots linked to batch_recipe_id,
-        decrement only inventory quantities, NOT lots.
-        Log usage with both inventory_id and batch_recipe_id.
-        need to do something about if theres no inventory what does it do then
-        """
-        deducted_items = []
-        updated_inventories = []
+        if not usage_summary:
+            return {
+                "message": "No inventory deductions required.",
+                "deducted_items": [],
+                "updated_inventories_count": 0,
+                "failures": [],
+            }
 
-        for usage in usage_summary:
-            qty = usage["quantity"]
-            unit = usage["unit"]
+        helper_result = await self.inventory_helper.deduct_usage_summary(
+            usage_summary,
+            reference_type="other",
+            reference_id=int(datetime.utcnow().timestamp()),
+        )
 
-            if usage["source"] == "sale" and "ingredient_id" in usage:
-                ingredient_id = usage["ingredient_id"]
-                inventory_entry = await self.inventory_repo.get_inventory_by_ingredient(
-                    ingredient_id
-                )
-                if not inventory_entry:
-                    raise ValueError(
-                        f"No inventory found for ingredient {ingredient_id}"
-                    )
+        failures = helper_result.get("failures") if isinstance(helper_result, dict) else None
+        if failures:
+            logger.warning(
+                "[EOD] Inventory deduction completed with %s failures", len(failures)
+            )
 
-                from_unit = unit
-                to_unit = inventory_entry.unit
-                if normalize_unit(from_unit) != normalize_unit(to_unit):
-                    qty = convert_unit(qty, from_unit, to_unit)
-
-                updated_inv = await self.inventory_repo.decrement_quantity(
-                    inventory_id=inventory_entry.inventory_id,
-                    amount=qty,
-                )
-                updated_inventories.append(updated_inv)
-
-                await self.inventory_usage_log_repo.create(
-                    {
-                        "restaurant_id": self.restaurant_id,
-                        "inventory_id": inventory_entry.inventory_id,
-                        "ingredient_id": ingredient_id,
-                        "used_quantity": qty,
-                        "unit": to_unit,
-                        "usage_type": "sale",
-                        "reference_type": "sale",
-                        "reference_id": None,
-                        "used_date": datetime.utcnow(),
-                    }
-                )
-
-                deducted_items.append(
-                    {
-                        "ingredient_id": ingredient_id,
-                        "quantity_deducted": float(qty),
-                        "unit": to_unit,
-                        "source": "sale",
-                    }
-                )
-
-            elif usage["source"] == "batch" and "batch_recipe_id" in usage:
-                batch_recipe_id = usage["batch_recipe_id"]
-                total_needed = qty
-
-                # Fetch lots for the batch_recipe_id to get related inventory_ids
-                lots = await self.inventory_lot_repo.get_all_by_batch_recipe_id(
-                    batch_recipe_id
-                )
-                if not lots:
-                    raise ValueError(
-                        f"No inventory lots found for batch recipe {batch_recipe_id}"
-                    )
-
-                # Group by inventory_id because batch_recipe_id can link to multiple lots/inventory items
-                inventory_qty_map = {}
-
-                for lot in lots:
-                    inv_id = lot.inventory_id
-                    if inv_id not in inventory_qty_map:
-                        inventory_qty_map[inv_id] = 0
-                    inventory_qty_map[
-                        inv_id
-                    ] += lot.quantity  # sum of lot quantities per inventory
-
-                # Now find the total inventory available for those inventory_ids
-                inventories = await self.inventory_repo.get_all_by_ids(
-                    list(inventory_qty_map.keys())
-                )
-                if not inventories:
-                    raise ValueError(
-                        f"No inventories found for batch recipe {batch_recipe_id}"
-                    )
-
-                # For unit conversion, pick the first inventory unit to convert total_needed to it
-                first_inventory = inventories[0]
-                from_unit = unit
-                to_unit = first_inventory.unit
-                if normalize_unit(from_unit) != normalize_unit(to_unit):
-                    total_needed = convert_unit(total_needed, from_unit, to_unit)
-
-                # Deduct total_needed from inventories proportionally or fully from first inventory if possible
-                remaining = total_needed
-
-                for inventory_entry in inventories:
-                    if remaining <= 0:
-                        break
-
-                    inv_qty = inventory_entry.quantity_on_hand
-                    deduct_qty = Decimal(min(inv_qty, remaining))
-
-                    if deduct_qty <= 0:
-                        continue
-                    lots = await self.inventory_lot_repo.get_by_inventory_id(inventory_entry.inventory_id)
-                    lots = sorted(lots, key=lambda x: x.delivery_date)
-
-                    updated_inv = await self.inventory_repo.decrement_quantity(
-                        inventory_id=inventory_entry.inventory_id,
-                        amount=deduct_qty,
-                    )
-                    updated_inventories.append(updated_inv)
-
-                    await self.inventory_usage_log_repo.create(
-                        {
-                            "restaurant_id": self.restaurant_id,
-                            "inventory_id": inventory_entry.inventory_id,
-                            "ingredient_id": None,
-                            "used_quantity": deduct_qty,
-                            "unit": to_unit,
-                            "usage_type": "sale",
-                            "reference_type": "batch",
-                            "reference_id": batch_recipe_id,
-                            "used_date": datetime.utcnow(),
-                        }
-                    )
-
-                    deducted_items.append(
-                        {
-                            "batch_recipe_id": batch_recipe_id,
-                            "inventory_id": inventory_entry.inventory_id,
-                            "quantity_deducted": float(deduct_qty),
-                            "unit": to_unit,
-                            "source": "batch",
-                        }
-                    )
-
-                    remaining -= deduct_qty
-
-                if remaining > 0:
-                    raise ValueError(
-                        f"Insufficient inventory quantity for batch recipe {batch_recipe_id}"
-                    )
-
-            else:
-                raise ValueError(f"Unknown usage entry or missing keys: {usage}")
-
+        deducted_items = helper_result.get("deducted_items", []) if isinstance(helper_result, dict) else []
         return {
             "message": "Inventory successfully deducted for sales.",
             "deducted_items": deducted_items,
-            "updated_inventories_count": len(updated_inventories),
+            "updated_inventories_count": len(deducted_items),
+            "failures": failures or [],
         }
 
     async def auto_deduct_spoilage(self, target_date: date) -> None:

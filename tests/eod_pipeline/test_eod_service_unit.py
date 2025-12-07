@@ -6,7 +6,7 @@ Tests individual EOD stages, sales aggregation, inventory deduction, and PO gene
 import pytest
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, ANY
 
 from app.services.eod_service import EODService
 
@@ -102,23 +102,29 @@ class TestEODServiceUnit:
             }
         ]
         
-        service.inventory_repo.get_inventory_by_ingredient = AsyncMock(
-            return_value=sample_inventory[0]
-        )
-        service.inventory_repo.decrement_quantity = AsyncMock(
-            return_value=sample_inventory[0]
-        )
-        service.inventory_usage_log_repo.create = AsyncMock()
-        
+        helper_return = {
+            "deducted_items": [
+                {
+                    "ingredient_id": 1001,
+                    "quantity_deducted": 5.0,
+                    "unit": "lb",
+                    "source": "sale",
+                }
+            ],
+            "failures": [],
+        }
+        service.inventory_helper.deduct_usage_summary = AsyncMock(return_value=helper_return)
+
         result = await service.deduct_ingredients_from_inventory(usage_summary)
-        
+
         assert result["message"] == "Inventory successfully deducted for sales."
         assert len(result["deducted_items"]) == 1
         assert result["deducted_items"][0]["ingredient_id"] == 1001
-        assert result["deducted_items"][0]["quantity_deducted"] == 5.0
-        
-        service.inventory_repo.decrement_quantity.assert_called_once()
-        service.inventory_usage_log_repo.create.assert_called_once()
+        service.inventory_helper.deduct_usage_summary.assert_awaited_once_with(
+            usage_summary,
+            reference_type="other",
+            reference_id=ANY,
+        )
 
     @pytest.mark.asyncio
     async def test_deduct_ingredients_from_inventory_batch_source(
@@ -137,45 +143,35 @@ class TestEODServiceUnit:
             }
         ]
         
-        # Mock lots and inventory
-        mock_lot = MagicMock(
-            inventory_id=2001,
-            batch_recipe_id=5001,
-            quantity=Decimal("20.00"),
-            delivery_date=date(2025, 11, 15)
-        )
-        service.inventory_lot_repo.get_all_by_batch_recipe_id = AsyncMock(return_value=[mock_lot])
-        service.inventory_repo.get_all_by_ids = AsyncMock(return_value=[sample_inventory[0]])
-        service.inventory_lot_repo.get_by_inventory_id = AsyncMock(return_value=[mock_lot])
-        service.inventory_repo.decrement_quantity = AsyncMock(return_value=sample_inventory[0])
-        service.inventory_usage_log_repo.create = AsyncMock()
-        
+        helper_return = {
+            "deducted_items": [
+                {
+                    "batch_recipe_id": 5001,
+                    "inventory_id": 2001,
+                    "quantity_deducted": 10.0,
+                    "unit": "count",
+                    "source": "batch",
+                }
+            ],
+            "failures": [],
+        }
+        service.inventory_helper.deduct_usage_summary = AsyncMock(return_value=helper_return)
+
         result = await service.deduct_ingredients_from_inventory(usage_summary)
-        
+
         assert len(result["deducted_items"]) == 1
         assert result["deducted_items"][0]["batch_recipe_id"] == 5001
+        service.inventory_helper.deduct_usage_summary.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_deduct_ingredients_raises_on_missing_inventory(
-        self, mock_db_session, restaurant_id
-    ):
-        """Test deduction raises error when inventory not found."""
+    async def test_deduct_ingredients_handles_no_usage(self, mock_db_session, restaurant_id):
+        """Ensure deduction helper handles empty summaries gracefully."""
         service = EODService(mock_db_session, restaurant_id, "master")
-        
-        usage_summary = [
-            {
-                "ingredient_id": 9999,
-                "forecast_date": date(2025, 11, 20),
-                "quantity": 5.0,
-                "unit": "lb",
-                "source": "sale",
-            }
-        ]
-        
-        service.inventory_repo.get_inventory_by_ingredient = AsyncMock(return_value=None)
-        
-        with pytest.raises(ValueError, match="No inventory found"):
-            await service.deduct_ingredients_from_inventory(usage_summary)
+
+        result = await service.deduct_ingredients_from_inventory([])
+
+        assert result["updated_inventories_count"] == 0
+        assert result["deducted_items"] == []
 
     @pytest.mark.asyncio
     async def test_auto_deduct_spoilage_placeholder(
@@ -351,6 +347,7 @@ class TestEODServiceStages:
         service.ledger_repo.mark_stage_complete = AsyncMock()
         service.aggregate_daily_sales = AsyncMock(return_value=[{"ingredient_id": 1001}])
         service.deduct_ingredients_from_inventory = AsyncMock()
+        service._is_real_time_deduction_enabled = AsyncMock(return_value=False)
         
         ledger = sample_eod_ledger
         result = await service._stage_sales_deduction(date(2025, 11, 20), ledger)
@@ -365,6 +362,7 @@ class TestEODServiceStages:
         """Test sales deduction stage skips when already complete."""
         service = EODService(mock_db_session, restaurant_id, "master")
         service.aggregate_daily_sales = AsyncMock()
+        service._is_real_time_deduction_enabled = AsyncMock(return_value=False)
         
         ledger = sample_eod_ledger
         ledger.sales_deducted = True
@@ -373,6 +371,23 @@ class TestEODServiceStages:
         
         assert result == 0
         service.aggregate_daily_sales.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_stage_sales_deduction_skips_real_time_mode(
+        self, mock_db_session, restaurant_id, sample_eod_ledger
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        service.aggregate_daily_sales = AsyncMock()
+        service._is_real_time_deduction_enabled = AsyncMock(return_value=True)
+        service.ledger_repo.mark_stage_complete = AsyncMock()
+
+        ledger = sample_eod_ledger
+
+        result = await service._stage_sales_deduction(date(2025, 11, 20), ledger)
+
+        assert result == 0
+        service.aggregate_daily_sales.assert_not_called()
+        service.ledger_repo.mark_stage_complete.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_stage_forecast_success(

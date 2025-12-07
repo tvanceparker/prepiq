@@ -72,3 +72,4 @@ class OrderDTO(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     completed_at: Optional[str] = None
+    inventory_deduction_state: Optional[str] = None
