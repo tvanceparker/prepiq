@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useRestaurantSettings } from '../hooks/useRestaurantSettings';
 import { useUIStore } from '../../../stores/uiStore';
-import ProRestaurantSettingsModal from './ProRestaurantSettingsModal';
+import ProRestaurantSettingsModal from './ProRestaurantSettingsModal.tsx';
 import type { RestaurantSettings } from '../../../interfaces/settings';
 
 import {
