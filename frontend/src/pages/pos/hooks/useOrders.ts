@@ -1,6 +1,12 @@
 // src/pages/pos/hooks/useOrders.ts
 import { useState, useEffect } from 'react';
-import { createOrder, getActiveOrders, updateOrderStatus, getMenuItems, updateOrder } from '../../../api/orders';
+import {
+  createOrder,
+  getActiveOrders,
+  updateOrderStatus,
+  getMenuItems,
+  updateOrder,
+} from '../../../api/orders';
 import {
   OrderCreate,
   OrderResponse,
@@ -113,16 +119,19 @@ export const useOrders = () => {
     }
   };
 
-  const updateOrderHandler = async (orderId: number, payload: Partial<Order>): Promise<OrderResponse> => {
+  const updateOrderHandler = async (
+    orderId: number,
+    payload: Partial<Order>
+  ): Promise<OrderResponse> => {
     try {
-        setError(null);
-        const response = await updateOrder(orderId, payload as any);
-        await refreshOrders();
-        return response;
+      setError(null);
+      const response = await updateOrder(orderId, payload as any);
+      await refreshOrders();
+      return response;
     } catch (err: any) {
-        const errorMessage = err.message || 'Failed to update order';
-        setError(errorMessage);
-        throw new Error(errorMessage);
+      const errorMessage = err.message || 'Failed to update order';
+      setError(errorMessage);
+      throw new Error(errorMessage);
     }
   };
 
