@@ -8,6 +8,7 @@ import {
   Card,
   Button,
   Chip,
+  TextInput,
   ActivityIndicator,
   Portal,
   Modal,
@@ -28,6 +29,7 @@ import { AuthContext } from '../../contexts/AuthContext';
 import {
   PurchaseOrder,
   PurchaseOrderStatus,
+  PurchaseOrderItem,
   IngredientStockLevel,
   IngredientSupplierOption,
 } from '../../interfaces/inventory';
@@ -37,6 +39,7 @@ import {
   POIngredientBrowser,
   POSupplierReview,
   POIngredientReview,
+  IngredientCartItem,
   WizardMode,
 } from './components/po-wizard';
 
@@ -74,9 +77,14 @@ export default function PurchaseOrders(): React.JSX.Element {
     null
   );
   const [ingredientQty, setIngredientQty] = useState(1);
+  const [cartItems, setCartItems] = useState<IngredientCartItem[]>([]);
 
   // Notes
   const [orderNotes, setOrderNotes] = useState('');
+
+  // Inline item editing
+  const [editingItem, setEditingItem] = useState<PurchaseOrderItem | null>(null);
+  const [editQty, setEditQty] = useState('');
 
   // Queries & hooks
   const {
@@ -86,6 +94,8 @@ export default function PurchaseOrders(): React.JSX.Element {
     updateStatus,
     updatingStatus,
     createOrder,
+    updateItem,
+    updatingItem,
   } = usePurchaseOrders({
     status: statusFilter !== 'all' ? statusFilter : undefined,
   });
@@ -145,6 +155,21 @@ export default function PurchaseOrders(): React.JSX.Element {
       }));
   }, [filteredPOs]);
 
+  // Keep selected PO in sync with latest query data
+  React.useEffect(() => {
+    if (!selectedPO) return;
+    const next = purchaseOrders.find(po => po.order_id === selectedPO.order_id);
+    if (next && next !== selectedPO) {
+      setSelectedPO(next);
+    }
+  }, [purchaseOrders, selectedPO]);
+
+  React.useEffect(() => {
+    if (!selectedPO && editingItem) {
+      closeItemEditor();
+    }
+  }, [selectedPO, editingItem]);
+
   // Status color helper
   const getStatusColor = (status: PurchaseOrderStatus): string => {
     switch (status) {
@@ -167,6 +192,55 @@ export default function PurchaseOrders(): React.JSX.Element {
     setSelectedPO(null);
   };
 
+  const openItemEditor = (item: PurchaseOrderItem) => {
+    if (!selectedPO || selectedPO.status !== 'cart') return;
+    setEditingItem(item);
+    setEditQty(item.quantity_ordered.toString());
+  };
+
+  const closeItemEditor = () => {
+    setEditingItem(null);
+    setEditQty('');
+  };
+
+  const handleSaveItemEdit = async () => {
+    if (!selectedPO || !editingItem) return;
+    const qtyNum = Number(editQty);
+    if (Number.isNaN(qtyNum) || qtyNum <= 0) {
+      return;
+    }
+    try {
+      await updateItem({
+        orderId: selectedPO.order_id,
+        orderItemId: editingItem.order_item_id,
+        updates: {
+          quantity_ordered: qtyNum,
+        },
+      });
+
+      // Optimistic local update for the open modal
+      setSelectedPO(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.map(it =>
+            it.order_item_id === editingItem.order_item_id
+              ? {
+                  ...it,
+                  quantity_ordered: qtyNum,
+                  total_item_price: qtyNum * it.unit_price,
+                }
+              : it
+          ),
+        };
+      });
+
+      closeItemEditor();
+    } catch (err) {
+      console.error('Failed to update item', err);
+    }
+  };
+
   // Wizard helpers
   const closeWizard = useCallback(() => {
     setWizardOpen(false);
@@ -177,6 +251,7 @@ export default function PurchaseOrders(): React.JSX.Element {
     setSelectedIngredient(null);
     setIngredientSupplier(null);
     setIngredientQty(1);
+    setCartItems([]);
     setOrderNotes('');
   }, [resetSuggestions]);
 
@@ -230,26 +305,74 @@ export default function PurchaseOrders(): React.JSX.Element {
   };
 
   // Create ingredient order
-  const handleCreateIngredientOrder = async () => {
-    if (!selectedIngredient || !ingredientSupplier) return;
+  const handleAddToCart = (item: IngredientCartItem) => {
+    setCartItems(prev => {
+      const idx = prev.findIndex(
+        existing =>
+          existing.ingredient.ingredient_id === item.ingredient.ingredient_id &&
+          existing.supplier.supplier_id === item.supplier.supplier_id
+      );
+      if (idx !== -1) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], qtyPacks: next[idx].qtyPacks + item.qtyPacks };
+        return next;
+      }
+      return [...prev, item];
+    });
+  };
+
+  const handleUpdateCartItemQty = (ingredientId: number, supplierId: number, qtyPacks: number) => {
+    setCartItems(prev =>
+      prev.map(item =>
+        item.ingredient.ingredient_id === ingredientId && item.supplier.supplier_id === supplierId
+          ? { ...item, qtyPacks }
+          : item
+      )
+    );
+  };
+
+  const handleRemoveCartItem = (ingredientId: number, supplierId: number) => {
+    setCartItems(prev =>
+      prev.filter(
+        item =>
+          !(
+            item.ingredient.ingredient_id === ingredientId &&
+            item.supplier.supplier_id === supplierId
+          )
+      )
+    );
+  };
+
+  const handleProceedToReview = () => setWizardStep(2);
+
+  const handleCreateIngredientOrders = async () => {
+    if (cartItems.length === 0) return;
+    const grouped = new Map<number, IngredientCartItem[]>();
+    cartItems.forEach(item => {
+      const list = grouped.get(item.supplier.supplier_id) || [];
+      list.push(item);
+      grouped.set(item.supplier.supplier_id, list);
+    });
+
     try {
-      await createOrder({
-        supplier_id: ingredientSupplier.supplier_id,
-        expected_delivery_date: new Date(
-          Date.now() + ingredientSupplier.lead_time_days * 24 * 60 * 60 * 1000
-        )
-          .toISOString()
-          .split('T')[0],
-        items: [
-          {
-            ingredient_id: selectedIngredient.ingredient_id,
-            quantity_ordered: ingredientQty * ingredientSupplier.pack_size,
-            unit: ingredientSupplier.pack_unit,
-            unit_price: ingredientSupplier.unit_price,
-          },
-        ],
-        notes: orderNotes || undefined,
-      });
+      for (const [supplierId, items] of grouped.entries()) {
+        const first = items[0];
+        await createOrder({
+          supplier_id: supplierId,
+          expected_delivery_date: new Date(
+            Date.now() + first.supplier.lead_time_days * 24 * 60 * 60 * 1000
+          )
+            .toISOString()
+            .split('T')[0],
+          items: items.map(item => ({
+            ingredient_id: item.ingredient.ingredient_id,
+            quantity_ordered: item.qtyPacks * item.supplier.pack_size,
+            unit: item.supplier.pack_unit,
+            unit_price: item.supplier.unit_price,
+          })),
+          notes: orderNotes || undefined,
+        });
+      }
       closeWizard();
       setStatusFilter('cart');
     } catch (error) {
@@ -277,6 +400,20 @@ export default function PurchaseOrders(): React.JSX.Element {
     return { itemCount, total, supplierCount: supplierSet.size };
   }, [suggestions, selectedItems]);
 
+  const ingredientReviewTotals = useMemo(() => {
+    const supplierSet = new Set<number>();
+    let total = 0;
+    let itemCount = 0;
+
+    cartItems.forEach(item => {
+      supplierSet.add(item.supplier.supplier_id);
+      itemCount += 1;
+      total += item.qtyPacks * item.supplier.pack_size * item.supplier.unit_price;
+    });
+
+    return { supplierCount: supplierSet.size, itemCount, total };
+  }, [cartItems]);
+
   // Status counts
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = { all: purchaseOrders.length };
@@ -291,14 +428,20 @@ export default function PurchaseOrders(): React.JSX.Element {
   const canProceed = () => {
     if (wizardStep === 0) return wizardMode !== null;
     if (wizardStep === 1 && wizardMode === 'ingredient') {
-      return selectedIngredient !== null && ingredientSupplier !== null;
+      return cartItems.length > 0;
     }
     if (wizardStep === 2) {
       if (wizardMode === 'supplier') return selectedItems.size > 0;
-      if (wizardMode === 'ingredient') return Boolean(selectedIngredient && ingredientSupplier);
+      if (wizardMode === 'ingredient') return cartItems.length > 0;
     }
     return true;
   };
+
+  React.useEffect(() => {
+    if (wizardMode === 'ingredient' && wizardStep === 2 && cartItems.length === 0) {
+      setWizardStep(1);
+    }
+  }, [wizardMode, wizardStep, cartItems.length]);
 
   const handleNext = () => {
     if (wizardStep === 0) {
@@ -324,7 +467,7 @@ export default function PurchaseOrders(): React.JSX.Element {
     if (wizardMode === 'supplier') {
       handleCreateFromSuggestions();
     } else {
-      handleCreateIngredientOrder();
+      handleCreateIngredientOrders();
     }
   };
 
@@ -450,15 +593,20 @@ export default function PurchaseOrders(): React.JSX.Element {
             setIngredientSupplier={setIngredientSupplier}
             ingredientQty={ingredientQty}
             setIngredientQty={setIngredientQty}
+            cartItems={cartItems}
+            onAddToCart={handleAddToCart}
+            onUpdateCartItemQty={handleUpdateCartItemQty}
+            onRemoveCartItem={handleRemoveCartItem}
+            onProceedToReview={handleProceedToReview}
           />
         );
       }
-      if (wizardStep === 2 && selectedIngredient && ingredientSupplier) {
+      if (wizardStep === 2 && cartItems.length > 0) {
         return (
           <POIngredientReview
-            selectedIngredient={selectedIngredient}
-            ingredientSupplier={ingredientSupplier}
-            ingredientQty={ingredientQty}
+            cartItems={cartItems}
+            onUpdateCartItemQty={handleUpdateCartItemQty}
+            onRemoveCartItem={handleRemoveCartItem}
             orderNotes={orderNotes}
             setOrderNotes={setOrderNotes}
           />
@@ -639,6 +787,20 @@ export default function PurchaseOrders(): React.JSX.Element {
                   description={`Qty: ${item.quantity_ordered} | Unit: $${item.unit_price?.toFixed(
                     2
                   )}`}
+                  onPress={selectedPO.status === 'cart' ? () => openItemEditor(item) : undefined}
+                  style={
+                    selectedPO.status === 'cart'
+                      ? {
+                          borderWidth: 1,
+                          borderColor:
+                            editingItem?.order_item_id === item.order_item_id
+                              ? theme.colors.primary
+                              : theme.colors.surfaceVariant,
+                          borderRadius: 8,
+                          marginBottom: 6,
+                        }
+                      : undefined
+                  }
                   right={() => (
                     <Text variant="bodyMedium" style={{ fontWeight: '600', alignSelf: 'center' }}>
                       ${((item.quantity_ordered || 0) * (item.unit_price || 0)).toFixed(2)}
@@ -683,6 +845,49 @@ export default function PurchaseOrders(): React.JSX.Element {
               </View>
             </ScrollView>
           )}
+        </Modal>
+
+        {/* Edit Item Modal */}
+        <Modal
+          visible={!!editingItem}
+          onDismiss={closeItemEditor}
+          contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}
+        >
+          <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 12 }}>
+            Edit Item
+          </Text>
+          <TextInput
+            label="Quantity"
+            value={editQty}
+            onChangeText={setEditQty}
+            keyboardType="numeric"
+            mode="outlined"
+            style={{ marginBottom: 8 }}
+          />
+          {editingItem && (
+            <>
+              <Text style={{ marginBottom: 4, color: theme.colors.onSurfaceVariant }}>
+                Unit: {editingItem.unit}
+              </Text>
+              <Text style={{ marginBottom: 12, color: theme.colors.onSurfaceVariant }}>
+                Unit Price: ${Number(editingItem.unit_price).toFixed(2)}
+              </Text>
+            </>
+          )}
+
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+            <Button mode="text" onPress={closeItemEditor} disabled={updatingItem}>
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              onPress={handleSaveItemEdit}
+              loading={updatingItem}
+              disabled={updatingItem}
+            >
+              Update
+            </Button>
+          </View>
         </Modal>
 
         {/* New Order Wizard Modal */}
@@ -807,7 +1012,7 @@ export default function PurchaseOrders(): React.JSX.Element {
                   ? 'Creating...'
                   : wizardMode === 'supplier'
                   ? `Create ${reviewTotals.supplierCount} Draft(s)`
-                  : 'Create Draft'}
+                  : `Create ${Math.max(1, ingredientReviewTotals.supplierCount)} Draft(s)`}
               </Button>
             )}
           </View>

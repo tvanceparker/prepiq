@@ -41,6 +41,19 @@ class BaseRepository(Generic[T]):
         result = await self.db.execute(query)
         return result.scalars().all()
 
+    async def get_by_field(self, field_name: str, field_value, skip: int = 0, limit: int = 0) -> List[T]:
+        """Fetch records matching a field within the current restaurant scope."""
+        field = getattr(self.model, field_name)
+        query = (
+            select(self.model)
+            .filter(field == field_value, self.model.restaurant_id == self.restaurant_id)
+            .offset(skip)
+        )
+        if limit > 0:
+            query = query.limit(limit)
+        result = await self.db.execute(query)
+        return result.scalars().all()
+
 
     async def create(self, obj_data: dict) -> T:
         try:

@@ -30,6 +30,8 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
@@ -40,6 +42,7 @@ import {
   getPurchaseOrders,
   createPurchaseOrder,
   addItemToPurchaseOrder,
+  updatePurchaseOrderItem,
   removeItemFromPurchaseOrder,
   updatePurchaseOrderStatus,
   getIngredientNames,
@@ -66,6 +69,7 @@ import {
   POSupplierReview,
   POIngredientReview,
   WizardMode,
+  IngredientCartItem,
 } from './components/po-wizard';
 
 const statusTabs: { label: string; value: PurchaseOrderStatus }[] = [
@@ -100,6 +104,7 @@ export default function PurchaseOrders() {
     null
   );
   const [ingredientQty, setIngredientQty] = useState(1);
+  const [ingredientCart, setIngredientCart] = useState<IngredientCartItem[]>([]);
 
   // Notes & Snackbar
   const [orderNotes, setOrderNotes] = useState('');
@@ -176,6 +181,24 @@ export default function PurchaseOrders() {
     },
   });
 
+  const updateItemMut = useMutation({
+    mutationFn: (args: {
+      order_id: number;
+      order_item_id: number;
+      updates: Partial<PurchaseOrderItem>;
+    }) => updatePurchaseOrderItem(args.order_id, args.order_item_id, args.updates),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      if (selectedOrder) {
+        const updated =
+          (await getPurchaseOrders({ status }))?.find(o => o.order_id === selectedOrder.order_id) ||
+          null;
+        setSelectedOrder(updated);
+      }
+      showToast('Item updated.');
+    },
+  });
+
   const updateStatusMut = useMutation({
     mutationFn: (args: { order_id: number; status: PurchaseOrderStatus }) =>
       updatePurchaseOrderStatus(args.order_id, args.status),
@@ -241,34 +264,99 @@ export default function PurchaseOrders() {
     setSelectedIngredient(null);
     setIngredientSupplier(null);
     setIngredientQty(1);
+    setIngredientCart([]);
     setOrderNotes('');
   }, []);
 
-  const handleCreateIngredientOrder = async () => {
-    if (!selectedIngredient || !ingredientSupplier) return;
-    const payload: PurchaseOrderCreate = {
-      supplier_id: ingredientSupplier.supplier_id,
-      expected_delivery_date: dayjs()
-        .add(ingredientSupplier.lead_time_days, 'day')
-        .format('YYYY-MM-DD'),
-      items: [
-        {
-          ingredient_id: selectedIngredient.ingredient_id,
-          quantity_ordered: ingredientQty * ingredientSupplier.pack_size,
-          unit: ingredientSupplier.pack_unit,
-          unit_price: ingredientSupplier.unit_price,
-        },
-      ],
-      notes: orderNotes || undefined,
-    };
+  const upsertIngredientCartItem = useCallback((item: IngredientCartItem) => {
+    setIngredientCart(prev => {
+      const next = [...prev];
+      const idx = next.findIndex(
+        i =>
+          i.ingredient.ingredient_id === item.ingredient.ingredient_id &&
+          i.supplier.supplier_id === item.supplier.supplier_id
+      );
+      if (idx >= 0) {
+        next[idx] = { ...next[idx], qtyPacks: next[idx].qtyPacks + item.qtyPacks };
+      } else {
+        next.push(item);
+      }
+      return next;
+    });
+  }, []);
+
+  const updateCartItemQty = useCallback(
+    (ingredientId: number, supplierId: number, qtyPacks: number) => {
+      setIngredientCart(prev =>
+        prev.map(item => {
+          if (
+            item.ingredient.ingredient_id === ingredientId &&
+            item.supplier.supplier_id === supplierId
+          ) {
+            return { ...item, qtyPacks: Math.max(1, qtyPacks) };
+          }
+          return item;
+        })
+      );
+    },
+    []
+  );
+
+  const removeCartItem = useCallback((ingredientId: number, supplierId: number) => {
+    setIngredientCart(prev =>
+      prev.filter(
+        item =>
+          !(
+            item.ingredient.ingredient_id === ingredientId &&
+            item.supplier.supplier_id === supplierId
+          )
+      )
+    );
+  }, []);
+
+  const handleCreateIngredientOrdersFromCart = async () => {
+    if (ingredientCart.length === 0) return;
+
     try {
-      await createPurchaseOrder(payload);
+      const grouped = new Map<
+        number,
+        { supplier: IngredientCartItem['supplier']; items: IngredientCartItem[] }
+      >();
+
+      ingredientCart.forEach(item => {
+        if (!grouped.has(item.supplier.supplier_id)) {
+          grouped.set(item.supplier.supplier_id, { supplier: item.supplier, items: [] });
+        }
+        grouped.get(item.supplier.supplier_id)!.items.push(item);
+      });
+
+      let createdCount = 0;
+      for (const [supplierId, group] of grouped.entries()) {
+        const payload: PurchaseOrderCreate = {
+          supplier_id: supplierId,
+          expected_delivery_date: dayjs()
+            .add(group.supplier.lead_time_days, 'day')
+            .format('YYYY-MM-DD'),
+          items: group.items.map(it => ({
+            ingredient_id: it.ingredient.ingredient_id,
+            ingredient_supplier_id: it.supplier.ingredient_supplier_id,
+            quantity_ordered: it.qtyPacks * it.supplier.pack_size,
+            unit: it.supplier.pack_unit,
+            unit_price: it.supplier.unit_price,
+          })),
+          notes: orderNotes || undefined,
+        };
+
+        await createPurchaseOrder(payload);
+        createdCount += 1;
+      }
+
       await qc.invalidateQueries({ queryKey: ['purchase_orders'] });
-      showToast('Draft order created!');
+      showToast(`Created ${createdCount} draft order${createdCount === 1 ? '' : 's'}!`);
       closeWizard();
       setStatus('cart');
     } catch (err: any) {
-      showToast(err?.response?.data?.detail || 'Failed to create order', 'error');
+      showToast(err?.response?.data?.detail || 'Failed to create order(s)', 'error');
     }
   };
 
@@ -289,6 +377,18 @@ export default function PurchaseOrders() {
     return { itemCount, total, supplierCount: supplierSet.size };
   }, [suggestions, selectedItems]);
 
+  const ingredientCartTotals = useMemo(() => {
+    const supplierSet = new Set<number>();
+    let total = 0;
+    let itemCount = 0;
+    ingredientCart.forEach(item => {
+      supplierSet.add(item.supplier.supplier_id);
+      itemCount += 1;
+      total += item.qtyPacks * item.supplier.pack_size * item.supplier.unit_price;
+    });
+    return { itemCount, total, supplierCount: supplierSet.size };
+  }, [ingredientCart]);
+
   // Order list grouping
   const groupedBySupplier = useMemo(() => {
     const map = new Map<string, PurchaseOrder[]>();
@@ -302,18 +402,18 @@ export default function PurchaseOrders() {
   // Navigation helpers
   const canProceed = () => {
     if (wizardStep === 0) return wizardMode !== null;
-    if (wizardStep === 1 && wizardMode === 'ingredient')
-      return selectedIngredient && ingredientSupplier;
+    if (wizardStep === 1 && wizardMode === 'ingredient') return ingredientCart.length > 0;
     if (wizardStep === 2) {
       if (wizardMode === 'supplier') return selectedItems.size > 0;
-      return selectedIngredient && ingredientSupplier;
+      return ingredientCart.length > 0;
     }
     return true;
   };
 
   const handleNext = () => {
     if (wizardStep === 0) setWizardStep(1);
-    else if (wizardStep === 1 && wizardMode === 'ingredient') setWizardStep(2);
+    else if (wizardStep === 1 && wizardMode === 'ingredient' && ingredientCart.length > 0)
+      setWizardStep(2);
   };
 
   const handleBack = () => {
@@ -328,7 +428,7 @@ export default function PurchaseOrders() {
 
   const handleCreate = () => {
     if (wizardMode === 'supplier') createFromSuggestionsMut.mutate();
-    else handleCreateIngredientOrder();
+    else handleCreateIngredientOrdersFromCart();
   };
 
   // Wizard content
@@ -378,15 +478,20 @@ export default function PurchaseOrders() {
             setIngredientSupplier={setIngredientSupplier}
             ingredientQty={ingredientQty}
             setIngredientQty={setIngredientQty}
+            cartItems={ingredientCart}
+            onAddToCart={upsertIngredientCartItem}
+            onUpdateCartItemQty={updateCartItemQty}
+            onRemoveCartItem={removeCartItem}
+            onProceedToReview={() => setWizardStep(2)}
           />
         );
       }
-      if (wizardStep === 2 && selectedIngredient && ingredientSupplier) {
+      if (wizardStep === 2 && ingredientCart.length > 0) {
         return (
           <POIngredientReview
-            selectedIngredient={selectedIngredient}
-            ingredientSupplier={ingredientSupplier}
-            ingredientQty={ingredientQty}
+            cartItems={ingredientCart}
+            onUpdateCartItemQty={updateCartItemQty}
+            onRemoveCartItem={removeCartItem}
             orderNotes={orderNotes}
             setOrderNotes={setOrderNotes}
           />
@@ -402,6 +507,8 @@ export default function PurchaseOrders() {
     const [qty, setQty] = useState('');
     const [unit, setUnit] = useState('unit');
     const [price, setPrice] = useState('');
+    const [editingId, setEditingId] = useState<number | null>(null);
+    const [editQty, setEditQty] = useState('');
 
     const addItem = () => {
       if (!selIngredient || isNaN(Number(qty)) || isNaN(Number(price))) {
@@ -420,6 +527,40 @@ export default function PurchaseOrders() {
       setSelIngredient(null);
       setQty('');
       setPrice('');
+    };
+
+    const beginEdit = (item: PurchaseOrderItem) => {
+      if (order.status !== 'cart') return;
+      setEditingId(item.order_item_id);
+      setEditQty(item.quantity_ordered.toString());
+    };
+
+    const cancelEdit = () => {
+      setEditingId(null);
+      setEditQty('');
+    };
+
+    const saveEdit = () => {
+      if (editingId === null) return;
+      const qtyVal = Number(editQty);
+      if (Number.isNaN(qtyVal) || qtyVal <= 0) {
+        showToast('Enter a valid quantity.', 'warning');
+        return;
+      }
+      updateItemMut.mutate(
+        {
+          order_id: order.order_id,
+          order_item_id: editingId,
+          updates: {
+            quantity_ordered: qtyVal,
+          },
+        },
+        {
+          onSuccess: () => {
+            cancelEdit();
+          },
+        }
+      );
     };
 
     const total = (order.items || []).reduce((s, it) => s + (Number(it.total_item_price) || 0), 0);
@@ -479,29 +620,84 @@ export default function PurchaseOrders() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {(order.items || []).map(it => (
-              <TableRow key={it.order_item_id}>
-                <TableCell>{it.ingredient_name}</TableCell>
-                <TableCell align="right">{it.quantity_ordered}</TableCell>
-                <TableCell>{it.unit}</TableCell>
-                <TableCell align="right">${Number(it.unit_price).toFixed(2)}</TableCell>
-                <TableCell align="right">${Number(it.total_item_price).toFixed(2)}</TableCell>
-                <TableCell align="center">
-                  <IconButton
-                    color="error"
-                    size="small"
-                    onClick={() =>
-                      removeItemMut.mutate({
-                        order_id: order.order_id,
-                        order_item_id: it.order_item_id,
-                      })
-                    }
-                  >
-                    <DeleteIcon />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
+            {(order.items || []).map(it => {
+              const isEditing = editingId === it.order_item_id;
+              const qtyVal = isEditing ? editQty : it.quantity_ordered.toString();
+              const lineTotal = Number(qtyVal || 0) * Number(it.unit_price || 0);
+
+              return (
+                <TableRow
+                  key={it.order_item_id}
+                  hover={order.status === 'cart'}
+                  onClick={() => beginEdit(it)}
+                  sx={{ cursor: order.status === 'cart' ? 'pointer' : 'default' }}
+                  selected={isEditing}
+                >
+                  <TableCell>{it.ingredient_name}</TableCell>
+                  <TableCell align="right" sx={{ width: 120 }}>
+                    {isEditing ? (
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={qtyVal}
+                        onChange={e => setEditQty(e.target.value)}
+                        inputProps={{ min: 0, step: '0.01' }}
+                      />
+                    ) : (
+                      it.quantity_ordered
+                    )}
+                  </TableCell>
+                  <TableCell sx={{ width: 120 }}>{it.unit}</TableCell>
+                  <TableCell align="right" sx={{ width: 140 }}>
+                    {`$${Number(it.unit_price).toFixed(2)}`}
+                  </TableCell>
+                  <TableCell align="right">${lineTotal.toFixed(2)}</TableCell>
+                  <TableCell align="center">
+                    {isEditing ? (
+                      <Stack direction="row" spacing={0.5} justifyContent="center">
+                        <IconButton
+                          size="small"
+                          color="success"
+                          onClick={e => {
+                            e.stopPropagation();
+                            saveEdit();
+                          }}
+                          disabled={updateItemMut.isPending}
+                        >
+                          <CheckIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="inherit"
+                          onClick={e => {
+                            e.stopPropagation();
+                            cancelEdit();
+                          }}
+                          disabled={updateItemMut.isPending}
+                        >
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    ) : (
+                      <IconButton
+                        color="error"
+                        size="small"
+                        onClick={e => {
+                          e.stopPropagation();
+                          removeItemMut.mutate({
+                            order_id: order.order_id,
+                            order_item_id: it.order_item_id,
+                          });
+                        }}
+                        disabled={order.status !== 'cart'}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
             <TableRow>
               <TableCell colSpan={4} align="right" sx={{ fontWeight: 600, borderBottom: 'none' }}>
                 Total
@@ -730,7 +926,7 @@ export default function PurchaseOrders() {
               onClick={handleNext}
               disabled={!canProceed()}
             >
-              {wizardStep === 0 ? 'Continue' : wizardMode === 'supplier' ? 'Generate' : 'Continue'}
+              {wizardStep === 0 ? 'Continue' : wizardMode === 'supplier' ? 'Generate' : 'Review'}
             </Button>
           ) : (
             <Button
@@ -744,13 +940,15 @@ export default function PurchaseOrders() {
                 )
               }
               onClick={handleCreate}
-              disabled={!canProceed() || createFromSuggestionsMut.isPending}
+              disabled={
+                !canProceed() || (wizardMode === 'supplier' && createFromSuggestionsMut.isPending)
+              }
             >
-              {createFromSuggestionsMut.isPending
-                ? 'Creating...'
-                : wizardMode === 'supplier'
-                  ? `Create ${reviewTotals.supplierCount} Draft(s)`
-                  : 'Create Draft'}
+              {wizardMode === 'supplier'
+                ? createFromSuggestionsMut.isPending
+                  ? 'Creating...'
+                  : `Create ${reviewTotals.supplierCount} Draft(s)`
+                : `Create ${ingredientCartTotals.supplierCount || 1} Draft${ingredientCartTotals.supplierCount === 1 ? '' : 's'}`}
             </Button>
           )}
         </DialogActions>

@@ -163,7 +163,10 @@ class InventoryService:
         Add an item to an existing purchase order.
         """
         from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
+        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
+
         poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
+        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
         item_data = {
             "restaurant_id": self.restaurant_id,
             "order_id": order_id,
@@ -175,16 +178,80 @@ class InventoryService:
             "total_item_price": float(item["quantity_ordered"]) * float(item["unit_price"]),
         }
         obj = await poi_repo.create(item_data)
-        return {"order_item_id": obj.order_item_id}
+        items = await poi_repo.get_by_field("order_id", order_id)
+        new_total = sum(float(it.total_item_price) for it in items)
+        await po_repo.update(order_id, {"total_order_price": new_total})
+        return {"order_item_id": obj.order_item_id, "order_total_price": new_total}
 
     async def remove_item_from_purchase_order(self, order_id: int, order_item_id: int) -> dict:
         """
         Remove an item from a purchase order.
         """
         from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
+        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
+
         poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
+        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
+
         await poi_repo.delete(order_item_id)
-        return {"order_item_id": order_item_id, "removed": True}
+
+        # Recalculate order total after removal
+        items = await poi_repo.get_by_field("order_id", order_id)
+        new_total = sum(float(it.total_item_price) for it in items)
+        await po_repo.update(order_id, {"total_order_price": new_total})
+
+        return {"order_item_id": order_item_id, "removed": True, "order_total_price": new_total}
+
+    async def update_purchase_order_item(self, order_id: int, order_item_id: int, updates: dict) -> dict:
+        """
+        Update fields on a purchase order item and recalculate order total.
+        """
+        from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
+        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
+
+        poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
+        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
+
+        item = await poi_repo.get_by_id(order_item_id)
+        if not item or item.order_id != order_id:
+            return None
+
+        # Prepare update payload
+        update_data = {}
+        if "quantity_ordered" in updates and updates["quantity_ordered"] is not None:
+            update_data["quantity_ordered"] = updates["quantity_ordered"]
+        if "unit_price" in updates and updates["unit_price"] is not None:
+            update_data["unit_price"] = updates["unit_price"]
+        if "unit" in updates and updates["unit"] is not None:
+            update_data["unit"] = updates["unit"]
+        if "ingredient_supplier_id" in updates and updates["ingredient_supplier_id"] is not None:
+            update_data["ingredient_supplier_id"] = updates["ingredient_supplier_id"]
+
+        # Always recompute line total using latest quantity/price
+        qty = update_data.get("quantity_ordered", item.quantity_ordered)
+        price = update_data.get("unit_price", item.unit_price)
+        update_data["total_item_price"] = float(qty) * float(price)
+
+        updated_item = await poi_repo.update(order_item_id, update_data)
+        if not updated_item:
+            return None
+
+        # Recalculate purchase order total
+        items = await poi_repo.get_by_field("order_id", order_id)
+        new_total = sum(float(it.total_item_price) for it in items)
+        await po_repo.update(order_id, {"total_order_price": new_total})
+
+        return {
+            "order_item_id": updated_item.order_item_id,
+            "order_id": updated_item.order_id,
+            "ingredient_id": updated_item.ingredient_id,
+            "ingredient_supplier_id": updated_item.ingredient_supplier_id,
+            "quantity_ordered": float(updated_item.quantity_ordered),
+            "unit": updated_item.unit,
+            "unit_price": float(updated_item.unit_price),
+            "total_item_price": float(updated_item.total_item_price),
+            "order_total_price": new_total,
+        }
 
     async def generate_purchase_order_suggestions(
         self, 
@@ -1093,10 +1160,9 @@ class InventoryService:
                     raise Exception(f"Unsupported usage_type: {usage_type}")
 
                 # Step 5: Update inventory quantity_on_hand with reconciled total
+                # BaseRepository.update expects (obj_id, update_data)
                 await self.inventory_repo.update(
-                    restaurant_id=self.restaurant_id,
-                    inventory_id=inventory_id,
-                    inventory_data={"quantity_on_hand": float(new_quantity)},
+                    inventory_id, {"quantity_on_hand": float(new_quantity)}
                 )
 
                 # Step 6: Log the adjustment

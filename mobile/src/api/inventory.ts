@@ -151,6 +151,14 @@ export const removeItemFromPurchaseOrder = async (
   return del(`/inventory/purchase_orders/${order_id}/items/${order_item_id}`);
 };
 
+export const updatePurchaseOrderItem = async (
+  order_id: number,
+  order_item_id: number,
+  updates: Partial<PurchaseOrderItem>
+): Promise<any> => {
+  return patch(`/inventory/purchase_orders/${order_id}/items/${order_item_id}`, updates);
+};
+
 // =============================================================================
 // PO Suggestion Generation
 // =============================================================================

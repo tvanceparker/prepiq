@@ -35,9 +35,11 @@ export default function InventoryList(): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'ingredients' | 'batches'>('all');
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [selectedLotId, setSelectedLotId] = useState<number | null>(null);
   const [selectedLotRemaining, setSelectedLotRemaining] = useState<number | null>(null);
+  const [selectedLotUnit, setSelectedLotUnit] = useState<string | undefined>(undefined);
   const [showLotModal, setShowLotModal] = useState(false);
   const [showLotDetailModal, setShowLotDetailModal] = useState(false);
   const [snackbar, setSnackbar] = useState<{
@@ -80,6 +82,12 @@ export default function InventoryList(): React.JSX.Element {
   const filteredInventory = React.useMemo(() => {
     let items = inventory;
 
+    if (typeFilter === 'ingredients') {
+      items = items.filter(item => item.batch_recipe_id === null);
+    } else if (typeFilter === 'batches') {
+      items = items.filter(item => item.batch_recipe_id !== null);
+    }
+
     if (categoryFilter !== 'all') {
       items = items.filter(item => item.category === categoryFilter);
     }
@@ -90,7 +98,7 @@ export default function InventoryList(): React.JSX.Element {
     }
 
     return items;
-  }, [inventory, categoryFilter, searchQuery]);
+  }, [inventory, categoryFilter, searchQuery, typeFilter]);
 
   // Group by category for SectionList
   const sections: InventorySection[] = React.useMemo(() => {
@@ -120,6 +128,7 @@ export default function InventoryList(): React.JSX.Element {
     setSelectedLotId(lotId);
     const lot = selectedItem?.packaging_breakdown?.find(l => l.lot_id === lotId);
     setSelectedLotRemaining(lot?.remaining_quantity ?? null);
+    setSelectedLotUnit(lot?.unit || selectedItem?.unit);
     setShowLotDetailModal(true);
     setAdjustQuantity('');
     setAdjustUsageType('manual_adjustment');
@@ -145,6 +154,11 @@ export default function InventoryList(): React.JSX.Element {
     });
 
     setSnackbar({ visible: true, message: 'Adjustment saved', type: 'success' });
+    setSelectedLotRemaining(prev => {
+      if (prev === null) return prev;
+      if (params.usageType === 'manual_addition') return prev + params.quantity;
+      return prev - params.quantity;
+    });
     await refresh();
   };
 
@@ -280,6 +294,7 @@ export default function InventoryList(): React.JSX.Element {
   const renderLotItem = (lot: LotBreakdown, index: number) => {
     const usagePercent =
       lot.quantity > 0 ? ((lot.quantity - lot.remaining_quantity) / lot.quantity) * 100 : 0;
+    const lotUnit = lot.unit || selectedItem?.unit || '';
 
     return (
       <Card key={lot.lot_id || index} style={styles.lotCard} mode="outlined">
@@ -305,7 +320,7 @@ export default function InventoryList(): React.JSX.Element {
             <View style={styles.progressSection}>
               <View style={styles.progressLabelRow}>
                 <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                  {lot.remaining_quantity} / {lot.quantity} remaining
+                  {lot.remaining_quantity} / {lot.quantity} {lotUnit} remaining
                 </Text>
                 <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
                   {Math.round(100 - usagePercent)}%
@@ -378,7 +393,7 @@ export default function InventoryList(): React.JSX.Element {
           <View style={styles.headerItemCount}>
             <MaterialCommunityIcons name="package-variant" size={16} color={theme.colors.primary} />
             <Text style={{ marginLeft: 4, color: theme.colors.primary }}>
-              {inventory.length} items
+              {filteredInventory.length} items
             </Text>
           </View>
         </View>
@@ -390,6 +405,24 @@ export default function InventoryList(): React.JSX.Element {
           onChangeText={setSearchQuery}
           style={styles.searchbar}
         />
+
+        {/* Type Filters */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+          {[
+            { key: 'all', label: 'All items' },
+            { key: 'ingredients', label: 'Ingredients' },
+            { key: 'batches', label: 'Batch recipes' },
+          ].map(filter => (
+            <Chip
+              key={filter.key}
+              selected={typeFilter === filter.key}
+              onPress={() => setTypeFilter(filter.key as 'all' | 'ingredients' | 'batches')}
+              style={styles.filterChip}
+            >
+              {filter.label}
+            </Chip>
+          ))}
+        </ScrollView>
 
         {/* Category Filters */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
@@ -517,7 +550,10 @@ export default function InventoryList(): React.JSX.Element {
         {/* Lot Detail Modal (shows usage/waste logs) */}
         <Modal
           visible={showLotDetailModal}
-          onDismiss={() => setShowLotDetailModal(false)}
+          onDismiss={() => {
+            setShowLotDetailModal(false);
+            setSelectedLotUnit(undefined);
+          }}
           contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}
         >
           <ScrollView>
@@ -529,7 +565,10 @@ export default function InventoryList(): React.JSX.Element {
                 icon={() => (
                   <MaterialCommunityIcons name="close" size={24} color={theme.colors.onSurface} />
                 )}
-                onPress={() => setShowLotDetailModal(false)}
+                onPress={() => {
+                  setShowLotDetailModal(false);
+                  setSelectedLotUnit(undefined);
+                }}
               />
             </View>
 
@@ -647,7 +686,7 @@ export default function InventoryList(): React.JSX.Element {
                 </Text>
 
                 <TextInput
-                  label={`Quantity (${selectedItem?.unit || ''})`}
+                  label={`Quantity (${selectedLotUnit || selectedItem?.unit || ''})`}
                   value={adjustQuantity}
                   onChangeText={setAdjustQuantity}
                   keyboardType="decimal-pad"
@@ -689,7 +728,8 @@ export default function InventoryList(): React.JSX.Element {
                 />
 
                 <HelperText type="info">
-                  Lot remaining: {selectedLotRemaining ?? 'N/A'} {selectedItem?.unit || ''}
+                  Lot remaining: {selectedLotRemaining ?? 'N/A'}{' '}
+                  {selectedLotUnit || selectedItem?.unit || ''}
                 </HelperText>
 
                 {adjustError && <HelperText type="error">{adjustError}</HelperText>}

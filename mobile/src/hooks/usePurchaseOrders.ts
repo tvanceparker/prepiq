@@ -6,6 +6,7 @@ import {
   createPurchaseOrder,
   updatePurchaseOrderStatus,
   addItemToPurchaseOrder,
+  updatePurchaseOrderItem,
   removeItemFromPurchaseOrder,
   generatePOSuggestions,
   createPOsFromSuggestions,
@@ -55,6 +56,21 @@ export function usePurchaseOrders(options: UsePurchaseOrdersOptions = {}) {
     },
   });
 
+  const updateItemMutation = useMutation({
+    mutationFn: ({
+      orderId,
+      orderItemId,
+      updates,
+    }: {
+      orderId: number;
+      orderItemId: number;
+      updates: Partial<PurchaseOrderItem>;
+    }) => updatePurchaseOrderItem(orderId, orderItemId, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
+    },
+  });
+
   // Group by status for tabs/filters
   const ordersByStatus = (ordersQuery.data ?? []).reduce((acc, order) => {
     if (!acc[order.status]) acc[order.status] = [];
@@ -75,6 +91,9 @@ export function usePurchaseOrders(options: UsePurchaseOrdersOptions = {}) {
 
     createOrder: createMutation.mutateAsync,
     creating: createMutation.isPending,
+
+    updateItem: updateItemMutation.mutateAsync,
+    updatingItem: updateItemMutation.isPending,
 
     updateStatus: updateStatusMutation.mutateAsync,
     updatingStatus: updateStatusMutation.isPending,
@@ -109,6 +128,15 @@ export function usePurchaseOrderDetail(orderId: number | null) {
     },
   });
 
+  // Update item mutation
+  const updateItemMutation = useMutation({
+    mutationFn: (args: { orderItemId: number; updates: Partial<PurchaseOrderItem> }) =>
+      updatePurchaseOrderItem(orderId!, args.orderItemId, args.updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrders', orderId] });
+    },
+  });
+
   return {
     order: detailQuery.data,
     loading: detailQuery.isLoading,
@@ -119,6 +147,9 @@ export function usePurchaseOrderDetail(orderId: number | null) {
 
     removeItem: removeItemMutation.mutateAsync,
     removingItem: removeItemMutation.isPending,
+
+    updateItem: updateItemMutation.mutateAsync,
+    updatingItem: updateItemMutation.isPending,
   };
 }
 

@@ -34,6 +34,7 @@ export function LotBreakdownModal({
   const renderLotItem = (lot: LotBreakdown, index: number) => {
     const usagePercent =
       lot.quantity > 0 ? ((lot.quantity - lot.remaining_quantity) / lot.quantity) * 100 : 0;
+    const lotUnit = lot.unit || item?.unit || '';
 
     return (
       <Card key={lot.lot_id || index} style={styles.lotCard} mode="outlined">
@@ -59,7 +60,7 @@ export function LotBreakdownModal({
             <View style={styles.progressSection}>
               <View style={styles.progressLabelRow}>
                 <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                  {lot.remaining_quantity} / {lot.quantity} remaining
+                  {lot.remaining_quantity} / {lot.quantity} {lotUnit} remaining
                 </Text>
                 <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
                   {Math.round(100 - usagePercent)}%

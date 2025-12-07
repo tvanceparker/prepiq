@@ -28,6 +28,13 @@ class PurchaseOrderCreateDTO(BaseModel):
     items: List[PurchaseOrderCreateItemDTO]
     notes: Optional[str] = None
 
+
+class PurchaseOrderItemUpdateDTO(BaseModel):
+    quantity_ordered: Optional[float] = None
+    unit_price: Optional[float] = None
+    unit: Optional[str] = None
+    ingredient_supplier_id: Optional[int] = None
+
 class PurchaseOrderDTO(BaseModel):
     order_id: int
     restaurant_id: int

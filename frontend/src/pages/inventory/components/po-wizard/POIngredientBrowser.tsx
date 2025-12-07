@@ -25,6 +25,7 @@ import type {
   IngredientStockLevel,
   IngredientSupplierOption,
 } from '../../../../interfaces/inventory';
+import type { IngredientCartItem } from './types';
 
 // Status color mapping
 const statusColors: Record<string, 'error' | 'warning' | 'info' | 'success'> = {
@@ -45,6 +46,11 @@ interface POIngredientBrowserProps {
   setIngredientSupplier: (sup: IngredientSupplierOption | null) => void;
   ingredientQty: number;
   setIngredientQty: (qty: number) => void;
+  cartItems: IngredientCartItem[];
+  onAddToCart: (item: IngredientCartItem) => void;
+  onUpdateCartItemQty: (ingredientId: number, supplierId: number, qtyPacks: number) => void;
+  onRemoveCartItem: (ingredientId: number, supplierId: number) => void;
+  onProceedToReview: () => void;
 }
 
 export default function POIngredientBrowser({
@@ -58,6 +64,11 @@ export default function POIngredientBrowser({
   setIngredientSupplier,
   ingredientQty,
   setIngredientQty,
+  cartItems,
+  onAddToCart,
+  onUpdateCartItemQty,
+  onRemoveCartItem,
+  onProceedToReview,
 }: POIngredientBrowserProps) {
   // Sort stock levels by status (critical first)
   const sortedStockLevels = React.useMemo(() => {
@@ -133,6 +144,94 @@ export default function POIngredientBrowser({
                   </Paper>
                 ))}
               </Box>
+            )}
+
+            {cartItems.length > 0 && (
+              <Paper sx={{ p: 2, mt: 2 }} variant="outlined">
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Stack spacing={0.5}>
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      Current Order ({cartItems.length} item{cartItems.length > 1 ? 's' : ''})
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Adjust quantities or jump to review
+                    </Typography>
+                  </Stack>
+                  <Button size="small" variant="contained" onClick={onProceedToReview}>
+                    Review order
+                  </Button>
+                </Stack>
+
+                <Divider sx={{ my: 1 }} />
+
+                <Stack spacing={1} sx={{ maxHeight: 200, overflow: 'auto' }}>
+                  {cartItems.map(item => (
+                    <Paper
+                      key={`${item.ingredient.ingredient_id}-${item.supplier.supplier_id}`}
+                      sx={{ p: 1.5 }}
+                    >
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body2" fontWeight={600}>
+                            {item.ingredient.ingredient_name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {item.supplier.supplier_name}
+                          </Typography>
+                        </Box>
+                        <Stack direction="row" alignItems="center" spacing={0.5}>
+                          <IconButton
+                            size="small"
+                            onClick={() =>
+                              onUpdateCartItemQty(
+                                item.ingredient.ingredient_id,
+                                item.supplier.supplier_id,
+                                Math.max(1, item.qtyPacks - 1)
+                              )
+                            }
+                          >
+                            <RemoveIcon fontSize="small" />
+                          </IconButton>
+                          <Typography sx={{ minWidth: 36, textAlign: 'center' }}>
+                            {item.qtyPacks}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() =>
+                              onUpdateCartItemQty(
+                                item.ingredient.ingredient_id,
+                                item.supplier.supplier_id,
+                                item.qtyPacks + 1
+                              )
+                            }
+                          >
+                            <AddIcon fontSize="small" />
+                          </IconButton>
+                        </Stack>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ minWidth: 80, textAlign: 'right' }}
+                        >
+                          {item.qtyPacks * item.supplier.pack_size} {item.supplier.pack_unit}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() =>
+                            onRemoveCartItem(
+                              item.ingredient.ingredient_id,
+                              item.supplier.supplier_id
+                            )
+                          }
+                        >
+                          <RemoveIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    </Paper>
+                  ))}
+                </Stack>
+              </Paper>
             )}
           </>
         ) : (
@@ -268,6 +367,29 @@ export default function POIngredientBrowser({
                         ingredientSupplier.unit_price
                       ).toFixed(2)}
                     </Typography>
+                  </Stack>
+
+                  <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                    <Button
+                      variant="contained"
+                      onClick={() => {
+                        onAddToCart({
+                          ingredient: selectedIngredient,
+                          supplier: ingredientSupplier,
+                          qtyPacks: ingredientQty,
+                        });
+                        setSelectedIngredient(null);
+                        setIngredientSupplier(null);
+                        setIngredientQty(1);
+                      }}
+                    >
+                      Add to order
+                    </Button>
+                    {cartItems.length > 0 && (
+                      <Button variant="outlined" onClick={onProceedToReview}>
+                        Review order
+                      </Button>
+                    )}
                   </Stack>
                 </Paper>
               </Grow>

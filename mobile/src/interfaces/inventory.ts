@@ -154,6 +154,7 @@ export interface LotBreakdown {
   lot_id: number;
   delivery_date: string;
   quantity: number;
+  unit?: string | null;
   used_quantity: number;
   wasted_quantity: number;
   added_quantity: number;

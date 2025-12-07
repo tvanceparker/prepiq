@@ -53,6 +53,14 @@ export async function removeItemFromPurchaseOrder(
   return del(`/inventory/purchase_orders/${order_id}/items/${order_item_id}`);
 }
 
+export async function updatePurchaseOrderItem(
+  order_id: number,
+  order_item_id: number,
+  updates: Partial<PurchaseOrderItem>
+): Promise<any> {
+  return patch(`/inventory/purchase_orders/${order_id}/items/${order_item_id}`, updates);
+}
+
 // --- PO Suggestion Generation ---
 export async function generatePOSuggestions(
   horizonDays: number = 7,

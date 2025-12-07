@@ -15,6 +15,7 @@ import {
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { IngredientStockLevel, IngredientSupplierOption } from '../../../../interfaces/inventory';
+import type { IngredientCartItem } from './types';
 
 interface POIngredientBrowserProps {
   stockLevels: IngredientStockLevel[];
@@ -27,6 +28,11 @@ interface POIngredientBrowserProps {
   setIngredientSupplier: React.Dispatch<React.SetStateAction<IngredientSupplierOption | null>>;
   ingredientQty: number;
   setIngredientQty: React.Dispatch<React.SetStateAction<number>>;
+  cartItems: IngredientCartItem[];
+  onAddToCart: (item: IngredientCartItem) => void;
+  onUpdateCartItemQty: (ingredientId: number, supplierId: number, qtyPacks: number) => void;
+  onRemoveCartItem: (ingredientId: number, supplierId: number) => void;
+  onProceedToReview: () => void;
 }
 
 const getStockStatusColor = (status: string): string => {
@@ -55,6 +61,11 @@ export default function POIngredientBrowser({
   setIngredientSupplier,
   ingredientQty,
   setIngredientQty,
+  cartItems,
+  onAddToCart,
+  onUpdateCartItemQty,
+  onRemoveCartItem,
+  onProceedToReview,
 }: POIngredientBrowserProps): React.JSX.Element {
   const theme = useTheme();
 
@@ -84,9 +95,9 @@ export default function POIngredientBrowser({
           </View>
         ) : (
           <ScrollView style={styles.scrollArea}>
-            {sortedStockLevels.map(ing => (
+            {sortedStockLevels.map((ing, idx) => (
               <Card
-                key={ing.ingredient_id}
+                key={`${ing.ingredient_id}-${idx}`}
                 style={styles.ingredientCard}
                 mode="outlined"
                 onPress={() => setSelectedIngredient(ing)}
@@ -119,6 +130,71 @@ export default function POIngredientBrowser({
               </Card>
             ))}
           </ScrollView>
+        )}
+
+        {cartItems.length > 0 && (
+          <Card style={styles.cartCard} mode="outlined">
+            <Card.Title
+              title={`Current Order (${cartItems.length})`}
+              right={() => (
+                <Button mode="contained-tonal" onPress={onProceedToReview} compact>
+                  Review
+                </Button>
+              )}
+            />
+            <Card.Content>
+              {cartItems.map((item, idx) => (
+                <View
+                  key={`${item.ingredient.ingredient_id}-${item.supplier.supplier_id}-${idx}`}
+                  style={styles.cartRow}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text variant="bodyMedium" style={{ fontWeight: '600' }}>
+                      {item.ingredient.ingredient_name}
+                    </Text>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      {item.supplier.supplier_name}
+                    </Text>
+                  </View>
+                  <View style={styles.qtyControls}>
+                    <IconButton
+                      icon="minus"
+                      size={18}
+                      onPress={() =>
+                        onUpdateCartItemQty(
+                          item.ingredient.ingredient_id,
+                          item.supplier.supplier_id,
+                          Math.max(1, item.qtyPacks - 1)
+                        )
+                      }
+                    />
+                    <Text style={styles.qtyText}>{item.qtyPacks}</Text>
+                    <IconButton
+                      icon="plus"
+                      size={18}
+                      onPress={() =>
+                        onUpdateCartItemQty(
+                          item.ingredient.ingredient_id,
+                          item.supplier.supplier_id,
+                          item.qtyPacks + 1
+                        )
+                      }
+                    />
+                  </View>
+                  <Text variant="bodySmall" style={{ minWidth: 80, textAlign: 'right' }}>
+                    {item.qtyPacks * item.supplier.pack_size} {item.supplier.pack_unit}
+                  </Text>
+                  <IconButton
+                    icon="delete"
+                    iconColor={theme.colors.error}
+                    onPress={() =>
+                      onRemoveCartItem(item.ingredient.ingredient_id, item.supplier.supplier_id)
+                    }
+                  />
+                </View>
+              ))}
+            </Card.Content>
+          </Card>
         )}
       </View>
     );
@@ -267,6 +343,29 @@ export default function POIngredientBrowser({
                 ).toFixed(2)}
               </Text>
             </View>
+
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+              <Button
+                mode="contained"
+                onPress={() => {
+                  onAddToCart({
+                    ingredient: selectedIngredient,
+                    supplier: ingredientSupplier,
+                    qtyPacks: ingredientQty,
+                  });
+                  setSelectedIngredient(null);
+                  setIngredientSupplier(null);
+                  setIngredientQty(1);
+                }}
+              >
+                Add to order
+              </Button>
+              {cartItems.length > 0 && (
+                <Button mode="outlined" onPress={onProceedToReview}>
+                  Review order
+                </Button>
+              )}
+            </View>
           </Card.Content>
         </Card>
       )}
@@ -361,6 +460,26 @@ const styles = StyleSheet.create({
   qtyCard: {
     marginTop: 16,
     borderRadius: 12,
+  },
+  cartCard: {
+    marginTop: 12,
+    borderRadius: 12,
+  },
+  cartRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  qtyControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  qtyText: {
+    minWidth: 28,
+    textAlign: 'center',
+    fontWeight: '600',
   },
   qtyRow: {
     flexDirection: 'row',

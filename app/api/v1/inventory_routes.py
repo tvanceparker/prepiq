@@ -12,7 +12,12 @@ from app.schemas.inventory_dto import (
     SupplierOut,
     InventoryLotIn,
 )
-from app.schemas.inventory_dto import StockMovementItem, PurchaseOrderDTO, PurchaseOrderCreateDTO
+from app.schemas.inventory_dto import (
+    StockMovementItem,
+    PurchaseOrderDTO,
+    PurchaseOrderCreateDTO,
+    PurchaseOrderItemUpdateDTO,
+)
 from typing import Dict, List
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -77,6 +82,24 @@ async def add_item_to_purchase_order(
     Add an item to an existing purchase order.
     """
     return await inventory_service.add_item_to_purchase_order(order_id, item)
+
+
+@router.patch("/purchase_orders/{order_id}/items/{order_item_id}", response_model=dict)
+async def update_purchase_order_item(
+    order_id: int,
+    order_item_id: int,
+    payload: PurchaseOrderItemUpdateDTO,
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Update an existing purchase order item and recalculate order total.
+    """
+    result = await inventory_service.update_purchase_order_item(
+        order_id, order_item_id, payload.model_dump(exclude_none=True)
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Purchase order item not found")
+    return result
 
 @router.delete("/purchase_orders/{order_id}/items/{order_item_id}", response_model=dict)
 async def remove_item_from_purchase_order(
