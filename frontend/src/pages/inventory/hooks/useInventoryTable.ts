@@ -4,14 +4,24 @@ import {
   fetchLotInfo,
   fetchUsedUsageLogs,
   fetchWastedUsageLogs,
+  getIngredientsStockLevels,
 } from '../../../api/inventory';
-import { InventoryItem, LotInfo, UsageLog } from '../../../interfaces/inventory';
+import {
+  InventoryItem,
+  LotInfo,
+  UsageLog,
+  IngredientStockLevel,
+} from '../../../interfaces/inventory';
 
 // ✅ 1. Main inventory list
 export function useInventoryTable() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
+
+  const [stockLevels, setStockLevels] = useState<IngredientStockLevel[]>([]);
+  const [stockLoading, setStockLoading] = useState<boolean>(true);
+  const [stockError, setStockError] = useState<Error | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -21,7 +31,15 @@ export function useInventoryTable() {
       .finally(() => setLoading(false));
   }, []);
 
-  return { inventory, loading, error };
+  useEffect(() => {
+    setStockLoading(true);
+    getIngredientsStockLevels()
+      .then(data => setStockLevels(data as IngredientStockLevel[]))
+      .catch(err => setStockError(err))
+      .finally(() => setStockLoading(false));
+  }, []);
+
+  return { inventory, loading, error, stockLevels, stockLoading, stockError };
 }
 
 // ✅ 2. Lot info (supplier, etc.)
