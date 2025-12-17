@@ -1,149 +1,181 @@
-import React, { useState, useMemo } from 'react';
-import { ScrollView, View, Text, TouchableOpacity } from 'react-native';
+import React from 'react';
+import { ScrollView, View } from 'react-native';
+import { ActivityIndicator, Card, Chip, Text, useTheme } from 'react-native-paper';
+import {
+  VictoryAxis,
+  VictoryChart,
+  VictoryLegend,
+  VictoryLine,
+  VictoryTheme,
+  VictoryVoronoiContainer,
+} from 'victory-native';
+import { useIngredientCostTrends } from './hooks/useIngredientCostTrends';
 
-interface IngredientCost {
-  id: number;
-  name: string;
-  category: string;
-  supplier: string;
-  weeklyCosts: number[];
-}
-const fakeIngredientCosts: IngredientCost[] = [
-  {
-    id: 1,
-    name: 'Tomatoes',
-    category: 'Vegetables',
-    supplier: 'Supplier A',
-    weeklyCosts: [1.2, 1.3, 1.35, 1.4, 1.38, 1.45, 1.5, 1.55, 1.52, 1.6, 1.58, 1.65],
-  },
-  {
-    id: 2,
-    name: 'Chicken Breast',
-    category: 'Meat',
-    supplier: 'Supplier B',
-    weeklyCosts: [3.5, 3.55, 3.6, 3.55, 3.7, 3.75, 3.8, 3.85, 3.9, 3.95, 4.0, 4.05],
-  },
-  {
-    id: 3,
-    name: 'Mozzarella Cheese',
-    category: 'Dairy',
-    supplier: 'Supplier C',
-    weeklyCosts: [2.1, 2.05, 2.0, 1.95, 2.0, 2.05, 2.1, 2.15, 2.2, 2.25, 2.3, 2.35],
-  },
-  {
-    id: 4,
-    name: 'Basil',
-    category: 'Herbs',
-    supplier: 'Supplier D',
-    weeklyCosts: [0.8, 0.82, 0.83, 0.85, 0.9, 0.95, 1.0, 1.05, 1.1, 1.15, 1.2, 1.25],
-  },
-];
-const percentChange = (arr: number[]) =>
-  arr.length < 2 ? 0 : ((arr[arr.length - 1] - arr[0]) / arr[0]) * 100;
-const categories = Array.from(new Set(fakeIngredientCosts.map(i => i.category)));
-const suppliers = Array.from(new Set(fakeIngredientCosts.map(i => i.supplier)));
+const colors = ['#2563eb', '#fb7185', '#22c55e', '#f59e0b', '#a855f7', '#0ea5e9'];
+const currency = (value: number) => `$${(value ?? 0).toFixed(2)}`;
 
 export default function IngredientTrends() {
-  const [category, setCategory] = useState('');
-  const [supplier, setSupplier] = useState('');
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const filtered = useMemo(
-    () =>
-      fakeIngredientCosts.filter(
-        i => (!category || i.category === category) && (!supplier || i.supplier === supplier)
-      ),
-    [category, supplier]
-  );
-  const selected = filtered.find(i => i.id === selectedId) || null;
+  const theme = useTheme();
+  const {
+    startDate,
+    endDate,
+    granularity,
+    setGranularity,
+    query,
+    plotSeries,
+    topMovers,
+    setQuickRange,
+  } = useIngredientCostTrends();
+
+  const legendData = plotSeries.slice(0, 4).map((series, idx) => ({
+    name: series.label,
+    symbol: { fill: colors[idx % colors.length] },
+  }));
+
   return (
-    <ScrollView contentContainerStyle={{ padding: 16 }}>
-      <Text style={{ fontSize: 20, fontWeight: '600', marginBottom: 12 }}>
-        Ingredient Cost Trends
-      </Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-        <View style={{ flexDirection: 'row' }}>
-          <Chip label="All Categories" active={category === ''} onPress={() => setCategory('')} />
-          {categories.map(c => (
-            <Chip key={c} label={c} active={category === c} onPress={() => setCategory(c)} />
-          ))}
-        </View>
-      </ScrollView>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-        <View style={{ flexDirection: 'row' }}>
-          <Chip label="All Suppliers" active={supplier === ''} onPress={() => setSupplier('')} />
-          {suppliers.map(s => (
-            <Chip key={s} label={s} active={supplier === s} onPress={() => setSupplier(s)} />
-          ))}
-        </View>
-      </ScrollView>
-      {filtered.map(i => {
-        const change = percentChange(i.weeklyCosts);
-        const active = i.id === selectedId;
-        return (
-          <TouchableOpacity
-            key={i.id}
-            onPress={() => setSelectedId(i.id)}
-            style={{
-              padding: 12,
-              borderWidth: 1,
-              borderColor: active ? '#2563eb' : '#ddd',
-              borderRadius: 8,
-              marginBottom: 8,
-            }}
-          >
-            <Text style={{ fontWeight: '600' }}>{i.name}</Text>
-            <Text style={{ fontSize: 12, color: '#555' }}>
-              {i.category} • {i.supplier}
+    <ScrollView contentContainerStyle={{ padding: 16, backgroundColor: theme.colors.background }}>
+      <Card style={{ marginBottom: 12 }}>
+        <Card.Content>
+          <Text variant="labelSmall" style={{ color: theme.colors.primary }}>
+            Profit & Waste Analytics
+          </Text>
+          <Text variant="headlineSmall" style={{ fontWeight: '700', marginTop: 4 }}>
+            Ingredient Cost Trends
+          </Text>
+          <Text variant="bodySmall" style={{ marginTop: 6, color: theme.colors.onSurfaceVariant }}>
+            Delivered purchase orders, grouped by {granularity}. Quick filters help you spot spikes
+            fast.
+          </Text>
+          <Text variant="bodySmall" style={{ marginTop: 6, fontWeight: '600' }}>
+            {startDate} → {endDate}
+          </Text>
+        </Card.Content>
+      </Card>
+
+      <Card style={{ marginBottom: 12 }}>
+        <Card.Content>
+          <Text variant="titleSmall" style={{ marginBottom: 8, fontWeight: '700' }}>
+            Range & granularity
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+            {[30, 60, 90].map(days => (
+              <Chip key={days} mode="outlined" onPress={() => setQuickRange(days)}>
+                Last {days}d
+              </Chip>
+            ))}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Chip
+              selected={granularity === 'daily'}
+              onPress={() => setGranularity('daily')}
+              mode={granularity === 'daily' ? 'flat' : 'outlined'}
+            >
+              Daily
+            </Chip>
+            <Chip
+              selected={granularity === 'weekly'}
+              onPress={() => setGranularity('weekly')}
+              mode={granularity === 'weekly' ? 'flat' : 'outlined'}
+            >
+              Weekly
+            </Chip>
+          </View>
+        </Card.Content>
+      </Card>
+
+      <Card style={{ marginBottom: 12 }}>
+        <Card.Content>
+          <Text variant="titleSmall" style={{ marginBottom: 12, fontWeight: '700' }}>
+            Cost over time
+          </Text>
+          {query.isLoading || query.isFetching ? (
+            <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+              <ActivityIndicator />
+              <Text variant="bodySmall" style={{ marginTop: 8 }}>
+                Loading delivered PO items…
+              </Text>
+            </View>
+          ) : plotSeries.length === 0 ? (
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              No delivered purchase order lines in this range.
             </Text>
-            <Text
+          ) : (
+            <VictoryChart
+              height={320}
+              padding={{ left: 60, right: 30, top: 30, bottom: 60 }}
+              theme={VictoryTheme.material}
+              containerComponent={
+                <VictoryVoronoiContainer
+                  labels={({ datum }) => `${datum.x}\n${currency(Number(datum.y))}`}
+                  voronoiDimension="x"
+                />
+              }
+            >
+              <VictoryLegend
+                x={40}
+                y={0}
+                orientation="horizontal"
+                gutter={12}
+                itemsPerRow={2}
+                data={legendData}
+              />
+              <VictoryAxis
+                tickFormat={t => t.slice(5)}
+                style={{ tickLabels: { angle: 0, fontSize: 10 } }}
+              />
+              <VictoryAxis
+                dependentAxis
+                tickFormat={t => `$${Number(t).toFixed(0)}`}
+                style={{ tickLabels: { fontSize: 10 } }}
+              />
+              {plotSeries.slice(0, 4).map((series, idx) => (
+                <VictoryLine
+                  key={series.label}
+                  data={series.data}
+                  x="x"
+                  y="y"
+                  interpolation="monotoneX"
+                  style={{ data: { stroke: colors[idx % colors.length], strokeWidth: 2.5 } }}
+                />
+              ))}
+            </VictoryChart>
+          )}
+        </Card.Content>
+      </Card>
+
+      <Card style={{ marginBottom: 16 }}>
+        <Card.Content>
+          <Text variant="titleSmall" style={{ marginBottom: 8, fontWeight: '700' }}>
+            Movers to watch
+          </Text>
+          {topMovers.map(mover => (
+            <View
+              key={mover.id}
               style={{
-                marginTop: 4,
-                color: change > 10 ? '#dc2626' : change < -10 ? '#16a34a' : '#111',
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingVertical: 10,
               }}
             >
-              Change 12w: {change.toFixed(1)}%
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text variant="bodyLarge" style={{ fontWeight: '700' }}>
+                  {mover.name}
+                </Text>
+              </View>
+              <Chip mode="outlined" selected={mover.changePct > 0} style={{ minWidth: 90 }}>
+                {mover.changePct >= 0 ? '+' : ''}
+                {mover.changePct.toFixed(1)}%
+              </Chip>
+            </View>
+          ))}
+          {topMovers.length === 0 && (
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Need more buckets to calculate movers.
             </Text>
-          </TouchableOpacity>
-        );
-      })}
-      {selected && (
-        <View
-          style={{
-            marginTop: 16,
-            padding: 12,
-            borderWidth: 1,
-            borderColor: '#2563eb',
-            borderRadius: 8,
-          }}
-        >
-          <Text style={{ fontWeight: '600', marginBottom: 4 }}>
-            {selected.name} Trend (last 12 weeks)
-          </Text>
-          <Text style={{ fontSize: 12, color: '#555' }}>
-            Weekly: {selected.weeklyCosts.map(v => `$${v.toFixed(2)}`).join(', ')}
-          </Text>
-          <Text style={{ marginTop: 8, fontSize: 12, fontStyle: 'italic' }}>
-            * Chart placeholder (add RN chart lib)
-          </Text>
-        </View>
-      )}
+          )}
+        </Card.Content>
+      </Card>
     </ScrollView>
-  );
-}
-
-function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={{
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        backgroundColor: active ? '#2563eb' : '#e5e7eb',
-        borderRadius: 16,
-        marginRight: 8,
-      }}
-    >
-      <Text style={{ color: active ? 'white' : '#111' }}>{label}</Text>
-    </TouchableOpacity>
   );
 }
