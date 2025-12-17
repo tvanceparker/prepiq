@@ -12,6 +12,12 @@ from app.db.models.ingredients_orm import Ingredient
 from app.db.models.purchase_order_items_orm import PurchaseOrderItem
 from app.db.models.purchase_orders_orm import PurchaseOrder
 from app.db.models.supplier_orm import Supplier
+from app.db.models.ingredient_supplier_orm import IngredientSupplier
+from app.db.models.menu_item_recipes_orm import MenuItemRecipe
+from app.db.models.menu_items_orm import MenuItem
+from app.db.models.recipe_ingredients_orm import RecipeIngredient, IngredientType
+from app.db.models.batch_recipe_ingredients_orm import BatchRecipeIngredient
+from app.db.models.menu_item_batch_usage_orm import MenuItemBatchUsage
 from app.repositories.batch_recipe_ingredients_repo import (
     BatchRecipeIngredientRepository,
 )
@@ -35,6 +41,8 @@ from app.schemas.profit_analytics_dto import (
     IngredientCostTrendPoint,
     IngredientCostTrendSeries,
     IngredientCostTrendsResponse,
+    DishProfitabilityResponse,
+    DishProfitabilityItem,
 )
 
 
@@ -191,3 +199,206 @@ class ProfitAnalyticsService:
         if granularity != "weekly":
             raise ValueError("granularity must be 'daily' or 'weekly'")
         return bucket_date - timedelta(days=bucket_date.weekday())
+
+    async def get_dish_profitability(
+        self,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> DishProfitabilityResponse:
+        # Latest PO cost per ingredient (actual_delivery_date preferred over order_date)
+        bucket_date = func.coalesce(
+            PurchaseOrder.actual_delivery_date, PurchaseOrder.order_date
+        )
+        po_ranked = (
+            select(
+                PurchaseOrderItem.ingredient_id.label("ingredient_id"),
+                PurchaseOrderItem.unit_price.label("unit_price"),
+                PurchaseOrderItem.total_item_price.label("total_item_price"),
+                PurchaseOrderItem.quantity_ordered.label("quantity_ordered"),
+                func.row_number()
+                .over(
+                    partition_by=PurchaseOrderItem.ingredient_id,
+                    order_by=bucket_date.desc(),
+                )
+                .label("rnk"),
+            )
+            .join(PurchaseOrder, PurchaseOrder.order_id == PurchaseOrderItem.order_id)
+            .where(PurchaseOrderItem.restaurant_id == self.restaurant_id)
+            .where(PurchaseOrder.restaurant_id == self.restaurant_id)
+            .subquery()
+        )
+
+        latest_cost_rows = await self.db.execute(
+            select(
+                po_ranked.c.ingredient_id,
+                po_ranked.c.unit_price,
+                po_ranked.c.total_item_price,
+                po_ranked.c.quantity_ordered,
+            ).where(po_ranked.c.rnk == 1)
+        )
+        latest_cost_map: Dict[int, float] = {}
+        for row in latest_cost_rows:
+            m = row._mapping
+            qty = float(m.get("quantity_ordered") or 0) or 0.0
+            unit_price = m.get("unit_price")
+            total_price = m.get("total_item_price")
+            unit_price_val = None
+            if unit_price is not None:
+                unit_price_val = float(unit_price)
+            elif total_price is not None and qty:
+                unit_price_val = float(total_price) / qty
+            if unit_price_val is not None:
+                latest_cost_map[m["ingredient_id"]] = unit_price_val
+
+        # Fallback: preferred/lowest supplier cost
+        supplier_rows = await self.db.execute(
+            select(
+                IngredientSupplier.ingredient_id,
+                IngredientSupplier.cost_per_unit,
+                IngredientSupplier.preferred,
+                IngredientSupplier.supplier_priority,
+            ).where(IngredientSupplier.restaurant_id == self.restaurant_id)
+        )
+        supplier_cost_map: Dict[int, float] = {}
+        for row in supplier_rows:
+            m = row._mapping
+            ing_id = m["ingredient_id"]
+            cost = float(m["cost_per_unit"])
+            preferred = bool(m.get("preferred"))
+            priority = m.get("supplier_priority") or 0
+            existing = supplier_cost_map.get(ing_id)
+            if existing is None or preferred:
+                supplier_cost_map[ing_id] = cost
+            elif priority < 0:
+                supplier_cost_map[ing_id] = cost
+
+        def ingredient_cost(ingredient_id: int) -> float:
+            if ingredient_id in latest_cost_map:
+                return latest_cost_map[ingredient_id]
+            if ingredient_id in supplier_cost_map:
+                return supplier_cost_map[ingredient_id]
+            return 0.0
+
+        # Batch recipe costs aggregated once
+        batch_rows = await self.db.execute(
+            select(
+                BatchRecipeIngredient.batch_recipe_id,
+                BatchRecipeIngredient.ingredient_id,
+                BatchRecipeIngredient.quantity_used,
+            ).where(BatchRecipeIngredient.restaurant_id == self.restaurant_id)
+        )
+        batch_costs: Dict[int, float] = defaultdict(float)
+        for row in batch_rows:
+            m = row._mapping
+            qty = float(m.get("quantity_used") or 0)
+            cost = ingredient_cost(m["ingredient_id"]) * qty
+            batch_costs[m["batch_recipe_id"]] += cost
+
+        # Recipe ingredients
+        recipe_rows = await self.db.execute(
+            select(
+                RecipeIngredient.recipe_id,
+                RecipeIngredient.reference_id,
+                RecipeIngredient.ingredient_type,
+                RecipeIngredient.quantity_used,
+            ).where(RecipeIngredient.restaurant_id == self.restaurant_id)
+        )
+        recipe_map: Dict[int, List[RecipeIngredient]] = defaultdict(list)
+        for row in recipe_rows:
+            recipe_map[row._mapping["recipe_id"]].append(row)
+
+        # Menu item -> recipes
+        menu_item_recipe_rows = await self.db.execute(
+            select(
+                MenuItemRecipe.menu_item_id,
+                MenuItemRecipe.recipe_id,
+            ).where(MenuItemRecipe.restaurant_id == self.restaurant_id)
+        )
+        item_recipes: Dict[int, List[int]] = defaultdict(list)
+        for row in menu_item_recipe_rows:
+            m = row._mapping
+            item_recipes[m["menu_item_id"]].append(m["recipe_id"])
+
+        # Menu item batch usage
+        batch_usage_rows = await self.db.execute(
+            select(
+                MenuItemBatchUsage.menu_item_id,
+                MenuItemBatchUsage.batch_recipe_id,
+                MenuItemBatchUsage.quantity_used,
+            ).where(MenuItemBatchUsage.restaurant_id == self.restaurant_id)
+        )
+        item_batches: Dict[int, List[Dict[str, float]]] = defaultdict(list)
+        for row in batch_usage_rows:
+            m = row._mapping
+            item_batches[m["menu_item_id"]].append(
+                {
+                    "batch_recipe_id": m["batch_recipe_id"],
+                    "quantity_used": float(m.get("quantity_used") or 0),
+                }
+            )
+
+        # Menu items
+        menu_items_rows = await self.db.execute(
+            select(
+                MenuItem.menu_item_id,
+                MenuItem.name,
+                MenuItem.category,
+                MenuItem.price,
+            ).where(MenuItem.restaurant_id == self.restaurant_id)
+        )
+
+        items: List[DishProfitabilityItem] = []
+        for row in menu_items_rows:
+            m = row._mapping
+            price = float(m.get("price") or 0)
+            ingredient_cost_total = 0.0
+            batch_cost_total = 0.0
+
+            # Recipes
+            for recipe_id in item_recipes.get(m["menu_item_id"], []):
+                for rec_row in recipe_map.get(recipe_id, []):
+                    rm = rec_row._mapping
+                    qty = float(rm.get("quantity_used") or 0)
+                    if rm.get("ingredient_type") == IngredientType.ingredient:
+                        ingredient_cost_total += ingredient_cost(rm.get("reference_id")) * qty
+                    elif rm.get("ingredient_type") == IngredientType.batch:
+                        batch_cost_total += batch_costs.get(rm.get("reference_id"), 0.0) * qty
+
+            # Direct batch usage on menu item
+            for batch_use in item_batches.get(m["menu_item_id"], []):
+                batch_cost_total += batch_costs.get(batch_use["batch_recipe_id"], 0.0) * batch_use[
+                    "quantity_used"
+                ]
+
+            total_food_cost = ingredient_cost_total + batch_cost_total
+            gross_margin = price - total_food_cost
+            food_cost_pct = (total_food_cost / price * 100) if price else 0.0
+
+            items.append(
+                DishProfitabilityItem(
+                    menu_item_id=m["menu_item_id"],
+                    name=m["name"],
+                    category=m.get("category"),
+                    price=round(price, 2),
+                    ingredient_cost=round(ingredient_cost_total, 2),
+                    batch_cost=round(batch_cost_total, 2),
+                    total_food_cost=round(total_food_cost, 2),
+                    gross_margin=round(gross_margin, 2),
+                    food_cost_pct=round(food_cost_pct, 2),
+                )
+            )
+
+        average_margin = 0.0
+        average_food_cost_pct = 0.0
+        if items:
+            average_margin = sum(i.gross_margin for i in items) / len(items)
+            average_food_cost_pct = sum(i.food_cost_pct for i in items) / len(items)
+
+        return DishProfitabilityResponse(
+            start_date=start_date,
+            end_date=end_date,
+            average_margin=round(average_margin, 2),
+            average_food_cost_pct=round(average_food_cost_pct, 2),
+            total_items=len(items),
+            items=items,
+        )

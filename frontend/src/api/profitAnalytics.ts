@@ -1,5 +1,9 @@
 import { api } from './index';
-import { CostGranularity, IngredientCostTrendsResponse } from '../interfaces/analytics';
+import {
+  CostGranularity,
+  IngredientCostTrendsResponse,
+  DishProfitabilityResponse,
+} from '../interfaces/analytics';
 
 export interface IngredientCostTrendsParams {
   start_date: string;
@@ -14,6 +18,21 @@ export async function getIngredientCostTrends(
 ): Promise<IngredientCostTrendsResponse> {
   const response = await api.get<IngredientCostTrendsResponse>(
     '/profit_analytics/ingredient_cost_trends',
+    { params }
+  );
+  return response.data;
+}
+
+export interface DishProfitabilityParams {
+  start_date?: string;
+  end_date?: string;
+}
+
+export async function getDishProfitability(
+  params: DishProfitabilityParams = {}
+): Promise<DishProfitabilityResponse> {
+  const response = await api.get<DishProfitabilityResponse>(
+    '/profit_analytics/dish_profitability',
     { params }
   );
   return response.data;

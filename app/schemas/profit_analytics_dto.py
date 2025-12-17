@@ -31,3 +31,27 @@ class IngredientCostTrendsResponse(BaseModel):
     end_date: date
     total_cost: float
     series: List[IngredientCostTrendSeries]
+
+
+class DishProfitabilityItem(BaseModel):
+    menu_item_id: int
+    name: str
+    category: Optional[str] = None
+    price: float
+    ingredient_cost: float
+    batch_cost: float
+    total_food_cost: float
+    gross_margin: float
+    food_cost_pct: float
+    sales_count: Optional[int] = None
+    revenue: Optional[float] = None
+    contribution_pct: Optional[float] = None
+
+
+class DishProfitabilityResponse(BaseModel):
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    average_margin: float
+    average_food_cost_pct: float
+    total_items: int
+    items: List[DishProfitabilityItem]

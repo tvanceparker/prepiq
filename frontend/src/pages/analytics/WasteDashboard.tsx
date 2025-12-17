@@ -1,233 +1,232 @@
-import React, { useState, useMemo } from 'react';
+import React from 'react';
+import { Box, Card, CardContent, Chip, Divider, Grid, LinearProgress, Stack, Typography } from '@mui/material';
 import { Line } from 'react-chartjs-2';
 import 'chart.js/auto';
+import { useWasteDashboard } from './hooks/useWasteDashboard';
 
-const fakeWasteData = [
-  {
-    id: 1,
-    type: 'Ingredient',
-    item: 'Tomatoes',
-    quantity: 5, // pounds
-    cost: 15,
-    reason: 'Prep leftovers',
-    date: '2025-06-01',
-  },
-  {
-    id: 2,
-    type: 'Spoilage',
-    item: 'Lettuce',
-    quantity: 3,
-    cost: 9,
-    reason: 'Expired inventory lot',
-    date: '2025-06-02',
-  },
-  {
-    id: 3,
-    type: 'Prep Batch',
-    item: 'Caesar Dressing',
-    quantity: 1,
-    cost: 4,
-    reason: 'Batch leftover discarded',
-    date: '2025-06-02',
-  },
-  {
-    id: 4,
-    type: 'Ingredient',
-    item: 'Chicken Breast',
-    quantity: 4,
-    cost: 40,
-    reason: 'Over portioned',
-    date: '2025-06-03',
-  },
-  {
-    id: 5,
-    type: 'Spoilage',
-    item: 'Mozzarella Cheese',
-    quantity: 2,
-    cost: 20,
-    reason: 'Expired inventory lot',
-    date: '2025-06-04',
-  },
-  {
-    id: 6,
-    type: 'Prep Batch',
-    item: 'Tomato Sauce',
-    quantity: 1.5,
-    cost: 6,
-    reason: 'Batch spoiled',
-    date: '2025-06-05',
-  },
-  {
-    id: 7,
-    type: 'Ingredient',
-    item: 'Basil',
-    quantity: 0.5,
-    cost: 3,
-    reason: 'Wilted',
-    date: '2025-06-06',
-  },
-  {
-    id: 8,
-    type: 'Prep Batch',
-    item: 'Gravy',
-    quantity: 0.7,
-    cost: 2.8,
-    reason: 'Leftover discarded',
-    date: '2025-06-06',
-  },
-];
-
-const wasteTypes = ['All', 'Ingredient', 'Prep Batch', 'Spoilage'];
+const currency = (value: number) => `$${(value ?? 0).toFixed(2)}`;
 
 function WasteDashboard() {
-  const [filterType, setFilterType] = useState('All');
-  const [startDate, setStartDate] = useState('2025-06-01');
-  const [endDate, setEndDate] = useState('2025-06-07');
-
-  // Filter waste by type and date range
-  const filteredWaste = useMemo(() => {
-    return fakeWasteData.filter(w => {
-      const dateOk =
-        new Date(w.date) >= new Date(startDate) && new Date(w.date) <= new Date(endDate);
-      const typeOk = filterType === 'All' || w.type === filterType;
-      return dateOk && typeOk;
-    });
-  }, [filterType, startDate, endDate]);
-
-  // Aggregate totals
-  const totalQuantity = filteredWaste.reduce((acc, w) => acc + w.quantity, 0);
-  const totalCost = filteredWaste.reduce((acc, w) => acc + w.cost, 0);
-
-  // Prepare data for waste trend chart by date
-  const datesInRange = [];
-  let d = new Date(startDate);
-  const e = new Date(endDate);
-  while (d <= e) {
-    datesInRange.push(d.toISOString().split('T')[0]);
-    d.setDate(d.getDate() + 1);
-  }
-
-  const wasteByDate = datesInRange.map(date => {
-    return filteredWaste.filter(w => w.date === date).reduce((acc, w) => acc + w.quantity, 0);
-  });
+  const {
+    startDate,
+    endDate,
+    setStartDate,
+    setEndDate,
+    typeFilter,
+    setTypeFilter,
+    query,
+    data,
+    filteredTrend,
+    topInsights,
+    setQuickRange,
+  } = useWasteDashboard();
 
   const chartData = {
-    labels: datesInRange,
+    labels: filteredTrend.map(p => p.bucket_start),
     datasets: [
       {
-        label: 'Waste Quantity (lbs)',
-        data: wasteByDate,
-        fill: false,
-        borderColor: '#3b82f6',
+        label: 'Waste cost ($)',
+        data: filteredTrend.map(p => p.total_cost),
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239,68,68,0.2)',
         tension: 0.3,
+        fill: true,
       },
     ],
   };
 
+  const loading = query.isLoading || query.isFetching;
+
   return (
-    <div className="max-w-6xl mx-auto p-6 bg-white rounded-lg shadow-md">
-      <h1 className="text-3xl font-bold mb-6">Waste Dashboard</h1>
+    <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
+      <Typography variant="h4" fontWeight={700} gutterBottom>
+        Waste Dashboard
+      </Typography>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-4 mb-6 items-center">
-        <label className="flex flex-col">
-          <span className="text-sm font-semibold">Waste Type</span>
-          <select
-            className="border rounded px-3 py-1"
-            value={filterType}
-            onChange={e => setFilterType(e.target.value)}
-          >
-            {wasteTypes.map(type => (
-              <option key={type} value={type}>
-                {type}
-              </option>
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Stack direction="row" spacing={1} flexWrap="wrap" rowGap={1} alignItems="center">
+            {[30, 60, 90].map(days => (
+              <Chip key={days} label={`Last ${days}d`} variant="outlined" onClick={() => setQuickRange(days)} />
             ))}
-          </select>
-        </label>
+            <Chip
+              label="All"
+              color={typeFilter === 'all' ? 'primary' : 'default'}
+              variant={typeFilter === 'all' ? 'filled' : 'outlined'}
+              onClick={() => setTypeFilter('all')}
+            />
+            {data?.by_type.map(t => (
+              <Chip
+                key={t.key}
+                label={t.label}
+                color={typeFilter === t.usage_type ? 'primary' : 'default'}
+                variant={typeFilter === t.usage_type ? 'filled' : 'outlined'}
+                onClick={() => setTypeFilter(t.usage_type || 'all')}
+              />
+            ))}
+            <Box sx={{ flexGrow: 1 }} />
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+          </Stack>
+        </CardContent>
+      </Card>
 
-        <label className="flex flex-col">
-          <span className="text-sm font-semibold">Start Date</span>
-          <input
-            type="date"
-            className="border rounded px-3 py-1"
-            value={startDate}
-            max={endDate}
-            onChange={e => setStartDate(e.target.value)}
-          />
-        </label>
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Typography variant="subtitle2" color="primary" gutterBottom>
+                Total waste cost
+              </Typography>
+              <Typography variant="h5" fontWeight={700}>
+                {currency(data?.total_waste_cost ?? 0)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Avg daily {currency(data?.average_daily_cost ?? 0)}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Typography variant="subtitle2" color="primary" gutterBottom>
+                Total waste qty
+              </Typography>
+              <Typography variant="h5" fontWeight={700}>
+                {(data?.total_waste_quantity ?? 0).toFixed(2)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {startDate} → {endDate}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Typography variant="subtitle2" color="primary" gutterBottom>
+                Top driver
+              </Typography>
+              <Typography variant="body1" fontWeight={700}>
+                {data?.top_ingredients?.[0]?.label || 'Pending data'}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {data?.top_ingredients?.[0]
+                  ? `${currency(data.top_ingredients[0].total_cost)} cost`
+                  : 'Add waste logs to see insights'}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
-        <label className="flex flex-col">
-          <span className="text-sm font-semibold">End Date</span>
-          <input
-            type="date"
-            className="border rounded px-3 py-1"
-            value={endDate}
-            min={startDate}
-            onChange={e => setEndDate(e.target.value)}
-          />
-        </label>
-      </div>
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+            <Typography variant="h6">Waste trend</Typography>
+            {loading && <LinearProgress sx={{ width: 120 }} />}
+          </Stack>
+          {filteredTrend.length === 0 ? (
+            <Typography color="text.secondary">No waste logged for this range.</Typography>
+          ) : (
+            <Line data={chartData} />
+          )}
+        </CardContent>
+      </Card>
 
-      {/* Summary cards */}
-      <div className="flex gap-6 mb-8">
-        <div className="flex-1 p-4 bg-red-100 rounded shadow">
-          <h2 className="text-xl font-semibold text-red-700 mb-2">Total Waste (lbs)</h2>
-          <p className="text-3xl font-bold text-red-800">{totalQuantity.toFixed(1)}</p>
-        </div>
-        <div className="flex-1 p-4 bg-red-100 rounded shadow">
-          <h2 className="text-xl font-semibold text-red-700 mb-2">Total Waste Cost ($)</h2>
-          <p className="text-3xl font-bold text-red-800">${totalCost.toFixed(2)}</p>
-        </div>
-      </div>
-
-      {/* Waste trend chart */}
-      <div className="mb-8">
-        <h2 className="text-xl font-semibold mb-4">Waste Trend (Quantity over time)</h2>
-        <Line data={chartData} />
-      </div>
-
-      {/* Waste entries table */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">Waste Details</h2>
-        <div className="overflow-x-auto border rounded shadow">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-red-50">
-              <tr>
-                <th className="px-4 py-2 text-left text-sm font-semibold text-red-700">Date</th>
-                <th className="px-4 py-2 text-left text-sm font-semibold text-red-700">Type</th>
-                <th className="px-4 py-2 text-left text-sm font-semibold text-red-700">Item</th>
-                <th className="px-4 py-2 text-right text-sm font-semibold text-red-700">
-                  Quantity (lbs)
-                </th>
-                <th className="px-4 py-2 text-right text-sm font-semibold text-red-700">
-                  Cost ($)
-                </th>
-                <th className="px-4 py-2 text-left text-sm font-semibold text-red-700">Reason</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-red-200">
-              {filteredWaste.map(({ id, date, type, item, quantity, cost, reason }) => (
-                <tr key={id} className="hover:bg-red-50">
-                  <td className="px-4 py-2 whitespace-nowrap">{date}</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{type}</td>
-                  <td className="px-4 py-2 whitespace-nowrap">{item}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-right">{quantity.toFixed(1)}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-right">${cost.toFixed(2)}</td>
-                  <td className="px-4 py-2">{reason}</td>
-                </tr>
-              ))}
-              {filteredWaste.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="text-center py-6 text-gray-500">
-                    No waste records found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                By type
+              </Typography>
+              <Stack spacing={1} divider={<Divider flexItem />}>
+                {(data?.by_type || []).map(row => (
+                  <Stack key={row.key} direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography>{row.label}</Typography>
+                    <Typography color="text.secondary">
+                      {currency(row.total_cost)} · {row.total_quantity.toFixed(2)}
+                    </Typography>
+                  </Stack>
+                ))}
+                {!data?.by_type?.length && (
+                  <Typography color="text.secondary">No data.</Typography>
+                )}
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Top ingredients
+              </Typography>
+              <Stack spacing={1} divider={<Divider flexItem />}>
+                {(data?.top_ingredients || []).map(row => (
+                  <Stack key={row.key} direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography>{row.label}</Typography>
+                    <Typography color="text.secondary">
+                      {currency(row.total_cost)} · {row.total_quantity.toFixed(2)}
+                    </Typography>
+                  </Stack>
+                ))}
+                {!data?.top_ingredients?.length && (
+                  <Typography color="text.secondary">No data.</Typography>
+                )}
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Top reasons
+              </Typography>
+              <Stack spacing={1} divider={<Divider flexItem />}>
+                {(data?.top_reasons || []).map(row => (
+                  <Stack key={row.key} direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography>{row.label}</Typography>
+                    <Typography color="text.secondary">
+                      {currency(row.total_cost)} · {row.total_quantity.toFixed(2)}
+                    </Typography>
+                  </Stack>
+                ))}
+                {!data?.top_reasons?.length && (
+                  <Typography color="text.secondary">No data.</Typography>
+                )}
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Insights & optimization
+              </Typography>
+              <Stack spacing={1} divider={<Divider flexItem />}>
+                {topInsights.map((insight, idx) => (
+                  <Box key={idx}>
+                    <Typography fontWeight={700}>{insight.title}</Typography>
+                    <Typography color="text.secondary">{insight.detail}</Typography>
+                    {insight.action && (
+                      <Typography variant="caption" color="primary">
+                        {insight.action}
+                      </Typography>
+                    )}
+                  </Box>
+                ))}
+                {!topInsights.length && <Typography color="text.secondary">No insights yet.</Typography>}
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
   );
 }
 

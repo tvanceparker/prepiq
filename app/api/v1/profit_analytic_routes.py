@@ -6,7 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.dependencies import get_profit_analytics_service
-from app.schemas.profit_analytics_dto import IngredientCostTrendsResponse
+from app.schemas.profit_analytics_dto import IngredientCostTrendsResponse, DishProfitabilityResponse
 from app.services.profit_analytics_service import ProfitAnalyticsService
 from app.utils.logger_helpers import log_route
 
@@ -46,4 +46,23 @@ async def ingredient_cost_trends(
         granularity=granularity,  # type: ignore[arg-type]
         ingredient_ids=ingredient_ids,
         supplier_ids=supplier_ids,
+    )
+
+
+@router.get(
+    "/dish_profitability",
+    response_model=DishProfitabilityResponse,
+    summary="Per-dish food cost and margin",
+)
+@log_route("Get Dish Profitability")
+async def dish_profitability(
+    start_date: Optional[date] = Query(None, description="Optional inclusive start date"),
+    end_date: Optional[date] = Query(None, description="Optional inclusive end date"),
+    profit_analytics_service: ProfitAnalyticsService = Depends(
+        get_profit_analytics_service
+    ),
+):
+    return await profit_analytics_service.get_dish_profitability(
+        start_date=start_date,
+        end_date=end_date,
     )

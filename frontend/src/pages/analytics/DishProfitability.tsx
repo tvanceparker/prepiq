@@ -1,212 +1,287 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
+import {
+  Alert,
+  Autocomplete,
+  Box,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Grid,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@mui/material';
+import { useDishProfitability } from './hooks/useDishProfitability';
 
-const fakeDishProfitData = [
-  {
-    id: 1,
-    name: 'Margherita Pizza',
-    category: 'Pizza',
-    salesCount: 120,
-    salesRevenue: 2400,
-    costOfIngredients: 900,
-    prepCost: 300,
-  },
-  {
-    id: 2,
-    name: 'Caesar Salad',
-    category: 'Salads',
-    salesCount: 80,
-    salesRevenue: 1200,
-    costOfIngredients: 600,
-    prepCost: 150,
-  },
-  {
-    id: 3,
-    name: 'BBQ Wings',
-    category: 'Appetizers',
-    salesCount: 50,
-    salesRevenue: 1000,
-    costOfIngredients: 550,
-    prepCost: 200,
-  },
-  {
-    id: 4,
-    name: 'Veggie Burger',
-    category: 'Burgers',
-    salesCount: 30,
-    salesRevenue: 600,
-    costOfIngredients: 420,
-    prepCost: 120,
-  },
-  {
-    id: 5,
-    name: 'Chocolate Cake',
-    category: 'Desserts',
-    salesCount: 25,
-    salesRevenue: 375,
-    costOfIngredients: 225,
-    prepCost: 75,
-  },
-  // Add more dishes as needed
-];
+const currency = (value: number) =>
+  `$${(value ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
-// Calculate profit and margin for each dish
-const calculateDishProfit = dish => {
-  const totalCost = dish.costOfIngredients + dish.prepCost;
-  const profit = dish.salesRevenue - totalCost;
-  const profitMargin = dish.salesRevenue > 0 ? (profit / dish.salesRevenue) * 100 : 0;
-  return { profit, profitMargin };
-};
-
-const uniqueCategories = [...new Set(fakeDishProfitData.map(d => d.category))];
+function Stat({ label, value, helper }: { label: string; value: string; helper?: string }) {
+  return (
+    <Card sx={{ height: '100%' }}>
+      <CardContent>
+        <Typography variant="body2" color="text.secondary">
+          {label}
+        </Typography>
+        <Typography variant="h5" sx={{ fontWeight: 700, mt: 1 }}>
+          {value}
+        </Typography>
+        {helper && (
+          <Typography variant="caption" color="text.secondary">
+            {helper}
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function DishProfitability() {
-  const [filters, setFilters] = useState({
-    category: '',
-    minSalesCount: 0,
-    searchTerm: '',
-  });
+  const {
+    startDate,
+    endDate,
+    setStartDate,
+    setEndDate,
+    search,
+    setSearch,
+    category,
+    setCategory,
+    sortKey,
+    setSortKey,
+    query,
+    items,
+    categories,
+    summary,
+    topBottom,
+    setQuickRange,
+  } = useDishProfitability();
 
-  const filteredDishes = useMemo(() => {
-    return fakeDishProfitData.filter(dish => {
-      const matchesCategory = filters.category ? dish.category === filters.category : true;
-      const matchesSales = dish.salesCount >= filters.minSalesCount;
-      const matchesSearch =
-        filters.searchTerm === '' ||
-        dish.name.toLowerCase().includes(filters.searchTerm.toLowerCase());
-      return matchesCategory && matchesSales && matchesSearch;
-    });
-  }, [filters]);
-
-  // Aggregate stats
-  const totalProfit = filteredDishes
-    .reduce((sum, d) => sum + calculateDishProfit(d).profit, 0)
-    .toFixed(2);
-  const avgMargin =
-    filteredDishes.length > 0
-      ? (
-          filteredDishes.reduce((sum, d) => sum + calculateDishProfit(d).profitMargin, 0) /
-          filteredDishes.length
-        ).toFixed(1)
-      : 0;
-
-  // Handlers
-  const handleFilterChange = field => e => {
-    const value = field === 'minSalesCount' ? Number(e.target.value) : e.target.value;
-    setFilters(f => ({ ...f, [field]: value }));
-  };
-
+  const isLoading = query.isLoading || query.isFetching;
   return (
-    <div className="max-w-7xl mx-auto p-6 bg-white rounded shadow-md">
-      <h1 className="text-3xl font-bold mb-6">Dish Profitability</h1>
+    <Box sx={{ p: 3, maxWidth: 1300, mx: 'auto' }}>
+      <Stack spacing={3}>
+        <Card sx={{ borderRadius: 3, boxShadow: '0 20px 60px rgba(15,23,42,0.12)', overflow: 'hidden' }}>
+          <CardContent>
+            <Typography variant="overline" color="primary" sx={{ letterSpacing: 1.2 }}>
+              Profit & Waste Analytics
+            </Typography>
+            <Typography variant="h4" sx={{ fontWeight: 800 }}>
+              Dish Profitability
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
+              Latest food cost per dish using the most recent delivered purchase order price per ingredient and batch recipe costs.
+            </Typography>
+          </CardContent>
+        </Card>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-4 mb-6 items-center">
-        <select
-          value={filters.category}
-          onChange={handleFilterChange('category')}
-          className="border rounded px-3 py-2"
-          aria-label="Filter by category"
-        >
-          <option value="">All Categories</option>
-          {uniqueCategories.map(cat => (
-            <option key={cat} value={cat}>
-              {cat}
-            </option>
-          ))}
-        </select>
+        <Card sx={{ borderRadius: 3 }}>
+          <CardContent>
+            <Stack spacing={2}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
+                <TextField
+                  label="Start date"
+                  type="date"
+                  value={startDate || ''}
+                  onChange={e => setStartDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  size="small"
+                />
+                <TextField
+                  label="End date"
+                  type="date"
+                  value={endDate || ''}
+                  onChange={e => setEndDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  size="small"
+                />
+                <Stack direction="row" spacing={1}>
+                  {[30, 60, 90].map(days => (
+                    <Chip key={days} label={`Last ${days}d`} variant="outlined" onClick={() => setQuickRange(days)} />
+                  ))}
+                </Stack>
+                <TextField
+                  label="Search dishes"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  size="small"
+                  sx={{ minWidth: 220 }}
+                />
+              </Stack>
 
-        <input
-          type="number"
-          min={0}
-          value={filters.minSalesCount}
-          onChange={handleFilterChange('minSalesCount')}
-          className="border rounded px-3 py-2 w-32"
-          placeholder="Min Sales Count"
-          aria-label="Minimum sales count"
-        />
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
+                <Autocomplete
+                  options={categories}
+                  value={category}
+                  onChange={(_, val) => setCategory(val || '')}
+                  renderInput={params => <TextField {...params} label="Category" placeholder="All" size="small" />}
+                  sx={{ minWidth: 220, maxWidth: 320 }}
+                />
+                <ToggleButtonGroup
+                  exclusive
+                  value={sortKey}
+                  onChange={(_, val) => val && setSortKey(val)}
+                  size="small"
+                  color="primary"
+                >
+                  <ToggleButton value="margin">Sort by margin</ToggleButton>
+                  <ToggleButton value="foodCost">Sort by food cost %</ToggleButton>
+                  <ToggleButton value="revenue">Sort by revenue</ToggleButton>
+                </ToggleButtonGroup>
+              </Stack>
+            </Stack>
+          </CardContent>
+        </Card>
 
-        <input
-          type="text"
-          value={filters.searchTerm}
-          onChange={handleFilterChange('searchTerm')}
-          className="border rounded px-3 py-2 flex-grow min-w-[200px]"
-          placeholder="Search dish name..."
-          aria-label="Search dish name"
-        />
-      </div>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={4}>
+            <Stat label="Avg margin" value={currency(summary.avgMargin)} helper="Price - food cost" />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Stat label="Avg food cost %" value={`${summary.avgFoodCostPct.toFixed(1)}%`} helper="Across listed dishes" />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Stat label="Dishes" value={`${items.length}`} helper="Filtered results" />
+          </Grid>
+        </Grid>
 
-      {/* Summary */}
-      <div className="mb-6 text-lg font-semibold flex flex-wrap gap-6">
-        <div>
-          Total Profit: <span className="text-green-600">${totalProfit}</span>
-        </div>
-        <div>
-          Average Profit Margin: <span className="text-green-600">{avgMargin}%</span>
-        </div>
-        <div>Dishes Analyzed: {filteredDishes.length}</div>
-      </div>
-
-      {/* Table */}
-      <div className="overflow-x-auto rounded border border-gray-300">
-        <table className="min-w-full table-auto border-collapse border border-gray-300">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="border border-gray-300 px-3 py-2 text-left">Dish</th>
-              <th className="border border-gray-300 px-3 py-2 text-left">Category</th>
-              <th className="border border-gray-300 px-3 py-2 text-right">Sales Count</th>
-              <th className="border border-gray-300 px-3 py-2 text-right">Revenue ($)</th>
-              <th className="border border-gray-300 px-3 py-2 text-right">Cost ($)</th>
-              <th className="border border-gray-300 px-3 py-2 text-right">Profit ($)</th>
-              <th className="border border-gray-300 px-3 py-2 text-right">Profit Margin (%)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredDishes.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="text-center py-4">
-                  No dishes match the criteria.
-                </td>
-              </tr>
-            ) : (
-              filteredDishes.map(dish => {
-                const { profit, profitMargin } = calculateDishProfit(dish);
-                const cost = dish.costOfIngredients + dish.prepCost;
-                return (
-                  <tr
-                    key={dish.id}
-                    className={`hover:bg-gray-50 ${
-                      profitMargin < 10
-                        ? 'bg-red-100'
-                        : profitMargin >= 10 && profitMargin < 20
-                          ? 'bg-yellow-100'
-                          : 'bg-green-100'
-                    }`}
-                  >
-                    <td className="border border-gray-300 px-3 py-1">{dish.name}</td>
-                    <td className="border border-gray-300 px-3 py-1">{dish.category}</td>
-                    <td className="border border-gray-300 px-3 py-1 text-right">
-                      {dish.salesCount}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-1 text-right">
-                      ${dish.salesRevenue.toFixed(2)}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-1 text-right">
-                      ${cost.toFixed(2)}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-1 text-right">
-                      ${profit.toFixed(2)}
-                    </td>
-                    <td className="border border-gray-300 px-3 py-1 text-right">
-                      {profitMargin.toFixed(1)}%
-                    </td>
-                  </tr>
-                );
-              })
+        <Card sx={{ borderRadius: 3 }}>
+          <CardContent>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+              Margin table
+            </Typography>
+            {query.isError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {query.error instanceof Error ? query.error.message : 'Unable to load dish profitability.'}
+              </Alert>
             )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+            {isLoading ? (
+              <Stack alignItems="center" sx={{ py: 6 }}>
+                <CircularProgress />
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Calculating food costs…
+                </Typography>
+              </Stack>
+            ) : (
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Dish</TableCell>
+                      <TableCell>Category</TableCell>
+                      <TableCell align="right">Price</TableCell>
+                      <TableCell align="right">Food cost</TableCell>
+                      <TableCell align="right">Food cost %</TableCell>
+                      <TableCell align="right">Margin</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {items.map(item => (
+                      <TableRow key={item.menu_item_id} hover>
+                        <TableCell>{item.name}</TableCell>
+                        <TableCell>{item.category || '—'}</TableCell>
+                        <TableCell align="right">{currency(item.price)}</TableCell>
+                        <TableCell align="right">{currency(item.total_food_cost)}</TableCell>
+                        <TableCell align="right">{item.food_cost_pct.toFixed(1)}%</TableCell>
+                        <TableCell align="right">{currency(item.gross_margin)}</TableCell>
+                      </TableRow>
+                    ))}
+                    {items.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6}>
+                          <Typography variant="body2" color="text.secondary">
+                            No dishes found for the selected filters.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <Card sx={{ borderRadius: 3 }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+                  Top performers
+                </Typography>
+                <Stack spacing={1.25}>
+                  {topBottom.top.map(item => (
+                    <Stack key={item.menu_item_id} direction="row" justifyContent="space-between" alignItems="center">
+                      <Box>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                          {item.name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {item.category || 'Uncategorized'}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ textAlign: 'right' }}>
+                        <Typography variant="subtitle2">{currency(item.gross_margin)}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Food cost {item.food_cost_pct.toFixed(1)}%
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  ))}
+                  {topBottom.top.length === 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      No dishes available.
+                    </Typography>
+                  )}
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Card sx={{ borderRadius: 3 }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+                  Watchlist (lowest margin)
+                </Typography>
+                <Stack spacing={1.25}>
+                  {topBottom.bottom.map(item => (
+                    <Stack key={item.menu_item_id} direction="row" justifyContent="space-between" alignItems="center">
+                      <Box>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                          {item.name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {item.category || 'Uncategorized'}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ textAlign: 'right' }}>
+                        <Typography variant="subtitle2">{currency(item.gross_margin)}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Food cost {item.food_cost_pct.toFixed(1)}%
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  ))}
+                  {topBottom.bottom.length === 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      No dishes available.
+                    </Typography>
+                  )}
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </Stack>
+    </Box>
   );
 }
 

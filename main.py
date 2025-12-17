@@ -14,6 +14,7 @@ from app.api.v1 import (
     dashboard_routes,
     sales_forecast_routes,
     profit_analytic_routes,
+    waste_analytics_routes,
     prep_routes,
     eod_routes,
     auth_routes,
@@ -137,6 +138,7 @@ app.include_router(orders_routes.router, prefix="/api/v1")
 app.include_router(team_routes.router, prefix="/api/v1")
 app.include_router(dashboard_routes.router, prefix="/api/v1")
 app.include_router(profit_analytic_routes.router, prefix="/api/v1")
+app.include_router(waste_analytics_routes.router, prefix="/api/v1")
 app.include_router(prep_routes.router, prefix="/api/v1")
 app.include_router(eod_routes.router, prefix="/api/v1")
 app.include_router(admin_routes.router, prefix="/api/v1")

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CostGranularity, IngredientCostTrendsResponse } from '../../../interfaces/analytics';
 import { getIngredientCostTrends } from '../../../api/analytics';
@@ -30,20 +30,43 @@ export function useIngredientCostTrends() {
     () =>
       (data?.series || []).map(series => ({
         ...series,
+        seriesKey: `${series.ingredient_id}-${series.supplier_id ?? 'none'}`,
         label: `${series.ingredient_name}${
           series.supplier_name ? ` (${series.supplier_name})` : ''
         }`,
+        totalCost: series.points.reduce((sum, p) => sum + p.total_cost, 0),
       })),
     [data]
   );
 
+  const [selectedSeriesKeys, setSelectedSeriesKeys] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!labeledSeries.length || selectedSeriesKeys.length) return;
+    const topByCost = [...labeledSeries]
+      .sort((a, b) => b.totalCost - a.totalCost)
+      .slice(0, 4)
+      .map(series => series.seriesKey);
+    setSelectedSeriesKeys(topByCost);
+  }, [labeledSeries, selectedSeriesKeys.length]);
+
+  const toggleSeries = (seriesKey: string) => {
+    setSelectedSeriesKeys(prev =>
+      prev.includes(seriesKey)
+        ? prev.filter(key => key !== seriesKey)
+        : [...prev, seriesKey].slice(-6)
+    );
+  };
+
   const plotSeries = useMemo(
     () =>
-      labeledSeries.map(series => ({
-        label: series.label,
-        data: series.points.map(point => ({ x: point.bucket_start, y: point.total_cost })),
-      })),
-    [labeledSeries]
+      labeledSeries
+        .filter(series => selectedSeriesKeys.includes(series.seriesKey))
+        .map(series => ({
+          label: series.label,
+          data: series.points.map(point => ({ x: point.bucket_start, y: point.total_cost })),
+        })),
+    [labeledSeries, selectedSeriesKeys]
   );
 
   const topMovers = useMemo(() => {
@@ -85,5 +108,7 @@ export function useIngredientCostTrends() {
     plotSeries,
     topMovers,
     setQuickRange,
+    selectedSeriesKeys,
+    toggleSeries,
   };
 }

@@ -25,6 +25,9 @@ export default function IngredientTrends() {
     plotSeries,
     topMovers,
     setQuickRange,
+    labeledSeries,
+    selectedSeriesKeys,
+    toggleSeries,
   } = useIngredientCostTrends();
 
   const legendData = plotSeries.slice(0, 4).map((series, idx) => ({
@@ -86,6 +89,31 @@ export default function IngredientTrends() {
       <Card style={{ marginBottom: 12 }}>
         <Card.Content>
           <Text variant="titleSmall" style={{ marginBottom: 12, fontWeight: '700' }}>
+            Ingredients to plot
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+            {labeledSeries.slice(0, 10).map(series => (
+              <Chip
+                key={series.seriesKey}
+                mode={selectedSeriesKeys.includes(series.seriesKey) ? 'flat' : 'outlined'}
+                selected={selectedSeriesKeys.includes(series.seriesKey)}
+                onPress={() => toggleSeries(series.seriesKey)}
+              >
+                {series.label}
+              </Chip>
+            ))}
+            {labeledSeries.length === 0 && (
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                Load data to pick ingredients.
+              </Text>
+            )}
+          </View>
+        </Card.Content>
+      </Card>
+
+      <Card style={{ marginBottom: 12 }}>
+        <Card.Content>
+          <Text variant="titleSmall" style={{ marginBottom: 12, fontWeight: '700' }}>
             Cost over time
           </Text>
           {query.isLoading || query.isFetching ? (
@@ -128,7 +156,7 @@ export default function IngredientTrends() {
                 tickFormat={t => `$${Number(t).toFixed(0)}`}
                 style={{ tickLabels: { fontSize: 10 } }}
               />
-              {plotSeries.slice(0, 4).map((series, idx) => (
+              {plotSeries.map((series, idx) => (
                 <VictoryLine
                   key={series.label}
                   data={series.data}

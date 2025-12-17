@@ -1,184 +1,194 @@
-import React, { useState, useMemo } from 'react';
-import { ScrollView, View, Text, TextInput } from 'react-native';
+import React from 'react';
+import { ScrollView, View } from 'react-native';
+import { ActivityIndicator, Card, Chip, ProgressBar, Text, TextInput, useTheme } from 'react-native-paper';
+import { useWasteDashboard } from './hooks/useWasteDashboard';
 
-interface WasteItem {
-  id: number;
-  type: string;
-  item: string;
-  quantity: number;
-  cost: number;
-  reason: string;
-  date: string;
-}
-const data: WasteItem[] = [
-  {
-    id: 1,
-    type: 'Ingredient',
-    item: 'Tomatoes',
-    quantity: 5,
-    cost: 15,
-    reason: 'Prep leftovers',
-    date: '2025-06-01',
-  },
-  {
-    id: 2,
-    type: 'Spoilage',
-    item: 'Lettuce',
-    quantity: 3,
-    cost: 9,
-    reason: 'Expired',
-    date: '2025-06-02',
-  },
-  {
-    id: 3,
-    type: 'Prep Batch',
-    item: 'Caesar Dressing',
-    quantity: 1,
-    cost: 4,
-    reason: 'Leftover',
-    date: '2025-06-02',
-  },
-  {
-    id: 4,
-    type: 'Ingredient',
-    item: 'Chicken Breast',
-    quantity: 4,
-    cost: 40,
-    reason: 'Over portioned',
-    date: '2025-06-03',
-  },
-  {
-    id: 5,
-    type: 'Spoilage',
-    item: 'Mozzarella',
-    quantity: 2,
-    cost: 20,
-    reason: 'Expired',
-    date: '2025-06-04',
-  },
-  {
-    id: 6,
-    type: 'Prep Batch',
-    item: 'Tomato Sauce',
-    quantity: 1.5,
-    cost: 6,
-    reason: 'Spoiled',
-    date: '2025-06-05',
-  },
-];
-const wasteTypes = ['All', 'Ingredient', 'Prep Batch', 'Spoilage'];
+const currency = (value: number) => `$${(value ?? 0).toFixed(2)}`;
 
 export default function WasteDashboard() {
-  const [filterType, setFilterType] = useState('All');
-  const [startDate, setStartDate] = useState('2025-06-01');
-  const [endDate, setEndDate] = useState('2025-06-07');
-  const filtered = useMemo(
-    () =>
-      data.filter(
-        w =>
-          (filterType === 'All' || w.type === filterType) &&
-          new Date(w.date) >= new Date(startDate) &&
-          new Date(w.date) <= new Date(endDate)
-      ),
-    [filterType, startDate, endDate]
-  );
-  const totalQty = filtered.reduce((s, w) => s + w.quantity, 0);
-  const totalCost = filtered.reduce((s, w) => s + w.cost, 0);
-  return (
-    <ScrollView contentContainerStyle={{ padding: 16 }}>
-      <Text style={{ fontSize: 20, fontWeight: '600', marginBottom: 12 }}>Waste Dashboard</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-        <View style={{ flexDirection: 'row' }}>
-          {wasteTypes.map(t => (
-            <Chip key={t} label={t} active={filterType === t} onPress={() => setFilterType(t)} />
-          ))}
-        </View>
-      </ScrollView>
-      <View style={{ flexDirection: 'row', marginBottom: 12 }}>
-        <TextInput
-          value={startDate}
-          onChangeText={setStartDate}
-          style={{
-            flex: 1,
-            borderWidth: 1,
-            borderColor: '#ddd',
-            borderRadius: 6,
-            padding: 8,
-            marginRight: 8,
-          }}
-        />
-        <TextInput
-          value={endDate}
-          onChangeText={setEndDate}
-          style={{ flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 8 }}
-        />
-      </View>
-      <View style={{ flexDirection: 'row', marginBottom: 12 }}>
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: '#fee2e2',
-            padding: 12,
-            borderRadius: 8,
-            marginRight: 8,
-          }}
-        >
-          <Text style={{ fontWeight: '600', color: '#991b1b' }}>Total Waste (lbs)</Text>
-          <Text style={{ fontSize: 22, fontWeight: '700', color: '#b91c1c' }}>
-            {totalQty.toFixed(1)}
-          </Text>
-        </View>
-        <View style={{ flex: 1, backgroundColor: '#fee2e2', padding: 12, borderRadius: 8 }}>
-          <Text style={{ fontWeight: '600', color: '#991b1b' }}>Total Waste Cost ($)</Text>
-          <Text style={{ fontSize: 22, fontWeight: '700', color: '#b91c1c' }}>
-            ${totalCost.toFixed(2)}
-          </Text>
-        </View>
-      </View>
-      <View
-        style={{
-          padding: 12,
-          borderWidth: 1,
-          borderColor: '#ddd',
-          borderRadius: 8,
-          marginBottom: 16,
-        }}
-      >
-        <Text style={{ fontWeight: '600', marginBottom: 4 }}>Waste Trend</Text>
-        <Text style={{ fontSize: 12, color: '#555' }}>* Chart placeholder</Text>
-      </View>
-      {filtered.map(w => (
-        <View key={w.id} style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
-          <Text style={{ fontWeight: '600' }}>
-            {w.date} - {w.item} ({w.type})
-          </Text>
-          <Text style={{ fontSize: 12, color: '#555' }}>
-            Qty: {w.quantity.toFixed(1)} Cost: ${w.cost.toFixed(2)}
-          </Text>
-          <Text style={{ fontSize: 12 }}>{w.reason}</Text>
-        </View>
-      ))}
-      {filtered.length === 0 && (
-        <Text style={{ textAlign: 'center', marginTop: 20, color: '#666' }}>No waste records.</Text>
-      )}
-    </ScrollView>
-  );
-}
+  const theme = useTheme();
+  const {
+    startDate,
+    endDate,
+    setStartDate,
+    setEndDate,
+    typeFilter,
+    setTypeFilter,
+    query,
+    data,
+    insights,
+    filteredTrend,
+    setQuickRange,
+  } = useWasteDashboard();
 
-function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const loading = query.isLoading || query.isFetching;
+
   return (
-    <Text
-      onPress={onPress}
-      style={{
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        backgroundColor: active ? '#dc2626' : '#f3f4f6',
-        color: active ? 'white' : '#111',
-        borderRadius: 16,
-        marginRight: 8,
-      }}
-    >
-      {label}
-    </Text>
+    <ScrollView contentContainerStyle={{ padding: 16, backgroundColor: theme.colors.background }}>
+      <Card style={{ marginBottom: 12 }}>
+        <Card.Content>
+          <Text variant="labelSmall" style={{ color: theme.colors.primary }}>
+            Waste Analytics
+          </Text>
+          <Text variant="headlineSmall" style={{ fontWeight: '700', marginTop: 4 }}>
+            Waste Dashboard
+          </Text>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            {startDate} → {endDate}
+          </Text>
+        </Card.Content>
+      </Card>
+
+      <Card style={{ marginBottom: 12 }}>
+        <Card.Content>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {[30, 60, 90].map(days => (
+              <Chip key={days} mode="outlined" onPress={() => setQuickRange(days)}>
+                Last {days}d
+              </Chip>
+            ))}
+            {(data?.by_type || []).map(t => (
+              <Chip
+                key={t.key}
+                mode={typeFilter === t.usage_type ? 'flat' : 'outlined'}
+                selected={typeFilter === t.usage_type}
+                onPress={() => setTypeFilter(t.usage_type || 'all')}
+              >
+                {t.label}
+              </Chip>
+            ))}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+            <TextInput
+              mode="outlined"
+              label="Start"
+              value={startDate}
+              onChangeText={setStartDate}
+              style={{ flex: 1 }}
+            />
+            <TextInput
+              mode="outlined"
+              label="End"
+              value={endDate}
+              onChangeText={setEndDate}
+              style={{ flex: 1 }}
+            />
+          </View>
+        </Card.Content>
+      </Card>
+
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+        <Card style={{ flex: 1 }}>
+          <Card.Content>
+            <Text variant="labelSmall" style={{ color: theme.colors.primary }}>
+              Waste cost
+            </Text>
+            <Text variant="headlineSmall" style={{ fontWeight: '700' }}>
+              {currency(data?.total_waste_cost ?? 0)}
+            </Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Avg daily {currency(data?.average_daily_cost ?? 0)}
+            </Text>
+          </Card.Content>
+        </Card>
+        <Card style={{ flex: 1 }}>
+          <Card.Content>
+            <Text variant="labelSmall" style={{ color: theme.colors.primary }}>
+              Waste qty
+            </Text>
+            <Text variant="headlineSmall" style={{ fontWeight: '700' }}>
+              {(data?.total_waste_quantity ?? 0).toFixed(2)}
+            </Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Top driver: {data?.top_ingredients?.[0]?.label || 'Pending'}
+            </Text>
+          </Card.Content>
+        </Card>
+      </View>
+
+      <Card style={{ marginBottom: 12 }}>
+        <Card.Content>
+          <Text variant="titleSmall" style={{ marginBottom: 8, fontWeight: '700' }}>
+            Trend (cost)
+          </Text>
+          {loading ? (
+            <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+              <ActivityIndicator />
+            </View>
+          ) : filteredTrend.length === 0 ? (
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              No waste logged for this range.
+            </Text>
+          ) : (
+            filteredTrend.map(point => {
+              const denom = data?.total_waste_cost && data.total_waste_cost > 0 ? data.total_waste_cost : 1;
+              const progress = Math.min(point.total_cost / denom, 1);
+              return (
+                <View key={point.bucket_start} style={{ marginBottom: 8 }}>
+                  <Text variant="bodySmall" style={{ marginBottom: 4 }}>
+                    {point.bucket_start}
+                  </Text>
+                  <ProgressBar progress={progress} color={theme.colors.primary} />
+                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                    {currency(point.total_cost)}
+                  </Text>
+                </View>
+              );
+            })
+          )}
+        </Card.Content>
+      </Card>
+
+      <Card style={{ marginBottom: 12 }}>
+        <Card.Content>
+          <Text variant="titleSmall" style={{ marginBottom: 8, fontWeight: '700' }}>
+            Top ingredients
+          </Text>
+          {(data?.top_ingredients || []).map(row => (
+            <View key={row.key} style={{ paddingVertical: 6 }}>
+              <Text variant="bodyMedium" style={{ fontWeight: '700' }}>
+                {row.label}
+              </Text>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                {currency(row.total_cost)} · {row.total_quantity.toFixed(2)}
+              </Text>
+            </View>
+          ))}
+          {!data?.top_ingredients?.length && (
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              No data yet.
+            </Text>
+          )}
+        </Card.Content>
+      </Card>
+
+      <Card style={{ marginBottom: 16 }}>
+        <Card.Content>
+          <Text variant="titleSmall" style={{ marginBottom: 8, fontWeight: '700' }}>
+            Insights & actions
+          </Text>
+          {insights.map((insight, idx) => (
+            <View key={idx} style={{ marginBottom: 10 }}>
+              <Text variant="bodyMedium" style={{ fontWeight: '700' }}>
+                {insight.title}
+              </Text>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                {insight.detail}
+              </Text>
+              {insight.action && (
+                <Text variant="bodySmall" style={{ color: theme.colors.primary }}>
+                  {insight.action}
+                </Text>
+              )}
+            </View>
+          ))}
+          {!insights.length && (
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              No insights yet.
+            </Text>
+          )}
+        </Card.Content>
+      </Card>
+    </ScrollView>
   );
 }
