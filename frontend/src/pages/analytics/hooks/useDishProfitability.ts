@@ -33,16 +33,15 @@ export function useDishProfitability() {
     const base = data?.items || [];
     const filtered = base.filter(item => {
       const matchCategory = category ? item.category === category : true;
-      const matchSearch = search
-        ? item.name.toLowerCase().includes(search.toLowerCase())
-        : true;
+      const matchSearch = search ? item.name.toLowerCase().includes(search.toLowerCase()) : true;
       return matchCategory && matchSearch;
     });
-    const sorter: Record<SortKey, (a: DishProfitabilityItem, b: DishProfitabilityItem) => number> = {
-      margin: (a, b) => b.gross_margin - a.gross_margin,
-      foodCost: (a, b) => a.food_cost_pct - b.food_cost_pct,
-      revenue: (a, b) => (b.revenue || 0) - (a.revenue || 0),
-    };
+    const sorter: Record<SortKey, (a: DishProfitabilityItem, b: DishProfitabilityItem) => number> =
+      {
+        margin: (a, b) => b.gross_margin - a.gross_margin,
+        foodCost: (a, b) => a.food_cost_pct - b.food_cost_pct,
+        revenue: (a, b) => (b.revenue || 0) - (a.revenue || 0),
+      };
     return [...filtered].sort(sorter[sortKey]);
   }, [category, data, search, sortKey]);
 

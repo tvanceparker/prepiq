@@ -56,8 +56,14 @@ export function useDishProfitability() {
     };
   }, [items]);
 
-  const bestMargins = useMemo(() => [...items].sort((a, b) => b.gross_margin - a.gross_margin).slice(0, 3), [items]);
-  const highestFoodCost = useMemo(() => [...items].sort((a, b) => b.food_cost_pct - a.food_cost_pct).slice(0, 3), [items]);
+  const bestMargins = useMemo(
+    () => [...items].sort((a, b) => b.gross_margin - a.gross_margin).slice(0, 3),
+    [items]
+  );
+  const highestFoodCost = useMemo(
+    () => [...items].sort((a, b) => b.food_cost_pct - a.food_cost_pct).slice(0, 3),
+    [items]
+  );
 
   const setQuickRange = (days: number) => {
     const end = new Date();

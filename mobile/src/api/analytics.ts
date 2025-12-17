@@ -32,10 +32,9 @@ export interface DishProfitabilityParams {
 export async function getDishProfitability(
   params: DishProfitabilityParams = {}
 ): Promise<DishProfitabilityResponse> {
-  const res = await client.get<DishProfitabilityResponse>(
-    '/profit_analytics/dish_profitability',
-    { params }
-  );
+  const res = await client.get<DishProfitabilityResponse>('/profit_analytics/dish_profitability', {
+    params,
+  });
   return res.data;
 }
 

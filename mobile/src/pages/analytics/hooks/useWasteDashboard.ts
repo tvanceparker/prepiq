@@ -26,8 +26,15 @@ export function useWasteDashboard() {
     if (typeFilter === 'all') return data.trend;
     const typeEntry = data.by_type.find(b => b.usage_type === typeFilter);
     if (!typeEntry) return data.trend;
-    const ratio = typeEntry.total_cost && data.total_waste_cost ? typeEntry.total_cost / data.total_waste_cost : 0;
-    return data.trend.map(p => ({ ...p, total_cost: p.total_cost * ratio, total_quantity: p.total_quantity * ratio }));
+    const ratio =
+      typeEntry.total_cost && data.total_waste_cost
+        ? typeEntry.total_cost / data.total_waste_cost
+        : 0;
+    return data.trend.map(p => ({
+      ...p,
+      total_cost: p.total_cost * ratio,
+      total_quantity: p.total_quantity * ratio,
+    }));
   }, [data, typeFilter]);
 
   const insights: WasteInsight[] = data?.insights || [];

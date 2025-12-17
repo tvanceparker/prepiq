@@ -61,10 +61,18 @@ export default function DishProfitability() {
             ))}
           </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            <Chip mode="outlined" onPress={() => setSortKey('margin')} selected={sortKey === 'margin'}>
+            <Chip
+              mode="outlined"
+              onPress={() => setSortKey('margin')}
+              selected={sortKey === 'margin'}
+            >
               Sort by margin
             </Chip>
-            <Chip mode="outlined" onPress={() => setSortKey('foodCost')} selected={sortKey === 'foodCost'}>
+            <Chip
+              mode="outlined"
+              onPress={() => setSortKey('foodCost')}
+              selected={sortKey === 'foodCost'}
+            >
               Sort by food cost %
             </Chip>
           </View>
@@ -125,7 +133,10 @@ export default function DishProfitability() {
               </Text>
             </View>
           ))}
-          <Text variant="labelSmall" style={{ color: theme.colors.primary, marginTop: 8, marginBottom: 4 }}>
+          <Text
+            variant="labelSmall"
+            style={{ color: theme.colors.primary, marginTop: 8, marginBottom: 4 }}
+          >
             High food cost
           </Text>
           {highestFoodCost.map(item => (

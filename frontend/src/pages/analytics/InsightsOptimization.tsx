@@ -25,7 +25,12 @@ function InsightsOptimization() {
         <CardContent>
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" rowGap={1}>
             {[14, 30, 60].map(days => (
-              <Chip key={days} label={`Last ${days}d`} variant="outlined" onClick={() => setQuickRange(days)} />
+              <Chip
+                key={days}
+                label={`Last ${days}d`}
+                variant="outlined"
+                onClick={() => setQuickRange(days)}
+              />
             ))}
             <Box sx={{ flexGrow: 1 }} />
             <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
@@ -40,7 +45,13 @@ function InsightsOptimization() {
           <Typography color="text.secondary">No insights to display for this window.</Typography>
         )}
         {insights.map((insight, idx) => (
-          <Card key={`${insight.title}-${idx}`} sx={{ borderLeft: '4px solid #2563eb', backgroundColor: severityColorMap[insight.severity] || '#f3f4f6' }}>
+          <Card
+            key={`${insight.title}-${idx}`}
+            sx={{
+              borderLeft: '4px solid #2563eb',
+              backgroundColor: severityColorMap[insight.severity] || '#f3f4f6',
+            }}
+          >
             <CardContent>
               <Typography variant="h6">{insight.title}</Typography>
               <Typography color="text.secondary" sx={{ mb: 1 }}>

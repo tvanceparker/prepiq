@@ -1,5 +1,15 @@
 import React from 'react';
-import { Box, Card, CardContent, Chip, Divider, Grid, LinearProgress, Stack, Typography } from '@mui/material';
+import {
+  Box,
+  Card,
+  CardContent,
+  Chip,
+  Divider,
+  Grid,
+  LinearProgress,
+  Stack,
+  Typography,
+} from '@mui/material';
 import { Line } from 'react-chartjs-2';
 import 'chart.js/auto';
 import { useWasteDashboard } from './hooks/useWasteDashboard';
@@ -47,7 +57,12 @@ function WasteDashboard() {
         <CardContent>
           <Stack direction="row" spacing={1} flexWrap="wrap" rowGap={1} alignItems="center">
             {[30, 60, 90].map(days => (
-              <Chip key={days} label={`Last ${days}d`} variant="outlined" onClick={() => setQuickRange(days)} />
+              <Chip
+                key={days}
+                label={`Last ${days}d`}
+                variant="outlined"
+                onClick={() => setQuickRange(days)}
+              />
             ))}
             <Chip
               label="All"
@@ -144,16 +159,19 @@ function WasteDashboard() {
               </Typography>
               <Stack spacing={1} divider={<Divider flexItem />}>
                 {(data?.by_type || []).map(row => (
-                  <Stack key={row.key} direction="row" justifyContent="space-between" alignItems="center">
+                  <Stack
+                    key={row.key}
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                  >
                     <Typography>{row.label}</Typography>
                     <Typography color="text.secondary">
                       {currency(row.total_cost)} · {row.total_quantity.toFixed(2)}
                     </Typography>
                   </Stack>
                 ))}
-                {!data?.by_type?.length && (
-                  <Typography color="text.secondary">No data.</Typography>
-                )}
+                {!data?.by_type?.length && <Typography color="text.secondary">No data.</Typography>}
               </Stack>
             </CardContent>
           </Card>
@@ -166,7 +184,12 @@ function WasteDashboard() {
               </Typography>
               <Stack spacing={1} divider={<Divider flexItem />}>
                 {(data?.top_ingredients || []).map(row => (
-                  <Stack key={row.key} direction="row" justifyContent="space-between" alignItems="center">
+                  <Stack
+                    key={row.key}
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                  >
                     <Typography>{row.label}</Typography>
                     <Typography color="text.secondary">
                       {currency(row.total_cost)} · {row.total_quantity.toFixed(2)}
@@ -188,7 +211,12 @@ function WasteDashboard() {
               </Typography>
               <Stack spacing={1} divider={<Divider flexItem />}>
                 {(data?.top_reasons || []).map(row => (
-                  <Stack key={row.key} direction="row" justifyContent="space-between" alignItems="center">
+                  <Stack
+                    key={row.key}
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                  >
                     <Typography>{row.label}</Typography>
                     <Typography color="text.secondary">
                       {currency(row.total_cost)} · {row.total_quantity.toFixed(2)}
@@ -220,7 +248,9 @@ function WasteDashboard() {
                     )}
                   </Box>
                 ))}
-                {!topInsights.length && <Typography color="text.secondary">No insights yet.</Typography>}
+                {!topInsights.length && (
+                  <Typography color="text.secondary">No insights yet.</Typography>
+                )}
               </Stack>
             </CardContent>
           </Card>

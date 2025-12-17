@@ -1,6 +1,14 @@
 import React from 'react';
 import { ScrollView, View } from 'react-native';
-import { ActivityIndicator, Card, Chip, ProgressBar, Text, TextInput, useTheme } from 'react-native-paper';
+import {
+  ActivityIndicator,
+  Card,
+  Chip,
+  ProgressBar,
+  Text,
+  TextInput,
+  useTheme,
+} from 'react-native-paper';
 import { useWasteDashboard } from './hooks/useWasteDashboard';
 
 const currency = (value: number) => `$${(value ?? 0).toFixed(2)}`;
@@ -121,7 +129,8 @@ export default function WasteDashboard() {
             </Text>
           ) : (
             filteredTrend.map(point => {
-              const denom = data?.total_waste_cost && data.total_waste_cost > 0 ? data.total_waste_cost : 1;
+              const denom =
+                data?.total_waste_cost && data.total_waste_cost > 0 ? data.total_waste_cost : 1;
               const progress = Math.min(point.total_cost / denom, 1);
               return (
                 <View key={point.bucket_start} style={{ marginBottom: 8 }}>

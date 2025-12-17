@@ -69,7 +69,9 @@ function DishProfitability() {
   return (
     <Box sx={{ p: 3, maxWidth: 1300, mx: 'auto' }}>
       <Stack spacing={3}>
-        <Card sx={{ borderRadius: 3, boxShadow: '0 20px 60px rgba(15,23,42,0.12)', overflow: 'hidden' }}>
+        <Card
+          sx={{ borderRadius: 3, boxShadow: '0 20px 60px rgba(15,23,42,0.12)', overflow: 'hidden' }}
+        >
           <CardContent>
             <Typography variant="overline" color="primary" sx={{ letterSpacing: 1.2 }}>
               Profit & Waste Analytics
@@ -78,7 +80,8 @@ function DishProfitability() {
               Dish Profitability
             </Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
-              Latest food cost per dish using the most recent delivered purchase order price per ingredient and batch recipe costs.
+              Latest food cost per dish using the most recent delivered purchase order price per
+              ingredient and batch recipe costs.
             </Typography>
           </CardContent>
         </Card>
@@ -86,7 +89,11 @@ function DishProfitability() {
         <Card sx={{ borderRadius: 3 }}>
           <CardContent>
             <Stack spacing={2}>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={2}
+                alignItems={{ sm: 'center' }}
+              >
                 <TextField
                   label="Start date"
                   type="date"
@@ -105,7 +112,12 @@ function DishProfitability() {
                 />
                 <Stack direction="row" spacing={1}>
                   {[30, 60, 90].map(days => (
-                    <Chip key={days} label={`Last ${days}d`} variant="outlined" onClick={() => setQuickRange(days)} />
+                    <Chip
+                      key={days}
+                      label={`Last ${days}d`}
+                      variant="outlined"
+                      onClick={() => setQuickRange(days)}
+                    />
                   ))}
                 </Stack>
                 <TextField
@@ -117,12 +129,18 @@ function DishProfitability() {
                 />
               </Stack>
 
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={2}
+                alignItems={{ sm: 'center' }}
+              >
                 <Autocomplete
                   options={categories}
                   value={category}
                   onChange={(_, val) => setCategory(val || '')}
-                  renderInput={params => <TextField {...params} label="Category" placeholder="All" size="small" />}
+                  renderInput={params => (
+                    <TextField {...params} label="Category" placeholder="All" size="small" />
+                  )}
                   sx={{ minWidth: 220, maxWidth: 320 }}
                 />
                 <ToggleButtonGroup
@@ -143,10 +161,18 @@ function DishProfitability() {
 
         <Grid container spacing={2}>
           <Grid item xs={12} md={4}>
-            <Stat label="Avg margin" value={currency(summary.avgMargin)} helper="Price - food cost" />
+            <Stat
+              label="Avg margin"
+              value={currency(summary.avgMargin)}
+              helper="Price - food cost"
+            />
           </Grid>
           <Grid item xs={12} md={4}>
-            <Stat label="Avg food cost %" value={`${summary.avgFoodCostPct.toFixed(1)}%`} helper="Across listed dishes" />
+            <Stat
+              label="Avg food cost %"
+              value={`${summary.avgFoodCostPct.toFixed(1)}%`}
+              helper="Across listed dishes"
+            />
           </Grid>
           <Grid item xs={12} md={4}>
             <Stat label="Dishes" value={`${items.length}`} helper="Filtered results" />
@@ -160,7 +186,9 @@ function DishProfitability() {
             </Typography>
             {query.isError && (
               <Alert severity="error" sx={{ mb: 2 }}>
-                {query.error instanceof Error ? query.error.message : 'Unable to load dish profitability.'}
+                {query.error instanceof Error
+                  ? query.error.message
+                  : 'Unable to load dish profitability.'}
               </Alert>
             )}
             {isLoading ? (
@@ -219,7 +247,12 @@ function DishProfitability() {
                 </Typography>
                 <Stack spacing={1.25}>
                   {topBottom.top.map(item => (
-                    <Stack key={item.menu_item_id} direction="row" justifyContent="space-between" alignItems="center">
+                    <Stack
+                      key={item.menu_item_id}
+                      direction="row"
+                      justifyContent="space-between"
+                      alignItems="center"
+                    >
                       <Box>
                         <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                           {item.name}
@@ -253,7 +286,12 @@ function DishProfitability() {
                 </Typography>
                 <Stack spacing={1.25}>
                   {topBottom.bottom.map(item => (
-                    <Stack key={item.menu_item_id} direction="row" justifyContent="space-between" alignItems="center">
+                    <Stack
+                      key={item.menu_item_id}
+                      direction="row"
+                      justifyContent="space-between"
+                      alignItems="center"
+                    >
                       <Box>
                         <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                           {item.name}
