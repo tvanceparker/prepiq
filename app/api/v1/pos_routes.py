@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, Body, Query, HTTPException
-from typing import Optional
+from typing import Optional, List
 from datetime import date
-from app.services.internal_pos_service import InternalPOSService
-from app.services.cash_drawer_service import CashDrawerService
-from app.services.stripe_terminal_service import StripeTerminalService
+from app.services.pos_service import InternalPOSService
+from app.services.helpers.cash_drawer_service import CashDrawerService
+from app.services.helpers.stripe_terminal_service import StripeTerminalService
 from app.services.order_service import OrderService
 from app.api.dependencies import (
     get_waiter_service,
@@ -15,8 +15,14 @@ from app.schemas.pos_dto import (
     PaymentRequest,
     PaymentConfirmRequest,
     DeviceRegistrationRequest,
+    DeviceRegistrationResponse,
     DeviceSettingsResponse,
     DeviceSettingsUpdateResponse,
+    DeviceTokenRequest,
+    DeviceTokenResponse,
+    POSDeviceResponse,
+    POSModeUpdateRequest,
+    POSModeResponse,
     SendOrderResponse,
     ConfirmPaymentResponse,
     # Cash Drawer DTOs
@@ -24,6 +30,7 @@ from app.schemas.pos_dto import (
     CashDrawerCloseRequest,
     CashDrawerPayInOutRequest,
     CashDrawerNoSaleRequest,
+    CashDrawerSaleRequest,
     CashDrawerSessionResponse,
     CashDrawerTransactionResponse,
     CashDrawerSessionDetailResponse,
@@ -53,7 +60,15 @@ router = APIRouter(prefix="/pos", tags=["Internal POS"])
 # Device Routes
 # =============================================================================
 
-@router.post("/devices/register", response_model=DeviceSettingsResponse)
+@router.get("/devices", response_model=List[POSDeviceResponse])
+@log_route("List POS Devices")
+async def list_devices(
+    pos_service: InternalPOSService = Depends(get_waiter_service),
+):
+    return await pos_service.list_devices()
+
+
+@router.post("/devices/register", response_model=DeviceRegistrationResponse)
 @log_route("Register Device")
 async def register_device(
     registration: DeviceRegistrationRequest,
@@ -444,3 +459,53 @@ async def simulate_terminal_payment(
         reader_id=request.reader_id,
         card_number=request.card_number
     )
+@router.post("/refresh-token", response_model=DeviceTokenResponse)
+@log_route("Refresh Device Token")
+async def refresh_device_token(
+    token_request: DeviceTokenRequest,
+    pos_service: InternalPOSService = Depends(get_waiter_service),
+):
+    return await pos_service.refresh_device_token(token_request)
+
+
+@router.post("/cash-drawer/sale", response_model=CashDrawerTransactionResponse)
+@log_route("Record Drawer Sale")
+async def record_cash_drawer_sale(
+    request: CashDrawerSaleRequest,
+    drawer_service: CashDrawerService = Depends(get_cash_drawer_service),
+):
+    payment_method = request.payment_method.value if hasattr(request.payment_method, "value") else request.payment_method
+    if payment_method == "card_present":
+        payment_method = "card"
+    return await drawer_service.record_sale(
+        session_id=request.session_id,
+        amount=request.amount,
+        payment_method=payment_method,
+        order_id=request.order_id,
+        payment_id=request.payment_id,
+        tip_amount=request.tip_amount,
+        cash_tendered=request.cash_tendered,
+        notes=request.notes,
+    )
+
+
+# =============================================================================
+# POS Settings Routes
+# =============================================================================
+
+
+@router.get("/settings/mode", response_model=POSModeResponse)
+@log_route("Get POS Mode Settings")
+async def get_pos_mode_settings(
+    pos_service: InternalPOSService = Depends(get_waiter_service),
+):
+    return await pos_service.get_pos_mode_settings()
+
+
+@router.put("/settings/mode", response_model=POSModeResponse)
+@log_route("Update POS Mode Settings")
+async def update_pos_mode_settings(
+    payload: POSModeUpdateRequest,
+    pos_service: InternalPOSService = Depends(get_waiter_service),
+):
+    return await pos_service.update_pos_mode_settings(payload)

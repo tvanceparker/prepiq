@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from app.api.dependencies import build_service, get_current_user, get_db
-from app.services.pos_integration_service import POSIntegrationService
-from app.services.pos_menu_matcher import POSMenuMatcher
+from app.services.helpers.pos_integration_service import POSIntegrationService
+from app.services.helpers.pos_menu_matcher import POSMenuMatcher
 from app.repositories.menu_items_repo import MenuItemRepository
 from app.repositories.pos_item_mappings_repo import POSItemMappingsRepository
 from app.schemas.pos_dto import (

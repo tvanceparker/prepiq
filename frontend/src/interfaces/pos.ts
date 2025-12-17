@@ -15,38 +15,59 @@ export interface DeviceFingerprint {
 export interface DeviceRegistrationRequest {
   device_type: 'pos_terminal' | 'kitchen_display' | 'mobile';
   device_name: string;
-  fingerprint: DeviceFingerprint;
+  fingerprint?: DeviceFingerprint;
+  device_fingerprint?: string;
 }
 
 export interface DeviceRegistrationResponse {
-  device_id: string;
-  device_token: string;
-  expires_at: string;
+  device_id: number;
   restaurant_id: number;
   device_type: string;
   device_name: string;
+  device_token: string;
+  expires_at: string;
+  merged_settings: Record<string, any>;
+  restaurant_capabilities: Record<string, any>;
 }
 
 export interface DeviceSettings {
-  device_id: string;
+  device_id: number;
   restaurant_id: number;
   device_type: string;
   device_name: string;
   settings: Record<string, any>;
-  last_updated: string;
+  last_updated?: string;
 }
 
 export interface DeviceSettingsResponse {
-  device_id: string;
+  device_id: number;
   restaurant_id: number;
   device_type: string;
-  device_name: string;
-  settings: Record<string, any>;
-  last_updated: string;
+  device_name?: string;
+  merged_settings: Record<string, any>;
+  restaurant_capabilities: Record<string, any>;
 }
 
 export interface DeviceSettingsUpdate {
   device_name?: string;
+  settings?: Record<string, any>;
+}
+
+export interface DeviceSettingsUpdateResponse {
+  status: string;
+  device_settings: Record<string, any>;
+  merged_settings: Record<string, any>;
+  device_name?: string;
+}
+
+export interface POSDevice {
+  device_id: number;
+  device_type: 'pos_terminal' | 'kitchen_display' | 'mobile' | string;
+  device_name: string;
+  restaurant_id?: number;
+  is_active: boolean;
+  last_seen?: string;
+  device_settings?: Record<string, any>;
   settings?: Record<string, any>;
 }
 
@@ -72,24 +93,15 @@ export interface PaymentResponse {
 }
 
 export interface DeviceTokenRequest {
-  device_id: string;
-  fingerprint: DeviceFingerprint;
+  device_id: number;
+  fingerprint?: DeviceFingerprint;
+  device_fingerprint?: string;
 }
 
 export interface DeviceTokenResponse {
   device_token: string;
   expires_at: string;
   restaurant_id: number;
-}
-
-export interface POSDevice {
-  device_id: string;
-  device_type: 'pos_terminal' | 'kitchen_display' | 'mobile';
-  device_name: string;
-  restaurant_id: number;
-  is_active: boolean;
-  last_seen: string;
-  settings: Record<string, any>;
 }
 
 export interface POSContextType {
@@ -117,6 +129,8 @@ export interface POSModeSettings {
   cash_drawer_enabled: boolean;
   stripe_terminal_location_id: string | null;
   has_terminal_readers: boolean;
+  terminal_payments_enabled?: boolean;
+  preferred_terminal_reader_id?: number | null;
 }
 
 export interface POSModeUpdateRequest {
@@ -224,6 +238,17 @@ export interface CashDrawerPayInOutRequest {
 export interface CashDrawerNoSaleRequest {
   session_id: number;
   reason?: string;
+}
+
+export interface CashDrawerSaleRequest {
+  session_id: number;
+  amount: number;
+  payment_method: 'cash' | 'card' | 'card_present';
+  tip_amount?: number;
+  cash_tendered?: number;
+  order_id?: number;
+  payment_id?: number;
+  notes?: string;
 }
 
 // =============================================================================

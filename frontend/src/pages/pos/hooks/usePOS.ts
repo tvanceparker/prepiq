@@ -10,8 +10,8 @@ import {
 import {
   DeviceRegistrationRequest,
   DeviceRegistrationResponse,
-  DeviceSettingsResponse,
   DeviceSettingsUpdate,
+  DeviceSettingsUpdateResponse,
   DeviceTokenResponse,
   POSDevice,
 } from '../../../interfaces/pos';
@@ -32,11 +32,18 @@ export const usePOS = () => {
       const storedToken = localStorage.getItem('pos_device_token');
 
       if (storedDeviceId && storedToken) {
+        const numericId = Number(storedDeviceId);
+        if (Number.isNaN(numericId)) {
+          localStorage.removeItem('pos_device_id');
+          localStorage.removeItem('pos_device_token');
+          setIsRegistered(false);
+          return;
+        }
         // Try to refresh the token
         try {
           const fingerprint = generateDeviceFingerprint();
           const response = await refreshDeviceToken({
-            device_id: storedDeviceId,
+            device_id: numericId,
             fingerprint,
           });
 
@@ -44,15 +51,15 @@ export const usePOS = () => {
           setIsRegistered(true);
 
           // Get device settings
-          const settings = await getDeviceSettings(storedDeviceId);
+          const settings = await getDeviceSettings(String(numericId));
           setDevice({
-            device_id: storedDeviceId,
+            device_id: numericId,
             device_type: settings.device_type as any,
             device_name: settings.device_name,
             restaurant_id: settings.restaurant_id,
             is_active: true,
             last_seen: new Date().toISOString(),
-            settings: settings.settings,
+            settings: settings.merged_settings,
           });
         } catch (error) {
           // Token refresh failed, clear stored data
@@ -74,7 +81,7 @@ export const usePOS = () => {
     const response = await registerDevice(request);
 
     // Store device info
-    localStorage.setItem('pos_device_id', response.device_id);
+    localStorage.setItem('pos_device_id', String(response.device_id));
     localStorage.setItem('pos_device_token', response.device_token);
 
     setDeviceToken(response.device_token);
@@ -87,7 +94,7 @@ export const usePOS = () => {
       restaurant_id: response.restaurant_id,
       is_active: true,
       last_seen: new Date().toISOString(),
-      settings: {},
+      settings: response.merged_settings || {},
     });
 
     return response;
@@ -112,20 +119,20 @@ export const usePOS = () => {
 
   const updateSettings = async (
     settings: DeviceSettingsUpdate
-  ): Promise<DeviceSettingsResponse> => {
+  ): Promise<DeviceSettingsUpdateResponse> => {
     if (!device?.device_id) {
       throw new Error('No device registered');
     }
 
-    const response = await updateDeviceSettings(device.device_id, settings);
+    const response = await updateDeviceSettings(String(device.device_id), settings);
 
     // Update local device state
     setDevice(prev =>
       prev
         ? {
             ...prev,
-            device_name: response.device_name,
-            settings: response.settings,
+            device_name: response.device_name || prev.device_name,
+            settings: response.merged_settings,
           }
         : null
     );

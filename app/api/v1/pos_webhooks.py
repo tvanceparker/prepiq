@@ -6,7 +6,7 @@ These endpoints receive real-time events from POS systems.
 
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.services.pos_integration_service import POSIntegrationService
+from app.services.helpers.pos_integration_service import POSIntegrationService
 from app.repositories.pos_merchant_mappings_repo import POSMerchantMappingsRepository
 from app.api.dependencies import build_service, get_db
 from app.core.logging import logger

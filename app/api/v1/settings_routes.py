@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from app.services.settings_service import SettingsService
-from app.services.pos_integration_service import POSIntegrationService
+from app.services.helpers.pos_integration_service import POSIntegrationService
 from app.api.dependencies import get_settings_service, check_permissions, build_service
 from app.schemas.settings_dto import (RestaurantSettingsDTO, UpdateRestaurantSettingsDTO, 
                                       ChangePasswordDTO, ChangeEmailDTO, ChangePhoneDTO,

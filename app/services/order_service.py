@@ -15,9 +15,9 @@ from app.utils.logger_helpers import log_method
 from app.sockets.connection_manager import manager
 from app.services.utils.inventory_deduction_helper import InventoryDeductionHelper
 from app.core.logging import logger
-from app.services.internal_pos_service import InternalPOSService
-from app.services.cash_drawer_service import CashDrawerService
-from app.services.stripe_terminal_service import StripeTerminalService
+from app.services.pos_service import InternalPOSService
+from app.services.helpers.cash_drawer_service import CashDrawerService
+from app.services.helpers.stripe_terminal_service import StripeTerminalService
 
 
 class OrderService:

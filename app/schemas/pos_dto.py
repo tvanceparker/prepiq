@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
 
@@ -83,15 +83,54 @@ class PaymentConfirmRequest(BaseModel):
     payment_intent_id: str
 
 
+class DeviceFingerprint(BaseModel):
+    """Structured fingerprint payload captured on devices."""
+    userAgent: Optional[str] = None
+    screenResolution: Optional[str] = None
+    timezone: Optional[str] = None
+    language: Optional[str] = None
+    platform: Optional[str] = None
+    cookieEnabled: Optional[bool] = None
+    plugins: Optional[List[str]] = None
+    canvasFingerprint: Optional[str] = None
+    webglFingerprint: Optional[str] = None
+
+
 class DeviceRegistrationRequest(BaseModel):
     device_name: str
     device_type: str  # 'pos_terminal', 'kitchen_display', 'mobile', etc.
-    device_fingerprint: Optional[str] = None
+    fingerprint: Optional[DeviceFingerprint] = None
+    device_fingerprint: Optional[str] = None  # legacy support
+
+
+class DeviceRegistrationResponse(BaseModel):
+    device_id: int
+    restaurant_id: int
+    device_name: str
+    device_type: str
+    device_token: str
+    expires_at: datetime
+    merged_settings: Dict[str, Any]
+    restaurant_capabilities: Dict[str, Any]
+
+
+class DeviceTokenRequest(BaseModel):
+    device_id: int
+    fingerprint: Optional[DeviceFingerprint] = None
+    device_fingerprint: Optional[str] = None  # legacy support
+
+
+class DeviceTokenResponse(BaseModel):
+    device_token: str
+    expires_at: datetime
+    restaurant_id: int
 
 
 class DeviceSettingsResponse(BaseModel):
     device_id: int
+    restaurant_id: int
     device_type: str
+    device_name: Optional[str] = None
     merged_settings: dict
     restaurant_capabilities: dict
 
@@ -99,6 +138,15 @@ class DeviceSettingsResponse(BaseModel):
 class DeviceSettingsUpdateResponse(BaseModel):
     status: str
     device_settings: dict
+
+
+class POSDeviceResponse(BaseModel):
+    device_id: int
+    device_name: str
+    device_type: str
+    last_seen: Optional[datetime]
+    device_settings: Optional[dict]
+    is_active: bool = True
 
 
 class SalesChannelsResponse(BaseModel):
@@ -157,6 +205,18 @@ class CashDrawerNoSaleRequest(BaseModel):
     """Request to open drawer without a sale."""
     session_id: int
     reason: Optional[str] = None
+
+
+class CashDrawerSaleRequest(BaseModel):
+    """Record a cash/card sale tied to the drawer session."""
+    session_id: int
+    amount: float = Field(..., ge=0)
+    payment_method: PaymentMethodType
+    tip_amount: float = Field(default=0, ge=0)
+    cash_tendered: Optional[float] = Field(default=None, ge=0)
+    order_id: Optional[int] = None
+    payment_id: Optional[int] = None
+    notes: Optional[str] = None
 
 
 class CashDrawerSessionResponse(BaseModel):

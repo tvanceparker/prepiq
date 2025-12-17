@@ -1,4 +1,4 @@
-# app/services/stripe_terminal_service.py
+# app/services/helpers/stripe_terminal_service.py
 """
 Stripe Terminal Service - for physical card reader integration.
 

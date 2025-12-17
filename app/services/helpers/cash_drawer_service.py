@@ -1,4 +1,4 @@
-# app/services/cash_drawer_service.py
+# app/services/helpers/cash_drawer_service.py
 
 from typing import Optional, List
 from datetime import datetime, date

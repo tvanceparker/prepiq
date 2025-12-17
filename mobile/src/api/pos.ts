@@ -5,6 +5,7 @@ import type {
   DeviceRegistrationResponse,
   DeviceSettingsResponse,
   DeviceSettingsUpdate,
+  DeviceSettingsUpdateResponse,
   PaymentRequest,
   PaymentResponse,
   POSDevice,
@@ -17,6 +18,7 @@ import type {
   CashDrawerCloseRequest,
   CashDrawerPayInOutRequest,
   CashDrawerNoSaleRequest,
+  CashDrawerSaleRequest,
   // Terminal
   TerminalReader,
   TerminalLocation,
@@ -51,12 +53,30 @@ export const getDeviceSettings = async (deviceId: string): Promise<DeviceSetting
 export const updateDeviceSettings = async (
   deviceId: string,
   settings: DeviceSettingsUpdate
-): Promise<DeviceSettingsResponse> => {
-  return put<DeviceSettingsResponse>(`/pos/devices/${deviceId}/settings`, settings);
+): Promise<DeviceSettingsUpdateResponse> => {
+  return put<DeviceSettingsUpdateResponse>(`/pos/devices/${deviceId}/settings`, settings);
+};
+
+type POSDeviceApiResponse = {
+  device_id: number;
+  device_name: string;
+  device_type: string;
+  last_seen?: string | null;
+  device_settings?: Record<string, any>;
+  is_active: boolean;
 };
 
 export const getDevices = async (): Promise<POSDevice[]> => {
-  return get<POSDevice[]>('/pos/devices');
+  const response = await get<POSDeviceApiResponse[]>('/pos/devices');
+  return response.map(device => ({
+    device_id: device.device_id,
+    device_type: device.device_type,
+    device_name: device.device_name,
+    restaurant_id: undefined,
+    is_active: device.is_active,
+    last_seen: device.last_seen || undefined,
+    settings: device.device_settings || {},
+  }));
 };
 
 // =============================================================================
@@ -158,6 +178,12 @@ export const cashDrawerNoSale = async (
   request: CashDrawerNoSaleRequest
 ): Promise<CashDrawerTransaction> => {
   return post<CashDrawerTransaction>('/pos/cash-drawer/no-sale', request);
+};
+
+export const cashDrawerRecordSale = async (
+  request: CashDrawerSaleRequest
+): Promise<CashDrawerTransaction> => {
+  return post<CashDrawerTransaction>('/pos/cash-drawer/sale', request);
 };
 
 export const getDrawerSessionsForDate = async (
@@ -266,6 +292,7 @@ export const cashDrawer = {
   payin: cashDrawerPayIn,
   payout: cashDrawerPayOut,
   noSale: cashDrawerNoSale,
+  recordSale: cashDrawerRecordSale,
   getSessionsForDate: getDrawerSessionsForDate,
   getDiscrepancies: getDrawerDiscrepancies,
 };

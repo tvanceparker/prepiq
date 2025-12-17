@@ -181,10 +181,14 @@ const PaymentTerminal: React.FC<PaymentTerminalProps> = ({
       });
 
       // Record the cash transaction in the drawer
-      await cashDrawer.payin({
+      await cashDrawer.recordSale({
         session_id: cashDrawerSession.session_id,
         amount: totalWithTip,
-        reason: `Payment for order #${orderId || 'POS'}`,
+        payment_method: 'cash',
+        tip_amount: tipAmount,
+        cash_tendered: received,
+        order_id: orderId,
+        notes: `Payment for order #${orderId || 'POS'}`,
       });
 
       // Confirm cash payment

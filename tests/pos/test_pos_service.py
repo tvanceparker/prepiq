@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.services.internal_pos_service import InternalPOSService
+from app.services.pos_service import InternalPOSService
 from app.schemas.pos_dto import DeviceRegistrationRequest, PaymentRequest
 from app.repositories.devices_repo import DevicesRepository
 from app.repositories.restaurants_repo import RestaurantRepository
@@ -44,6 +44,7 @@ class TestPOSService:
 
         # Mock restaurant settings
         mock_repos['restaurant'].get_settings.return_value = {
+            'settings': {'theme': 'light'},
             'has_pos_display': True,
             'has_kitchen_display': False,
             'default_ui_layout': 'grid'
@@ -61,6 +62,8 @@ class TestPOSService:
         assert result['device_type'] == 'pos_terminal'
         assert 'merged_settings' in result
         assert 'restaurant_capabilities' in result
+        assert 'device_token' in result
+        assert result['restaurant_id'] == 1
 
         mock_repos['devices'].create.assert_called_once()
 
@@ -74,8 +77,7 @@ class TestPOSService:
         mock_repos['devices'].get_by_id.return_value = mock_device
 
         mock_repos['restaurant'].get_settings.return_value = {
-            'theme': 'light',
-            'language': 'en'
+            'settings': {'theme': 'light', 'language': 'en'}
         }
 
         result = await pos_service.get_device_settings(123)

@@ -2,11 +2,10 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.order_service import OrderService
-from app.services.internal_pos_service import InternalPOSService
+from app.services.pos_service import InternalPOSService
 from app.services.auth_service import AuthService
 from app.schemas.order_dto import OrderCreate, OrderItemCreate
 from app.schemas.pos_dto import DeviceRegistrationRequest
-from app.schemas.auth_dto import DeviceRegistrationRequest
 
 
 class TestPOSIntegration:
@@ -40,13 +39,12 @@ class TestPOSIntegration:
             mock_device.device_type = 'pos_terminal'
             mock_device.device_settings = {}
             services['pos'].devices_repo.create = AsyncMock(return_value=mock_device)
-            services['pos'].restaurant_repo.get_settings = AsyncMock(return_value={'theme': 'light'})
+            services['pos'].restaurant_repo.get_settings = AsyncMock(return_value={'settings': {'theme': 'light'}})
             
             registration_data = DeviceRegistrationRequest(
                 device_name='Test POS Terminal',
                 device_type='pos_terminal',
-                device_fingerprint='test-fingerprint-123',
-                restaurant_id=1
+                device_fingerprint='test-fingerprint-123'
             )
             
             result = await services['pos'].register_device(registration_data)
@@ -78,7 +76,7 @@ class TestPOSIntegration:
             mock_create_order.assert_called_once()
 
         # Step 3: Send to Kitchen
-        with patch('app.services.internal_pos_service.manager') as mock_manager:
+        with patch('app.services.pos_service.manager') as mock_manager:
             mock_manager.send_message = AsyncMock()
             
             order_data = {"order_id": 789, "items": ["Burger", "Fries"]}
@@ -98,9 +96,7 @@ class TestPOSIntegration:
         
         services['pos'].devices_repo.get_by_id = AsyncMock(return_value=mock_device)
         services['pos'].restaurant_repo.get_settings = AsyncMock(return_value={
-            'theme': 'light', 
-            'sound_enabled': True,
-            'default_layout': 'grid'
+            'settings': {'theme': 'light', 'sound_enabled': True, 'default_layout': 'grid'}
         })
         
         # Test device settings retrieval
@@ -173,13 +169,12 @@ class TestPOSIntegration:
             mock_pos_device.device_type = 'pos_terminal'
             mock_pos_device.device_settings = {}
             services['pos'].devices_repo.create = AsyncMock(return_value=mock_pos_device)
-            services['pos'].restaurant_repo.get_settings = AsyncMock(return_value={'theme': 'light'})
+            services['pos'].restaurant_repo.get_settings = AsyncMock(return_value={'settings': {'theme': 'light'}})
             
             pos_registration = DeviceRegistrationRequest(
                 device_name='Main POS',
                 device_type='pos_terminal',
-                device_fingerprint='pos-fingerprint-123',
-                restaurant_id=1
+                device_fingerprint='pos-fingerprint-123'
             )
             
             pos_result = await services['pos'].register_device(pos_registration)
@@ -195,9 +190,6 @@ class TestPOSIntegration:
             mock_kitchen_device.device_settings = {'sound_enabled': False}
             services['pos'].devices_repo.create = AsyncMock(return_value=mock_kitchen_device)
             
-            kitchen_registration = DeviceRegistrationRequest(
-                device_name='Kitchen Screen',
-                device_type='kitchen_display',
                 device_fingerprint='kitchen-fingerprint-456',
                 restaurant_id=1
             )

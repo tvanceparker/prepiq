@@ -163,12 +163,12 @@ from app.services.admin_service import AdminService
 from app.services.settings_service import SettingsService
 from app.services.alerts_service import AlertsService
 from app.services.team_service import TeamService
-from app.services.internal_pos_service import InternalPOSService
-from app.services.pos_integration_service import POSIntegrationService
+from app.services.pos_service import InternalPOSService
+from app.services.helpers.pos_integration_service import POSIntegrationService
 from app.services.kitchen_service import KitchenService
 from app.services.order_service import OrderService
-from app.services.cash_drawer_service import CashDrawerService
-from app.services.stripe_terminal_service import StripeTerminalService
+from app.services.helpers.cash_drawer_service import CashDrawerService
+from app.services.helpers.stripe_terminal_service import StripeTerminalService
 
 
 get_menu_service = build_service(MenuService)

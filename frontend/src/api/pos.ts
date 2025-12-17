@@ -5,6 +5,7 @@ import {
   DeviceRegistrationResponse,
   DeviceSettingsResponse,
   DeviceSettingsUpdate,
+  DeviceSettingsUpdateResponse,
   PaymentRequest,
   PaymentResponse,
   DeviceTokenRequest,
@@ -19,6 +20,7 @@ import {
   CashDrawerCloseRequest,
   CashDrawerPayInOutRequest,
   CashDrawerNoSaleRequest,
+  CashDrawerSaleRequest,
   // Terminal
   TerminalReader,
   TerminalLocation,
@@ -46,8 +48,6 @@ export const registerDevice = async (
 export const refreshDeviceToken = async (
   request: DeviceTokenRequest
 ): Promise<DeviceTokenResponse> => {
-  // NOTE: no refresh-token route is defined in app/api/v1/pos_routes.py attachment.
-  // Keep this here if another backend route exists; otherwise callers should be updated.
   return post<DeviceTokenResponse>('/pos/refresh-token', request);
 };
 
@@ -59,9 +59,9 @@ export const getDeviceSettings = async (deviceId: string): Promise<DeviceSetting
 export const updateDeviceSettings = async (
   deviceId: string,
   settings: DeviceSettingsUpdate
-): Promise<DeviceSettingsResponse> => {
+): Promise<DeviceSettingsUpdateResponse> => {
   // Backend route: PUT /api/v1/pos/devices/{device_id}/settings
-  return put<DeviceSettingsResponse>(`/pos/devices/${deviceId}/settings`, settings);
+  return put<DeviceSettingsUpdateResponse>(`/pos/devices/${deviceId}/settings`, settings);
 };
 
 // Backend route: POST /api/v1/pos/payments/create-intent
@@ -79,10 +79,26 @@ export const confirmPayment = async (
   return post<any>('/pos/payments/confirm', body);
 };
 
+type POSDeviceApiResponse = {
+  device_id: number;
+  device_name: string;
+  device_type: string;
+  last_seen?: string | null;
+  device_settings?: Record<string, any>;
+  is_active: boolean;
+};
+
 export const getDevices = async (): Promise<POSDevice[]> => {
-  // NOTE: a list-devices endpoint wasn't present in the provided pos_routes.py attachment.
-  // If the backend implements this elsewhere, keep it; otherwise update callers.
-  return get<POSDevice[]>('/pos/devices');
+  const response = await get<POSDeviceApiResponse[]>('/pos/devices');
+  return response.map(device => ({
+    device_id: device.device_id,
+    device_type: device.device_type as any,
+    device_name: device.device_name,
+    restaurant_id: undefined,
+    is_active: device.is_active,
+    last_seen: device.last_seen || undefined,
+    settings: device.device_settings || {},
+  }));
 };
 
 // Backend route: POST /api/v1/pos/orders/send
@@ -178,6 +194,12 @@ export const cashDrawerNoSale = async (
   request: CashDrawerNoSaleRequest
 ): Promise<CashDrawerTransaction> => {
   return post<CashDrawerTransaction>('/pos/cash-drawer/no-sale', request);
+};
+
+export const cashDrawerRecordSale = async (
+  request: CashDrawerSaleRequest
+): Promise<CashDrawerTransaction> => {
+  return post<CashDrawerTransaction>('/pos/cash-drawer/sale', request);
 };
 
 export const getDrawerSessionsForDate = async (
@@ -296,6 +318,7 @@ export const cashDrawer = {
   payin: cashDrawerPayIn,
   payout: cashDrawerPayOut,
   noSale: cashDrawerNoSale,
+  recordSale: cashDrawerRecordSale,
   getSessionsForDate: getDrawerSessionsForDate,
   getDiscrepancies: getDrawerDiscrepancies,
 };

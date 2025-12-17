@@ -1,4 +1,4 @@
-# app/services/pos_integration_service.py
+# app/services/helpers/pos_integration_service.py
 """
 POS Integration Service - orchestrates external POS provider connections,
 data synchronization, and webhook event processing.
@@ -18,7 +18,7 @@ from app.repositories.menu_items_repo import MenuItemRepository
 from app.repositories.pos_item_mappings_repo import POSItemMappingsRepository
 from app.repositories.pos_merchant_mappings_repo import POSMerchantMappingsRepository
 from app.services.order_service import OrderService
-from app.services.pos_menu_matcher import POSMenuMatcher
+from app.services.helpers.pos_menu_matcher import POSMenuMatcher
 from app.services.utils.inventory_deduction_helper import InventoryDeductionHelper
 from app.repositories.sales_repo import SalesRepository
 from app.schemas.order_dto import OrderCreate, OrderItemCreate
