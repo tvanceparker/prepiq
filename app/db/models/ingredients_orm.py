@@ -1,8 +1,8 @@
 # db/models/ingredients_orm.py
 
-from sqlalchemy import Column, Integer, String, DECIMAL, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, DECIMAL, ForeignKey, Boolean, and_
 from app.db.session import Base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, foreign
 
 
 class Ingredient(Base):
@@ -29,16 +29,15 @@ class Ingredient(Base):
         "IngredientSupplier", back_populates="ingredient"
     )
     batch_recipe_ingredients = relationship(
-        "BatchRecipeIngredient", back_populates="ingredient"
+        "BatchRecipeIngredient",
+        back_populates="ingredient",
+        primaryjoin="and_(Ingredient.ingredient_id == foreign(BatchRecipeIngredient.reference_id), "
+                     "BatchRecipeIngredient.ingredient_type == 'ingredient')",
     )
     purchase_order_items = relationship(
         "PurchaseOrderItem", back_populates="ingredient"
     )
     recipe_modifiers = relationship("RecipeModifier", back_populates="ingredient")
-    recipe_ingredients = relationship("RecipeIngredient", back_populates="ingredient")
-    batch_recipe_ingredients = relationship(
-        "BatchRecipeIngredient", back_populates="ingredient"
-    )
     ingredient_forecast_breakdowns = relationship(
         "IngredientForecastBreakdown", back_populates="ingredient"
     )

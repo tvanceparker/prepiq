@@ -54,6 +54,30 @@ class BaseRepository(Generic[T]):
         result = await self.db.execute(query)
         return result.scalars().all()
 
+    async def get_one_by(self, filters: dict) -> Optional[T]:
+        """Return the first record matching all filters within the restaurant scope."""
+        query = select(self.model).filter(self.model.restaurant_id == self.restaurant_id)
+        for field_name, field_value in filters.items():
+            field = getattr(self.model, field_name)
+            query = query.filter(field == field_value)
+
+        result = await self.db.execute(query)
+        return result.scalars().first()
+
+    async def filter_between_dates(self, field_name: str, start_date, end_date) -> List[T]:
+        """Return records where the date field is within the range, scoped to the restaurant."""
+        field = getattr(self.model, field_name)
+        query = (
+            select(self.model)
+            .filter(
+                self.model.restaurant_id == self.restaurant_id,
+                field.between(start_date, end_date),
+            )
+        )
+
+        result = await self.db.execute(query)
+        return result.scalars().all()
+
 
     async def create(self, obj_data: dict) -> T:
         try:

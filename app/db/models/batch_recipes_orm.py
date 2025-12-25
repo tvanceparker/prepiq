@@ -24,14 +24,12 @@ class BatchRecipe(Base):
         "BatchRecipeIngredient",
         back_populates="batch_recipe",
         cascade="all, delete-orphan",
+        foreign_keys="[BatchRecipeIngredient.batch_recipe_id]",
     )
     menu_item_batch_usage = relationship(
         "MenuItemBatchUsage", back_populates="batch_recipe"
     )
     recipe_ingredients = relationship("RecipeIngredient", back_populates="batch_recipe")
-    batch_recipe_ingredients = relationship(
-        "BatchRecipeIngredient", back_populates="batch_recipe"
-    )
     prep_schedules = relationship("PrepSchedule", back_populates="batch_recipe")
     batch_recipe_forecast_breakdowns = relationship(
         "BatchRecipeForecastBreakdown", back_populates="batch_recipe"
