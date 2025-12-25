@@ -93,7 +93,16 @@ export default function IngredientList({
                   sx={{ py: 1 }}
                 >
                   <ListItemAvatar>
-                    <Avatar sx={{ bgcolor: selectedId === ingredient.ingredient_id ? 'primary.main' : 'grey.100', color: selectedId === ingredient.ingredient_id ? 'primary.contrastText' : 'text.secondary' }}>
+                    <Avatar
+                      sx={{
+                        bgcolor:
+                          selectedId === ingredient.ingredient_id ? 'primary.main' : 'grey.100',
+                        color:
+                          selectedId === ingredient.ingredient_id
+                            ? 'primary.contrastText'
+                            : 'text.secondary',
+                      }}
+                    >
                       <Inventory2OutlinedIcon fontSize="small" />
                     </Avatar>
                   </ListItemAvatar>

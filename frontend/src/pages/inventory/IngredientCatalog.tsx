@@ -1,4 +1,4 @@
-import React, { useMemo, useContext, useState } from "react";
+import React, { useMemo, useContext, useState } from 'react';
 import {
   Box,
   Typography,
@@ -12,15 +12,15 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-} from "@mui/material";
-import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
-import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
-import LocalShippingOutlinedIcon from "@mui/icons-material/LocalShippingOutlined";
-import useIngredientForm from "./hooks/useIngredientForm";
-import IngredientList from "./components/IngredientList";
-import IngredientDetail from "./components/IngredientDetail";
-import { PageHeader } from "../../components/PageHeader";
-import { AuthContext } from "../../contexts/AuthContext";
+} from '@mui/material';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
+import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
+import useIngredientForm from './hooks/useIngredientForm';
+import IngredientList from './components/IngredientList';
+import IngredientDetail from './components/IngredientDetail';
+import { PageHeader } from '../../components/PageHeader';
+import { AuthContext } from '../../contexts/AuthContext';
 
 export default function IngredientCatalog() {
   const {
@@ -36,17 +36,17 @@ export default function IngredientCatalog() {
   } = useIngredientForm();
 
   const { tier } = useContext(AuthContext);
-  const isPro = tier === "pro" || tier === "master";
+  const isPro = tier === 'pro' || tier === 'master';
 
   const [newDialogOpen, setNewDialogOpen] = useState(false);
   const newIngredientDraft = useMemo(
-    () => ({ ingredient_id: null, name: "", unit: "", category: "", suppliers: [] }),
+    () => ({ ingredient_id: null, name: '', unit: '', category: '', suppliers: [] }),
     []
   );
 
   const stats = useMemo(() => {
     const total = ingredients.length;
-    const categories = new Set(ingredients.map((i) => i.category).filter(Boolean));
+    const categories = new Set(ingredients.map(i => i.category).filter(Boolean));
     const suppliers = ingredients.reduce((acc, ing) => acc + (ing.suppliers?.length || 0), 0);
     return { total, categories: categories.size, suppliers };
   }, [ingredients]);
@@ -55,7 +55,7 @@ export default function IngredientCatalog() {
     <Box mb={isPro ? 3 : 2}>
       <PageHeader title="Ingredient Catalog" />
       {loading && (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
           <CircularProgress size={20} />
           <Typography>Loading ingredients...</Typography>
         </Box>
@@ -70,30 +70,34 @@ export default function IngredientCatalog() {
 
   const renderStats = () => (
     <Grid container spacing={2} mb={2}>
-      {[{
-        label: "Active Ingredients",
-        value: stats.total,
-        icon: <Inventory2OutlinedIcon color="primary" />, // simple accent
-      }, {
-        label: "Categories",
-        value: stats.categories,
-        icon: <LocalShippingOutlinedIcon color="success" />, // reused icon for variety
-      }, {
-        label: "Supplier Links",
-        value: stats.suppliers,
-        icon: <LocalShippingOutlinedIcon color="info" />,
-      }].map((card) => (
+      {[
+        {
+          label: 'Active Ingredients',
+          value: stats.total,
+          icon: <Inventory2OutlinedIcon color="primary" />, // simple accent
+        },
+        {
+          label: 'Categories',
+          value: stats.categories,
+          icon: <LocalShippingOutlinedIcon color="success" />, // reused icon for variety
+        },
+        {
+          label: 'Supplier Links',
+          value: stats.suppliers,
+          icon: <LocalShippingOutlinedIcon color="info" />,
+        },
+      ].map(card => (
         <Grid item xs={12} md={4} key={card.label}>
           <Paper
             sx={{
               p: 2,
               borderRadius: 2,
-              display: "flex",
-              alignItems: "center",
+              display: 'flex',
+              alignItems: 'center',
               gap: 2,
-              border: "1px solid",
-              borderColor: "divider",
-              boxShadow: "0px 4px 16px rgba(0,0,0,0.06)",
+              border: '1px solid',
+              borderColor: 'divider',
+              boxShadow: '0px 4px 16px rgba(0,0,0,0.06)',
             }}
           >
             {card.icon}
@@ -122,7 +126,7 @@ export default function IngredientCatalog() {
   };
 
   return (
-    <Box sx={{ maxWidth: "1400px", mx: "auto", p: 4 }}>
+    <Box sx={{ maxWidth: '1400px', mx: 'auto', p: 4 }}>
       {renderHeader()}
 
       {isPro && renderStats()}
@@ -133,11 +137,9 @@ export default function IngredientCatalog() {
             sx={{
               p: 2.5,
               borderRadius: 3,
-              border: "1px solid",
-              borderColor: "divider",
-              boxShadow: isPro
-                ? "0px 10px 30px rgba(0,0,0,0.08)"
-                : "0px 4px 12px rgba(0,0,0,0.05)",
+              border: '1px solid',
+              borderColor: 'divider',
+              boxShadow: isPro ? '0px 10px 30px rgba(0,0,0,0.08)' : '0px 4px 12px rgba(0,0,0,0.05)',
             }}
           >
             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5}>
@@ -169,14 +171,12 @@ export default function IngredientCatalog() {
             elevation={isPro ? 3 : 1}
             sx={{
               flexGrow: 1,
-              bgcolor: "background.paper",
+              bgcolor: 'background.paper',
               borderRadius: 3,
               p: { xs: 2.5, md: 3 },
-              border: "1px solid",
-              borderColor: "divider",
-              boxShadow: isPro
-                ? "0px 12px 36px rgba(0,0,0,0.08)"
-                : "0px 4px 12px rgba(0,0,0,0.05)",
+              border: '1px solid',
+              borderColor: 'divider',
+              boxShadow: isPro ? '0px 12px 36px rgba(0,0,0,0.08)' : '0px 4px 12px rgba(0,0,0,0.05)',
             }}
           >
             <IngredientDetail

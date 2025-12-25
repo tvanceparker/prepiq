@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -14,35 +14,35 @@ import {
   Switch,
   TextField,
   Typography,
-} from "@mui/material";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import SaveIcon from "@mui/icons-material/Save";
+} from '@mui/material';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import SaveIcon from '@mui/icons-material/Save';
 
 const COMMON_INGREDIENT_NAMES = [
-  "Tomatoes",
-  "Onions",
-  "Garlic",
-  "Olive Oil",
-  "Butter",
-  "Flour",
-  "Sugar",
-  "Salt",
-  "Black Pepper",
-  "Chicken Breast",
-  "Beef",
-  "Pork",
-  "Fish",
-  "Shrimp",
-  "Basil",
-  "Parsley",
-  "Cilantro",
-  "Cheddar",
-  "Mozzarella",
-  "Parmesan",
+  'Tomatoes',
+  'Onions',
+  'Garlic',
+  'Olive Oil',
+  'Butter',
+  'Flour',
+  'Sugar',
+  'Salt',
+  'Black Pepper',
+  'Chicken Breast',
+  'Beef',
+  'Pork',
+  'Fish',
+  'Shrimp',
+  'Basil',
+  'Parsley',
+  'Cilantro',
+  'Cheddar',
+  'Mozzarella',
+  'Parmesan',
 ];
 
-const COMMON_UNITS = ["lbs", "oz", "kg", "g", "each", "case", "bag", "bunch"];
+const COMMON_UNITS = ['lbs', 'oz', 'kg', 'g', 'each', 'case', 'bag', 'bunch'];
 
 export default function IngredientDetail({
   ingredient,
@@ -62,29 +62,29 @@ export default function IngredientDetail({
   }, [ingredient, forceEditable]);
 
   const handleChange = (field, value) => {
-    setLocalData((prev) => ({ ...prev, [field]: value }));
+    setLocalData(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSupplierChange = (index, field, value) => {
     const suppliers = [...(localData?.suppliers || [])];
     suppliers[index] = { ...suppliers[index], [field]: value };
-    setLocalData((prev) => ({ ...prev, suppliers }));
+    setLocalData(prev => ({ ...prev, suppliers }));
   };
 
   const addSupplier = () => {
-    setLocalData((prev) => ({
+    setLocalData(prev => ({
       ...prev,
       suppliers: [
         ...(prev?.suppliers || []),
         {
           ingredient_supplier_id: null,
           supplier_id: null,
-          supplier_name: "",
-          cost_per_unit: "",
-          unit: "",
-          pack_size: "",
-          quantity_per_pack_item: "",
-          lead_time_days: "",
+          supplier_name: '',
+          cost_per_unit: '',
+          unit: '',
+          pack_size: '',
+          quantity_per_pack_item: '',
+          lead_time_days: '',
           preferred: false,
         },
       ],
@@ -145,19 +145,15 @@ export default function IngredientDetail({
       >
         <Box>
           <Typography variant="h5" fontWeight={700}>
-            {localData.name || "New Ingredient"}
+            {localData.name || 'New Ingredient'}
           </Typography>
           <Stack direction="row" spacing={1} mt={0.5}>
             <Chip
               label={`Suppliers: ${supplierCount}`}
               size="small"
-              color={supplierCount ? "primary" : "default"}
+              color={supplierCount ? 'primary' : 'default'}
             />
-            <Chip
-              label={localData.category || "Uncategorized"}
-              size="small"
-              variant="outlined"
-            />
+            <Chip label={localData.category || 'Uncategorized'} size="small" variant="outlined" />
           </Stack>
         </Box>
 
@@ -166,7 +162,7 @@ export default function IngredientDetail({
             control={
               <Switch
                 checked={editable}
-                onChange={() => setEditable((prev) => !prev)}
+                onChange={() => setEditable(prev => !prev)}
                 color="primary"
               />
             }
@@ -179,9 +175,9 @@ export default function IngredientDetail({
         <Autocomplete
           options={COMMON_INGREDIENT_NAMES}
           freeSolo
-          value={localData.name || ""}
-          onInputChange={(_, value) => handleChange("name", value)}
-          renderInput={(params) => (
+          value={localData.name || ''}
+          onInputChange={(_, value) => handleChange('name', value)}
+          renderInput={params => (
             <TextField
               {...params}
               label="Ingredient Name"
@@ -197,9 +193,9 @@ export default function IngredientDetail({
         <Autocomplete
           options={COMMON_UNITS}
           freeSolo
-          value={localData.unit || ""}
-          onInputChange={(_, value) => handleChange("unit", value)}
-          renderInput={(params) => (
+          value={localData.unit || ''}
+          onInputChange={(_, value) => handleChange('unit', value)}
+          renderInput={params => (
             <TextField
               {...params}
               label="Unit"
@@ -217,8 +213,8 @@ export default function IngredientDetail({
           fullWidth
           size="small"
           margin="normal"
-          value={localData.category || ""}
-          onChange={(e) => handleChange("category", e.target.value)}
+          value={localData.category || ''}
+          onChange={e => handleChange('category', e.target.value)}
           disabled={!editable}
         />
       </Box>
@@ -253,9 +249,7 @@ export default function IngredientDetail({
                   type="number"
                   inputProps={{ step: 0.01, min: 0, max: 99999 }}
                   value={supplier.cost_per_unit}
-                  onChange={(e) =>
-                    handleSupplierChange(i, "cost_per_unit", e.target.value)
-                  }
+                  onChange={e => handleSupplierChange(i, 'cost_per_unit', e.target.value)}
                   fullWidth
                   size="small"
                   margin="normal"
@@ -267,9 +261,7 @@ export default function IngredientDetail({
                 <TextField
                   label="Unit"
                   value={supplier.unit}
-                  onChange={(e) =>
-                    handleSupplierChange(i, "unit", e.target.value)
-                  }
+                  onChange={e => handleSupplierChange(i, 'unit', e.target.value)}
                   fullWidth
                   size="small"
                   margin="normal"
@@ -283,9 +275,7 @@ export default function IngredientDetail({
                   type="number"
                   inputProps={{ min: 0, max: 99999 }}
                   value={supplier.pack_size}
-                  onChange={(e) =>
-                    handleSupplierChange(i, "pack_size", e.target.value)
-                  }
+                  onChange={e => handleSupplierChange(i, 'pack_size', e.target.value)}
                   fullWidth
                   size="small"
                   margin="normal"
@@ -298,13 +288,7 @@ export default function IngredientDetail({
                   type="number"
                   inputProps={{ min: 0, max: 99999 }}
                   value={supplier.quantity_per_pack_item}
-                  onChange={(e) =>
-                    handleSupplierChange(
-                      i,
-                      "quantity_per_pack_item",
-                      e.target.value
-                    )
-                  }
+                  onChange={e => handleSupplierChange(i, 'quantity_per_pack_item', e.target.value)}
                   fullWidth
                   size="small"
                   margin="normal"
@@ -318,9 +302,7 @@ export default function IngredientDetail({
                   type="number"
                   inputProps={{ min: 0, max: 365 }}
                   value={supplier.lead_time_days}
-                  onChange={(e) =>
-                    handleSupplierChange(i, "lead_time_days", e.target.value)
-                  }
+                  onChange={e => handleSupplierChange(i, 'lead_time_days', e.target.value)}
                   fullWidth
                   size="small"
                   margin="normal"
@@ -333,9 +315,7 @@ export default function IngredientDetail({
                   control={
                     <Checkbox
                       checked={supplier.preferred || false}
-                      onChange={(e) =>
-                        handleSupplierChange(i, "preferred", e.target.checked)
-                      }
+                      onChange={e => handleSupplierChange(i, 'preferred', e.target.checked)}
                       disabled={!editable}
                     />
                   }
@@ -348,12 +328,7 @@ export default function IngredientDetail({
       ))}
 
       <Box mt={2} display="flex" gap={2} flexWrap="wrap">
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={addSupplier}
-          disabled={!editable}
-        >
+        <Button variant="contained" color="primary" onClick={addSupplier} disabled={!editable}>
           + Add Supplier
         </Button>
 
@@ -364,18 +339,18 @@ export default function IngredientDetail({
           onClick={saveChanges}
           disabled={saving || !editable || !localData.name}
         >
-          {saving ? "Saving..." : "Save Changes"}
+          {saving ? 'Saving...' : 'Save Changes'}
         </Button>
 
         {localData.ingredient_id && (
           <Button
-            variant={confirmingDelete ? "contained" : "outlined"}
+            variant={confirmingDelete ? 'contained' : 'outlined'}
             color="error"
             startIcon={<DeleteOutlineIcon />}
             onClick={confirmingDelete ? handleDelete : () => setConfirmingDelete(true)}
             disabled={saving}
           >
-            {confirmingDelete ? "Confirm Delete" : "Delete"}
+            {confirmingDelete ? 'Confirm Delete' : 'Delete'}
           </Button>
         )}
       </Box>
