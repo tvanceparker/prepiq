@@ -83,6 +83,11 @@ export default function IngredientCatalog() {
   const openDetail = (ingredient: IngredientWithSuppliers) => {
     setSelectedIngredient(ingredient);
     setEditData({ ...ingredient });
+    setEditMode(true); // default to editable to reduce extra taps
+  };
+
+  const closeDetail = () => {
+    setSelectedIngredient(null);
     setEditMode(false);
   };
 
@@ -96,6 +101,11 @@ export default function IngredientCatalog() {
       suppliers: [],
     });
     setDialogOpen(true);
+  };
+
+  const closeCreate = () => {
+    setDialogOpen(false);
+    setEditData(null);
   };
 
   // Handle field change
@@ -308,7 +318,7 @@ export default function IngredientCatalog() {
       <Portal>
         <Modal
           visible={!!selectedIngredient}
-          onDismiss={() => setSelectedIngredient(null)}
+          onDismiss={closeDetail}
           contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}
         >
           {selectedIngredient && editData && (
@@ -340,7 +350,7 @@ export default function IngredientCatalog() {
                         color={theme.colors.onSurface}
                       />
                     )}
-                    onPress={() => setSelectedIngredient(null)}
+                    onPress={closeDetail}
                   />
                 </View>
               </View>
@@ -671,7 +681,7 @@ export default function IngredientCatalog() {
             />
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setDialogOpen(false)}>Cancel</Button>
+            <Button onPress={closeCreate}>Cancel</Button>
             <Button mode="contained" onPress={handleSave}>
               Create
             </Button>

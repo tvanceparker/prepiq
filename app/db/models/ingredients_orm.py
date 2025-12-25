@@ -1,6 +1,6 @@
 # db/models/ingredients_orm.py
 
-from sqlalchemy import Column, Integer, String, DECIMAL, ForeignKey
+from sqlalchemy import Column, Integer, String, DECIMAL, ForeignKey, Boolean
 from app.db.session import Base
 from sqlalchemy.orm import relationship
 
@@ -18,6 +18,7 @@ class Ingredient(Base):
     average_weight_per_unit = Column(DECIMAL(10, 2))
     abc_class = Column(String(1))
     max_stock_level = Column(DECIMAL(10, 2), nullable=True)
+    is_active = Column(Boolean, default=True)
 
     restaurant = relationship("Restaurant", back_populates="ingredients")
     # inventory = relationship("Inventory", back_populates="ingredient")

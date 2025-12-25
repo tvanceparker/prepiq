@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getIngredientsWithSuppliers, upsertIngredient } from "../../../api/menu";
+import { getIngredientsWithSuppliers, upsertIngredient, deleteIngredient } from "../../../api/menu";
 
 export default function useIngredientForm() {
     const [ingredients, setIngredients] = useState([]);
@@ -8,6 +8,14 @@ export default function useIngredientForm() {
     const [loading, setLoading] = useState(false);
     const [filter, setFilter] = useState("");
     const [error, setError] = useState(null);
+
+    const newIngredientTemplate = {
+        ingredient_id: null,
+        name: "",
+        unit: "",
+        category: "",
+        suppliers: [],
+    };
 
     useEffect(() => {
         setLoading(true);
@@ -38,16 +46,39 @@ export default function useIngredientForm() {
         try {
             setLoading(true);
             const saved = await upsertIngredient(updatedIngredient);
-            setIngredients((prev) =>
-                prev.map((ing) =>
-                    ing.ingredient_id === saved.ingredient_id ? saved : ing
-                )
-            );
-            setSelectedIngredient(saved);
+            const payload = saved.ingredient || updatedIngredient;
+            setIngredients((prev) => {
+                const exists = prev.some((ing) => ing.ingredient_id === payload.ingredient_id);
+                if (exists) {
+                    return prev.map((ing) =>
+                        ing.ingredient_id === payload.ingredient_id ? payload : ing
+                    );
+                }
+                return [...prev, payload];
+            });
+            setSelectedIngredient(payload);
             setLoading(false);
             return saved;
         } catch (err) {
             setError(err.message || "Failed to save ingredient");
+            setLoading(false);
+            throw err;
+        }
+    };
+
+    const startNewIngredient = () => {
+        setSelectedIngredient({ ...newIngredientTemplate });
+    };
+
+    const removeIngredient = async (ingredientId) => {
+        try {
+            setLoading(true);
+            await deleteIngredient(ingredientId);
+            setIngredients((prev) => prev.filter((ing) => ing.ingredient_id !== ingredientId));
+            setSelectedIngredient(null);
+            setLoading(false);
+        } catch (err) {
+            setError(err.message || "Failed to delete ingredient");
             setLoading(false);
             throw err;
         }
@@ -63,5 +94,7 @@ export default function useIngredientForm() {
         loading,
         error,
         saveIngredient,
+        startNewIngredient,
+        removeIngredient,
     };
 }

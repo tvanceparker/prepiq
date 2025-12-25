@@ -220,6 +220,7 @@ export function useIngredients() {
     mutationFn: (data: any) => upsertIngredient(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['menu', 'ingredients'] });
+      queryClient.invalidateQueries({ queryKey: ['menu', 'ingredients', 'withSuppliers'] });
     },
   });
 

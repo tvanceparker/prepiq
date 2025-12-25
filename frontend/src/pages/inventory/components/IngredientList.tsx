@@ -8,7 +8,11 @@ import {
   ListItemText,
   Typography,
   Divider,
+  ListItemAvatar,
+  Avatar,
+  Chip,
 } from '@mui/material';
+import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
 import type { IngredientListProps, Ingredient } from '../../../interfaces/inventory';
 
 export default function IngredientList({
@@ -43,6 +47,8 @@ export default function IngredientList({
       borderRadius={2}
       boxShadow={1}
       bgcolor="background.paper"
+      border="1px solid"
+      borderColor="divider"
       maxHeight={600}
       overflow="auto"
     >
@@ -86,7 +92,22 @@ export default function IngredientList({
                   onClick={() => onSelect(ingredient)}
                   sx={{ py: 1 }}
                 >
-                  <ListItemText primary={ingredient.name} />
+                  <ListItemAvatar>
+                    <Avatar sx={{ bgcolor: selectedId === ingredient.ingredient_id ? 'primary.main' : 'grey.100', color: selectedId === ingredient.ingredient_id ? 'primary.contrastText' : 'text.secondary' }}>
+                      <Inventory2OutlinedIcon fontSize="small" />
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={ingredient.name}
+                    secondary={
+                      <Chip
+                        label={`${ingredient.suppliers?.length || 0} supplier${(ingredient.suppliers?.length || 0) === 1 ? '' : 's'}`}
+                        size="small"
+                        color={(ingredient.suppliers?.length || 0) > 0 ? 'primary' : 'default'}
+                        variant="outlined"
+                      />
+                    }
+                  />
                 </ListItemButton>
               ))}
             </Box>

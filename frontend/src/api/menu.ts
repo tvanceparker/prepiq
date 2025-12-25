@@ -16,6 +16,7 @@ export const getAllBatchRecipes = () => get('/menu/batch_recipes/get_all_batch_r
 export const getAllIngredients = () => get('/menu/ingredients/get_all_ingredients');
 export const getIngredientsWithSuppliers = () => get('/menu/ingredients/with-suppliers');
 export const upsertIngredient = (data: any) => post('/menu/ingredients/upsert', data);
+export const deleteIngredient = (ingredientId: number) => del(`/menu/ingredients/${ingredientId}`);
 
 // Recipes
 export const getRecipes = () => get('/menu/recipes/get_recipes');

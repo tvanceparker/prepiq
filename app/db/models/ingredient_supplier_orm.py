@@ -31,6 +31,7 @@ class IngredientSupplier(Base):
     unit = Column(String, nullable=False)
     pack_size = Column(Integer)
     quantity_per_pack_item = Column(DECIMAL(10, 2))
+    is_active = Column(Boolean, default=True)
 
     # Relationships
     ingredient = relationship("Ingredient", back_populates="ingredient_suppliers")

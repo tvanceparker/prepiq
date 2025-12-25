@@ -1,35 +1,72 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
-  Box,
-  Typography,
-  TextField,
-  Checkbox,
-  FormControlLabel,
-  Button,
-  Grid,
   Accordion,
-  AccordionSummary,
   AccordionDetails,
+  AccordionSummary,
+  Autocomplete,
+  Box,
+  Button,
+  Checkbox,
+  Chip,
+  FormControlLabel,
+  Grid,
+  Stack,
   Switch,
-  Divider,
+  TextField,
+  Typography,
 } from "@mui/material";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import SaveIcon from "@mui/icons-material/Save";
 
-export default function IngredientDetail({ ingredient, onSave }) {
+const COMMON_INGREDIENT_NAMES = [
+  "Tomatoes",
+  "Onions",
+  "Garlic",
+  "Olive Oil",
+  "Butter",
+  "Flour",
+  "Sugar",
+  "Salt",
+  "Black Pepper",
+  "Chicken Breast",
+  "Beef",
+  "Pork",
+  "Fish",
+  "Shrimp",
+  "Basil",
+  "Parsley",
+  "Cilantro",
+  "Cheddar",
+  "Mozzarella",
+  "Parmesan",
+];
+
+const COMMON_UNITS = ["lbs", "oz", "kg", "g", "each", "case", "bag", "bunch"];
+
+export default function IngredientDetail({
+  ingredient,
+  onSave,
+  onDelete,
+  hideEditToggle = false,
+  forceEditable = false,
+}) {
   const [localData, setLocalData] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [editable, setEditable] = useState(false); // <-- toggle for all editing
+  const [editable, setEditable] = useState(forceEditable);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useEffect(() => {
     setLocalData(ingredient ? { ...ingredient } : null);
-  }, [ingredient]);
+    setEditable(forceEditable || false);
+  }, [ingredient, forceEditable]);
 
   const handleChange = (field, value) => {
     setLocalData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSupplierChange = (index, field, value) => {
-    const suppliers = [...(localData.suppliers || [])];
+    const suppliers = [...(localData?.suppliers || [])];
     suppliers[index] = { ...suppliers[index], [field]: value };
     setLocalData((prev) => ({ ...prev, suppliers }));
   };
@@ -38,7 +75,7 @@ export default function IngredientDetail({ ingredient, onSave }) {
     setLocalData((prev) => ({
       ...prev,
       suppliers: [
-        ...(prev.suppliers || []),
+        ...(prev?.suppliers || []),
         {
           ingredient_supplier_id: null,
           supplier_id: null,
@@ -58,12 +95,23 @@ export default function IngredientDetail({ ingredient, onSave }) {
     setSaving(true);
     try {
       await onSave(localData);
-    } catch (e) {
-      // Handle errors as needed
     } finally {
       setSaving(false);
     }
   };
+
+  const handleDelete = async () => {
+    if (!localData?.ingredient_id || !onDelete) return;
+    setSaving(true);
+    try {
+      await onDelete(localData.ingredient_id);
+    } finally {
+      setSaving(false);
+      setConfirmingDelete(false);
+    }
+  };
+
+  const supplierCount = useMemo(() => (localData?.suppliers || []).length, [localData]);
 
   if (!localData) {
     return (
@@ -82,7 +130,6 @@ export default function IngredientDetail({ ingredient, onSave }) {
       maxHeight={600}
       overflow="auto"
     >
-      {/* Sticky Header */}
       <Box
         position="sticky"
         top={0}
@@ -96,48 +143,81 @@ export default function IngredientDetail({ ingredient, onSave }) {
         justifyContent="space-between"
         alignItems="center"
       >
-        <Typography variant="h5" fontWeight="bold">
-          {localData.name}
-        </Typography>
-
-        <FormControlLabel
-          control={
-            <Switch
-              checked={editable}
-              onChange={() => setEditable((prev) => !prev)}
-              color="primary"
+        <Box>
+          <Typography variant="h5" fontWeight={700}>
+            {localData.name || "New Ingredient"}
+          </Typography>
+          <Stack direction="row" spacing={1} mt={0.5}>
+            <Chip
+              label={`Suppliers: ${supplierCount}`}
+              size="small"
+              color={supplierCount ? "primary" : "default"}
             />
-          }
-          label="Edit Mode"
-        />
+            <Chip
+              label={localData.category || "Uncategorized"}
+              size="small"
+              variant="outlined"
+            />
+          </Stack>
+        </Box>
+
+        {!hideEditToggle && (
+          <FormControlLabel
+            control={
+              <Switch
+                checked={editable}
+                onChange={() => setEditable((prev) => !prev)}
+                color="primary"
+              />
+            }
+            label="Edit Mode"
+          />
+        )}
       </Box>
 
-      {/* Editable Fields */}
       <Box mb={3}>
-        <TextField
-          label="Ingredient Name"
-          fullWidth
-          size="small"
-          margin="normal"
-          value={localData.name}
-          onChange={(e) => handleChange("name", e.target.value)}
+        <Autocomplete
+          options={COMMON_INGREDIENT_NAMES}
+          freeSolo
+          value={localData.name || ""}
+          onInputChange={(_, value) => handleChange("name", value)}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Ingredient Name"
+              size="small"
+              margin="normal"
+              disabled={!editable}
+              fullWidth
+            />
+          )}
           disabled={!editable}
         />
-        <TextField
-          label="Unit"
-          fullWidth
-          size="small"
-          margin="normal"
-          value={localData.unit}
-          onChange={(e) => handleChange("unit", e.target.value)}
+
+        <Autocomplete
+          options={COMMON_UNITS}
+          freeSolo
+          value={localData.unit || ""}
+          onInputChange={(_, value) => handleChange("unit", value)}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Unit"
+              size="small"
+              margin="normal"
+              disabled={!editable}
+              fullWidth
+            />
+          )}
           disabled={!editable}
         />
+
         <TextField
           label="Category"
           fullWidth
           size="small"
           margin="normal"
-          value={localData.category}
+          value={localData.category || ""}
           onChange={(e) => handleChange("category", e.target.value)}
           disabled={!editable}
         />
@@ -150,7 +230,7 @@ export default function IngredientDetail({ ingredient, onSave }) {
       {(localData.suppliers || []).map((supplier, i) => (
         <Accordion key={supplier.ingredient_supplier_id || i}>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography sx={{ fontWeight: "bold" }}>
+            <Typography sx={{ fontWeight: 700 }}>
               {supplier.supplier_name || `Supplier ${i + 1}`}
             </Typography>
           </AccordionSummary>
@@ -267,8 +347,7 @@ export default function IngredientDetail({ ingredient, onSave }) {
         </Accordion>
       ))}
 
-      {/* Action Buttons */}
-      <Box mt={2} display="flex" gap={2}>
+      <Box mt={2} display="flex" gap={2} flexWrap="wrap">
         <Button
           variant="contained"
           color="primary"
@@ -281,11 +360,24 @@ export default function IngredientDetail({ ingredient, onSave }) {
         <Button
           variant="contained"
           color="success"
+          startIcon={<SaveIcon />}
           onClick={saveChanges}
-          disabled={saving || !editable}
+          disabled={saving || !editable || !localData.name}
         >
           {saving ? "Saving..." : "Save Changes"}
         </Button>
+
+        {localData.ingredient_id && (
+          <Button
+            variant={confirmingDelete ? "contained" : "outlined"}
+            color="error"
+            startIcon={<DeleteOutlineIcon />}
+            onClick={confirmingDelete ? handleDelete : () => setConfirmingDelete(true)}
+            disabled={saving}
+          >
+            {confirmingDelete ? "Confirm Delete" : "Delete"}
+          </Button>
+        )}
       </Box>
     </Box>
   );

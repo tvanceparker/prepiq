@@ -58,6 +58,18 @@ async def upsert_ingredient(
     return await menu_service.upsert_ingredient_with_suppliers(ingredient_data)
 
 
+@router.delete("/ingredients/{ingredient_id}")
+async def delete_ingredient(
+    ingredient_id: int, menu_service: MenuService = Depends(get_menu_service)
+):
+    try:
+        return await menu_service.delete_ingredient(ingredient_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Something went wrong: {e}")
+
+
 # @router.post("/recipes")
 # async def create_recipe_with_ingredients(
 #     recipe_dict: dict, menu_service: MenuService = Depends(get_menu_service)

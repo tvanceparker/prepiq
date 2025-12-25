@@ -24,6 +24,7 @@ class IngredientSupplierRepository(BaseRepository):
                 IngredientSupplier.ingredient_id == ingredient_id,
                 IngredientSupplier.supplier_id == supplier_id,
                 IngredientSupplier.restaurant_id == self.restaurant_id,
+                IngredientSupplier.is_active.is_(True),
             )
         )
         return result.scalar_one_or_none()
@@ -37,6 +38,7 @@ class IngredientSupplierRepository(BaseRepository):
             .filter(
                 IngredientSupplier.ingredient_id == ingredient_id,
                 IngredientSupplier.restaurant_id == self.restaurant_id,
+                IngredientSupplier.is_active.is_(True),
             )
             .offset(skip)
             .limit(limit)
@@ -51,6 +53,7 @@ class IngredientSupplierRepository(BaseRepository):
             select(IngredientSupplier).filter(
                 IngredientSupplier.restaurant_id == self.restaurant_id,
                 IngredientSupplier.ingredient_id.in_(ingredient_ids),
+                IngredientSupplier.is_active.is_(True),
             )
         )
         return result.scalars().all()
@@ -61,6 +64,7 @@ class IngredientSupplierRepository(BaseRepository):
             select(IngredientSupplier).filter(
                 IngredientSupplier.restaurant_id == self.restaurant_id,
                 IngredientSupplier.supplier_id == supplier_id,
+                IngredientSupplier.is_active.is_(True),
             )
         )
         return result.scalars().all()
@@ -77,6 +81,7 @@ class IngredientSupplierRepository(BaseRepository):
             .filter(
                 IngredientSupplier.ingredient_id == ingredient_id,
                 IngredientSupplier.restaurant_id == self.restaurant_id,
+                IngredientSupplier.is_active.is_(True),
             )
             .order_by(
                 IngredientSupplier.preferred.desc(),
@@ -95,11 +100,30 @@ class IngredientSupplierRepository(BaseRepository):
             select(IngredientSupplier.cost_per_unit).filter(
                 IngredientSupplier.ingredient_supplier_id == ingredient_supplier_id,
                 IngredientSupplier.restaurant_id == self.restaurant_id,
+                IngredientSupplier.is_active.is_(True),
             )
         )
         cost = result.scalar_one_or_none()
         if cost is not None:
             return float(cost)
         return None
+
+    async def soft_delete_by_id(self, ingredient_supplier_id: int) -> None:
+        await self.update(
+            ingredient_supplier_id,
+            {"is_active": False},
+        )
+
+    async def soft_delete_by_ingredient_id(self, ingredient_id: int) -> None:
+        result = await self.db.execute(
+            select(IngredientSupplier).filter(
+                IngredientSupplier.restaurant_id == self.restaurant_id,
+                IngredientSupplier.ingredient_id == ingredient_id,
+                IngredientSupplier.is_active.is_(True),
+            )
+        )
+        rows = result.scalars().all()
+        for row in rows:
+            await self.update(row.ingredient_supplier_id, {"is_active": False})
 
 

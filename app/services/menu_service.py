@@ -142,11 +142,49 @@ class MenuService:
             # Delete mappings that were not sent in the request
             mappings_to_delete = existing_mapping_ids - updated_mapping_ids
             for mapping_id in mappings_to_delete:
-                await self.ingredient_supplier_repo.delete_by_id(
+                await self.ingredient_supplier_repo.soft_delete_by_id(
                     ingredient_supplier_id=mapping_id,
                 )
 
-        return {"status": "success", "ingredient_id": ingredient_id}
+        ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+
+        # Build suppliers payload
+        supplier_mappings = await self.ingredient_supplier_repo.get_by_ingredient_ids(
+            [ingredient_id]
+        )
+        supplier_ids = list({s.supplier_id for s in supplier_mappings})
+        supplier_lookup = await self.supplier_repo.get_by_ids(supplier_ids)
+        supplier_lookup_dict = {s.supplier_id: s for s in supplier_lookup}
+
+        suppliers_payload = []
+        for s in supplier_mappings:
+            supplier_name = supplier_lookup_dict.get(s.supplier_id).name if supplier_lookup_dict.get(s.supplier_id) else "Unknown"
+            suppliers_payload.append(
+                {
+                    "ingredient_supplier_id": s.ingredient_supplier_id,
+                    "supplier_id": s.supplier_id,
+                    "supplier_name": supplier_name,
+                    "cost_per_unit": s.cost_per_unit,
+                    "unit": s.unit,
+                    "pack_size": s.pack_size,
+                    "quantity_per_pack_item": s.quantity_per_pack_item,
+                    "lead_time_days": s.lead_time_days,
+                    "preferred": s.preferred,
+                }
+            )
+
+        return {
+            "status": "success",
+            "ingredient_id": ingredient_id,
+            "ingredient": {
+                "ingredient_id": ingredient.ingredient_id,
+                "name": ingredient.name,
+                "unit": ingredient.unit,
+                "category": ingredient.category,
+                "is_active": getattr(ingredient, "is_active", True),
+                "suppliers": suppliers_payload,
+            },
+        }
 
     async def get_ingredients_with_suppliers(self):
         # Fetch all ingredients
@@ -341,6 +379,19 @@ class MenuService:
                 "message": f"Recipe and {deleted_ingredients_count} ingredients deleted successfully",
                 "deleted_ingredients_count": deleted_ingredients_count,
             }
+
+    async def delete_ingredient(self, ingredient_id: int):
+        async with self.db.begin():
+            ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+            if not ingredient or not getattr(ingredient, "is_active", True):
+                raise ValueError("Ingredient not found")
+
+            await self.ingredient_repo.soft_delete(ingredient_id)
+            await self.ingredient_supplier_repo.soft_delete_by_ingredient_id(
+                ingredient_id
+            )
+
+        return {"message": "Ingredient deleted"}
 
     async def create_menu_item(self, menu_data: dict):
         # Remove 'recipes' from the dict, if present

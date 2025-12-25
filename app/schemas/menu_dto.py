@@ -124,6 +124,7 @@ class IngredientBase(BaseModel):
     name: str
     unit: str
     category: Optional[str] = None
+    is_active: Optional[bool] = True
 
 
 class IngredientCreate(IngredientBase):
@@ -154,6 +155,7 @@ class IngredientSupplierBase(BaseModel):
     supplier_priority: Optional[int] = None
     pack_size: Optional[int] = None
     quantity_per_pack_item: Optional[float] = None
+    is_active: Optional[bool] = True
 
 
 class IngredientSupplierCreate(IngredientSupplierBase):

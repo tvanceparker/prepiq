@@ -6,6 +6,8 @@ export interface Ingredient {
   name: string;
   category?: string;
   unit?: string;
+  suppliers?: IngredientSupplier[];
+  is_active?: boolean;
   current_stock?: number;
   reorder_point?: number;
   cost_per_unit?: number;
