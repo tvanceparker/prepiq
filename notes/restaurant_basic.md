@@ -94,10 +94,10 @@ Basic tier does NOT include: ingredients, recipes, inventory, batches, suppliers
 
 ## Employees (restaurant_id=3)
 
-| employee_id | restaurant_id | name        | email                      | username       | login_code | password_cleartext | role_id | is_active |
-| ----------- | ------------- | ----------- | -------------------------- | -------------- | ---------- | ------------------ | ------- | --------- |
-| 301         | 3             | Alex Rivera | alex.rivera@canyonrim.test | canyon_manager | 43021      | Test!2345          | 301     | true      |
-| 302         | 3             | Jamie Lee   | jamie.lee@canyonrim.test   | canyon_cashier | 78214      | Test!2345          | 302     | true      |
+| employee_id | restaurant_id | name        | email                     | username      | login_code | password_cleartext | role_id | is_active |
+| ----------- | ------------- | ----------- | ------------------------- | ------------- | ---------- | ------------------ | ------- | --------- |
+| 301         | 3             | Marcus Chen | marcus@canyonrimgrill.com | marcus_canyon | 1001       | Test!2345          | 301     | true      |
+| 302         | 3             | Amy Tran    | amy@canyonrimgrill.com    | amy_canyon    | 1002       | Test!2345          | 302     | true      |
 
 > **Note:** Generate `password_hash` using bcrypt before inserting. Store NULL for `password_cleartext`.
 

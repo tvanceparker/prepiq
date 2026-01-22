@@ -78,6 +78,12 @@ Purpose: equip AI coding agents to be productive immediately in this codebase by
 - DB config via env: `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`, `DB_NAME` (see `app/db/session.py`). `.env` is loaded at startup.
 - Seeding example: `scripts/seed_restaurant_2.py` generates `seed_restaurant_2.sql` with deterministic menu items and 60 days of sales for `restaurant_id=2`.
 
+## Local environment notes
+
+- OS: Arch Linux.
+- Database: MariaDB (MySQL-compatible).
+- Local DB credentials: username `root`, password `root`.
+
 ## Conventions to follow (when adding features)
 
 - Create a repository subclass for your model, pass `restaurant_id`, and set `pk_field` if not `id`.

@@ -92,11 +92,13 @@ Full-featured master-tier tenant with nested batches, complex recipes, inventory
 
 ## Employees (restaurant_id=5)
 
-| employee_id | restaurant_id | name          | email                      | username        | login_code | password_cleartext | role_id | is_active |
-| ----------- | ------------- | ------------- | -------------------------- | --------------- | ---------- | ------------------ | ------- | --------- |
-| 501         | 5             | Morgan Tate   | morgan@perrineheights.test | perrine_admin   | 92441      | Test!2345          | 501     | true      |
-| 502         | 5             | Taylor Brooks | taylor@perrineheights.test | perrine_super   | 34728      | Test!2345          | 502     | true      |
-| 503         | 5             | Evan Cruz     | evan@perrineheights.test   | perrine_counter | 66105      | Test!2345          | 503     | true      |
+| employee_id | restaurant_id | name              | email                       | username         | login_code | password_cleartext | role_id | is_active |
+| ----------- | ------------- | ----------------- | --------------------------- | ---------------- | ---------- | ------------------ | ------- | --------- |
+| 501         | 5             | Victoria Ashworth | victoria@perrineheights.com | victoria_perrine | 3001       | Test!2345          | 501     | true      |
+| 502         | 5             | James Mitchell    | james@perrineheights.com    | james_perrine    | 3002       | Test!2345          | 502     | true      |
+| 503         | 5             | Maria Gonzalez    | maria@perrineheights.com    | maria_perrine    | 3003       | Test!2345          | 503     | true      |
+| 504         | 5             | David Kim         | david@perrineheights.com    | david_perrine    | 3004       | Test!2345          | 503     | true      |
+| 505         | 5             | Sarah Chen        | sarah@perrineheights.com    | sarah_perrine    | 3005       | Test!2345          | 503     | true      |
 
 > **Note:** Generate `password_hash` using bcrypt before inserting.
 
