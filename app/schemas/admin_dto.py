@@ -15,7 +15,7 @@ class TenantInfoResponse(BaseModel):
     restaurant_id: int
     name: str
     phone: Optional[str]
-    email: EmailStr
+    email: Optional[str]
     address: Optional[str]
     city: Optional[str]
     state: Optional[str]
@@ -30,14 +30,48 @@ class TenantInfoResponse(BaseModel):
     @field_validator("hours_of_operation", mode="before")
     @classmethod
     def parse_hours(cls, v):
+        def normalize_hours(payload):
+            if isinstance(payload, list):
+                return payload
+            if isinstance(payload, dict):
+                day_order = [
+                    "monday",
+                    "tuesday",
+                    "wednesday",
+                    "thursday",
+                    "friday",
+                    "saturday",
+                    "sunday",
+                ]
+                result = []
+                for day_key in day_order:
+                    day_data = payload.get(day_key) or payload.get(day_key.capitalize())
+                    if not isinstance(day_data, dict):
+                        continue
+                    open_time = day_data.get("open_time") or day_data.get("open")
+                    close_time = day_data.get("close_time") or day_data.get("close")
+                    is_closed = day_data.get("is_closed")
+                    if is_closed is None:
+                        is_closed = not (open_time and close_time)
+                    result.append(
+                        {
+                            "day": day_key.capitalize(),
+                            "open_time": open_time,
+                            "close_time": close_time,
+                            "is_closed": bool(is_closed),
+                        }
+                    )
+                return result
+            return payload
+
         if isinstance(v, str):
             try:
                 parsed = json.loads(v)
-                if isinstance(parsed, list):
-                    return parsed
+                return normalize_hours(parsed)
             except Exception as e:
                 raise ValueError(f"Invalid JSON in hours_of_operation: {e}")
-        return v
+
+        return normalize_hours(v)
 
 class TenantInfoUpdateRequest(BaseModel):
     name: str
@@ -50,6 +84,47 @@ class TenantInfoUpdateRequest(BaseModel):
     hours_of_operation: List[DayHours]
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("hours_of_operation", mode="before")
+    @classmethod
+    def parse_hours(cls, v):
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+            except Exception as e:
+                raise ValueError(f"Invalid JSON in hours_of_operation: {e}")
+        if isinstance(v, dict):
+            day_order = [
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday",
+                "sunday",
+            ]
+            result = []
+            for day_key in day_order:
+                day_data = v.get(day_key) or v.get(day_key.capitalize())
+                if not isinstance(day_data, dict):
+                    continue
+                open_time = day_data.get("open_time") or day_data.get("open")
+                close_time = day_data.get("close_time") or day_data.get("close")
+                is_closed = day_data.get("is_closed")
+                if is_closed is None:
+                    is_closed = not (open_time and close_time)
+                result.append(
+                    {
+                        "day": day_key.capitalize(),
+                        "open_time": open_time,
+                        "close_time": close_time,
+                        "is_closed": bool(is_closed),
+                    }
+                )
+            return result
+        return v
 
 class ActivityLogResponse(BaseModel):
     activity_id: int

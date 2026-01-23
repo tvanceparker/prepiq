@@ -8,6 +8,7 @@ import useMenuMixInsights from '../hooks/useMenuMixInsights';
 import FilterButtons from '../../../components/FilterButtons';
 import { PageHeader } from '../../../components/PageHeader';
 import Button from '../../../components/Button'; // If you want, can replace this with MUI Button too
+import { getSalesDateRange } from '../../../api/forecast';
 
 function getDateNDaysAgo(n) {
   const d = new Date();
@@ -22,6 +23,45 @@ export default function MenuMixInsightsBasic() {
   const [startDate, setStartDate] = useState(defaultStartDate);
   const [endDate, setEndDate] = useState(defaultEndDate);
   const [byRevenue, setByRevenue] = useState(true);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const normalizeDate = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const clampStartDate = (start, min) => (min && start < min ? min : start);
+
+    const refreshRange = async () => {
+      try {
+        const range = await getSalesDateRange();
+        if (!isActive || !range?.max_date) return;
+
+        const minDate = range.min_date ? normalizeDate(new Date(range.min_date)) : undefined;
+        const maxDate = normalizeDate(new Date(range.max_date));
+
+        const currentStart = normalizeDate(startDate);
+        const currentEnd = normalizeDate(endDate);
+
+        const outOfRange = (minDate && currentEnd < minDate) || currentStart > maxDate;
+        if (outOfRange) {
+          const newEnd = maxDate;
+          const newStartCandidate = new Date(maxDate);
+          newStartCandidate.setDate(newStartCandidate.getDate() - 7);
+          const newStart = clampStartDate(newStartCandidate, minDate);
+          if (isActive) {
+            setStartDate(newStart);
+            setEndDate(newEnd);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load sales date range:', err);
+      }
+    };
+
+    refreshRange();
+    return () => {
+      isActive = false;
+    };
+  }, [startDate, endDate]);
 
   const startDateStr = startDate instanceof Date ? startDate.toISOString().slice(0, 10) : startDate;
   const endDateStr = endDate instanceof Date ? endDate.toISOString().slice(0, 10) : endDate;

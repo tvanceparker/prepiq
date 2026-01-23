@@ -52,6 +52,18 @@ class SalesRepository(BaseRepository):
             )
         )
         return result.scalars().all()
+
+    async def get_sales_date_bounds(self) -> Tuple[Optional[date], Optional[date]]:
+        result = await self.db.execute(
+            select(
+                func.min(Sales.sale_timestamp),
+                func.max(Sales.sale_timestamp)
+            ).filter(Sales.restaurant_id == self.restaurant_id)
+        )
+        min_ts, max_ts = result.one()
+        min_date = min_ts.date() if min_ts else None
+        max_date = max_ts.date() if max_ts else None
+        return min_date, max_date
     
     async def get_sales_grouped_by_day(self, start_date: date, end_date: date):
         print('inside get sales grouped in sales repo')

@@ -13,6 +13,7 @@ import {
   MenuItemCostInsight,
   SalesOverTimeProItem,
   TopBottomProItem,
+  SalesDateRange,
 } from '../interfaces/forecast';
 
 // ============================================================================
@@ -155,6 +156,8 @@ export const getSalesChannelBreakdown = (
   get(
     `/sales_forecast/patterns/channel_breakdown?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}`
   );
+
+export const getSalesDateRange = (): Promise<SalesDateRange> => get(`/sales_forecast/date_range`);
 
 // ============================================================================
 // SALES EXPLORER

@@ -652,6 +652,10 @@ class SalesForecastService:
         dto.restaurant_id = self.restaurant_id
         return await self.sale_repo.create(dto)
 
+    @log_method("Get Sales Date Range")
+    async def get_sales_date_bounds(self):
+        return await self.sale_repo.get_sales_date_bounds()
+
     # ============================================================================
     # PRO TIER: MENU MIX INSIGHTS WITH COST ANALYSIS
     # ============================================================================
@@ -744,7 +748,8 @@ class SalesForecastService:
         total_metric = sum(
             sum(channels[ch]["revenue" if by_revenue else "quantity"] for ch in channels)
             for channels in grouped.values()
-        ) or 1
+        ) or (Decimal("1.00") if by_revenue else 1)
+        total_metric = float(total_metric)
         
         results = []
         for menu_item_id, channels in grouped.items():
@@ -757,7 +762,7 @@ class SalesForecastService:
                 revenue = float(data["revenue"])
                 total_cost = float(data["cost"])
                 
-                metric = revenue if by_revenue else quantity
+                metric = float(revenue) if by_revenue else float(quantity)
                 contribution_margin = revenue - total_cost
                 gross_margin_pct = ((item_price - recipe_cost) / item_price * 100) if item_price > 0 else 0
                 food_cost_pct = (recipe_cost / item_price * 100) if item_price > 0 else 0

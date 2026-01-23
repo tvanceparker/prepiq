@@ -2,35 +2,37 @@ import { get, post, patch } from './index';
 import { BASE_URL } from './config';
 
 export const getUpcomingForecastTable = (startDate: string, endDate: string) =>
-  get(`/sales_forecast/upcoming_forecast/table?start_date=${startDate}&end_date=${endDate}`);
+  get(`sales_forecast/upcoming_forecast/table?start_date=${startDate}&end_date=${endDate}`);
 
 export const getUpcomingForecastTotals = (startDate: string, endDate: string, mode = 'per_day') =>
   get(
-    `/sales_forecast/upcoming_forecast/totals?start_date=${startDate}&end_date=${endDate}&mode=${mode}`
+    `sales_forecast/upcoming_forecast/totals?start_date=${startDate}&end_date=${endDate}&mode=${mode}`
   );
 
 export const getTopForecastedItems = (startDate: string, endDate: string, limit = 5) =>
   get(
-    `/sales_forecast/upcoming_forecast/top_items?start_date=${startDate}&end_date=${endDate}&limit=${limit}`
+    `sales_forecast/upcoming_forecast/top_items?start_date=${startDate}&end_date=${endDate}&limit=${limit}`
   );
 
 export const getForecastAccuracyChart = (startDate: string, endDate: string) =>
-  get(`/sales_forecast/accuracy-chart?start_date=${startDate}&end_date=${endDate}`);
+  get(`sales_forecast/accuracy-chart?start_date=${startDate}&end_date=${endDate}`);
 
 export const getForecastAccuracyTable = (startDate: string, endDate: string) =>
-  get(`/sales_forecast/accuracy-table?start_date=${startDate}&end_date=${endDate}`);
+  get(`sales_forecast/accuracy-table?start_date=${startDate}&end_date=${endDate}`);
 
 export const getComputedForecastAccuracy = (startDate: string, endDate: string) =>
-  get(`/sales_forecast/accuracy-computation?start_date=${startDate}&end_date=${endDate}`);
+  get(`sales_forecast/accuracy-computation?start_date=${startDate}&end_date=${endDate}`);
+
+export const getSalesDateRange = () => get(`sales_forecast/date_range`);
 
 export const getSalesBreakdown = (startDate: string, endDate: string, byRevenue = false) =>
   get(
-    `/sales_forecast/sales_breakdown?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}`
+    `sales_forecast/sales_breakdown_pro?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}`
   );
 
 export const getSalesOverTime = (startDate: string, endDate: string, byRevenue = false) =>
   get(
-    `/sales_forecast/sales_over_time?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}`
+    `sales_forecast/sales_over_time_pro?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}`
   );
 
 export const getTopBottomItems = (
@@ -41,12 +43,12 @@ export const getTopBottomItems = (
   count = 3
 ) =>
   get(
-    `/sales_forecast/top_bottom_items?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}&top=${top}&count=${count}`
+    `sales_forecast/top_bottom_items_pro?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}&top=${top}&count=${count}`
   );
 
 export const getSalesOverTimeByItem = (startDate: string, endDate: string, byRevenue = false) =>
   get(
-    `/sales_forecast/patterns/sales_over_time_by_item?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}`
+    `sales_forecast/patterns/sales_over_time_by_item?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}`
   );
 
 export const getSalesHeatmapData = (
@@ -56,17 +58,17 @@ export const getSalesHeatmapData = (
   normalize = false
 ) =>
   get(
-    `/sales_forecast/patterns/heatmap_data?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}&normalize=${normalize}`
+    `sales_forecast/patterns/heatmap_data?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}&normalize=${normalize}`
   );
 
 export const getWeekdaySalesAvg = (startDate: string, endDate: string, byRevenue = false) =>
   get(
-    `/sales_forecast/patterns/weekday_avg?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}`
+    `sales_forecast/patterns/weekday_avg?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}`
   );
 
 export const getSalesChannelBreakdown = (startDate: string, endDate: string, byRevenue = false) =>
   get(
-    `/sales_forecast/patterns/channel_breakdown?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}`
+    `sales_forecast/patterns/channel_breakdown?start_date=${startDate}&end_date=${endDate}&by_revenue=${byRevenue}`
   );
 
 export const getSalesExplorerTable = (
@@ -78,7 +80,7 @@ export const getSalesExplorerTable = (
   const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
   menuItemIds.forEach(id => params.append('menu_item_ids', id.toString()));
   salesChannels.forEach(channel => params.append('sales_channels', channel));
-  return get(`/sales_forecast/sales_explorer/table?${params.toString()}`);
+  return get(`sales_forecast/sales_explorer/table?${params.toString()}`);
 };
 
 export const downloadSalesExplorerExcel = async (
@@ -114,6 +116,6 @@ export const downloadSalesExplorerExcel = async (
   return { blob, filename };
 };
 
-export const createSale = (saleData: any) => post('/sales_forecast/sales', saleData);
+export const createSale = (saleData: any) => post('sales_forecast/sales', saleData);
 export const updateSale = (saleId: string | number, saleData: any) =>
-  patch(`/sales_forecast/sales/${saleId}`, saleData);
+  patch(`sales_forecast/sales/${saleId}`, saleData);

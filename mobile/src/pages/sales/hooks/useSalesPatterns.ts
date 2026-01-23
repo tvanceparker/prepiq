@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   getSalesOverTimeByItem,
   getSalesHeatmapData,
   getWeekdaySalesAvg,
   getSalesChannelBreakdown,
+  getSalesDateRange,
 } from '../../../api/forecast';
 
 export function useSalesPatterns() {
@@ -14,6 +15,7 @@ export function useSalesPatterns() {
     return d.toISOString().slice(0, 10);
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [autoRange, setAutoRange] = useState(true);
   const [byRevenue, setByRevenue] = useState(false);
   const [normalize, setNormalize] = useState(false);
 
@@ -60,6 +62,21 @@ export function useSalesPatterns() {
     queryFn: () => getSalesChannelBreakdown(startDate, endDate, byRevenue),
     enabled: !!startDate && !!endDate,
   });
+
+  const { data: salesDateRange } = useQuery({
+    queryKey: ['salesDateRange'],
+    queryFn: getSalesDateRange,
+  });
+
+  useEffect(() => {
+    if (!autoRange) return;
+    const minDate = salesDateRange?.min_date;
+    const maxDate = salesDateRange?.max_date;
+    if (minDate && maxDate) {
+      setStartDate(minDate);
+      setEndDate(maxDate);
+    }
+  }, [salesDateRange, autoRange]);
 
   // Normalization/shape adjustments kept from previous implementation
   const salesOverTimeNormalized = Array.isArray(salesOverTime)
@@ -118,9 +135,15 @@ export function useSalesPatterns() {
 
   return {
     startDate,
-    setStartDate,
+    setStartDate: (value: string) => {
+      setAutoRange(false);
+      setStartDate(value);
+    },
     endDate,
-    setEndDate,
+    setEndDate: (value: string) => {
+      setAutoRange(false);
+      setEndDate(value);
+    },
     byRevenue,
     setByRevenue,
     normalize,

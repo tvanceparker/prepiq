@@ -1,279 +1,287 @@
 // src/pages/menu/PrepBatches.tsx
-import React, { useState } from 'react';
-import { View, StyleSheet, FlatList } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, StyleSheet, RefreshControl, ScrollView } from 'react-native';
 import {
   Text,
   useTheme,
-  Card,
-  Button,
   FAB,
-  Portal,
-  Dialog,
-  TextInput,
   Snackbar,
   ActivityIndicator,
+  Surface,
+  Button,
+  TextInput,
   Chip,
-  IconButton,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useBatchRecipes } from '../../hooks/usePrep';
-import { BatchRecipeData } from '../../interfaces/prep';
+import { useBatchRecipes, useIngredients } from '../prep/hooks/useBatchRecipes';
+import { BatchRecipeModal, BatchRecipeDetail, BatchRecipeList } from '../prep/components';
+import type { BatchRecipe, BatchRecipeCreate, BatchRecipeUpdate } from '../../interfaces/prep';
+
+type ShelfFilter = 'all' | 'short' | 'long';
 
 export default function PrepBatches() {
   const theme = useTheme();
+  const [refreshing, setRefreshing] = useState(false);
+
   const {
-    recipes: batchRecipes,
-    loading: isLoadingBatchRecipes,
-    createRecipe: createBatchRecipe,
-    updateRecipe: updateBatchRecipe,
-    deleteRecipe: deleteBatchRecipe,
+    recipes,
+    loading: loadingRecipes,
+    error: errorRecipes,
+    createRecipe,
+    creating,
+    updateRecipe,
+    updating,
+    deleteRecipe,
+    deleting,
+    refetch,
   } = useBatchRecipes();
 
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingBatch, setEditingBatch] = useState<BatchRecipeData | null>(null);
-  const [name, setName] = useState('');
-  const [category, setCategory] = useState('');
-  const [yieldQty, setYieldQty] = useState('');
-  const [yieldUnit, setYieldUnit] = useState('');
-  const [prepTime, setPrepTime] = useState('');
-  const [shelfLife, setShelfLife] = useState('');
-  const [instructions, setInstructions] = useState('');
+  const { ingredients, loading: loadingIngredients } = useIngredients();
+
+  const [selectedRecipe, setSelectedRecipe] = useState<BatchRecipe | null>(null);
+  const [editRecipe, setEditRecipe] = useState<BatchRecipe | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [shelfFilter, setShelfFilter] = useState<ShelfFilter>('all');
 
-  const openCreate = () => {
-    setEditingBatch(null);
-    setName('');
-    setCategory('');
-    setYieldQty('');
-    setYieldUnit('');
-    setPrepTime('');
-    setShelfLife('');
-    setInstructions('');
-    setDialogOpen(true);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
   };
 
-  const openEdit = (batch: BatchRecipeData) => {
-    setEditingBatch(batch);
-    setName(batch.batch_name);
-    setCategory(''); // BatchRecipeData doesn't have category
-    setYieldQty(batch.yield_quantity?.toString() || '');
-    setYieldUnit(batch.yield_unit || '');
-    setPrepTime(''); // BatchRecipeData doesn't have prep_time_minutes
-    setShelfLife(batch.shelf_life_days?.toString() || '');
-    setInstructions(batch.description || '');
-    setDialogOpen(true);
+  const handleSelectRecipe = (recipe: BatchRecipe) => {
+    setSelectedRecipe(recipe);
+    setShowDetailModal(true);
   };
 
-  const handleSave = async () => {
-    if (!name.trim()) {
-      setSnackbar({ visible: true, message: 'Batch name is required' });
-      return;
-    }
+  const handleEditRecipe = (recipe: BatchRecipe) => {
+    setEditRecipe(recipe);
+    setShowCreateModal(true);
+  };
 
+  const handleOpenCreate = () => {
+    setEditRecipe(null);
+    setShowCreateModal(true);
+  };
+
+  const handleSaveRecipe = async (data: BatchRecipeCreate) => {
     try {
-      const data: BatchRecipeData = {
-        batch_name: name.trim(),
-        description: instructions.trim() || undefined,
-        yield_quantity: yieldQty ? parseFloat(yieldQty) : 1,
-        yield_unit: yieldUnit.trim() || 'units',
-        shelf_life_days: shelfLife ? parseInt(shelfLife, 10) : undefined,
-      };
-
-      if (editingBatch && editingBatch.batch_recipe_id) {
-        await updateBatchRecipe({ id: editingBatch.batch_recipe_id, data });
-        setSnackbar({ visible: true, message: 'Batch recipe updated' });
+      if (editRecipe && editRecipe.batch_recipe_id) {
+        await updateRecipe({ id: editRecipe.batch_recipe_id, data: data as BatchRecipeUpdate });
+        setSnackbar({ visible: true, message: 'Batch recipe updated!' });
       } else {
-        await createBatchRecipe(data);
-        setSnackbar({ visible: true, message: 'Batch recipe created' });
+        await createRecipe(data);
+        setSnackbar({ visible: true, message: 'Batch recipe created!' });
       }
-      setDialogOpen(false);
-    } catch (err: unknown) {
-      const error = err as Error;
-      setSnackbar({ visible: true, message: error?.message || 'Failed to save' });
+      setShowCreateModal(false);
+      setEditRecipe(null);
+    } catch (err: any) {
+      setSnackbar({ visible: true, message: err?.message || 'Failed to save recipe' });
     }
   };
 
-  const handleDelete = async (batchId: number) => {
+  const handleDeleteRecipe = async (id: number) => {
     try {
-      await deleteBatchRecipe(batchId);
+      await deleteRecipe(id);
       setSnackbar({ visible: true, message: 'Batch recipe deleted' });
-    } catch (err: unknown) {
-      const error = err as Error;
-      setSnackbar({ visible: true, message: error?.message || 'Failed to delete' });
+      setShowDetailModal(false);
+      setSelectedRecipe(null);
+    } catch (err: any) {
+      setSnackbar({ visible: true, message: err?.message || 'Failed to delete recipe' });
     }
   };
 
-  const renderItem = ({ item }: { item: BatchRecipeData }) => (
-    <Card style={styles.card} mode="outlined" onPress={() => openEdit(item)}>
-      <Card.Title
-        title={item.batch_name}
-        subtitle={item.description}
-        right={() => (
-          <IconButton
-            icon={() => (
-              <MaterialCommunityIcons name="delete" size={20} color={theme.colors.error} />
-            )}
-            size={20}
-            onPress={() => item.batch_recipe_id && handleDelete(item.batch_recipe_id)}
-          />
-        )}
-      />
-      <Card.Content>
-        <View style={styles.chipRow}>
-          {item.yield_quantity && (
-            <View style={styles.infoChip}>
-              <MaterialCommunityIcons
-                name="scale"
-                size={14}
-                color={theme.colors.onSurfaceVariant}
-              />
-              <Text variant="labelSmall" style={{ marginLeft: 4 }}>
-                Yields {item.yield_quantity} {item.yield_unit || 'units'}
-              </Text>
-            </View>
-          )}
-          {item.shelf_life_days && (
-            <View style={styles.infoChip}>
-              <MaterialCommunityIcons
-                name="calendar"
-                size={14}
-                color={theme.colors.onSurfaceVariant}
-              />
-              <Text variant="labelSmall" style={{ marginLeft: 4 }}>
-                {item.shelf_life_days} day shelf
-              </Text>
-            </View>
-          )}
-        </View>
-      </Card.Content>
-    </Card>
-  );
+  const filteredRecipes = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return recipes.filter(recipe => {
+      const matchesQuery =
+        !query ||
+        recipe.name.toLowerCase().includes(query) ||
+        recipe.description?.toLowerCase().includes(query);
+      const shelfLife = recipe.shelf_life_days ?? 0;
+      const matchesShelf =
+        shelfFilter === 'all' ||
+        (shelfFilter === 'short' && shelfLife > 0 && shelfLife <= 2) ||
+        (shelfFilter === 'long' && shelfLife >= 5);
+      return matchesQuery && matchesShelf;
+    });
+  }, [recipes, searchQuery, shelfFilter]);
+
+  const stats = useMemo(() => {
+    const totalRecipes = recipes.length;
+    const shortShelfCount = recipes.filter(r => (r.shelf_life_days ?? 0) <= 2).length;
+    const avgPrepTime =
+      totalRecipes === 0
+        ? 0
+        : Math.round(
+            recipes.reduce((sum, recipe) => sum + (recipe.estimated_prep_time_minutes || 0), 0) /
+              totalRecipes
+          );
+    return { totalRecipes, shortShelfCount, avgPrepTime };
+  }, [recipes]);
+
+  const isLoading = loadingRecipes || loadingIngredients;
+
+  if (isLoading && recipes.length === 0) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" />
+        <Text style={{ marginTop: 16 }}>Loading prep batches...</Text>
+      </View>
+    );
+  }
+
+  if (errorRecipes) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
+        <MaterialCommunityIcons name="alert-circle" size={48} color={theme.colors.error} />
+        <Text style={{ marginTop: 16, color: theme.colors.error }}>
+          Failed to load prep batches
+        </Text>
+        <Button mode="contained" onPress={() => refetch()} style={{ marginTop: 16 }}>
+          Retry
+        </Button>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={styles.header}>
-        <Text variant="headlineMedium" style={{ color: theme.colors.onBackground }}>
-          Prep Batches
-        </Text>
-        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-          Standardized batch recipes for prep work
-        </Text>
-      </View>
+      <Surface style={styles.headerSurface} elevation={1}>
+        <View style={styles.headerRow}>
+          <MaterialCommunityIcons name="clipboard-list" size={28} color={theme.colors.primary} />
+          <View style={styles.headerText}>
+            <Text variant="titleLarge" style={{ fontWeight: '600' }}>
+              Prep Batches
+            </Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Menu shortcut for batch recipes and yield planning
+            </Text>
+          </View>
+        </View>
 
-      {isLoadingBatchRecipes ? (
-        <ActivityIndicator style={styles.loader} size="large" />
-      ) : (
-        <FlatList
-          data={batchRecipes || []}
-          keyExtractor={item => String(item.batch_recipe_id)}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <Card style={styles.emptyCard} mode="outlined">
-              <Card.Content style={styles.emptyContent}>
-                <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant }}>
-                  No batch recipes yet
-                </Text>
-                <Button mode="contained" onPress={openCreate} style={{ marginTop: 16 }}>
-                  Create First Batch
-                </Button>
-              </Card.Content>
-            </Card>
-          }
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text
+              variant="headlineMedium"
+              style={{ fontWeight: '700', color: theme.colors.primary }}
+            >
+              {stats.totalRecipes}
+            </Text>
+            <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Total Batches
+            </Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text
+              variant="headlineMedium"
+              style={{ fontWeight: '700', color: theme.colors.secondary }}
+            >
+              {stats.shortShelfCount}
+            </Text>
+            <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Short Shelf
+            </Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text
+              variant="headlineMedium"
+              style={{ fontWeight: '700', color: theme.colors.primary }}
+            >
+              {stats.avgPrepTime}
+            </Text>
+            <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Avg Prep (min)
+            </Text>
+          </View>
+        </View>
+
+        <TextInput
+          mode="outlined"
+          placeholder="Search batches"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          style={styles.searchInput}
+          left={<TextInput.Icon icon="magnify" />}
         />
-      )}
+
+        <View style={styles.filterRow}>
+          <Chip
+            selected={shelfFilter === 'all'}
+            onPress={() => setShelfFilter('all')}
+            style={styles.filterChip}
+          >
+            All
+          </Chip>
+          <Chip
+            selected={shelfFilter === 'short'}
+            onPress={() => setShelfFilter('short')}
+            style={styles.filterChip}
+          >
+            Short Shelf
+          </Chip>
+          <Chip
+            selected={shelfFilter === 'long'}
+            onPress={() => setShelfFilter('long')}
+            style={styles.filterChip}
+          >
+            Long Shelf
+          </Chip>
+        </View>
+      </Surface>
+
+      <ScrollView
+        style={styles.listContainer}
+        contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <BatchRecipeList
+          recipes={filteredRecipes}
+          selectedId={selectedRecipe?.batch_recipe_id || null}
+          onSelect={handleSelectRecipe}
+          onEdit={handleEditRecipe}
+        />
+      </ScrollView>
 
       <FAB
-        icon={() => <MaterialCommunityIcons name="plus" size={24} color={theme.colors.onPrimary} />}
+        icon="plus"
+        label="New Batch"
         style={[styles.fab, { backgroundColor: theme.colors.primary }]}
-        onPress={openCreate}
-        label="Add Batch"
+        onPress={handleOpenCreate}
       />
 
-      <Portal>
-        <Dialog
-          visible={dialogOpen}
-          onDismiss={() => setDialogOpen(false)}
-          style={{ maxHeight: '90%' }}
-        >
-          <Dialog.Title>{editingBatch ? 'Edit Batch Recipe' : 'New Batch Recipe'}</Dialog.Title>
-          <Dialog.ScrollArea>
-            <View style={styles.dialogContent}>
-              <TextInput
-                label="Batch Name"
-                value={name}
-                onChangeText={setName}
-                mode="outlined"
-                style={styles.input}
-              />
-              <TextInput
-                label="Category"
-                value={category}
-                onChangeText={setCategory}
-                mode="outlined"
-                style={styles.input}
-                placeholder="e.g., Sauce, Dough, Base"
-              />
-              <View style={styles.row}>
-                <TextInput
-                  label="Yield Qty"
-                  value={yieldQty}
-                  onChangeText={setYieldQty}
-                  mode="outlined"
-                  keyboardType="numeric"
-                  style={[styles.input, styles.halfInput]}
-                />
-                <TextInput
-                  label="Yield Unit"
-                  value={yieldUnit}
-                  onChangeText={setYieldUnit}
-                  mode="outlined"
-                  style={[styles.input, styles.halfInput]}
-                  placeholder="e.g., gallons, kg"
-                />
-              </View>
-              <View style={styles.row}>
-                <TextInput
-                  label="Prep Time (min)"
-                  value={prepTime}
-                  onChangeText={setPrepTime}
-                  mode="outlined"
-                  keyboardType="numeric"
-                  style={[styles.input, styles.halfInput]}
-                />
-                <TextInput
-                  label="Shelf Life (days)"
-                  value={shelfLife}
-                  onChangeText={setShelfLife}
-                  mode="outlined"
-                  keyboardType="numeric"
-                  style={[styles.input, styles.halfInput]}
-                />
-              </View>
-              <TextInput
-                label="Instructions"
-                value={instructions}
-                onChangeText={setInstructions}
-                mode="outlined"
-                multiline
-                numberOfLines={4}
-                style={styles.input}
-              />
-            </View>
-          </Dialog.ScrollArea>
-          <Dialog.Actions>
-            <Button onPress={() => setDialogOpen(false)}>Cancel</Button>
-            <Button mode="contained" onPress={handleSave}>
-              {editingBatch ? 'Update' : 'Create'}
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
+      <BatchRecipeModal
+        visible={showCreateModal}
+        onDismiss={() => {
+          setShowCreateModal(false);
+          setEditRecipe(null);
+        }}
+        onSave={handleSaveRecipe}
+        ingredients={ingredients}
+        loading={creating || updating}
+        editRecipe={editRecipe}
+      />
+
+      <BatchRecipeDetail
+        visible={showDetailModal}
+        recipe={selectedRecipe}
+        onDismiss={() => {
+          setShowDetailModal(false);
+          setSelectedRecipe(null);
+        }}
+        onEdit={handleEditRecipe}
+        onDelete={handleDeleteRecipe}
+        deleting={deleting}
+      />
 
       <Snackbar
         visible={snackbar.visible}
         onDismiss={() => setSnackbar({ ...snackbar, visible: false })}
         duration={3000}
+        action={{ label: 'OK', onPress: () => setSnackbar({ ...snackbar, visible: false }) }}
       >
         {snackbar.message}
       </Snackbar>
@@ -285,60 +293,55 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    padding: 16,
-    paddingBottom: 8,
-  },
-  loader: {
+  centered: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  headerSurface: {
+    padding: 16,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    marginTop: 16,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  searchInput: {
+    marginTop: 16,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  filterChip: {
+    marginRight: 4,
+  },
+  listContainer: {
+    flex: 1,
   },
   listContent: {
     padding: 16,
     paddingBottom: 100,
   },
-  card: {
-    marginBottom: 12,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    marginRight: 4,
-  },
-  infoChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.08)',
-  },
-  emptyCard: {
-    marginTop: 32,
-  },
-  emptyContent: {
-    alignItems: 'center',
-    padding: 32,
-  },
   fab: {
     position: 'absolute',
     right: 16,
     bottom: 16,
-  },
-  dialogContent: {
-    padding: 16,
-  },
-  input: {
-    marginBottom: 12,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  halfInput: {
-    flex: 1,
   },
 });

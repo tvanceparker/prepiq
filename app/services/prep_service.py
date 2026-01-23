@@ -499,7 +499,7 @@ class PrepService:
         yield_unit: str,
         estimated_prep_time_minutes: Optional[int],
         shelf_life_days: Optional[int],
-        ingredients: List[dict],  # Each item: {ingredient_id, quantity_used, unit}
+        ingredients: List[dict],  # Each item: {reference_id|ingredient_id, ingredient_type, quantity_used, unit}
         ) -> dict:
             """Create a new batch recipe with associated ingredients."""
 
@@ -518,10 +518,16 @@ class PrepService:
 
                 # 2. Add ingredients
                 for ing in ingredients:
+                    reference_id = ing.get("reference_id") or ing.get("ingredient_id")
+                    if reference_id is None:
+                        raise ValueError("Ingredient must include reference_id or ingredient_id")
+
+                    ingredient_type = ing.get("ingredient_type") or "ingredient"
                     ingredient_create = BatchRecipeIngredientCreate(
                         restaurant_id=self.restaurant_id,
                         batch_recipe_id=new_recipe.batch_recipe_id,
-                        ingredient_id=ing["ingredient_id"],
+                        reference_id=reference_id,
+                        ingredient_type=ingredient_type,
                         quantity_used=Decimal(ing["quantity_used"]),
                         unit=ing["unit"],
                     )
@@ -596,11 +602,17 @@ class PrepService:
 
                 # Add new ingredients
                 for ing in ingredients:
+                    reference_id = ing.get("reference_id") or ing.get("ingredient_id")
+                    if reference_id is None:
+                        raise ValueError("Ingredient must include reference_id or ingredient_id")
+                    ingredient_type = ing.get("ingredient_type") or "ingredient"
+
                     await self.batch_recipe_ingredient_repo.create(
                         {
                             "restaurant_id": self.restaurant_id,
                             "batch_recipe_id": batch_recipe_id,
-                            "ingredient_id": ing["ingredient_id"],
+                            "reference_id": reference_id,
+                            "ingredient_type": ingredient_type,
                             "quantity_used": Decimal(ing["quantity_used"]),
                             "unit": ing["unit"],
                         }
@@ -622,19 +634,36 @@ class PrepService:
 
             ingredient_details = []
             for ing in ingredients:
-                ingredient_info = await self.ingredient_repo.get_by_id(
-                    ing.ingredient_id
-                )
-                ingredient_details.append(
-                    {
-                        "ingredient_id": ing.ingredient_id,
-                        "ingredient_name": (
-                            ingredient_info.name if ingredient_info else "Unknown"
-                        ),
-                        "quantity_used": float(ing.quantity_used or 0),
-                        "unit": ing.unit,
-                    }
-                )
+                ingredient_type = getattr(ing, "ingredient_type", None) or "ingredient"
+                reference_id = getattr(ing, "reference_id", None)
+
+                if ingredient_type == "batch":
+                    batch_info = await self.batch_recipe_repo.get_by_id(reference_id)
+                    ingredient_details.append(
+                        {
+                            "ingredient_type": "batch",
+                            "reference_id": reference_id,
+                            "batch_recipe_id": reference_id,
+                            "ingredient_id": None,
+                            "ingredient_name": batch_info.name if batch_info else "Unknown batch",
+                            "quantity_used": float(ing.quantity_used or 0),
+                            "unit": ing.unit,
+                        }
+                    )
+                else:
+                    ingredient_info = await self.ingredient_repo.get_by_id(reference_id)
+                    ingredient_details.append(
+                        {
+                            "ingredient_type": "ingredient",
+                            "reference_id": reference_id,
+                            "ingredient_id": reference_id,
+                            "ingredient_name": (
+                                ingredient_info.name if ingredient_info else "Unknown"
+                            ),
+                            "quantity_used": float(ing.quantity_used or 0),
+                            "unit": ing.unit,
+                        }
+                    )
 
             # Find recipes that use this batch recipe
             used_in_recipes = (

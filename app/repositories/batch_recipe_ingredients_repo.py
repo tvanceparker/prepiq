@@ -26,11 +26,12 @@ class BatchRecipeIngredientRepository(BaseRepository):
         return result.scalars().all()
 
     async def get_by_ids(
-        self, batch_recipe_id: int, ingredient_id: int
+        self, batch_recipe_id: int, reference_id: int, ingredient_type: str = "ingredient"
     ) -> Optional[BatchRecipeIngredient]:
         stmt = select(BatchRecipeIngredient).where(
             BatchRecipeIngredient.batch_recipe_id == batch_recipe_id,
-            BatchRecipeIngredient.ingredient_id == ingredient_id,
+            BatchRecipeIngredient.reference_id == reference_id,
+            BatchRecipeIngredient.ingredient_type == ingredient_type,
             BatchRecipeIngredient.restaurant_id == self.restaurant_id,
         )
         result = await self.db.execute(stmt)
@@ -49,9 +50,9 @@ class BatchRecipeIngredientRepository(BaseRepository):
         return result.scalars().all()
 
     async def update_by_ids(
-        self, batch_recipe_id: int, ingredient_id: int, update_data: dict
+        self, batch_recipe_id: int, reference_id: int, update_data: dict, ingredient_type: str = "ingredient"
     ) -> Optional[BatchRecipeIngredient]:
-        obj = await self.get_by_ids(batch_recipe_id, ingredient_id)
+        obj = await self.get_by_ids(batch_recipe_id, reference_id, ingredient_type)
         if not obj:
             return None
 
@@ -62,8 +63,8 @@ class BatchRecipeIngredientRepository(BaseRepository):
         await self.db.refresh(obj)
         return obj
 
-    async def delete_by_ids(self, batch_recipe_id: int, ingredient_id: int) -> bool:
-        obj = await self.get_by_ids(batch_recipe_id, ingredient_id)
+    async def delete_by_ids(self, batch_recipe_id: int, reference_id: int, ingredient_type: str = "ingredient") -> bool:
+        obj = await self.get_by_ids(batch_recipe_id, reference_id, ingredient_type)
         if not obj:
             return False
 

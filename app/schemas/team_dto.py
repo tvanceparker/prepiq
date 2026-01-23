@@ -14,8 +14,8 @@ class EmployeeDTO(BaseModel):
     email: str
     username: str
     phone: Optional[str] = None
-    pay_rate: float
-    employment_type: str
+    pay_rate: Optional[float] = None
+    employment_type: Optional[str] = None
     role_id: int
 
 class EmployeeCreateDTO(EmployeeDTO):

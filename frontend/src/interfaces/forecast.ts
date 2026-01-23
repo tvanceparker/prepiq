@@ -32,38 +32,48 @@ export interface TopBottomItem {
 // ============================================================================
 
 export interface MenuItemCostInsight {
-  item_name: string | null;
-  channel: string | null;
+  menu_item_id: number;
+  menu_item_name: string;
   category: string | null;
-  quantity: number;
+  sales_channel: string | null;
+  quantity_sold: number;
   revenue: number;
   recipe_cost: number; // Total ingredient cost for this item's recipe
-  total_cost: number; // recipe_cost * quantity
+  total_cost: number; // recipe_cost * quantity_sold
   contribution_margin: number; // revenue - total_cost
   gross_margin_pct: number; // (contribution_margin / revenue) * 100
   food_cost_pct: number; // (total_cost / revenue) * 100
+  metric: number;
+  percent_of_total: number;
 }
 
 export interface SalesOverTimeProItem {
   sale_date: string; // ISO date string
+  menu_item_id: number;
+  menu_item_name: string;
   quantity: number;
   revenue: number;
-  recipe_cost: number;
-  total_cost: number;
+  cost: number;
   contribution_margin: number;
-  gross_margin_pct: number;
-  food_cost_pct: number;
+  metric: number;
 }
 
 export interface TopBottomProItem {
-  item_name: string;
-  quantity: number;
+  menu_item_id: number;
+  menu_item_name: string;
+  quantity_sold: number;
   revenue: number;
   recipe_cost: number;
   total_cost: number;
   contribution_margin: number;
   gross_margin_pct: number;
   food_cost_pct: number;
+  metric: number;
+}
+
+export interface SalesDateRange {
+  min_date?: string | null;
+  max_date?: string | null;
 }
 
 // ============================================================================

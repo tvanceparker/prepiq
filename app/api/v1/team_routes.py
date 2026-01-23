@@ -28,11 +28,15 @@ async def create_employee(dto: EmployeeCreateDTO, service: TeamService = Depends
 
 @log_route("Update Employee")
 @router.patch("/employees/{employee_id}", response_model=StandardResponse)
-async def update_employee(employee_id: int, dto: EmployeeUpdateDTO, service: TeamService = Depends(get_team_service)):
+async def update_employee(
+    employee_id: int,
+    dto: EmployeeUpdateDTO,
+    service: TeamService = Depends(get_team_service),
+):
     try:
         employee = await service.update_employee(employee_id, dto)
         return StandardResponse(success=True, message="Employee updated", data=employee)
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=404, detail="Employee not found")
 
 @log_route("List Employees")
@@ -62,6 +66,27 @@ async def create_shift(dto: ShiftCreateDTO, service: TeamService = Depends(get_t
         return StandardResponse(success=True, message="Shift created", data=shift)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/shifts/weekly", response_model=dict)
+@log_route()
+async def get_weekly_schedule(
+    start_date: str,
+    end_date: str = None,
+    service: TeamService = Depends(get_team_service),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Get all scheduled shifts for a date range (default 7 days if end_date not provided).
+    """
+    try:
+        schedule = await service.get_weekly_schedule(start_date, end_date)
+        return {
+            "status": "success",
+            "data": [shift.model_dump() for shift in schedule],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch schedule: {str(e)}")
+
 
 @router.get("/shifts/{employee_id}", response_model=StandardResponse)
 async def get_shifts_for_employee(employee_id: int, service: TeamService = Depends(get_team_service)):
@@ -162,28 +187,8 @@ async def create_scheduled_shift(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to create shift: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Failed to schedule shift: {str(e)}")
 
-
-@router.get("/shifts/weekly", response_model=dict)
-@log_route()
-async def get_weekly_schedule(
-    start_date: str,
-    end_date: str = None,
-    service: TeamService = Depends(get_team_service),
-    current_user: CurrentUser = Depends(get_current_user),
-):
-    """
-    Get all scheduled shifts for a date range (default 7 days if end_date not provided).
-    """
-    try:
-        schedule = await service.get_weekly_schedule(start_date, end_date)
-        return {
-            "status": "success",
-            "data": [shift.model_dump() for shift in schedule],
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to fetch schedule: {str(e)}")
 
 
 @router.patch("/shifts/{shift_id}", response_model=dict)

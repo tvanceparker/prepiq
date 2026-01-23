@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getMenuItems, createMenuItem, updateMenuItem, deleteMenuItem } from '../../../api/dashboard';
 import type { MenuItemDTO } from '../../../interfaces/dashboardInterfaceFrontend';
 
@@ -6,6 +6,25 @@ export function useDashboardForm() {
   const [menuItems, setMenuItems] = useState<MenuItemDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+    const loadMenuItems = async () => {
+      setLoading(true);
+      try {
+        const items = await getMenuItems();
+        if (isActive) setMenuItems(items || []);
+      } catch (err: any) {
+        if (isActive) setError(err);
+      } finally {
+        if (isActive) setLoading(false);
+      }
+    };
+    loadMenuItems();
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const addItem = async (item: Partial<MenuItemDTO>) => {
     setLoading(true);

@@ -45,6 +45,12 @@ class IngredientSupplierRepository(BaseRepository):
         )
         return result.scalars().all()
 
+    async def get_by_ingredient_id(
+        self, ingredient_id: int, skip: int = 0, limit: int = 100
+    ) -> List[IngredientSupplier]:
+        """Backward-compatible alias for get_all_by_ingredient_id."""
+        return await self.get_all_by_ingredient_id(ingredient_id, skip=skip, limit=limit)
+
     async def get_by_ingredient_ids(
         self, ingredient_ids: List[int]
     ) -> List[IngredientSupplier]:

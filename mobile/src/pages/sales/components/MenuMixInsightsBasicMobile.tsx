@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { useTheme } from 'react-native-paper';
+import { useTheme, Card, Chip, Divider } from 'react-native-paper';
+import { useQuery } from '@tanstack/react-query';
 import useMenuMixInsights from '../hooks/useMenuMixInsights';
 import DateSelector from '../../../components/DateSelector';
+import { getSalesDateRange } from '../../../api/forecast';
 import Svg from 'react-native-svg';
 import {
   VictoryPie,
@@ -44,12 +46,30 @@ function fmt(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+function formatCurrency(value: number) {
+  return `$${Number(value || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function formatPercent(value: number) {
+  return `${Number(value || 0).toFixed(1)}%`;
+}
+
+function getMarginColor(marginPct: number) {
+  if (marginPct >= 60) return '#10b981';
+  if (marginPct >= 40) return '#f59e0b';
+  return '#ef4444';
+}
+
 export default function MenuMixInsightsBasicMobile() {
   const theme = useTheme();
   const defaultEnd = daysAgo(0);
   const defaultStart = daysAgo(7);
   const [startDate, setStartDate] = useState(fmt(defaultStart));
   const [endDate, setEndDate] = useState(fmt(defaultEnd));
+  const [autoRange, setAutoRange] = useState(true);
   const [byRevenue, setByRevenue] = useState(true);
   const [showTreemap, setShowTreemap] = useState(false);
   const [topCount, setTopCount] = useState(10);
@@ -63,6 +83,21 @@ export default function MenuMixInsightsBasicMobile() {
     topView,
     setTopView,
   } = useMenuMixInsights(startDate, endDate, byRevenue, topCount);
+
+  const { data: salesDateRange } = useQuery({
+    queryKey: ['salesDateRange'],
+    queryFn: getSalesDateRange,
+  });
+
+  useEffect(() => {
+    if (!autoRange) return;
+    const minDate = salesDateRange?.min_date;
+    const maxDate = salesDateRange?.max_date;
+    if (minDate && maxDate) {
+      setStartDate(minDate);
+      setEndDate(maxDate);
+    }
+  }, [salesDateRange, autoRange]);
   const allMenuItems = useMemo(() => {
     const combined = [...breakdownData, ...overTimeData, ...topBottomData];
     return Array.from(
@@ -127,18 +162,36 @@ export default function MenuMixInsightsBasicMobile() {
     return Object.values(grouped).sort((a: any, b: any) => a.date.localeCompare(b.date));
   }, [filteredOverTime]);
 
+  const groupedTopBottomForChart = useMemo(() => {
+    return (
+      topView ? filteredTopBottom.slice(0, topCount) : filteredTopBottom.slice(-topCount)
+    ).map((d: any) => ({
+      x: d.menu_item_name || String(d.menu_item_id),
+      y: Number(d.metric) || 0,
+    }));
+  }, [filteredTopBottom, topView, topCount]);
+
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
-      <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 12 }}>
-        📊 Menu Mix Insights
+      <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 4 }}>
+        Menu Mix Insights
+      </Text>
+      <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginBottom: 12 }}>
+        Profitability, trends, and performance by item
       </Text>
       <View style={{ marginBottom: 12 }}>
         <DateSelector
           label="Select Date Range"
           startDate={new Date(startDate)}
           endDate={new Date(endDate)}
-          onStartDateChange={d => setStartDate(fmt(d))}
-          onEndDateChange={d => setEndDate(fmt(d))}
+          onStartDateChange={d => {
+            setAutoRange(false);
+            setStartDate(fmt(d));
+          }}
+          onEndDateChange={d => {
+            setAutoRange(false);
+            setEndDate(fmt(d));
+          }}
           mode="range"
           direction="backward"
         />
@@ -149,100 +202,45 @@ export default function MenuMixInsightsBasicMobile() {
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
         {allMenuItems.map(([id, name]) => (
-          <TouchableOpacity
+          <Chip
             key={id}
+            mode={selectedMenuItemIds.includes(id as number) ? 'flat' : 'outlined'}
+            selected={selectedMenuItemIds.includes(id as number)}
             onPress={() =>
               setSelectedMenuItemIds(prev =>
                 prev.includes(id as number) ? prev.filter(x => x !== id) : [...prev, id as number]
               )
             }
-            style={{
-              backgroundColor: selectedMenuItemIds.includes(id as number)
-                ? theme.colors.primary
-                : theme.colors.surfaceVariant,
-              paddingVertical: 6,
-              paddingHorizontal: 10,
-              borderRadius: 20,
-              marginRight: 8,
-            }}
+            style={{ marginRight: 8, backgroundColor: theme.colors.surface }}
+            textStyle={{ fontSize: 12 }}
           >
-            <Text
-              style={{
-                fontSize: 12,
-                color: selectedMenuItemIds.includes(id as number)
-                  ? theme.colors.onPrimary
-                  : theme.colors.onSurface,
-              }}
-            >
-              {name}
-            </Text>
-          </TouchableOpacity>
+            {name}
+          </Chip>
         ))}
       </ScrollView>
       {loading && <ActivityIndicator />}
       {!loading && (
         <>
           {/* Breakdown with Pie chart and Treemap toggle placeholder */}
-          <View
-            style={{
-              backgroundColor: theme.colors.surface,
-              padding: 12,
-              borderRadius: 12,
-              marginBottom: 16,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 6,
-              }}
-            >
-              <Text style={{ fontWeight: '700' }}>Breakdown ({byRevenue ? 'Revenue' : 'Qty'})</Text>
-              <View style={{ flexDirection: 'row' }}>
-                <TouchableOpacity
-                  onPress={() => setShowTreemap(false)}
-                  style={{
-                    paddingVertical: 6,
-                    paddingHorizontal: 10,
-                    borderRadius: 16,
-                    backgroundColor: !showTreemap
-                      ? theme.colors.primary
-                      : theme.colors.surfaceVariant,
-                    marginRight: 8,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: !showTreemap ? theme.colors.onPrimary : theme.colors.onSurface,
-                      fontSize: 12,
-                    }}
-                  >
-                    Pie
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setShowTreemap(true)}
-                  style={{
-                    paddingVertical: 6,
-                    paddingHorizontal: 10,
-                    borderRadius: 16,
-                    backgroundColor: showTreemap
-                      ? theme.colors.primary
-                      : theme.colors.surfaceVariant,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: showTreemap ? theme.colors.onPrimary : theme.colors.onSurface,
-                      fontSize: 12,
-                    }}
-                  >
-                    Treemap
-                  </Text>
-                </TouchableOpacity>
-              </View>
+          <SectionCard title={`Breakdown (${byRevenue ? 'Revenue' : 'Qty'})`}>
+            <View style={{ flexDirection: 'row', marginBottom: 6 }}>
+              <Chip
+                compact
+                mode={!showTreemap ? 'flat' : 'outlined'}
+                selected={!showTreemap}
+                onPress={() => setShowTreemap(false)}
+                style={{ marginRight: 8 }}
+              >
+                Pie
+              </Chip>
+              <Chip
+                compact
+                mode={showTreemap ? 'flat' : 'outlined'}
+                selected={showTreemap}
+                onPress={() => setShowTreemap(true)}
+              >
+                Treemap
+              </Chip>
             </View>
             {!showTreemap ? (
               aggregatedBreakdown.length === 0 ? (
@@ -304,17 +302,82 @@ export default function MenuMixInsightsBasicMobile() {
                 Treemap view coming soon (mobile-optimized)
               </Text>
             )}
-          </View>
-          {/* Sales Over Time - Line chart */}
-          <View
-            style={{
-              backgroundColor: theme.colors.surface,
-              padding: 12,
-              borderRadius: 12,
-              marginBottom: 16,
-            }}
-          >
-            <Text style={{ fontWeight: '700', marginBottom: 6 }}>Sales Over Time</Text>
+          </SectionCard>
+          <SectionCard title="Item Profitability Analysis">
+            {filteredBreakdown.length === 0 ? (
+              <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>No data</Text>
+            ) : (
+              <View>
+                {filteredBreakdown.map((item: any, idx: number) => {
+                  const revenue = Number(item.revenue || 0);
+                  const totalCost = Number(item.total_cost ?? item.cost ?? 0);
+                  const recipeCost = Number(item.recipe_cost ?? item.cost ?? 0);
+                  const profit = Number(item.contribution_margin ?? revenue - totalCost);
+                  const marginPct = Number(
+                    item.gross_margin_pct ?? (revenue > 0 ? (profit / revenue) * 100 : 0)
+                  );
+                  const foodCostPct = Number(
+                    item.food_cost_pct ?? (revenue > 0 ? (totalCost / revenue) * 100 : 0)
+                  );
+
+                  return (
+                    <View
+                      key={`${item.menu_item_id}-${item.sales_channel}-${idx}`}
+                      style={{
+                        paddingVertical: 10,
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          marginBottom: 6,
+                        }}
+                      >
+                        <Text style={{ fontWeight: '600', flex: 1, marginRight: 8 }}>
+                          {item.menu_item_name || 'Unknown'}
+                        </Text>
+                        <Chip compact mode="outlined">
+                          {item.sales_channel || 'N/A'}
+                        </Chip>
+                      </View>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                        <Chip compact style={{ marginRight: 6, marginBottom: 6 }}>
+                          Qty {Number(item.quantity_sold || 0).toLocaleString()}
+                        </Chip>
+                        <Chip compact style={{ marginRight: 6, marginBottom: 6 }}>
+                          Rev {formatCurrency(revenue)}
+                        </Chip>
+                        <Chip compact style={{ marginRight: 6, marginBottom: 6 }}>
+                          Recipe {formatCurrency(recipeCost)}
+                        </Chip>
+                        <Chip compact style={{ marginRight: 6, marginBottom: 6 }}>
+                          Total {formatCurrency(totalCost)}
+                        </Chip>
+                        <Chip compact style={{ marginRight: 6, marginBottom: 6 }}>
+                          Profit {formatCurrency(profit)}
+                        </Chip>
+                        <Chip
+                          compact
+                          style={{ marginRight: 6, marginBottom: 6 }}
+                          textStyle={{ color: getMarginColor(marginPct) }}
+                        >
+                          Margin {formatPercent(marginPct)}
+                        </Chip>
+                        <Chip compact style={{ marginBottom: 6 }}>
+                          Food {formatPercent(foodCostPct)}
+                        </Chip>
+                      </View>
+                      {idx < filteredBreakdown.length - 1 && (
+                        <Divider style={{ marginTop: 10 }} />
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </SectionCard>
+          <SectionCard title="Sales Over Time">
             {groupedOverTime.length === 0 ? (
               <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>No data</Text>
             ) : (
@@ -342,114 +405,83 @@ export default function MenuMixInsightsBasicMobile() {
                       }
                       style={{ tickLabels: { fontSize: 10 } }}
                     />
-                    {Object.keys(groupedOverTime[0])
-                      .filter(k => k !== 'date')
-                      .map((key, idx) => (
-                        <VictoryLine
-                          key={key}
-                          data={groupedOverTime.map((r: any) => ({
-                            x: r.date,
-                            y: Number(r[key] || 0),
-                          }))}
-                          animate={{ duration: 600 }}
-                          style={{ data: { stroke: colorMap[key] || generateHueColor(idx) } }}
-                        />
-                      ))}
+                    {groupedOverTime.length > 0 &&
+                      Object.keys(groupedOverTime[0])
+                        .filter(k => k !== 'date')
+                        .map((key, idx) => (
+                          <VictoryLine
+                            key={key}
+                            data={groupedOverTime.map((r: any) => ({
+                              x: r.date,
+                              y: Number(r[key] || 0),
+                            }))}
+                            animate={{ duration: 600 }}
+                            style={{ data: { stroke: colorMap[key] || generateHueColor(idx) } }}
+                          />
+                        ))}
                   </VictoryChart>
                 </Svg>
 
                 {/* Legend for Sales Over Time (scrollable horizontally if many items) */}
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={{ marginTop: 8 }}
-                >
-                  {Object.keys(groupedOverTime[0])
-                    .filter(k => k !== 'date')
-                    .map((key, i) => (
-                      <View
-                        key={key}
-                        style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12 }}
-                      >
+                {groupedOverTime.length > 0 && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ marginTop: 8 }}
+                  >
+                    {Object.keys(groupedOverTime[0])
+                      .filter(k => k !== 'date')
+                      .map((key, i) => (
                         <View
-                          style={{
-                            width: 12,
-                            height: 12,
-                            backgroundColor: colorMap[key] || generateHueColor(i),
-                            borderRadius: 3,
-                            marginRight: 6,
-                          }}
-                        />
-                        <Text style={{ fontSize: 12 }}>{key}</Text>
-                      </View>
-                    ))}
-                </ScrollView>
+                          key={key}
+                          style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12 }}
+                        >
+                          <View
+                            style={{
+                              width: 12,
+                              height: 12,
+                              backgroundColor: colorMap[key] || generateHueColor(i),
+                              borderRadius: 3,
+                              marginRight: 6,
+                            }}
+                          />
+                          <Text style={{ fontSize: 12 }}>{key}</Text>
+                        </View>
+                      ))}
+                  </ScrollView>
+                )}
               </>
             )}
-          </View>
+          </SectionCard>
 
           {/* Top / Bottom with controls */}
-          <View style={{ backgroundColor: theme.colors.surface, padding: 12, borderRadius: 12 }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 8,
-              }}
-            >
-              <Text style={{ fontWeight: '700' }}>Top / Bottom</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <TouchableOpacity
-                  onPress={() => setTopView(true)}
-                  style={{
-                    paddingVertical: 6,
-                    paddingHorizontal: 10,
-                    borderRadius: 16,
-                    backgroundColor: topView ? theme.colors.primary : theme.colors.surfaceVariant,
-                    marginRight: 8,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: topView ? theme.colors.onPrimary : theme.colors.onSurface,
-                      fontSize: 12,
-                    }}
-                  >
-                    Top
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setTopView(false)}
-                  style={{
-                    paddingVertical: 6,
-                    paddingHorizontal: 10,
-                    borderRadius: 16,
-                    backgroundColor: !topView ? theme.colors.primary : theme.colors.surfaceVariant,
-                    marginRight: 8,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: !topView ? theme.colors.onPrimary : theme.colors.onSurface,
-                      fontSize: 12,
-                    }}
-                  >
-                    Bottom
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setTopCount(c => Math.max(5, Math.min(25, c + 5)))}
-                  style={{
-                    paddingVertical: 6,
-                    paddingHorizontal: 10,
-                    borderRadius: 16,
-                    backgroundColor: theme.colors.surfaceVariant,
-                  }}
-                >
-                  <Text style={{ fontSize: 12 }}>+5</Text>
-                </TouchableOpacity>
-              </View>
+          <SectionCard title="Top / Bottom">
+            <View style={{ flexDirection: 'row', marginBottom: 8 }}>
+              <Chip
+                compact
+                mode={topView ? 'flat' : 'outlined'}
+                selected={topView}
+                onPress={() => setTopView(true)}
+                style={{ marginRight: 8 }}
+              >
+                Top
+              </Chip>
+              <Chip
+                compact
+                mode={!topView ? 'flat' : 'outlined'}
+                selected={!topView}
+                onPress={() => setTopView(false)}
+                style={{ marginRight: 8 }}
+              >
+                Bottom
+              </Chip>
+              <Chip
+                compact
+                mode="outlined"
+                onPress={() => setTopCount(c => Math.max(5, Math.min(25, c + 5)))}
+              >
+                +5
+              </Chip>
             </View>
             {filteredTopBottom.length === 0 ? (
               <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>No data</Text>
@@ -478,20 +510,35 @@ export default function MenuMixInsightsBasicMobile() {
                     style={{ tickLabels: { fontSize: 10 } }}
                   />
                   <VictoryBar
-                    data={(topView
-                      ? filteredTopBottom.slice(0, topCount)
-                      : filteredTopBottom.slice(-topCount)
-                    ).map((d: any) => ({ x: d.menu_item_name, y: Number(d.metric) || 0 }))}
+                    data={groupedTopBottomForChart}
                     animate={{ duration: 650 }}
                     style={{ data: { fill: ({ datum }) => colorMap[datum.x] || '#2563eb' } }}
                   />
                 </VictoryChart>
               </Svg>
             )}
-          </View>
+          </SectionCard>
         </>
       )}
     </ScrollView>
+  );
+}
+
+function SectionCard({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  const theme = useTheme();
+  return (
+    <Card style={{ marginBottom: 16, backgroundColor: theme.colors.surface }}>
+      <Card.Content>
+        <Text style={{ fontWeight: '700', marginBottom: 6 }}>{title}</Text>
+        {children}
+      </Card.Content>
+    </Card>
   );
 }
 

@@ -22,7 +22,9 @@ class BatchRecipeBase(BaseModel):
 
 
 class BatchRecipeIngredientUpdate(BaseModel):
-    ingredient_id: int
+    ingredient_id: Optional[int] = None
+    reference_id: Optional[int] = None
+    ingredient_type: Optional[str] = None
     quantity_used: Decimal
     unit: str
 
@@ -38,7 +40,9 @@ class BatchRecipeUpdateRequest(BaseModel):
 
 
 class IngredientInput(BaseModel):
-    ingredient_id: int
+    ingredient_id: Optional[int] = None
+    reference_id: Optional[int] = None
+    ingredient_type: Optional[str] = None
     quantity_used: Decimal
     unit: str
 
@@ -70,8 +74,10 @@ class BatchRecipe(BatchRecipeBase):
 
 class BatchRecipeIngredientBase(BaseModel):
     batch_recipe_id: int
-    ingredient_id: int
     restaurant_id: int
+    ingredient_id: Optional[int] = None
+    reference_id: Optional[int] = None
+    ingredient_type: Optional[str] = None
     quantity_used: Optional[Decimal] = None
     unit: Optional[str] = None
 
@@ -79,7 +85,6 @@ class BatchRecipeIngredientBase(BaseModel):
 class BatchRecipeIngredientCreate(BatchRecipeIngredientBase):
     restaurant_id: int
     batch_recipe_id: int
-    ingredient_id: int
     quantity_used: Decimal
     unit: str
 

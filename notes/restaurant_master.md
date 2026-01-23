@@ -100,7 +100,17 @@ Full-featured master-tier tenant with nested batches, complex recipes, inventory
 | 504         | 5             | David Kim         | david@perrineheights.com    | david_perrine    | 3004       | Test!2345          | 503     | true      |
 | 505         | 5             | Sarah Chen        | sarah@perrineheights.com    | sarah_perrine    | 3005       | Test!2345          | 503     | true      |
 
-> **Note:** Generate `password_hash` using bcrypt before inserting.
+### Employee Permissions Audit (DB snapshot 2026-01-22)
+
+| employee_id | name              | username         | role_name  | permissions |
+| ----------- | ----------------- | ---------------- | ---------- | ----------- |
+| 504         | David Kim         | david_perrine    | Counter    | create_orders, manage_orders, process_payments, view_menu, view_orders, view_sales |
+| 502         | James Mitchell    | james_perrine    | Supervisor | create_orders, edit_inventory, manage_orders, manage_prep, manage_purchase_orders, manage_suppliers, process_payments, view_analytics, view_inventory, view_menu, view_orders, view_prep, view_sales |
+| 503         | Maria Gonzalez    | maria_perrine    | Counter    | create_orders, manage_orders, process_payments, view_menu, view_orders, view_sales |
+| 505         | Sarah Chen        | sarah_perrine    | Counter    | create_orders, manage_orders, process_payments, view_menu, view_orders, view_sales |
+| 501         | Victoria Ashworth | victoria_perrine | Admin      | create_orders, edit_inventory, edit_menu, edit_settings, manage_cash_drawer, manage_devices, manage_employees, manage_orders, manage_prep, manage_purchase_orders, manage_suppliers, process_payments, view_analytics, view_employees, view_inventory, view_menu, view_orders, view_prep, view_sales, view_settings |
+
+> **Note:** Passwords use Argon2id. Shared hash for `Test!2345` is `$argon2id$v=19$m=65536,t=3,p=4$m1Nq7b23ttb6P0cIgVDqHQ$4PU2CLuz2Qn0VHvi0hyYHmMr+/cEtgPe7AjlccleUSo`.
 
 ---
 
@@ -467,7 +477,7 @@ Generate sales records for **6 months** (June 25, 2025 → December 24, 2025):
 | 5001                   | 5102          | 5             | remove   | batch       | 503          | 1        | 0.00             |
 | 5002                   | 5103          | 5             | add      | batch       | 501          | 1        | 1.50             |
 
-> **Note:** Modifier 5001 removes Herb Chimichurri; 5002 adds extra Garlic Confit
+> **Note:** The DB enum for `target_type` only allows `ingredient` or `modifier`. Use `ingredient` and point `reference_id` to the batch_recipe_id when modeling batch modifiers.
 
 ---
 

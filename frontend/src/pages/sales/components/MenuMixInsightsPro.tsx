@@ -24,6 +24,7 @@ import SalesBreakdownChart from '../charts/SalesBreakdownChart';
 import SalesOverTimeChart from '../charts/SalesOverTimeChart';
 import TopBottomItemsChart from '../charts/TopBottomItemsChart';
 import useMenuMixInsightsPro from '../hooks/useMenuMixInsightsPro';
+import { getSalesDateRange } from '../../../api/forecast';
 import FilterButtons from '../../../components/FilterButtons';
 import { PageHeader } from '../../../components/PageHeader';
 import Button from '../../../components/Button';
@@ -42,6 +43,49 @@ export default function MenuMixInsightsPro() {
   const [endDate, setEndDate] = useState<Date>(defaultEndDate);
   const [byRevenue, setByRevenue] = useState(true);
 
+  useEffect(() => {
+    let isActive = true;
+
+    const normalizeDate = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+    const clampStartDate = (start: Date, min?: Date) => {
+      if (!min) return start;
+      return start < min ? min : start;
+    };
+
+    const refreshRange = async () => {
+      try {
+        const range = await getSalesDateRange();
+        if (!isActive || !range?.max_date) return;
+
+        const minDate = range.min_date ? normalizeDate(new Date(range.min_date)) : undefined;
+        const maxDate = normalizeDate(new Date(range.max_date));
+
+        const currentStart = normalizeDate(startDate);
+        const currentEnd = normalizeDate(endDate);
+
+        const outOfRange = (minDate && currentEnd < minDate) || currentStart > maxDate;
+        if (outOfRange) {
+          const newEnd = maxDate;
+          const newStartCandidate = new Date(maxDate);
+          newStartCandidate.setDate(newStartCandidate.getDate() - 7);
+          const newStart = clampStartDate(newStartCandidate, minDate);
+          if (isActive) {
+            setStartDate(newStart);
+            setEndDate(newEnd);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load sales date range:', err);
+      }
+    };
+
+    refreshRange();
+    return () => {
+      isActive = false;
+    };
+  }, [startDate, endDate]);
+
   const startDateStr =
     startDate instanceof Date ? startDate.toISOString().slice(0, 10) : String(startDate);
   const endDateStr = endDate instanceof Date ? endDate.toISOString().slice(0, 10) : String(endDate);
@@ -59,9 +103,11 @@ export default function MenuMixInsightsPro() {
   const allMenuItems = useMemo(() => {
     return Array.from(
       new Map(
-        breakdownData.filter(item => item.item_name).map(item => [item.item_name, item.item_name])
+        breakdownData
+          .filter(item => item.menu_item_name)
+          .map(item => [item.menu_item_id, item.menu_item_name])
       )
-    ).map(([name]) => ({ id: name as unknown as number, name: name || '' }));
+    ).map(([id, name]) => ({ id: id as number, name: String(name || '') }));
   }, [breakdownData]);
 
   useEffect(() => {
@@ -74,9 +120,12 @@ export default function MenuMixInsightsPro() {
   const filteredBreakdownData =
     selectedMenuItemIds.length === 0
       ? breakdownData
-      : breakdownData.filter(item => selectedMenuItemIds.includes(item.item_name as any));
+      : breakdownData.filter(item => selectedMenuItemIds.includes(item.menu_item_id));
 
-  const filteredOverTimeData = selectedMenuItemIds.length === 0 ? overTimeData : overTimeData;
+  const filteredOverTimeData =
+    selectedMenuItemIds.length === 0
+      ? overTimeData
+      : overTimeData.filter(item => selectedMenuItemIds.includes(item.menu_item_id));
 
   const chartDataByDate = useMemo(() => {
     if (!filteredOverTimeData || filteredOverTimeData.length === 0) return [];
@@ -84,10 +133,10 @@ export default function MenuMixInsightsPro() {
     const grouped: Record<string, any> = {};
     for (const item of filteredOverTimeData) {
       const date = item.sale_date;
+      const itemName = item.menu_item_name || `Item ${item.menu_item_id}`;
       if (!grouped[date]) grouped[date] = { date };
-      // For Pro tier, we could aggregate by item or show totals
-      grouped[date].metric =
-        (grouped[date].metric || 0) + (byRevenue ? item.revenue : item.quantity);
+      // Create individual column for each menu item
+      grouped[date][itemName] = byRevenue ? item.revenue : item.quantity;
     }
     return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
   }, [filteredOverTimeData, byRevenue]);
@@ -95,7 +144,7 @@ export default function MenuMixInsightsPro() {
   const filteredTopBottomData =
     selectedMenuItemIds.length === 0
       ? topBottomData
-      : topBottomData.filter(item => selectedMenuItemIds.includes(item.item_name as any));
+      : topBottomData.filter(item => selectedMenuItemIds.includes(item.menu_item_id));
 
   // Format currency
   const formatCurrency = (value: number) =>
@@ -208,11 +257,15 @@ export default function MenuMixInsightsPro() {
                 <TableBody>
                   {filteredBreakdownData.map((item, idx) => (
                     <TableRow key={idx} hover>
-                      <TableCell>{item.item_name || 'Unknown'}</TableCell>
+                      <TableCell>{item.menu_item_name || 'Unknown'}</TableCell>
                       <TableCell>
-                        {item.channel ? <Chip label={item.channel} size="small" /> : '—'}
+                        {item.sales_channel ? (
+                          <Chip label={item.sales_channel} size="small" />
+                        ) : (
+                          '—'
+                        )}
                       </TableCell>
-                      <TableCell align="right">{item.quantity}</TableCell>
+                      <TableCell align="right">{item.quantity_sold}</TableCell>
                       <TableCell align="right">{formatCurrency(item.revenue)}</TableCell>
                       <TableCell align="right">{formatCurrency(item.recipe_cost)}</TableCell>
                       <TableCell align="right">{formatCurrency(item.total_cost)}</TableCell>

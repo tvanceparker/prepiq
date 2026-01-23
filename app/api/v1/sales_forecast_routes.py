@@ -2,12 +2,30 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import List, Union, Optional
 from datetime import date
 from app.schemas.sales_forecast_dto import (
-    ForecastTableRow, ForecastTotalPerDay, ForecastTotalAggregate, TopForecastedItem,
-    SalesBreakdownItem, SalesOverTimeItem, TopBottomItem,ForecastAccuracyChartRow,
-    ForecastAccuracyTableRow,ComputedForecastAccuracyRow, SalesChannelBreakdown,
-    SalesOverTimeByItem, WeekdaySalesAverage, SalesHeatmapData, SalesExplorerFilters, SalesExplorerRow,
-    SaleUpdateDTO, StandardResponse, SaleCreateDTO, SaleReadDTO,
-    SalesBreakdownProItem, SalesOverTimeProItem, TopBottomProItem
+    ForecastTableRow,
+    ForecastTotalPerDay,
+    ForecastTotalAggregate,
+    TopForecastedItem,
+    SalesBreakdownItem,
+    SalesOverTimeItem,
+    TopBottomItem,
+    ForecastAccuracyChartRow,
+    ForecastAccuracyTableRow,
+    ComputedForecastAccuracyRow,
+    SalesChannelBreakdown,
+    SalesOverTimeByItem,
+    WeekdaySalesAverage,
+    SalesHeatmapData,
+    SalesExplorerFilters,
+    SalesExplorerRow,
+    SaleUpdateDTO,
+    StandardResponse,
+    SaleCreateDTO,
+    SaleReadDTO,
+    SalesBreakdownProItem,
+    SalesOverTimeProItem,
+    TopBottomProItem,
+    SalesDateRange,
 )
 from app.services.sales_forecast_service import SalesForecastService
 from app.api.dependencies import get_sales_forecast_service
@@ -198,6 +216,14 @@ async def download_sales_explorer_excel(
         menu_item_ids=menu_item_ids,
         sales_channels=sales_channels,
     )
+
+@router.get("/date_range", response_model=SalesDateRange)
+@log_route("Get Sales Date Range")
+async def get_sales_date_range(
+    service: SalesForecastService = Depends(get_sales_forecast_service),
+):
+    min_date, max_date = await service.get_sales_date_bounds()
+    return {"min_date": min_date, "max_date": max_date}
 
 @router.patch("/sales/{sale_id}", response_model=StandardResponse)
 async def update_sale(

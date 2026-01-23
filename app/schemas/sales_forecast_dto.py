@@ -160,6 +160,13 @@ class SaleReadDTO(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+# ==========================================================================
+# SALES DATE RANGE
+# ==========================================================================
+
+class SalesDateRange(BaseModel):
+    min_date: Optional[date] = None
+    max_date: Optional[date] = None
 
 # ============================================================================
 # PRO TIER: Menu Mix Insights with Cost Analysis
