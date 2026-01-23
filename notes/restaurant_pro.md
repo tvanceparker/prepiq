@@ -96,11 +96,11 @@ Full pro-tier tenant with batches, recipes, suppliers, inventory flows, and hist
 
 ### Employee Permissions Audit (DB snapshot 2026-01-22)
 
-| employee_id | name            | username     | role_name  | permissions |
-| ----------- | --------------- | ------------ | ---------- | ----------- |
-| 402         | Carlos Mendez   | carlos_snake | Shift Lead | create_orders, edit_inventory, manage_orders, manage_prep, view_inventory, view_menu, view_orders, view_prep, view_sales |
+| employee_id | name            | username     | role_name  | permissions                                                                                                                                                                                                                                   |
+| ----------- | --------------- | ------------ | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 402         | Carlos Mendez   | carlos_snake | Shift Lead | create_orders, edit_inventory, manage_orders, manage_prep, view_inventory, view_menu, view_orders, view_prep, view_sales                                                                                                                      |
 | 401         | Elena Rodriguez | elena_snake  | Owner      | create_orders, edit_inventory, edit_menu, edit_settings, manage_employees, manage_orders, manage_prep, manage_purchase_orders, manage_suppliers, view_employees, view_inventory, view_menu, view_orders, view_prep, view_sales, view_settings |
-| 403         | Miguel Santos   | miguel_snake | Line       | create_orders, manage_orders, view_menu, view_orders |
+| 403         | Miguel Santos   | miguel_snake | Line       | create_orders, manage_orders, view_menu, view_orders                                                                                                                                                                                          |
 
 > **Note:** Passwords use Argon2id. Shared hash for `Test!2345` is `$argon2id$v=19$m=65536,t=3,p=4$m1Nq7b23ttb6P0cIgVDqHQ$4PU2CLuz2Qn0VHvi0hyYHmMr+/cEtgPe7AjlccleUSo`.
 

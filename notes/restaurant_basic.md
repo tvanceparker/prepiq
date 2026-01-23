@@ -101,9 +101,9 @@ Basic tier does NOT include: ingredients, recipes, inventory, batches, suppliers
 
 ### Employee Permissions Audit (DB snapshot 2026-01-22)
 
-| employee_id | name        | username      | role_name | permissions |
-| ----------- | ----------- | ------------- | --------- | ----------- |
-| 302         | Amy Tran    | amy_canyon    | Cashier   | create_orders, manage_orders, view_menu, view_orders, view_sales |
+| employee_id | name        | username      | role_name | permissions                                                                                                                                 |
+| ----------- | ----------- | ------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| 302         | Amy Tran    | amy_canyon    | Cashier   | create_orders, manage_orders, view_menu, view_orders, view_sales                                                                            |
 | 301         | Marcus Chen | marcus_canyon | Manager   | create_orders, edit_menu, edit_settings, manage_employees, manage_orders, view_employees, view_menu, view_orders, view_sales, view_settings |
 
 > **Note:** Passwords use Argon2id. Shared hash for `Test!2345` is `$argon2id$v=19$m=65536,t=3,p=4$m1Nq7b23ttb6P0cIgVDqHQ$4PU2CLuz2Qn0VHvi0hyYHmMr+/cEtgPe7AjlccleUSo`.

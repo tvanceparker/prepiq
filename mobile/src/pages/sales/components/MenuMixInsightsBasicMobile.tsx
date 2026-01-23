@@ -173,9 +173,7 @@ export default function MenuMixInsightsBasicMobile() {
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
-      <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 4 }}>
-        Menu Mix Insights
-      </Text>
+      <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 4 }}>Menu Mix Insights</Text>
       <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginBottom: 12 }}>
         Profitability, trends, and performance by item
       </Text>
@@ -368,9 +366,7 @@ export default function MenuMixInsightsBasicMobile() {
                           Food {formatPercent(foodCostPct)}
                         </Chip>
                       </View>
-                      {idx < filteredBreakdown.length - 1 && (
-                        <Divider style={{ marginTop: 10 }} />
-                      )}
+                      {idx < filteredBreakdown.length - 1 && <Divider style={{ marginTop: 10 }} />}
                     </View>
                   );
                 })}
@@ -524,13 +520,7 @@ export default function MenuMixInsightsBasicMobile() {
   );
 }
 
-function SectionCard({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   const theme = useTheme();
   return (
     <Card style={{ marginBottom: 16, backgroundColor: theme.colors.surface }}>
