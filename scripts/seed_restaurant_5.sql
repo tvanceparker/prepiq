@@ -72,42 +72,44 @@ INSERT INTO restaurants (
 );
 
 INSERT INTO permissions (permission_id, restaurant_id, name, description) VALUES
-    (501, 5, 'view_menu', 'View menu items'),
-    (502, 5, 'edit_menu', 'Edit menu items'),
-    (503, 5, 'view_orders', 'View orders'),
-    (504, 5, 'create_orders', 'Create new orders'),
-    (505, 5, 'manage_orders', 'Manage order status'),
-    (506, 5, 'view_inventory', 'View inventory levels'),
-    (507, 5, 'edit_inventory', 'Edit inventory'),
-    (508, 5, 'view_sales', 'View sales reports'),
-    (509, 5, 'view_employees', 'View employee list'),
-    (510, 5, 'manage_employees', 'Manage employees'),
-    (511, 5, 'view_settings', 'View settings'),
-    (512, 5, 'edit_settings', 'Edit settings'),
-    (513, 5, 'manage_suppliers', 'Manage suppliers'),
-    (514, 5, 'manage_purchase_orders', 'Manage purchase orders'),
-    (515, 5, 'view_prep', 'View prep schedules'),
-    (516, 5, 'manage_prep', 'Manage prep schedules'),
-    (517, 5, 'view_analytics', 'View analytics'),
-    (518, 5, 'manage_devices', 'Manage devices'),
-    (519, 5, 'process_payments', 'Process payments'),
-    (520, 5, 'manage_cash_drawer', 'Manage cash drawer');
+    (501, 5, 'manage_employees', 'Can manage employees'),
+    (502, 5, 'upload_sales', 'Can upload sales data'),
+    (503, 5, 'alerts', 'Can resolve & fix alerts'),
+    (504, 5, 'edit_menu', 'Can edit & create menu items'),
+    (505, 5, 'tenant_info', 'Can edit tenant info'),
+    (506, 5, 'activity_logs', 'Can view activity logs'),
+    (507, 5, 'system_check', 'Can run Sales data check'),
+    (508, 5, 'employees', 'Can create & edit employee info'),
+    (509, 5, 'roles', 'Can edit roles & permissions'),
+    (510, 5, 'restaurant_settings', 'Can edit restaurant settings'),
+    (511, 5, 'sales', 'Can create/edit sale info.'),
+    (512, 5, 'add_recipe', 'Can add recipes'),
+    (513, 5, 'edit_recipe', 'Can edit recipes'),
+    (514, 5, 'delete_recipe', 'Can delete recipes'),
+    (515, 5, 'add_prep', 'Can add prep items'),
+    (516, 5, 'batch_create_recipe', 'Can batch create recipes'),
+    (517, 5, 'batch_edit_recipe', 'Can batch edit recipes'),
+    (518, 5, 'batch_delete_recipe', 'Can batch delete recipes'),
+    (519, 5, 'view_analytics', 'Can view detailed analytics'),
+    (520, 5, 'generate_ordering', 'Can generate ordering recommendations');
 
 INSERT INTO roles (role_id, restaurant_id, name, description) VALUES
-    (501, 5, 'Admin', 'Full access to all features'),
-    (502, 5, 'Supervisor', 'Orders, inventory, scheduling, analytics'),
-    (503, 5, 'Counter', 'Order entry, payments');
+    (501, 5, 'Admin', 'Admin access'),
+    (502, 5, 'Manager', 'Full access'),
+    (503, 5, 'Cook', 'Can view and edit orders'),
+    (504, 5, 'Waiter', 'Can view orders only');
 
 INSERT INTO role_permissions (role_id, permission_id, restaurant_id) VALUES
     (501, 501, 5), (501, 502, 5), (501, 503, 5), (501, 504, 5), (501, 505, 5),
     (501, 506, 5), (501, 507, 5), (501, 508, 5), (501, 509, 5), (501, 510, 5),
     (501, 511, 5), (501, 512, 5), (501, 513, 5), (501, 514, 5), (501, 515, 5),
     (501, 516, 5), (501, 517, 5), (501, 518, 5), (501, 519, 5), (501, 520, 5),
-    (502, 501, 5), (502, 503, 5), (502, 504, 5), (502, 505, 5), (502, 506, 5),
-    (502, 507, 5), (502, 508, 5), (502, 513, 5), (502, 514, 5), (502, 515, 5),
-    (502, 516, 5), (502, 517, 5), (502, 519, 5),
-    (503, 501, 5), (503, 503, 5), (503, 504, 5), (503, 505, 5), (503, 508, 5),
-    (503, 519, 5);
+    (502, 501, 5), (502, 502, 5), (502, 503, 5), (502, 504, 5), (502, 505, 5),
+    (502, 506, 5), (502, 507, 5), (502, 508, 5), (502, 510, 5), (502, 511, 5),
+    (502, 512, 5), (502, 513, 5), (502, 514, 5), (502, 515, 5), (502, 516, 5),
+    (502, 517, 5), (502, 518, 5), (502, 519, 5), (502, 520, 5),
+    (503, 502, 5), (503, 504, 5),
+    (504, 506, 5);
 
 INSERT INTO employees (
     employee_id,
@@ -131,10 +133,10 @@ INSERT INTO employees (
      3003, 503, 1),
     (504, 5, 'David Kim', 'david@perrineheights.com', 'david_perrine',
      '$argon2id$v=19$m=65536,t=3,p=4$m1Nq7b23ttb6P0cIgVDqHQ$4PU2CLuz2Qn0VHvi0hyYHmMr+/cEtgPe7AjlccleUSo',
-     3004, 503, 1),
+     3004, 504, 1),
     (505, 5, 'Sarah Chen', 'sarah@perrineheights.com', 'sarah_perrine',
      '$argon2id$v=19$m=65536,t=3,p=4$m1Nq7b23ttb6P0cIgVDqHQ$4PU2CLuz2Qn0VHvi0hyYHmMr+/cEtgPe7AjlccleUSo',
-     3005, 503, 1);
+     3005, 504, 1);
 
 INSERT INTO supplier (supplier_id, restaurant_id, name, type, region, contact_info, rating, is_active) VALUES
     (501, 5, 'Sawtooth Farms', 'produce', 'ID', 'phone: 208-555-1901, email: orders@sawtoothfarms.test', 4.8, 1),
