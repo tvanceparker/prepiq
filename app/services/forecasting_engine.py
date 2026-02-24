@@ -1105,7 +1105,9 @@ class ForecastingEngine:
             )
 
             for bi in batch_ingredients:
-                ingredient_id = bi.ingredient_id
+                if getattr(bi, "ingredient_type", None) != "ingredient":
+                    continue
+                ingredient_id = bi.reference_id
                 unit_qty = Decimal(bi.quantity_used or 0)
                 ingredient_unit = normalize_unit(bi.unit or "count")
                 batch_yield_unit = normalize_unit(batch_recipe.yield_unit or "count")
@@ -1300,7 +1302,7 @@ class ForecastingEngine:
                 )
                 logger.error("[FORECAST] %s", message)
                 await self.forecast_run_ledger_repo.record_error(
-                    ledger.forecast_ledger_id, "validation", message
+                    ledger, "validation", message
                 )
                 await self.forecast_run_ledger_repo.finalize(ledger)
                 await self.db.commit()
@@ -1312,7 +1314,7 @@ class ForecastingEngine:
                 await self.evaluate_and_record_accuracy(forecast_date)
                 duration_ms = int((datetime.utcnow() - stage_start).total_seconds() * 1000)
                 await self.forecast_run_ledger_repo.mark_stage_complete(
-                    ledger.forecast_ledger_id, "accuracy_evaluated", duration_ms
+                    ledger, "accuracy_evaluated", duration_ms
                 )
                 await self.db.flush()
                 logger.info("[FORECAST] Accuracy evaluation completed in %dms", duration_ms)
@@ -1323,7 +1325,7 @@ class ForecastingEngine:
                 await self.evaluate_and_record_daily_forecast_accuracy(forecast_date)
                 duration_ms = int((datetime.utcnow() - stage_start).total_seconds() * 1000)
                 await self.forecast_run_ledger_repo.mark_stage_complete(
-                    ledger.forecast_ledger_id, "daily_accuracy_evaluated", duration_ms
+                    ledger, "daily_accuracy_evaluated", duration_ms
                 )
                 await self.db.flush()
                 logger.info("[FORECAST] Daily accuracy evaluation completed in %dms", duration_ms)
@@ -1346,7 +1348,7 @@ class ForecastingEngine:
 
                 # Update total count
                 await self.forecast_run_ledger_repo.update_progress(
-                    ledger.forecast_ledger_id, 0, len(menu_items)
+                    ledger, 0, len(menu_items)
                 )
                 await self.db.flush()
 
@@ -1390,13 +1392,13 @@ class ForecastingEngine:
 
                     # Update progress
                     await self.forecast_run_ledger_repo.update_progress(
-                        ledger.forecast_ledger_id, idx + 1, len(menu_items)
+                        ledger, idx + 1, len(menu_items)
                     )
                     await self.db.flush()
 
                 duration_ms = int((datetime.utcnow() - stage_start).total_seconds() * 1000)
                 await self.forecast_run_ledger_repo.mark_stage_complete(
-                    ledger.forecast_ledger_id, "forecasts_generated", duration_ms
+                    ledger, "forecasts_generated", duration_ms
                 )
                 await self.db.flush()
                 logger.info("[FORECAST] Forecast generation completed in %dms", duration_ms)
@@ -1418,7 +1420,7 @@ class ForecastingEngine:
                 self.latest_batch_breakdown = batch_data
                 duration_ms = int((datetime.utcnow() - stage_start).total_seconds() * 1000)
                 await self.forecast_run_ledger_repo.mark_stage_complete(
-                    ledger.forecast_ledger_id, "batch_breakdown_calculated", duration_ms
+                    ledger, "batch_breakdown_calculated", duration_ms
                 )
                 await self.db.flush()
                 logger.info("[FORECAST] Batch breakdown completed in %dms", duration_ms)
@@ -1439,7 +1441,7 @@ class ForecastingEngine:
                 self.latest_aggregated_ingredient_demand = aggregated
                 duration_ms = int((datetime.utcnow() - stage_start).total_seconds() * 1000)
                 await self.forecast_run_ledger_repo.mark_stage_complete(
-                    ledger.forecast_ledger_id, "ingredient_breakdown_calculated", duration_ms
+                    ledger, "ingredient_breakdown_calculated", duration_ms
                 )
                 await self.db.flush()
                 logger.info("[FORECAST] Ingredient breakdown completed in %dms", duration_ms)
@@ -1467,7 +1469,7 @@ class ForecastingEngine:
             
             try:
                 await self.forecast_run_ledger_repo.record_error(
-                    ledger.forecast_ledger_id, "pipeline_execution", error_message
+                    ledger, "pipeline_execution", error_message
                 )
                 await self.forecast_run_ledger_repo.finalize(ledger)
                 await self.db.commit()

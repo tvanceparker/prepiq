@@ -2,6 +2,7 @@ from decimal import Decimal
 from typing import Dict, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.ingredients_repo import IngredientRepository
+from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
 from app.services.inventory_stats_service import InventoryStatsService
 from app.repositories.alerts_repo import AlertRepository
 from app.core.logging import logger
@@ -32,6 +33,7 @@ class ReorderForecastEngine:
         self.restaurant_id = restaurant_id
         self.subscription_tier = subscription_tier
         self.ingredient_repo = IngredientRepository(db, restaurant_id)
+        self.ingredient_supplier_repo = IngredientSupplierRepository(db, restaurant_id)
         self.stats_service = InventoryStatsService(db, restaurant_id)
         self.alert_repo = AlertRepository(db,restaurant_id)
         self._abc_cache: Dict[int, str] = {}
@@ -219,7 +221,11 @@ class ReorderForecastEngine:
             usage = await self.stats_service.get_total_usage_last_n_days(
                 ingredient.ingredient_id, days
             )
-            cost = ingredient.unit_cost or Decimal("0")
+            supplier = await self.ingredient_supplier_repo.get_preferred_or_lowest_priority_supplier(
+                ingredient.ingredient_id
+            )
+            cost_value = supplier.cost_per_unit if supplier else None
+            cost = Decimal(cost_value or 0)
             value = usage * cost
             usage_data.append((ingredient.ingredient_id, value, ingredient.abc_class))
 

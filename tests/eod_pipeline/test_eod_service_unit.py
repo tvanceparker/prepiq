@@ -115,15 +115,17 @@ class TestEODServiceUnit:
         }
         service.inventory_helper.deduct_usage_summary = AsyncMock(return_value=helper_return)
 
-        result = await service.deduct_ingredients_from_inventory(usage_summary)
+        result = await service.deduct_ingredients_from_inventory(
+            usage_summary, date(2025, 11, 20)
+        )
 
         assert result["message"] == "Inventory successfully deducted for sales."
         assert len(result["deducted_items"]) == 1
         assert result["deducted_items"][0]["ingredient_id"] == 1001
         service.inventory_helper.deduct_usage_summary.assert_awaited_once_with(
             usage_summary,
-            reference_type="other",
-            reference_id=ANY,
+            reference_type="eod_sales",
+            reference_id=20251120,
         )
 
     @pytest.mark.asyncio
@@ -157,7 +159,9 @@ class TestEODServiceUnit:
         }
         service.inventory_helper.deduct_usage_summary = AsyncMock(return_value=helper_return)
 
-        result = await service.deduct_ingredients_from_inventory(usage_summary)
+        result = await service.deduct_ingredients_from_inventory(
+            usage_summary, date(2025, 11, 20)
+        )
 
         assert len(result["deducted_items"]) == 1
         assert result["deducted_items"][0]["batch_recipe_id"] == 5001
@@ -168,7 +172,9 @@ class TestEODServiceUnit:
         """Ensure deduction helper handles empty summaries gracefully."""
         service = EODService(mock_db_session, restaurant_id, "master")
 
-        result = await service.deduct_ingredients_from_inventory([])
+        result = await service.deduct_ingredients_from_inventory(
+            [], date(2025, 11, 20)
+        )
 
         assert result["updated_inventories_count"] == 0
         assert result["deducted_items"] == []
@@ -192,14 +198,16 @@ class TestEODServiceUnit:
         service.forecasting_engine = mock_forecasting_engine
         
         result = await service.generate_forecast(
+            forecast_date=date(2025, 11, 20),
             forecast_horizon_days=30,
-            reorder_horizon_days=30
+            reorder_horizon_days=30,
         )
         
         mock_forecasting_engine.initialize.assert_called_once()
         mock_forecasting_engine.run_forecasting_pipeline.assert_called_once_with(
+            forecast_date=date(2025, 11, 20),
             horizon_days=30,
-            reorder_horizon_days=30
+            reorder_horizon_days=30,
         )
         assert isinstance(result, dict)
 

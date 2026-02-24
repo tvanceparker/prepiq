@@ -10,7 +10,7 @@ class ForecastRunLedgerRepository(BaseRepository[ForecastRunLedger]):
     """Repository for ForecastRunLedger operations."""
 
     def __init__(self, db: AsyncSession, restaurant_id: int):
-        super().__init__(db, restaurant_id, ForecastRunLedger)
+        super().__init__(db, ForecastRunLedger, restaurant_id)
         self.pk_field = "forecast_ledger_id"
 
     async def get_or_create(self, run_date: date) -> ForecastRunLedger:

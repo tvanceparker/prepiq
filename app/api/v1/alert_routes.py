@@ -18,7 +18,7 @@ async def create_alert(
     alert = await service.create_alert(
         alert_type=alert_in.alert_type,
         message=alert_in.message,
-        severity=alert_in.alert_type,
+        severity=alert_in.severity,
         employee_id=alert_in.employee_id,
         role=alert_in.role,
         meta=alert_in.meta,

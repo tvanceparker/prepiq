@@ -45,6 +45,21 @@ class EODRunLedgerRepository:
         ledger.durations = durations
         await self.db.flush()
 
+    async def reset(self, ledger: EODRunLedger) -> None:
+        ledger.running = False
+        ledger.finalized = False
+        ledger.sales_deducted = False
+        ledger.forecast_completed = False
+        ledger.reorder_completed = False
+        ledger.po_suggested = False
+        ledger.po_written = False
+        ledger.lock_token = None
+        ledger.started_at = None
+        ledger.finished_at = None
+        ledger.durations = {}
+        ledger.errors = []
+        await self.db.flush()
+
     async def append_error(self, ledger: EODRunLedger, stage: str, message: str) -> None:
         errors = ledger.errors or []
         errors.append({"stage": stage, "message": message, "ts": datetime.utcnow().isoformat()})

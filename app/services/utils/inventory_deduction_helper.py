@@ -86,6 +86,16 @@ class InventoryDeductionHelper:
         """Apply a precomputed usage summary (e.g., from EOD aggregation)."""
         if not usage_summary:
             return {"deducted_items": [], "failures": []}
+        already_logged = await self.inventory_usage_log_repo.exists_for_reference(
+            reference_type, reference_id
+        )
+        if already_logged:
+            logger.info(
+                "[InventoryDeduction] Skipping reference %s/%s (already logged)",
+                reference_type,
+                reference_id,
+            )
+            return {"deducted_items": [], "failures": [], "skipped": "already_logged"}
         return await self._apply_usage_summary(
             usage_summary, reference_type=reference_type, reference_id=reference_id
         )
@@ -346,7 +356,7 @@ class InventoryDeductionHelper:
             await self.alerts_service.create_alert(
                 alert_type="Inventory:DeductionFailed",
                 message=message,
-                severity="high",
+                severity="urgent",
                 employee_id=self.employee_id,
                 role="system",
                 meta=meta or {},

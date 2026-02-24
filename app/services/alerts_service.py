@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, List
+from typing import Optional, List, Dict
+import enum
 from scipy.stats import zscore
 import numpy as np
 from collections import defaultdict
@@ -19,6 +20,12 @@ import json
 
 
 class AlertsService:
+    _SEVERITY_MAP = {
+        "high": "urgent",
+        "critical": "urgent",
+    }
+    _SEVERITY_ALLOWED = {"info", "warning", "urgent"}
+
     def __init__(self,db:AsyncSession, restaurant_id: int, subscription_tier: str,employee_id: int):
         self.db = db
         self.restaurant_id = restaurant_id
@@ -28,6 +35,26 @@ class AlertsService:
         self.sales_repo = SalesRepository(db,restaurant_id)
         self.menu_item_repo = MenuItemRepository(db,restaurant_id)
         self.activity_log_repo = ActivityLogRepository(db,restaurant_id,employee_id)
+
+    def _normalize_severity(self, severity: Optional[object]) -> str:
+        if severity is None:
+            return "info"
+        if isinstance(severity, enum.Enum):
+            value = str(severity.value)
+        else:
+            value = str(severity)
+        normalized = value.strip().lower()
+        if normalized in self._SEVERITY_ALLOWED:
+            return normalized
+        if normalized in self._SEVERITY_MAP:
+            return self._SEVERITY_MAP[normalized]
+        return "warning"
+
+    def _normalize_alert(self, alert: Dict[str, object]) -> Dict[str, object]:
+        if not alert:
+            return alert
+        alert["severity"] = self._normalize_severity(alert.get("severity"))
+        return alert
 
     async def log_activity(self, action: str, details: Any = None):
         """
@@ -71,16 +98,16 @@ class AlertsService:
             "role": role,
             "meta": meta,
             "status": "Active",
-            "severity": severity,  # fixed colon and added comma
+            "severity": self._normalize_severity(severity),  # fixed colon and added comma
             "is_acknowledged": False,
         }
         alert_obj = await self.alert_repo.create(alert_data)
-        return to_dict(alert_obj)
+        return self._normalize_alert(to_dict(alert_obj))
 
     @log_method("Get Active Alerts")
     async def get_active_alerts(self, skip: int = 0, limit: int = 20) -> List[dict]:
         alerts = await self.alert_repo.get_by_status(["Active","Acknowledged"], skip, limit)
-        return [to_dict(alert) for alert in alerts]
+        return [self._normalize_alert(to_dict(alert)) for alert in alerts]
     
     @log_method("Resolve Alert")
     async def resolve_alert(self, alert_id: int) -> Optional[dict]:
@@ -97,7 +124,7 @@ class AlertsService:
             "date_resolved": update_data["date_resolved"].isoformat() + "Z"
         })
 
-        return to_dict(updated_alert)
+        return self._normalize_alert(to_dict(updated_alert))
 
     @log_method("Acknowlodge Alert")
     async def acknowledge_alert(self, alert_id: int) -> Optional[dict]:
@@ -114,12 +141,13 @@ class AlertsService:
             "new_status": update_data["status"],
         })
 
-        return to_dict(updated_alert)
+        return self._normalize_alert(to_dict(updated_alert))
         
     @log_method("Get All alerts")   
     async def get_all_alerts(self, skip: int = 0, limit: int = 50):
         # Fetch all alerts, no filter on status
-        return await self.alert_repo.get_all(skip=skip, limit=limit)
+        alerts = await self.alert_repo.get_all(skip=skip, limit=limit)
+        return [self._normalize_alert(to_dict(alert)) for alert in alerts]
     
    
     @log_method("Fixing Alert")

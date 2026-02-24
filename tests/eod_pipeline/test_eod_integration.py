@@ -165,7 +165,9 @@ class TestEODPipelineIntegration:
         )
         
         # Execute deduction
-        result = await service.deduct_ingredients_from_inventory(usage_summary)
+        result = await service.deduct_ingredients_from_inventory(
+            usage_summary, date(2025, 11, 20)
+        )
         
         # Verify integration
         assert len(usage_summary) >= 1

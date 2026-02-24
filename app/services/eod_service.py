@@ -105,7 +105,7 @@ class EODService:
         usage_summary = await self.aggregate_daily_sales(run_date)
         helper_result = None
         if usage_summary:
-            helper_result = await self.deduct_ingredients_from_inventory(usage_summary)
+            helper_result = await self.deduct_ingredients_from_inventory(usage_summary, run_date)
         has_failures = bool(helper_result.get("failures")) if isinstance(helper_result, dict) else False
         if not has_failures:
             await self.order_repo.mark_completed_orders_deducted_for_date(run_date)
@@ -121,7 +121,9 @@ class EODService:
             logger.debug('[EOD] Skip forecast already complete date=%s', run_date)
             return {}
         t0 = datetime.utcnow()
-        ingredient_forecast = await self.generate_forecast(forecast_horizon_days, reorder_horizon_days)
+        ingredient_forecast = await self.generate_forecast(
+            run_date, forecast_horizon_days, reorder_horizon_days
+        )
         # Record accuracy (daily + rolling) using forecasting engine advanced methods
         try:
             await self.forecasting_engine.evaluate_and_record_daily_forecast_accuracy(run_date)
@@ -258,7 +260,7 @@ class EODService:
         return usage_summary
 
     async def deduct_ingredients_from_inventory(
-        self, usage_summary: List[dict]
+        self, usage_summary: List[dict], run_date: date
     ) -> dict:
         if not usage_summary:
             return {
@@ -268,10 +270,12 @@ class EODService:
                 "failures": [],
             }
 
+        reference_id = int(run_date.strftime("%Y%m%d"))
+
         helper_result = await self.inventory_helper.deduct_usage_summary(
             usage_summary,
-            reference_type="other",
-            reference_id=int(datetime.utcnow().timestamp()),
+            reference_type="eod_sales",
+            reference_id=reference_id,
         )
 
         failures = helper_result.get("failures") if isinstance(helper_result, dict) else None
@@ -299,6 +303,7 @@ class EODService:
 
     async def generate_forecast(
         self,
+        forecast_date: date,
         forecast_horizon_days: int = 30,
         reorder_horizon_days: int = 30,
     ) -> Dict[int, dict]:
@@ -311,6 +316,7 @@ class EODService:
 
         await self.forecasting_engine.initialize()
         ingredient_forecast = await self.forecasting_engine.run_forecasting_pipeline(
+            forecast_date=forecast_date,
             horizon_days=forecast_horizon_days,
             reorder_horizon_days=reorder_horizon_days,
         )
@@ -532,6 +538,7 @@ class EODService:
         self,
         date: date,
         commit: bool = True,
+        force: bool = False,
         forecast_horizon_days: int = 30,
         reorder_horizon_days: int = 30,
     ) -> Dict[str, int]:
@@ -542,6 +549,9 @@ class EODService:
                 self.subscription_tier,
             )
             ledger = await self.ledger_repo.get_or_create(run_date=date)
+            if force:
+                logger.info("[EOD] Force rerun enabled; resetting ledger for date=%s", date)
+                await self.ledger_repo.reset(ledger)
             await self.ledger_repo.mark_running(ledger)
 
             usage_count = 0
@@ -556,7 +566,7 @@ class EODService:
                     await self.basic_forecasting_engine.run(date)
                 except Exception as e:
                     logger.error('[EOD] Basic engine failure error=%s', e, exc_info=True)
-            elif self.subscription_tier == 'master':
+            elif self.subscription_tier == 'master' or self.subscription_tier == 'pro':
                 # Sales & deduction
                 usage_count = await self._stage_sales_deduction(date, ledger)
                 await self._stage_spoilage(date, ledger)

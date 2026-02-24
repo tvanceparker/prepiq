@@ -20,6 +20,7 @@ class SeverityEnum(str, enum.Enum):
     info = "info"
     warning = "warning"
     urgent = "urgent"
+    high = "high"
 
 
 class Alert(Base):
