@@ -23,7 +23,11 @@ class Ingredient(Base):
     restaurant = relationship("Restaurant", back_populates="ingredients")
     # inventory = relationship("Inventory", back_populates="ingredient")
     spoilage_data = relationship("SpoilageData", back_populates="ingredient")
-    recipe_ingredients = relationship("RecipeIngredient", back_populates="ingredient")
+    recipe_ingredients = relationship(
+        "RecipeIngredient",
+        back_populates="ingredient",
+        overlaps="recipe_ingredients",
+    )
 
     ingredient_suppliers = relationship(
         "IngredientSupplier", back_populates="ingredient"

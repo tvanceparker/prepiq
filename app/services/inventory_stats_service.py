@@ -258,7 +258,7 @@ class InventoryStatsService:
         )
 
         if usage_data:
-            total = sum(Decimal(usage) for _, usage in usage_data)
+            total = sum((Decimal(usage) for _, usage in usage_data), Decimal("0"))
             logger.debug(
                 f"[INV STATS] TotalUsage ingredient={ingredient_id} source=logs samples={len(usage_data)} days={days}"
             )
@@ -268,7 +268,7 @@ class InventoryStatsService:
             )
             usage_by_ingredient = await self.forecasting_engine.derive_ingredient_usage_from_sales(days)
             ingredient_usage = usage_by_ingredient.get(ingredient_id, {})
-            total = sum(Decimal(value) for value in ingredient_usage.values())
+            total = sum((Decimal(value) for value in ingredient_usage.values()), Decimal("0"))
 
         total = total.quantize(Decimal("0.01"))
         logger.debug(

@@ -22,6 +22,7 @@ class ReferenceTypeEnum(str, enum.Enum):
     user = "user"
     lot = "lot"
     waste_report = "waste_report"
+    eod_sales = "eod_sales"
     other = "other"
 
 

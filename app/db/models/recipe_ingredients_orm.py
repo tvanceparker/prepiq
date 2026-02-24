@@ -55,6 +55,7 @@ class RecipeIngredient(Base):
         primaryjoin="and_(RecipeIngredient.ingredient_type == 'ingredient', foreign(RecipeIngredient.reference_id) == Ingredient.ingredient_id)",
         back_populates="recipe_ingredients",
         uselist=False,  # This is a one-to-one relationship
+        overlaps="recipe_ingredients,batch_recipe",
     )
 
     # Conditional relationship to BatchRecipe table based on ingredient_type
