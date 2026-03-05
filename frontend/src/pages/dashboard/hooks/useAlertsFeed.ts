@@ -43,6 +43,7 @@ const fixableAlertTypes: readonly string[] = [
   'DataQuality:NullOrZeroQuantity',
   'DataQuality:MissingChannel',
   'DataQuality:QuantityOutlier',
+  'Inventory:DeductionFailed',
 ];
 
 interface UseAlertsFeedOptions {

@@ -1,4 +1,3 @@
-from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -79,7 +78,7 @@ async def refresh_token(request: Request):
         "employee_id": payload.get("employee_id"),
         "name": payload.get("name"),
         "role_id": payload.get("role_id")
-    }, expires_delta=timedelta(minutes=15))
+    })
 
     return {"access_token": new_token, "token_type": "bearer"}
 

@@ -1,17 +1,17 @@
-import React, { createContext, useState, useEffect, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BASE_URL } from "../api/config";
-import useApplyTheme from "../hooks/useApplyTheme";
-import type { AuthContextType, Preferences, ThemeMode, UserInfo } from "../interfaces/auth";
+import React, { createContext, useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '../api/index';
+import useApplyTheme from '../hooks/useApplyTheme';
+import type { AuthContextType, Preferences, ThemeMode, UserInfo } from '../interfaces/auth';
 
 export const AuthContext = createContext<AuthContextType>({
   user: null,
   token: null,
   tier: null,
   loading: true,
-  preferences: { theme: "light", auto_logout_minutes: 30 },
+  preferences: { theme: 'light', auto_logout_minutes: 30 },
   setPreferences: () => {},
-  theme: "light",
+  theme: 'light',
   setTheme: () => {},
   login: async () => {},
   logout: async () => {},
@@ -20,7 +20,7 @@ export const AuthContext = createContext<AuthContextType>({
 });
 
 const defaultPreferences: Preferences = {
-  theme: "light",
+  theme: 'light',
   auto_logout_minutes: 30,
 };
 
@@ -34,41 +34,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
 
   const [theme, setTheme] = useState<ThemeMode>(() => {
-    const saved = localStorage.getItem("preferences");
+    const saved = localStorage.getItem('preferences');
     if (saved) {
       try {
         const prefs = JSON.parse(saved) as Preferences;
-        return (prefs?.theme && prefs.theme !== "system" ? prefs.theme : "light") as ThemeMode;
+        return (prefs?.theme && prefs.theme !== 'system' ? prefs.theme : 'light') as ThemeMode;
       } catch {}
     }
-    return "light";
+    return 'light';
   });
 
   // Theme sync
   useEffect(() => {
     const themeToUse =
-      preferences?.theme && preferences.theme !== "system"
+      preferences?.theme && preferences.theme !== 'system'
         ? (preferences.theme as ThemeMode)
-        : "light";
+        : 'light';
     setTheme(themeToUse);
-    localStorage.setItem("theme", themeToUse);
+    localStorage.setItem('theme', themeToUse);
   }, [preferences]);
 
   useApplyTheme(theme);
 
   // Load local storage state on mount
   useEffect(() => {
-    const storedToken = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
-    const storedTier = localStorage.getItem("tier");
-    const storedPrefs = localStorage.getItem("preferences");
+    const storedToken = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('user');
+    const storedTier = localStorage.getItem('tier');
+    const storedPrefs = localStorage.getItem('preferences');
 
     if (storedToken) setToken(storedToken);
     if (storedUser) {
       try {
         setUser(JSON.parse(storedUser));
       } catch {
-        localStorage.removeItem("user");
+        localStorage.removeItem('user');
       }
     }
     if (storedTier) setTier(storedTier);
@@ -76,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setPreferences(JSON.parse(storedPrefs));
       } catch {
-        localStorage.removeItem("preferences");
+        localStorage.removeItem('preferences');
       }
     }
 
@@ -89,23 +89,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refetch: refetchPermissions,
     isLoading: permissionsLoading,
   } = useQuery<string[]>({
-    queryKey: ["permissions", user?.role_id],
+    queryKey: ['permissions', user?.role_id],
     queryFn: async () => {
       if (!user?.role_id || !token) return [];
-      const res = await fetch(`${BASE_URL}/admin/roles-with-permissions`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Failed to fetch roles");
-      const roles = (await res.json()) as Array<{ role_id: number; permissions: Array<{ name: string }> }>;
-      const foundRole = roles.find((r) => r.role_id === user.role_id);
-      return foundRole ? foundRole.permissions.map((p) => p.name) : [];
+      const rolesResponse = await api.get<Array<{ role_id: number; permissions: Array<{ name: string }> }>>(
+        '/admin/roles-with-permissions'
+      );
+      const roles = rolesResponse.data;
+      const foundRole = roles.find(r => r.role_id === user.role_id);
+      return foundRole ? foundRole.permissions.map(p => p.name) : [];
     },
     enabled: !!user?.role_id && !!token,
     staleTime: 1000 * 60 * 10, // 10 minutes
   });
 
   // Login logic
-  const login = async ({ token, tier, user, preferences: prefs }: { token: string; tier: string; user: UserInfo; preferences?: Preferences }) => {
+  const login = async ({
+    token,
+    tier,
+    user,
+    preferences: prefs,
+  }: {
+    token: string;
+    tier: string;
+    user: UserInfo;
+    preferences?: Preferences;
+  }) => {
     setToken(token);
     setTier(tier);
     setUser(user);
@@ -113,46 +122,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const newPrefs = prefs || defaultPreferences;
     setPreferences(newPrefs);
 
-    localStorage.setItem("token", token);
-    localStorage.setItem("tier", tier);
-    localStorage.setItem("user", JSON.stringify(user));
-    localStorage.setItem("preferences", JSON.stringify(newPrefs));
+    localStorage.setItem('token', token);
+    localStorage.setItem('tier', tier);
+    localStorage.setItem('user', JSON.stringify(user));
+    localStorage.setItem('preferences', JSON.stringify(newPrefs));
 
     const themePref =
-      newPrefs?.theme && newPrefs.theme !== "system" ? (newPrefs.theme as ThemeMode) : "light";
+      newPrefs?.theme && newPrefs.theme !== 'system' ? (newPrefs.theme as ThemeMode) : 'light';
     setTheme(themePref);
-    localStorage.setItem("theme", themePref);
+    localStorage.setItem('theme', themePref);
 
     // Refetch permissions
     if (user?.role_id) {
-      queryClient.invalidateQueries({ queryKey: ["permissions", user.role_id] });
+      queryClient.invalidateQueries({ queryKey: ['permissions', user.role_id] });
     }
   };
 
   // Logout logic
   const logout = async () => {
     try {
-      await fetch(`${BASE_URL}/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
+      await api.post('/auth/logout');
     } catch (err) {
-      console.warn("Logout failed", err);
+      console.warn('Logout failed', err);
     }
 
     setToken(null);
     setTier(null);
     setUser(null);
     setPreferences(defaultPreferences);
-    setTheme("light");
+    setTheme('light');
 
-    localStorage.removeItem("token");
-    localStorage.removeItem("tier");
-    localStorage.removeItem("user");
-    localStorage.setItem("preferences", JSON.stringify(defaultPreferences));
-    localStorage.setItem("theme", "light");
+    localStorage.removeItem('token');
+    localStorage.removeItem('tier');
+    localStorage.removeItem('user');
+    localStorage.setItem('preferences', JSON.stringify(defaultPreferences));
+    localStorage.setItem('theme', 'light');
 
-    queryClient.removeQueries({ queryKey: ["permissions"] });
+    queryClient.removeQueries({ queryKey: ['permissions'] });
   };
 
   const contextValue = useMemo<AuthContextType>(
@@ -170,7 +176,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       permissions,
       refetchPermissions,
     }),
-    [user, token, tier, loading, permissionsLoading, preferences, theme, permissions]
+    [
+      user,
+      token,
+      tier,
+      loading,
+      permissionsLoading,
+      preferences,
+      theme,
+      login,
+      logout,
+      permissions,
+      refetchPermissions,
+    ]
   );
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;

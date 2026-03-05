@@ -8,6 +8,7 @@ from app.repositories.alerts_repo import AlertRepository
 from app.repositories.sales_repo import SalesRepository
 from app.repositories.activity_logs_repo import ActivityLogRepository
 from app.repositories.menu_items_repo import MenuItemRepository
+from app.repositories.inventory_repo import InventoryRepository
 from app.repositories.sales_repo import SalesRepository
 from datetime import datetime
 from app.services.utils.convert import to_dict
@@ -34,6 +35,7 @@ class AlertsService:
         self.alert_repo = AlertRepository(db,restaurant_id)
         self.sales_repo = SalesRepository(db,restaurant_id)
         self.menu_item_repo = MenuItemRepository(db,restaurant_id)
+        self.inventory_repo = InventoryRepository(db, restaurant_id)
         self.activity_log_repo = ActivityLogRepository(db,restaurant_id,employee_id)
 
     def _normalize_severity(self, severity: Optional[object]) -> str:
@@ -161,30 +163,86 @@ class AlertsService:
         meta = alert.meta or {}
         sale_id = meta.get("sale_id")
 
-        if not sale_id:
-            logger.warning(f"Missing sale_id in alert meta for alert {alert_id}.")
-            return False
-
-        logger.info(f"Fixing alert of type {alert_type} for sale ID {sale_id} with data: {fix_data}")
+        logger.info(f"Fixing alert of type {alert_type} with data: {fix_data}")
 
         fixed = False
 
         if alert_type == "DataQuality:NullOrZeroQuantity":
+            if not sale_id:
+                logger.warning(f"Missing sale_id in alert meta for alert {alert_id}.")
+                return False
             new_quantity = fix_data.get("quantity_sold")
             if new_quantity is not None:
                 await self.sales_repo.update(sale_id, {"quantity_sold": new_quantity})
                 fixed = True
 
         elif alert_type == "DataQuality:MissingChannel":
+            if not sale_id:
+                logger.warning(f"Missing sale_id in alert meta for alert {alert_id}.")
+                return False
             new_channel = fix_data.get("sales_channel", "unknown")
             await self.sales_repo.update(sale_id, {"sales_channel": new_channel})
             fixed = True
 
         elif alert_type == "DataQuality:QuantityOutlier":
+            if not sale_id:
+                logger.warning(f"Missing sale_id in alert meta for alert {alert_id}.")
+                return False
             new_quantity = fix_data.get("quantity_sold")
             if new_quantity is not None:
                 await self.sales_repo.update(sale_id, {"quantity_sold": new_quantity})
                 fixed = True
+
+        elif alert_type == "Inventory:DeductionFailed":
+            ingredient_id = meta.get("ingredient_id")
+            required_quantity = float(meta.get("required_quantity") or 0)
+            available_quantity = float(meta.get("available_quantity") or 0)
+            unit = meta.get("unit") or "count"
+
+            if ingredient_id is None:
+                logger.warning(
+                    f"Inventory fix for alert {alert_id} missing ingredient_id in meta."
+                )
+                return False
+
+            target_quantity = fix_data.get("target_quantity_on_hand")
+            if target_quantity is None:
+                target_quantity = max(required_quantity, available_quantity)
+
+            try:
+                target_quantity = float(target_quantity)
+            except (TypeError, ValueError):
+                logger.warning(
+                    f"Invalid target_quantity_on_hand for alert {alert_id}: {target_quantity}"
+                )
+                return False
+
+            if target_quantity < 0:
+                logger.warning(
+                    f"Negative target_quantity_on_hand for alert {alert_id}: {target_quantity}"
+                )
+                return False
+
+            inventory_entry = await self.inventory_repo.get_inventory_by_ingredient(
+                int(ingredient_id)
+            )
+
+            if inventory_entry:
+                await self.inventory_repo.update(
+                    inventory_entry.inventory_id,
+                    {"quantity_on_hand": target_quantity},
+                )
+            else:
+                await self.inventory_repo.create(
+                    {
+                        "ingredient_id": int(ingredient_id),
+                        "quantity_on_hand": target_quantity,
+                        "min_stock_level": 0,
+                        "unit": str(unit),
+                    }
+                )
+
+            fixed = True
 
         if fixed:
             await self.alert_repo.resolve(alert_id)

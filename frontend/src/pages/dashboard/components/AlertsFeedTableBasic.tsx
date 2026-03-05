@@ -112,9 +112,14 @@ export default function AlertsFeedTableBasic({
               </Typography>
 
               {(fixAlert.alert_type === "DataQuality:NullOrZeroQuantity" ||
-                fixAlert.alert_type === "DataQuality:QuantityOutlier") && (
+                fixAlert.alert_type === "DataQuality:QuantityOutlier" ||
+                fixAlert.alert_type === "Inventory:DeductionFailed") && (
                 <TextField
-                  label="Quantity Sold"
+                  label={
+                    fixAlert.alert_type === "Inventory:DeductionFailed"
+                      ? "Target Inventory Quantity"
+                      : "Quantity Sold"
+                  }
                   type="number"
                   inputRef={inputRef}
                   fullWidth

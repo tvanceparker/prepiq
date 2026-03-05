@@ -21,6 +21,7 @@ class AlertBase(BaseModel):
 class FixAlertRequest(BaseModel):
     quantity_sold: Optional[float] = None
     sales_channel: Optional[str] = None
+    target_quantity_on_hand: Optional[float] = None
 
 
 class AlertCreate(AlertBase):

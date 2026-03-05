@@ -14,6 +14,7 @@ from app.repositories.inventory_usage_log_repo import InventoryUsageLogRepositor
 from app.repositories.menu_item_recipes_repo import MenuItemRecipeRepository
 from app.repositories.recipe_ingredients_repo import RecipeIngredientRepository
 from app.repositories.restaurants_repo import RestaurantRepository
+from app.repositories.sales_repo import SalesRepository
 from app.services.alerts_service import AlertsService
 from app.services.utils.unit_conversion import convert_unit, normalize_unit
 
@@ -39,7 +40,25 @@ class InventoryDeductionHelper:
         self.ingredient_repo = IngredientRepository(db, restaurant_id)
         self.batch_recipe_repo = BatchRecipeRepository(db, restaurant_id)
         self.restaurant_repo = RestaurantRepository(db, restaurant_id)
+        self.sales_repo = SalesRepository(db, restaurant_id)
         self.alerts_service = AlertsService(db, restaurant_id, subscription_tier, employee_id)
+
+    async def _reference_context(self, reference_type: str, reference_id: int) -> Dict[str, Any]:
+        context: Dict[str, Any] = {
+            "reference_type": reference_type,
+            "reference_id": reference_id,
+            "deduction_reason": f"{reference_type}:{reference_id}",
+            "attempted_at": datetime.utcnow().isoformat() + "Z",
+            "attempted_day": datetime.utcnow().date().isoformat(),
+        }
+
+        if reference_type == "sale":
+            sale = await self.sales_repo.get_by_id(reference_id)
+            if sale and getattr(sale, "sale_timestamp", None):
+                context["sale_timestamp"] = sale.sale_timestamp.isoformat()
+                context["attempted_day"] = sale.sale_timestamp.date().isoformat()
+
+        return context
 
     async def is_real_time_enabled(self) -> bool:
         row = await self.restaurant_repo.get_settings()
@@ -205,14 +224,28 @@ class InventoryDeductionHelper:
         ingredient_id = usage["ingredient_id"]
         qty = Decimal(str(usage["quantity"]))
         unit = usage.get("unit", "count")
+        ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+        ingredient_name = ingredient.name if ingredient else f"Ingredient {ingredient_id}"
+        ref_ctx = await self._reference_context(reference_type, reference_id)
 
         inventory_entry = await self.inventory_repo.get_inventory_by_ingredient(
             ingredient_id
         )
         if not inventory_entry:
             await self._create_alert(
-                message=f"No inventory found for ingredient {ingredient_id}",
-                meta={"ingredient_id": ingredient_id, "reference_id": reference_id},
+                message=(
+                    f"Inventory deduction failed for '{ingredient_name}': no inventory row found "
+                    f"while processing {reference_type} {reference_id} on {ref_ctx['attempted_day']}."
+                ),
+                meta={
+                    "ingredient_id": ingredient_id,
+                    "ingredient_name": ingredient_name,
+                    "required_quantity": float(qty),
+                    "available_quantity": 0.0,
+                    "current_quantity_on_hand": 0.0,
+                    "unit": unit,
+                    **ref_ctx,
+                },
             )
             return None
 
@@ -224,14 +257,22 @@ class InventoryDeductionHelper:
 
         available_qty = Decimal(str(inventory_entry.quantity_on_hand or 0))
         if available_qty < qty:
+            shortfall = qty - available_qty
             await self._create_alert(
-                message=f"Insufficient inventory for ingredient {ingredient_id}",
+                message=(
+                    f"Inventory deduction failed for '{ingredient_name}': tried to deduct "
+                    f"{float(qty)} {to_unit} for {reference_type} {reference_id} on {ref_ctx['attempted_day']}, "
+                    f"but only {float(available_qty)} {to_unit} is on hand."
+                ),
                 meta={
                     "ingredient_id": ingredient_id,
+                    "ingredient_name": ingredient_name,
                     "required_quantity": float(qty),
                     "available_quantity": float(available_qty),
+                    "current_quantity_on_hand": float(available_qty),
+                    "shortfall_quantity": float(shortfall),
                     "unit": to_unit,
-                    "reference_id": reference_id,
+                    **ref_ctx,
                 },
             )
             return None
@@ -270,6 +311,9 @@ class InventoryDeductionHelper:
         batch_recipe_id = usage["batch_recipe_id"]
         qty = Decimal(str(usage["quantity"]))
         from_unit = usage.get("unit", "count")
+        ref_ctx = await self._reference_context(reference_type, reference_id)
+        batch_recipe = await self.batch_recipe_repo.get_by_id(batch_recipe_id)
+        batch_name = batch_recipe.name if batch_recipe else f"Batch recipe {batch_recipe_id}"
 
         lots = await self.inventory_lot_repo.get_all_by_batch_recipe_id(batch_recipe_id)
         if not lots:
@@ -296,14 +340,22 @@ class InventoryDeductionHelper:
             Decimal(str(inv.quantity_on_hand or 0)) for inv in inventories
         )
         if total_available < qty:
+            shortfall = qty - total_available
             await self._create_alert(
-                message=f"Insufficient inventory for batch recipe {batch_recipe_id}",
+                message=(
+                    f"Inventory deduction failed for batch '{batch_name}': tried to deduct "
+                    f"{float(qty)} {to_unit} for {reference_type} {reference_id} on {ref_ctx['attempted_day']}, "
+                    f"but only {float(total_available)} {to_unit} is on hand."
+                ),
                 meta={
                     "batch_recipe_id": batch_recipe_id,
+                    "batch_recipe_name": batch_name,
                     "required_quantity": float(qty),
                     "available_quantity": float(total_available),
+                    "current_quantity_on_hand": float(total_available),
+                    "shortfall_quantity": float(shortfall),
                     "unit": to_unit,
-                    "reference_id": reference_id,
+                    **ref_ctx,
                 },
             )
             return []

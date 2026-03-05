@@ -50,3 +50,10 @@ export interface AlertsParams {
   limit?: number;
   offset?: number;
 }
+
+export interface FixAlertPayload {
+  quantity_sold?: number;
+  sales_channel?: string;
+  target_quantity_on_hand?: number;
+  [key: string]: unknown;
+}

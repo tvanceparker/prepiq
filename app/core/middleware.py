@@ -3,11 +3,21 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from app.core.logging import logger
-from starlette.responses import Response
 from jose import jwt, JWTError
 from app.utils.security import SECRET_KEY, ALGORITHM
 
+
 class AuthExtractionMiddleware(BaseHTTPMiddleware):
+    """
+    Best-effort JWT extraction middleware.
+
+    Decodes the Bearer token and populates ``request.state`` when valid.
+    Does **not** reject requests on its own — route-level dependencies
+    (``get_current_user`` / ``check_permissions``) enforce authentication so
+    that error responses go through FastAPI's response pipeline and carry
+    proper CORS headers.
+    """
+
     async def dispatch(self, request: Request, call_next):
         auth_header = request.headers.get("Authorization")
 
@@ -20,12 +30,16 @@ class AuthExtractionMiddleware(BaseHTTPMiddleware):
                 request.state.restaurant_id = int(payload.get("restaurant_id"))
                 request.state.subscription_tier = payload.get("subscription_tier")
 
-                logger.info(f"[Middleware] User: {request.state.username}, "
-                      f"Restaurant ID: {request.state.restaurant_id}, "
-                      f"Tier: {request.state.subscription_tier}")
+                logger.info(
+                    f"[Middleware] User: {request.state.username}, "
+                    f"Restaurant ID: {request.state.restaurant_id}, "
+                    f"Tier: {request.state.subscription_tier}"
+                )
 
             except JWTError as e:
-                logger.warning(f"JWT Decode Failed: {e}")
-                return Response("Invalid token", status_code=401)
+                # Don't block the request — let route dependencies return a
+                # proper 401 HTTPException with CORS headers so the browser
+                # (and the Axios refresh interceptor) can read the response.
+                logger.warning(f"[Middleware] JWT decode skipped ({e})")
 
         return await call_next(request)

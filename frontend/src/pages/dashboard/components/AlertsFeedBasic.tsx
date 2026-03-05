@@ -87,6 +87,11 @@ export default function AlertsFeedBasic(): JSX.Element {
 
   const openFixModal = (alert: any) => {
     setFixingAlert(alert);
+    if (alert?.alert_type === 'Inventory:DeductionFailed') {
+      const required = Number(alert?.meta?.required_quantity ?? '');
+      setFixInput(Number.isFinite(required) ? String(required) : '');
+      return;
+    }
     setFixInput('');
   };
 
@@ -117,6 +122,15 @@ export default function AlertsFeedBasic(): JSX.Element {
       case 'DataQuality:MissingChannel':
         fixData = { sales_channel: fixInput.trim() };
         break;
+      case 'Inventory:DeductionFailed': {
+        const targetQuantity = Number(fixInput);
+        if (isNaN(targetQuantity) || targetQuantity < 0) {
+          showSnackbar('Please enter a valid non-negative inventory quantity', 'error');
+          return;
+        }
+        fixData = { target_quantity_on_hand: targetQuantity };
+        break;
+      }
       default:
         showSnackbar('Unsupported alert type for fixing', 'error');
         return;

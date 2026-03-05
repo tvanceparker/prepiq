@@ -10,6 +10,29 @@ const api = axios.create({
   withCredentials: true, // if you're using cookies; otherwise remove this
 });
 
+let isRefreshing = false;
+let refreshPromise: Promise<string | null> | null = null;
+
+const refreshAccessToken = async (): Promise<string | null> => {
+  try {
+    const response = await axios.post(
+      `${BASE_URL}/auth/refresh`,
+      {},
+      {
+        withCredentials: true,
+      }
+    );
+
+    const nextToken = response.data?.access_token as string | undefined;
+    if (!nextToken) return null;
+
+    localStorage.setItem('token', nextToken);
+    return nextToken;
+  } catch {
+    return null;
+  }
+};
+
 // 🔐 Add Authorization header dynamically
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('token');
@@ -18,6 +41,38 @@ api.interceptors.request.use(config => {
   }
   return config;
 });
+
+api.interceptors.response.use(
+  response => response,
+  async error => {
+    const originalRequest = error.config;
+
+    if (!originalRequest || error.response?.status !== 401 || originalRequest._retry) {
+      return Promise.reject(error);
+    }
+
+    originalRequest._retry = true;
+
+    if (!isRefreshing) {
+      isRefreshing = true;
+      refreshPromise = refreshAccessToken().finally(() => {
+        isRefreshing = false;
+      });
+    }
+
+    const refreshedToken = await refreshPromise;
+
+    if (!refreshedToken) {
+      localStorage.clear();
+      window.location.href = '/login';
+      return Promise.reject(error);
+    }
+
+    originalRequest.headers = originalRequest.headers ?? {};
+    originalRequest.headers.Authorization = `Bearer ${refreshedToken}`;
+    return api(originalRequest);
+  }
+);
 
 export const get = async <T>(endpoint: string): Promise<T> => {
   const response = await api.get<T>(endpoint);

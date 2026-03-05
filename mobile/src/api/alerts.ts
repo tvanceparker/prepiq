@@ -1,4 +1,5 @@
 import * as api from './index';
+import type { FixAlertPayload } from '../interfaces/alerts';
 
 const ALERTS_BASE = '/alerts';
 
@@ -18,7 +19,7 @@ export async function acknowledgeAlert(alertId: string | number) {
   return api.post(`${ALERTS_BASE}/${alertId}/acknowledge`);
 }
 
-export async function fixAlert(alertId: string | number, fixData: any) {
+export async function fixAlert(alertId: string | number, fixData: FixAlertPayload) {
   return api.post(`${ALERTS_BASE}/${alertId}/fix`, fixData);
 }
 

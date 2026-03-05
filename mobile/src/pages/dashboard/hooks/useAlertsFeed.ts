@@ -5,6 +5,7 @@ import {
   fetchAllAlerts,
   acknowledgeAlert,
   resolveAlert,
+  fixAlert,
 } from '../../../api/alerts';
 
 interface AlertItem {
@@ -16,6 +17,7 @@ interface AlertItem {
   description?: string;
   message?: string;
   is_acknowledged?: boolean;
+  meta?: Record<string, unknown>;
 }
 
 export default function useAlertsFeed({ pageSize = 20 } = {}) {
@@ -75,6 +77,28 @@ export default function useAlertsFeed({ pageSize = 20 } = {}) {
     },
   });
 
+  const fixMutation = useMutation({
+    mutationFn: ({ id, fixData }: { id: number; fixData: Record<string, unknown> }) =>
+      fixAlert(id, fixData),
+    onSuccess: (_res, variables) => {
+      qc.setQueryData<AlertsInfiniteData>(queryKey, old => {
+        if (!old) return old;
+        const pages = (old.pages || []).map(page =>
+          page.filter(a => a.alert_id !== variables.id)
+        );
+        return { ...old, pages };
+      });
+    },
+  });
+
+  const isFixable = (alert: AlertItem) =>
+    [
+      'DataQuality:NullOrZeroQuantity',
+      'DataQuality:MissingChannel',
+      'DataQuality:QuantityOutlier',
+      'Inventory:DeductionFailed',
+    ].includes(alert.alert_type);
+
   return {
     alerts,
     loading: status === 'pending' || isFetchingNextPage,
@@ -83,6 +107,9 @@ export default function useAlertsFeed({ pageSize = 20 } = {}) {
     loadMore: () => fetchNextPage(),
     acknowledge: (id: number) => ackMutation.mutateAsync(id),
     resolve: (id: number) => resolveMutation.mutateAsync(id),
+    fix: (id: number, fixData: Record<string, unknown>) =>
+      fixMutation.mutateAsync({ id, fixData }),
+    isFixable,
     setFeedMode,
     refetch,
   };
