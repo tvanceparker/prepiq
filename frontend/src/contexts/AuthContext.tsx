@@ -92,9 +92,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryKey: ['permissions', user?.role_id],
     queryFn: async () => {
       if (!user?.role_id || !token) return [];
-      const rolesResponse = await api.get<Array<{ role_id: number; permissions: Array<{ name: string }> }>>(
-        '/admin/roles-with-permissions'
-      );
+      const rolesResponse = await api.get<
+        Array<{ role_id: number; permissions: Array<{ name: string }> }>
+      >('/admin/roles-with-permissions');
       const roles = rolesResponse.data;
       const foundRole = roles.find(r => r.role_id === user.role_id);
       return foundRole ? foundRole.permissions.map(p => p.name) : [];

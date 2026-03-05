@@ -6,8 +6,18 @@ import useAlertsFeed from '../hooks/useAlertsFeed';
 export default function AlertsFeedBasicMobile() {
   const theme = useTheme();
   const [viewAll, setViewAll] = useState(false);
-  const { alerts, loading, error, hasMore, loadMore, acknowledge, resolve, fix, isFixable, setFeedMode } =
-    useAlertsFeed();
+  const {
+    alerts,
+    loading,
+    error,
+    hasMore,
+    loadMore,
+    acknowledge,
+    resolve,
+    fix,
+    isFixable,
+    setFeedMode,
+  } = useAlertsFeed();
   useEffect(() => {
     setFeedMode(viewAll ? 'all' : 'active');
   }, [viewAll]);
@@ -54,8 +64,9 @@ export default function AlertsFeedBasicMobile() {
               {((a.meta as any)?.current_quantity_on_hand !== undefined ||
                 (a.meta as any)?.required_quantity !== undefined) && (
                 <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>
-                  Current: {Number((a.meta as any)?.current_quantity_on_hand ?? 0)} {(a.meta as any)?.unit || ''} ·
-                  Required: {Number((a.meta as any)?.required_quantity ?? 0)} {(a.meta as any)?.unit || ''}
+                  Current: {Number((a.meta as any)?.current_quantity_on_hand ?? 0)}{' '}
+                  {(a.meta as any)?.unit || ''} · Required:{' '}
+                  {Number((a.meta as any)?.required_quantity ?? 0)} {(a.meta as any)?.unit || ''}
                 </Text>
               )}
               {(a.meta as any)?.deduction_reason && (
@@ -112,7 +123,9 @@ export default function AlertsFeedBasicMobile() {
                   }
 
                   const quantity = Number((a.meta as any)?.required_quantity ?? 1);
-                  fix(a.alert_id, { quantity_sold: Number.isFinite(quantity) && quantity >= 0 ? quantity : 1 });
+                  fix(a.alert_id, {
+                    quantity_sold: Number.isFinite(quantity) && quantity >= 0 ? quantity : 1,
+                  });
                 }}
                 style={{
                   paddingVertical: 6,
