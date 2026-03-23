@@ -10,6 +10,22 @@ interface LoginResponse {
   employee_id: number;
   role_id: number;
   preferences: Record<string, any>;
+  expires_in: number;
+}
+
+interface UserInfo {
+  user_id: number;
+  username: string;
+  name: string;
+  email?: string;
+  restaurant_id: number;
+  role_id: number;
+  subscription_tier: string;
+}
+
+interface MeResponse {
+  user: UserInfo;
+  permissions: string[];
 }
 
 export const login = async (username: string, password: string): Promise<LoginResponse> => {
@@ -38,7 +54,7 @@ export const login = async (username: string, password: string): Promise<LoginRe
     localStorage.setItem('token', data.access_token);
   }
 
-  // Return the full login response (including preferences)
+  // Return the full login response (including preferences and expires_in)
   return {
     access_token: data.access_token,
     restaurant_id: data.restaurant_id,
@@ -47,7 +63,42 @@ export const login = async (username: string, password: string): Promise<LoginRe
     employee_id: data.employee_id,
     role_id: data.role_id,
     preferences: data.preferences || {}, // fallback to empty object if missing
+    expires_in: data.expires_in || 2592000, // Default to 30 days if missing
   };
+};
+
+export const logout = async (): Promise<void> => {
+  try {
+    const res = await fetch(`${BASE_URL}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem('token')}`,
+      },
+    });
+
+    if (!res.ok) {
+      console.warn(`Logout API failed: ${res.status}`);
+    }
+  } catch (err) {
+    console.warn('Logout request failed:', err);
+  }
+};
+
+export const me = async (): Promise<MeResponse> => {
+  const res = await fetch(`${BASE_URL}/auth/me`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem('token')}`,
+    },
+    credentials: 'include',
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch current user: ${res.status}`);
+  }
+
+  return res.json();
 };
 
 export const getRolesWithPermissions = () => get('/admin/roles-with-permissions');

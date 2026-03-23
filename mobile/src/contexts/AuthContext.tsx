@@ -95,6 +95,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    try {
+      // Call the new /auth/logout endpoint
+      const token = await AsyncStorage.getItem('token');
+      if (token) {
+        await fetch(
+          `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1'}/auth/logout`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        ).catch(e => console.warn('Logout API failed:', e));
+      }
+    } catch (e) {
+      console.warn('Logout failed:', e);
+    }
+
     setToken(null);
     setTier(null);
     setUser(null);

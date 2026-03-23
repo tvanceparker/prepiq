@@ -57,13 +57,17 @@ class TestAuthService:
 
             mock_restaurant_class.return_value = mock_restaurant_repo
             mock_verify.return_value = True
-            mock_create_token.return_value = 'mock-jwt-token'
+            mock_create_token.return_value = ('mock-jwt-token', 2592000)
 
-            user, token, tier = await auth_service.authenticate_and_create_token('testuser', 'correct_password')
+            user, token, tier, expires_in = await auth_service.authenticate_and_create_token(
+                'testuser',
+                'correct_password'
+            )
 
             assert user == mock_employee
             assert token == 'mock-jwt-token'
             assert tier == 'pro'
+            assert expires_in == 2592000
 
             mock_repos['employees'].get_by_username.assert_called_once_with('testuser')
             mock_verify.assert_called_once_with('correct_password', 'hashed_password')
@@ -74,11 +78,12 @@ class TestAuthService:
         """Test authentication with invalid credentials"""
         mock_repos['employees'].get_by_username.return_value = None
 
-        user, token, tier = await auth_service.authenticate_and_create_token('nonexistent', 'password')
+        user, token, tier, expires_in = await auth_service.authenticate_and_create_token('nonexistent', 'password')
 
         assert user is None
         assert token is None
         assert tier is None
+        assert expires_in is None
 
     @pytest.mark.asyncio
     async def test_authenticate_and_create_token_wrong_password(self, auth_service, mock_repos):
@@ -90,11 +95,12 @@ class TestAuthService:
         with patch('app.services.auth_service.verify_password') as mock_verify:
             mock_verify.return_value = False
 
-            user, token, tier = await auth_service.authenticate_and_create_token('testuser', 'wrong_password')
+            user, token, tier, expires_in = await auth_service.authenticate_and_create_token('testuser', 'wrong_password')
 
             assert user is None
             assert token is None
             assert tier is None
+            assert expires_in is None
 
     @pytest.mark.asyncio
     async def test_register_device_success(self, auth_service, mock_repos):
