@@ -17,7 +17,8 @@ export default function Sidebar({ tier, onNavigate }: Props) {
   const nav = useNavigation<any>();
   const [open, setOpen] = useState<Record<string, boolean>>({});
   if (!tier) return null;
-  const sections: SidebarSection[] = sidebarDataByTier[tier] || [];
+  const normalizedTier = tier === 'basic' ? 'basic' : 'full';
+  const sections: SidebarSection[] = sidebarDataByTier[normalizedTier] || [];
 
   // open first two sections by default for quicker access
   useEffect(() => {

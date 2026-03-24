@@ -14,41 +14,15 @@ import {
 } from '@mui/material';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
-import { useDevice } from '../contexts/DeviceContext';
-import { usePOS } from '../pages/pos/hooks/usePOS';
-import { useRegistrationModal } from '../contexts/RegistrationModalContext';
-import { isDedicatedDevice } from '../hooks/useDeviceDetection';
 import type { SidebarProps } from '../interfaces/components';
 
 export default function Sidebar({ tier }: SidebarProps): JSX.Element | null {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const theme = useTheme();
-  const deviceCtx = useDevice();
-  const pos = usePOS();
-  const registrationModal = useRegistrationModal();
-
-  const dev = (deviceCtx as any)?.device;
-  const isReg = (pos as any)?.isRegistered as boolean | undefined;
-  const storageKey = dev ? `dismiss_register_${dev.device_id}` : null;
-  const [dismissed, setDismissed] = useState<boolean>(() => {
-    try {
-      return !!(storageKey && localStorage.getItem(storageKey));
-    } catch {
-      return false;
-    }
-  });
-
-  const handleDismiss = () => {
-    try {
-      if (storageKey) localStorage.setItem(storageKey, '1');
-    } catch {
-      // ignore
-    }
-    setDismissed(true);
-  };
 
   if (!tier) return null;
-  const sidebarData = (sidebarDataByTier as any)[tier] || [];
+  const normalizedTier = tier === 'basic' ? 'basic' : 'full';
+  const sidebarData = (sidebarDataByTier as any)[normalizedTier] || [];
 
   const toggleSection = (label: string) => {
     setOpenSections(prev => ({ ...prev, [label]: !prev[label] }));
@@ -181,57 +155,6 @@ export default function Sidebar({ tier }: SidebarProps): JSX.Element | null {
           );
         })}
       </List>
-
-      {dev && !isReg && isDedicatedDevice(dev.type) && !dismissed && (
-        <Box sx={{ px: 1, py: 1, borderTop: `1px solid ${theme.palette.divider}` }}>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              p: 1,
-              borderRadius: 1,
-              bgcolor: 'background.paper',
-              boxShadow: theme.shadows[1],
-            }}
-          >
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="body2" fontWeight="600" noWrap>
-                Register this device
-              </Typography>
-              <Typography variant="caption" color="text.secondary" noWrap>
-                Make this a dedicated POS / kitchen display
-              </Typography>
-            </Box>
-
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-              <Button
-                variant="contained"
-                color="primary"
-                size="small"
-                onClick={() =>
-                  registrationModal.openModal({
-                    defaultName: dev?.userAgent || '',
-                    deviceType: dev?.type,
-                  })
-                }
-                sx={{ borderRadius: 1, textTransform: 'none', minWidth: 88 }}
-              >
-                Register
-              </Button>
-
-              <Button
-                variant="text"
-                size="small"
-                onClick={handleDismiss}
-                sx={{ textTransform: 'none', color: 'text.secondary' }}
-              >
-                Dismiss
-              </Button>
-            </Box>
-          </Box>
-        </Box>
-      )}
     </Box>
   );
 }

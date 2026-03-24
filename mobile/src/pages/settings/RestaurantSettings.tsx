@@ -6,6 +6,6 @@ import { AuthContext } from '../../contexts/AuthContext';
 export default function RestaurantSettings() {
   const { tier } = useContext(AuthContext);
 
-  if (tier === 'pro' || tier === 'master') return <ProRestaurantSettingsMobile />;
+  if (tier === 'full') return <ProRestaurantSettingsMobile />;
   return <BasicRestaurantSettingsMobile />;
 }

@@ -2,6 +2,11 @@ import React, { createContext, useState, useEffect, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContextType, Preferences, ThemeMode, UserInfo } from '../interfaces/auth';
 
+const normalizeTier = (tier: string | null): string | null => {
+  if (!tier) return null;
+  return tier.toLowerCase() === 'basic' ? 'basic' : 'full';
+};
+
 export const AuthContext = createContext<AuthContextType>({
   user: null,
   token: null,
@@ -40,7 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ]);
         if (storedToken) setToken(storedToken);
         if (storedUser) setUser(JSON.parse(storedUser));
-        if (storedTier) setTier(storedTier);
+        if (storedTier) setTier(normalizeTier(storedTier));
         if (storedPrefs) setPreferences(JSON.parse(storedPrefs));
         if (storedTheme) setTheme(storedTheme as ThemeMode);
       } finally {
@@ -63,14 +68,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     preferences?: Preferences;
   }) => {
     setToken(token);
-    setTier(tier);
+    const normalizedTier = normalizeTier(tier);
+    setTier(normalizedTier);
     setUser(user);
     const newPrefs = prefs || defaultPreferences;
     setPreferences(newPrefs);
     setTheme((newPrefs.theme !== 'system' ? newPrefs.theme : 'light') as ThemeMode);
     await Promise.all([
       AsyncStorage.setItem('token', token),
-      AsyncStorage.setItem('tier', tier),
+      AsyncStorage.setItem('tier', normalizedTier || 'basic'),
       AsyncStorage.setItem('user', JSON.stringify(user)),
       AsyncStorage.setItem('preferences', JSON.stringify(newPrefs)),
       AsyncStorage.setItem(

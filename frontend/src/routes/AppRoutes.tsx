@@ -10,7 +10,6 @@ import Login from '../pages/auth/Login';
 // Dashboard
 import DailyOverview from '../pages/dashboard/DailyOverview';
 import AlertsFeed from '../pages/dashboard/AlertsFeed';
-import LiveOperations from '../pages/dashboard/LiveOperations';
 import QuickAnalytics from '../pages/dashboard/QuickAnalytics';
 import MenuItemQuickEntry from '../pages/dashboard/MenuItemQuickEntry';
 
@@ -47,20 +46,12 @@ import PrepWasteLogs from '../pages/prep/PrepWasteLogs';
 
 // Admin
 import TenantInfo from '../pages/admin/TenantInfo';
-import SystemAlerts from '../pages/admin/SystemAlerts';
-import SystemHealth from '../pages/admin/SystemHealth';
-import ActivityLogs from '../pages/admin/ActivityLogs';
 import UserManagement from '../pages/admin/UserManagement';
 
 // Settings
 import RestaurantSettings from '../pages/settings/RestaurantSettings';
 import IntegrationSettings from '../pages/settings/IntegrationSettings';
 import AccountSettings from '../pages/settings/AccountSettings';
-
-import Kitchen from '../pages/pos/Kitchen';
-import POS from '../pages/pos/POS';
-import Orders from '../pages/pos/Orders';
-import DeviceRegistration from '../pages/pos/DeviceRegistration';
 
 export default function AppRoutes(): JSX.Element {
   return (
@@ -73,15 +64,9 @@ export default function AppRoutes(): JSX.Element {
         <Route path="/" element={<Navigate to="/dashboard/daily-overview" replace />} />
         <Route path="*" element={<h1>404 - Page Not Found</h1>} />
 
-        <Route path="/kitchen" element={<Kitchen />} />
-        <Route path="/pos" element={<POS />} />
-        <Route path="/orders" element={<Orders />} />
-        <Route path="/pos/device-registration" element={<DeviceRegistration />} />
-
         {/* Dashboard */}
         <Route path="/dashboard/daily-overview" element={<DailyOverview />} />
         <Route path="/dashboard/alerts" element={<AlertsFeed />} />
-        <Route path="/dashboard/live-operations" element={<LiveOperations />} />
         <Route path="/dashboard/quick-analytics" element={<QuickAnalytics />} />
         <Route path="/dashboard/menu-item-entry" element={<MenuItemQuickEntry />} />
 
@@ -102,11 +87,15 @@ export default function AppRoutes(): JSX.Element {
         <Route path="/inventory/table" element={<InventoryTable />} />
 
         {/* Stock Movements - Pro/Master Only */}
-        <Route element={<TierGatedRoute requiredTiers={['pro', 'master']} />}>
+        <Route element={<TierGatedRoute requiredTiers={['full']} />}>
           <Route path="/inventory/stock-movements" element={<StockMovements />} />
         </Route>
 
-        <Route path="/inventory/pos" element={<POs />} />
+        <Route
+          path="/inventory/pos"
+          element={<Navigate to="/inventory/purchase-orders" replace />}
+        />
+        <Route path="/inventory/purchase-orders" element={<POs />} />
         <Route path="/menu/ingredient-costing" element={<IngredientCatalog />} />
         <Route path="/inventory/suppliers" element={<Suppliers />} />
 
@@ -124,9 +113,6 @@ export default function AppRoutes(): JSX.Element {
 
         {/* Admin */}
         <Route path="/admin/tenant-info" element={<TenantInfo />} />
-        <Route path="/admin/system-alerts" element={<SystemAlerts />} />
-        <Route path="/admin/system-health" element={<SystemHealth />} />
-        <Route path="/admin/activity-logs" element={<ActivityLogs />} />
         <Route path="/admin/users" element={<UserManagement />} />
 
         {/* Settings */}
