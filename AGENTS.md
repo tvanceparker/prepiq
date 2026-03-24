@@ -9,14 +9,14 @@ Copilot should read this file before generating or modifying code.
 
 ---
 
-### Active AI Agent Roles
+## Active AI Agent Roles
 
-- **BackendAgent:** Expert in FastAPI, SQLAlchemy async, repository/service patterns and machine learning, data analytics.
-- **FrontendAgent:** Specialist in React 18 + MUI/TanStack Query with strong TypeScript hygiene.
-- **MobileAgent:** Focused on React Native parity and API alignment.
-- **ForecastAgent:** Handles ML model maintenance, forecasting accuracy logic, and EOD analysis.
-- **DocsAgent:** Keeps AGENTS.md, README, and endpoint docs synchronized with schema changes.
-- **DatabaseAgent:** Expert in database design and management, with pydantic models, orms, and querying.
+- **BackendAgent:** Expert in FastAPI, SQLAlchemy async, repository/service patterns, and backend orchestration.
+- **FrontendAgent:** Specialist in React 18, TanStack Query, TypeScript hygiene, and frontend architecture cleanup.
+- **MobileAgent:** Focused on React Native parity, navigation, and API-aligned mobile UX.
+- **ForecastAgent:** Handles forecasting logic, forecast accuracy, and EOD analysis.
+- **DocsAgent:** Keeps AGENTS.md, README, and implementation-facing docs synchronized with schema and architecture changes.
+- **DatabaseAgent:** Expert in database design, tenant scoping, ORM patterns, and query structure.
 
 ## 1. Repository Overview
 
@@ -38,9 +38,9 @@ prepiq/
 ### Core Technologies
 
 - **Backend**: FastAPI (async), SQLAlchemy 2.0 async ORM, aiomysql, APScheduler, JWT auth.
-- **Web Frontend**: React 18, React Router, MUI (Material UI), TanStack Query, Zustand, Chart.js/Recharts, Formik/Yup.
+- **Web Frontend**: React 18, React Router, TanStack Query, Zustand, MUI-heavy legacy UI, Formik/Yup, charting libraries.
 - **Mobile**: React Native with React Native Paper, React Navigation, shared REST API clients.
-- **Testing**: Pytest for backend, React Testing Library & Jest for web, Playwright/Cypress for E2E, (future) mobile unit tests.
+- **Testing**: Pytest for backend, React Testing Library/Jest for web, Playwright for E2E, mobile tests still limited.
 
 ---
 
@@ -78,7 +78,7 @@ prepiq/
 ### 2.5 Background Processing & Realtime
 
 - **End-of-Day Runner**: `app/utils/eod_runner.py` walks active restaurants, evaluates time zone & operating hours, and ensures `EODService.finalize_end_of_day_summary()` runs exactly once per restaurant per day. Keeps `last_eod_run_date` in sync.
-- **Realtime**: `app/sockets/connection_manager.py` manages connections. Kitchen/waiter rooms follow `kitchen_{restaurant_id}`/`waiter_{restaurant_id}` naming. WebSocket handlers rebroadcast messages (e.g., kitchen notifications to waiters).
+- **Realtime**: `app/sockets/connection_manager.py` manages connections. Kitchen/waiter rooms follow `kitchen_{restaurant_id}`/`waiter_{restaurant_id}` naming. These realtime/internal-ops surfaces still exist in the repo, but they should not be treated as the default pattern for new v1 product work unless the task explicitly targets them.
 
 ### 2.6 Logging & Monitoring
 
@@ -105,33 +105,32 @@ prepiq/
 
 - React 18 with functional components and hooks.
 - Routing via `react-router-dom` (`frontend/src/routes/AppRoutes.{tsx,jsx}`).
-- State/data fetching: TanStack Query for API caching; Zustand for localized global state; React Context for auth/device state.
-- UI: Primarily MUI (Material UI) components, with some legacy Tailwind utility classes slated for removal. Custom components live in `frontend/src/components/`.
-- Theming: Defined in `frontend/src/theme.ts` with light/dark palettes and typography settings. Theme toggled through context and localStorage.
+- State/data fetching: TanStack Query for API caching; Zustand for localized global state; React Context for auth and device state.
+- UI: The current app is largely MUI-based, with some legacy Tailwind utility usage still present. Treat that as current implementation reality, not a permanent design-system decision.
+- Theming: Defined in `frontend/src/theme.ts` and related theme files.
 - Build/test scripts: `npm start`, `npm run build`, `npm test`. E2E via Playwright (`npx playwright test`).
 
 ### 3.2 Application Shell
 
 - `App.tsx` decides between auth routes and the authenticated shell (`Layout`).
-- **Layout**: `frontend/src/components/Layout.jsx` (pending TS migration) manages header, persistent sidebar, alerts badge, and theme toggles. The sidebar uses tier-aware navigation data (`components/data/sidebarData.js`).
+- **Layout**: `frontend/src/components/Layout.jsx` manages the main shell, header, sidebar, alerts badge, and theme toggles. This remains a central cleanup target for frontend modernization.
 - **Contexts**:
-  - `AuthContext` handles user session, tier, permissions, logout.
-  - `DeviceContext` manages POS device registration state.
-  - `RegistrationModalContext` coordinates modals for device registration.
-- **Global UI Utilities**: `GlobalSnackbar`, `HintBox`, `CardShell`, etc., standardize messaging and card layout.
+  - `AuthContext` handles user session and logout flow.
+  - `DeviceContext` and related registration contexts still exist for legacy or special-case device flows.
+- **Global UI Utilities**: shared components such as snackbars, cards, and layout wrappers live under `frontend/src/components/`.
 
 ### 3.3 Feature Modules & Tiering
 
-- Pages under `frontend/src/pages/` mirror backend domains (dashboard, inventory, sales, prep, admin, settings, team, analytics).
-- Many dashboards (e.g., `DailyOverview.tsx`) render tier-specific components (`BasicOverview`, `ProOverview`, `MasterOverview`).
-- Sidebar configuration separates Basic vs Master features, enabling quick gating based on subscription.
+- Pages under `frontend/src/pages/` generally mirror backend domains.
+- Some routing, sidebar, and tier scaffolding still reflect older `basic/pro/master` and internal-ops assumptions. Treat those as cleanup targets rather than the desired long-term product shape.
+- For new work, prefer the current product direction of `Basic` and `Full` rather than expanding older tier structures unless the task is explicitly about legacy behavior.
 
 ### 3.4 Data Access Layer
 
-- REST clients live in `frontend/src/api/`, with an Axios instance adding JWT Authorization headers.
-- Feature-specific API wrappers (e.g., `dashboard.ts`, `inventory.js`) encapsulate endpoint calls.
-- Hooks (e.g., `pages/dashboard/hooks`) compose TanStack Query calls and handle caching/invalidation.
-- Interfaces are in the `frontend/interface/` and that's where we get the types and things, they should have the same name as the module that uses them.
+- REST clients live in `frontend/src/api/`, with an Axios instance adding JWT authorization headers.
+- Feature-specific API wrappers encapsulate endpoint calls.
+- Hooks compose TanStack Query calls and handle caching/invalidation.
+- Shared interfaces live in `frontend/src/interfaces/` and should stay aligned with backend DTOs.
 
 ### 3.5 Hooks Organization (IMPORTANT)
 
@@ -158,15 +157,16 @@ prepiq/
 
 ### 3.6 Forms & Components
 
-- Forms typically use Formik + Yup for validation (`forms/` helpers).
-- Custom components wrap MUI primitives for buttons, modals, tables, tags, etc. Migration goal: convert all `.jsx` components to TypeScript `.tsx` and remove Tailwind classnames.
-- Charts: `react-chartjs-2`, Recharts, and custom visualizations housed in `pages/sales/charts/`.
+- Forms typically use Formik + Yup for validation.
+- Custom components currently wrap a mix of MUI primitives and legacy utility styling.
+- Frontend cleanup may replace or reduce MUI usage. Until a new design system is selected, preserve consistency within the area you are touching instead of mixing multiple new styling systems ad hoc.
+- Charts live in feature-specific pages and chart folders.
 
 ### 3.7 Testing & Quality
 
-- Unit tests with React Testing Library (`App.test.js`, `setupTests.js`).
-- E2E/regression tests planned via Playwright (dev dependency already installed).
-- Upcoming work: spin up Storybook for design-system primitives and enforce lint rules preventing Tailwind usage.
+- Unit tests use React Testing Library.
+- E2E/regression tests use Playwright.
+- Frontend modernization and design-system cleanup are active architecture concerns, so major UI work should keep reuse, page-shell consistency, and component extraction in mind.
 
 ---
 
@@ -194,13 +194,13 @@ mobile/src/
 ```
 
 - Screens are organized by domain (`dashboard`, `sales`, `admin`, etc.), with basic-tier subcomponents under `pages/*/components/`.
-- `sidebarData.ts` defines navigation/tier structure analogous to the web sidebar.
-- Planned work: ensure shared design tokens and tier accents stay in sync with the web design system refresh.
+- `sidebarData.ts` defines navigation and tier structure analogous to the web sidebar.
+- Mobile should stay aligned to the same API contracts and overall product direction as the web app, but should not mechanically copy web UI patterns that do not fit mobile interaction.
 
 ### 4.3 Testing & Build
 
-- (Planned) Unit tests to be added using Jest/React Native Testing Library.
-- The project targets parity with the web in functionality, with adaptations for mobile UX (e.g., drawer navigation, touch-first components).
+- Mobile automated testing is still lighter than the web/backend side.
+- The project targets parity with the web in functionality, with adaptations for mobile UX.
 
 ---
 
@@ -208,8 +208,9 @@ mobile/src/
 
 ### 5.1 API Contract
 
-- REST endpoints under `/api/v1/` power both web and mobile clients. Ensure changes to schemas are reflected in both `frontend/src/interfaces/` and `mobile/src/interfaces/`.
-- Authentication tokens stored in browser `localStorage` (web) and secure storage (future mobile update). Middleware expects Bearer JWT on every request.
+- REST endpoints under `/api/v1/` power both web and mobile clients.
+- Changes to backend schemas should be reflected in both `frontend/src/interfaces/` and `mobile/src/interfaces/` unless the task explicitly requires a staged rollout.
+- Authentication tokens are stored in browser `localStorage` on web today; mobile storage handling may evolve separately.
 
 ### 5.2 Multi-Tenancy
 
@@ -233,29 +234,26 @@ mobile/src/
 ## 6. Development Workflow
 
 1. **Environment Setup**
-
    - Backend: `python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`.
    - Web: `cd frontend && npm install`.
    - Mobile: Install dependencies via `npm install` or `yarn` inside `mobile/` (Expo or React Native CLI tooling as configured).
 
 2. **Running Services**
-
    - Backend: `uvicorn main:app --reload --host 0.0.0.0 --port 8000` (task available in VS Code).
    - Web frontend: `cd frontend && npm start` (CRA dev server on port 3000).
    - Mobile: `cd mobile && npm start` (Expo) or `npx react-native run-...` depending on platform.
 
 3. **Database**
-
    - Configure `.env` with MySQL credentials. For local dev, seed using scripts in `scripts/`.
    - Ensure migrations (if added later) keep tenant isolation intact.
 
 4. **Coding Standards**
 
-   - Backend: Use async SQLAlchemy sessions, respect repository/service boundaries, and include `restaurant_id` everywhere.
-   - Frontend: Migrate components to TypeScript, replace Tailwind classes with MUI/theming primitives, and leverage TanStack Query for async data.
-   - Mobile: Maintain parity with web features, use shared token palette, and keep types aligned with backend schemas.
+- Backend: Use async SQLAlchemy sessions, respect repository/service boundaries, and include `restaurant_id` everywhere.
+- Frontend: Keep data logic in hooks, shared contracts in `frontend/src/interfaces/`, and avoid adding new UI inconsistency while design-system cleanup is in progress.
+- Mobile: Maintain parity with web features where appropriate, respect mobile interaction patterns, and keep types aligned with backend schemas.
 
-5. **Branching & Testing**
+1. **Branching & Testing**
    - Create feature branches, run relevant test suites (pytest / `npm test`), and lint before opening PRs.
    - For major UI refactors, attach screenshots or structured Storybook references.
 
@@ -265,19 +263,19 @@ mobile/src/
 
 ## 8. Quick Reference
 
-| Area               | Location                                      | Notes                                                            |
-| ------------------ | --------------------------------------------- | ---------------------------------------------------------------- |
-| FastAPI entry      | `main.py`                                     | Registers middleware, routers, scheduler                         |
-| Auth middleware    | `app/core/middleware.py`                      | Extracts JWT, populates `request.state`                          |
-| Services & repos   | `app/services/`, `app/repositories/`          | Always inject via `build_service`; enforce `restaurant_id` scope |
-| Forecasting engine | `app/services/forecasting_engine.py`          | Weather-aware ML forecasts, accuracy tracking                    |
-| EOD automation     | `app/utils/eod_runner.py`                     | Runs hourly via APScheduler                                      |
-| Web layout         | `frontend/src/components/Layout.jsx`          | Header/sidebar shell (planned TS refactor)                       |
-| Tier navigation    | `frontend/src/components/data/sidebarData.js` | Defines routes for Basic vs Master                               |
-| Web API client     | `frontend/src/api/index.ts`                   | Axios instance with auth interceptor                             |
-| Mobile entry       | `mobile/src/App.tsx`                          | Configures providers, navigation                                 |
-| Mobile theme       | `mobile/src/theme.ts`                         | Light/dark palettes aligned with web                             |
+| Area               | Location                                      | Notes                                                             |
+| :----------------- | :-------------------------------------------- | :---------------------------------------------------------------- |
+| FastAPI entry      | `main.py`                                     | Registers middleware, routers, scheduler                          |
+| Auth middleware    | `app/core/middleware.py`                      | Extracts JWT, populates `request.state`                           |
+| Services & repos   | `app/services/`, `app/repositories/`          | Always inject via `build_service`; enforce `restaurant_id` scope  |
+| Forecasting engine | `app/services/forecasting_engine.py`          | Weather-aware ML forecasts, accuracy tracking                     |
+| EOD automation     | `app/utils/eod_runner.py`                     | Runs hourly via APScheduler                                       |
+| Web layout         | `frontend/src/components/Layout.jsx`          | Header/sidebar shell (planned TS refactor)                        |
+| Tier navigation    | `frontend/src/components/data/sidebarData.js` | Still contains older tier and surface assumptions; cleanup target |
+| Web API client     | `frontend/src/api/index.ts`                   | Axios instance with auth interceptor                              |
+| Mobile entry       | `mobile/src/App.tsx`                          | Configures providers, navigation                                  |
+| Mobile theme       | `mobile/src/theme.ts`                         | Light/dark palettes aligned with web                              |
 
 ---
 
-_Keep this file updated as architecture evolves (notably the ongoing UI refactor and mobile parity work). When significant changes land (new services, design system rollout, etc.), append a changelog section so agents can adapt quickly._
+_Keep this file updated as architecture evolves. Use `.github/copilot-instructions.md` as the sharper implementation-rules document; use this file for broader repo context that should not conflict with those rules._
