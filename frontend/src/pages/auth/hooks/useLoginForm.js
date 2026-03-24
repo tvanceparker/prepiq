@@ -25,7 +25,7 @@ export function useLoginForm() {
         preferences,
       } = data;
 
-      if (!access_token || !restaurant_id || !subscription_tier || role_id === undefined) {
+      if (!access_token || !restaurant_id || !subscription_tier) {
         throw new Error('Invalid login response format');
       }
 

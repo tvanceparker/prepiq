@@ -21,8 +21,6 @@ from app.api.v1 import (
     admin_routes,
     settings_routes,
     alert_routes,
-    permission_routes,
-    team_routes,
     orders_routes,
     pos_routes,
     pos_webhooks,
@@ -135,7 +133,6 @@ app.include_router(pos_webhooks.router, prefix="/api/v1")  # POS webhook routes
 app.include_router(pos_mappings_routes.router, prefix="/api/v1")  # POS mappings routes
 app.include_router(orders_routes.router, prefix="/api/v1")
 # app.include_router(websocket_routes.router)
-app.include_router(team_routes.router, prefix="/api/v1")
 app.include_router(dashboard_routes.router, prefix="/api/v1")
 app.include_router(profit_analytic_routes.router, prefix="/api/v1")
 app.include_router(waste_analytics_routes.router, prefix="/api/v1")
@@ -148,7 +145,6 @@ app.include_router(inventory_routes.router, prefix="/api/v1")
 app.include_router(settings_routes.router, prefix="/api/v1")
 app.include_router(alert_routes.router, prefix="/api/v1")
 app.include_router(auth_routes.router, prefix="/api/v1")
-app.include_router(permission_routes.router, prefix="/api/v1")
 
 from app.sockets.kitchen_ws import router as kitchen_ws_router
 from app.sockets.pos_ws import router as pos_ws_router

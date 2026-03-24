@@ -8,7 +8,7 @@ interface LoginResponse {
   subscription_tier: string;
   name: string;
   employee_id: number;
-  role_id: number;
+  role_id?: number | null;
   preferences: Record<string, any>;
   expires_in: number;
 }
@@ -19,7 +19,7 @@ interface UserInfo {
   name: string;
   email?: string;
   restaurant_id: number;
-  role_id: number;
+  role_id?: number | null;
   subscription_tier: string;
 }
 

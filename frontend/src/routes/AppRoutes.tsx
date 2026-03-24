@@ -2,7 +2,6 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from '../components/ProtectedRoute';
-import PermissionRoute from '../components/PermissionRoute';
 import TierGatedRoute from '../components/TierGatedRoute';
 
 //Login
@@ -46,19 +45,12 @@ import BatchRecipes from '../pages/prep/BatchRecipes';
 import PrepLogs from '../pages/prep/PrepLogs';
 import PrepWasteLogs from '../pages/prep/PrepWasteLogs';
 
-// Team
-import ClockInLog from '../pages/team/ClockInLog';
-import ShiftManager from '../pages/team/ShiftManager';
-
-import TeamInsights from '../pages/team/TeamInsights';
-
 // Admin
 import TenantInfo from '../pages/admin/TenantInfo';
 import SystemAlerts from '../pages/admin/SystemAlerts';
 import SystemHealth from '../pages/admin/SystemHealth';
 import ActivityLogs from '../pages/admin/ActivityLogs';
 import UserManagement from '../pages/admin/UserManagement';
-import RolesAccess from '../pages/admin/RolesAccess';
 
 // Settings
 import RestaurantSettings from '../pages/settings/RestaurantSettings';
@@ -130,28 +122,12 @@ export default function AppRoutes(): JSX.Element {
         <Route path="/prep/logs" element={<PrepLogs />} />
         <Route path="/prep/waste-logs" element={<PrepWasteLogs />} />
 
-        {/* Team */}
-        <Route path="/team/clock-in" element={<ClockInLog />} />
-        <Route path="/team/shifts" element={<ShiftManager />} />
-        <Route path="/team/insights" element={<TeamInsights />} />
-
         {/* Admin */}
-        <Route element={<PermissionRoute required="tenant_info" />}>
-          <Route path="/admin/tenant-info" element={<TenantInfo />} />
-        </Route>
+        <Route path="/admin/tenant-info" element={<TenantInfo />} />
         <Route path="/admin/system-alerts" element={<SystemAlerts />} />
-        <Route element={<PermissionRoute required="system_check" />}>
-          <Route path="/admin/system-health" element={<SystemHealth />} />
-        </Route>
-        <Route element={<PermissionRoute required="activity_logs" />}>
-          <Route path="/admin/activity-logs" element={<ActivityLogs />} />
-        </Route>
-        <Route element={<PermissionRoute required="employees" />}>
-          <Route path="/admin/users" element={<UserManagement />} />
-        </Route>
-        <Route element={<PermissionRoute required="roles" />}>
-          <Route path="/admin/roles" element={<RolesAccess />} />
-        </Route>
+        <Route path="/admin/system-health" element={<SystemHealth />} />
+        <Route path="/admin/activity-logs" element={<ActivityLogs />} />
+        <Route path="/admin/users" element={<UserManagement />} />
 
         {/* Settings */}
         <Route path="/settings/restaurant" element={<RestaurantSettings />} />

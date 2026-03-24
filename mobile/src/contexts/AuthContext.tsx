@@ -1,7 +1,6 @@
 import React, { createContext, useState, useEffect, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContextType, Preferences, ThemeMode, UserInfo } from '../interfaces/auth';
-import client from '../api/client';
 
 export const AuthContext = createContext<AuthContextType>({
   user: null,
@@ -50,19 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const refetchPermissions = async () => {
-    if (!user?.role_id || !token) return;
-    try {
-      const res = await client.get('/admin/roles-with-permissions');
-      const roles = res.data as Array<{ role_id: number; permissions: Array<{ name: string }> }>;
-      const found = roles.find(r => r.role_id === user.role_id);
-      const perms = found ? found.permissions.map(p => p.name) : [];
-      setPermissions(perms);
-      console.log('[AuthContext] permissions fetched:', perms);
-    } catch (e) {
-      // ignore
-    }
-  };
+  const refetchPermissions = async () => [];
 
   const login = async ({
     token,
@@ -91,7 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         (newPrefs.theme !== 'system' ? newPrefs.theme : 'light') as string
       ),
     ]);
-    await refetchPermissions();
+    setPermissions([]);
   };
 
   const logout = async () => {

@@ -1,6 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
 from app.services.auth_service import AuthService
 from app.schemas.auth_dto import LoginRequest, DeviceRegistrationRequest
 from app.repositories.employees_repo import EmployeeRepository
@@ -160,4 +161,20 @@ class TestAuthService:
         await auth_service.log_activity('Test Action')
 
         # Should not raise any exceptions
+
+    @pytest.mark.asyncio
+    async def test_get_current_user_info_returns_empty_permissions_without_role(self, auth_service):
+        mock_user = SimpleNamespace(
+            employee_id=1,
+            username='testuser',
+            name='Test User',
+            email='test@example.com'
+        )
+        auth_service.employees_repo.get_by_id.return_value = mock_user
+
+        user, permissions = await auth_service.get_current_user_info(1, 1, None)
+
+        assert user == mock_user
+        assert permissions == []
+        auth_service.employees_repo.get_by_id.assert_awaited_once_with(1)
 

@@ -1,8 +1,11 @@
 import React, { createContext, useState, useEffect, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/index';
 import useApplyTheme from '../hooks/useApplyTheme';
 import type { AuthContextType, Preferences, ThemeMode, UserInfo } from '../interfaces/auth';
+
+const SHARED_ACCESS_PERMISSIONS: string[] = [];
+
+const refetchSharedAccessPermissions = async () => SHARED_ACCESS_PERMISSIONS;
 
 export const AuthContext = createContext<AuthContextType>({
   user: null,
@@ -25,8 +28,6 @@ const defaultPreferences: Preferences = {
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const queryClient = useQueryClient();
-
   const [user, setUser] = useState<UserInfo | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [tier, setTier] = useState<string | null>(null);
@@ -83,25 +84,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(false);
   }, []);
 
-  // Fetch permissions with React Query
-  const {
-    data: permissions = [],
-    refetch: refetchPermissions,
-    isLoading: permissionsLoading,
-  } = useQuery<string[]>({
-    queryKey: ['permissions', user?.role_id],
-    queryFn: async () => {
-      if (!user?.role_id || !token) return [];
-      const rolesResponse = await api.get<
-        Array<{ role_id: number; permissions: Array<{ name: string }> }>
-      >('/admin/roles-with-permissions');
-      const roles = rolesResponse.data;
-      const foundRole = roles.find(r => r.role_id === user.role_id);
-      return foundRole ? foundRole.permissions.map(p => p.name) : [];
-    },
-    enabled: !!user?.role_id && !!token,
-    staleTime: 1000 * 60 * 10, // 10 minutes
-  });
+  const permissions = SHARED_ACCESS_PERMISSIONS;
+  const refetchPermissions = refetchSharedAccessPermissions;
 
   // Login logic
   const login = async ({
@@ -131,11 +115,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       newPrefs?.theme && newPrefs.theme !== 'system' ? (newPrefs.theme as ThemeMode) : 'light';
     setTheme(themePref);
     localStorage.setItem('theme', themePref);
-
-    // Refetch permissions
-    if (user?.role_id) {
-      queryClient.invalidateQueries({ queryKey: ['permissions', user.role_id] });
-    }
   };
 
   // Logout logic
@@ -157,8 +136,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('user');
     localStorage.setItem('preferences', JSON.stringify(defaultPreferences));
     localStorage.setItem('theme', 'light');
-
-    queryClient.removeQueries({ queryKey: ['permissions'] });
   };
 
   const contextValue = useMemo<AuthContextType>(
@@ -166,7 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       token,
       tier,
-      loading: !!(loading || permissionsLoading),
+      loading,
       preferences,
       setPreferences,
       theme,
@@ -176,19 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       permissions,
       refetchPermissions,
     }),
-    [
-      user,
-      token,
-      tier,
-      loading,
-      permissionsLoading,
-      preferences,
-      theme,
-      login,
-      logout,
-      permissions,
-      refetchPermissions,
-    ]
+    [user, token, tier, loading, preferences, theme, permissions, refetchPermissions]
   );
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;

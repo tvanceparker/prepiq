@@ -12,6 +12,9 @@ from app.utils.security import SECRET_KEY, ALGORITHM
 from sqlalchemy import select
 from app.db.models.role_permissions_orm import RolePermission
 from app.db.models.permissions_orm import Permission
+from typing import Optional
+
+
 class AuthService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -108,13 +111,20 @@ class AuthService:
         }
 
     @log_method("Get current user info")
-    async def get_current_user_info(self, employee_id: int, restaurant_id: int, role_id: int):
+    async def get_current_user_info(self, employee_id: int, restaurant_id: int, role_id: Optional[int]):
         """Fetch current user info + permissions for /auth/me endpoint"""
         user = await self.employees_repo.get_by_id(employee_id)
         
         if not user:
             logger.warning(f"User {employee_id} not found for /auth/me")
             return None, []
+
+        if role_id is None:
+            logger.info(
+                f"[AuthService] No role_id present for employee {employee_id}; "
+                "returning shared-access user info without permissions"
+            )
+            return user, []
         
         # Fetch user's permissions
         stmt = (

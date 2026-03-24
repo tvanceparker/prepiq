@@ -22,12 +22,10 @@ import ActivityLogs from '../pages/admin/ActivityLogs';
 import {
   TenantInfoBasic,
   SystemHealthBasic,
-  RolesPermissionsBasic,
   UserManagementBasic,
   SystemAlertsBasic,
 } from '../pages/admin/components'; // still used elsewhere if needed
 import TenantInfo from '../pages/admin/TenantInfo';
-import RolesAccess from '../pages/admin/RolesAccess';
 import SystemHealth from '../pages/admin/SystemHealth';
 import SystemAlerts from '../pages/admin/SystemAlerts';
 import UserManagement from '../pages/admin/UserManagement';
@@ -47,20 +45,8 @@ import { InventoryList, Suppliers, PurchaseOrders, StockMovements } from '../pag
 import { MenuBuilder, RecipeEditor, PrepBatches, IngredientCatalog } from '../pages/menu';
 // Prep
 import { PrepSchedule, WasteLogs, PrepLogs, BatchRecipes } from '../pages/prep';
-// Team
-import { Employees, ClockInLog, ShiftManager, TeamInsights } from '../pages/team';
 // Settings extras
 import IntegrationSettings from '../pages/settings/IntegrationSettings';
-
-// Map screen names (stack keys) to required permissions (if any)
-const routePermissions: Record<string, string | undefined> = {
-  'admin_tenant-info': 'tenant_info',
-  'admin_activity-logs': 'activity_logs',
-  'admin_system-health': 'system_check',
-  admin_users: 'employees',
-  admin_roles: 'roles',
-  'admin_system-alerts': 'system_alerts',
-};
 
 const Stack = createNativeStackNavigator();
 
@@ -99,18 +85,12 @@ const routeComponents: Record<string, React.ComponentType<any>> = {
   'prep_waste-logs': WasteLogs,
   prep_logs: PrepLogs,
   'prep_batch-recipes': BatchRecipes,
-  // Team pages
-  'team_clock-in': ClockInLog,
-  team_shifts: ShiftManager,
-  team_insights: TeamInsights,
-  team_employees: Employees,
   // Admin pages
   'admin_tenant-info': TenantInfo,
   'admin_activity-logs': ActivityLogs,
   'admin_system-health': SystemHealth,
   'admin_system-alerts': SystemAlerts,
   admin_users: UserManagement,
-  admin_roles: RolesAccess,
   // Analytics pages
   'analytics_ingredient-trends': IngredientTrends,
   'analytics_dish-profitability': DishProfitability,
@@ -123,22 +103,13 @@ const routeComponents: Record<string, React.ComponentType<any>> = {
 };
 
 export function AppRoutes() {
-  const { token, permissions } = useContext(AuthContext);
+  const { token } = useContext(AuthContext);
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {Object.entries(routeComponents).map(([name, Comp]) => {
         const isAuthScreen = name.startsWith('auth_');
         if (!token && !isAuthScreen) return null; // hide protected when not logged in
         if (token && isAuthScreen) return null; // hide auth screens when logged
-        const requiredPerm = routePermissions[name];
-        // Only enforce permission gating once we actually have some permissions loaded.
-        if (
-          requiredPerm &&
-          permissions &&
-          permissions.length > 0 &&
-          !permissions.includes(requiredPerm)
-        )
-          return null;
         const Wrapper = (props: any) =>
           isAuthScreen ? (
             <Comp {...props} />

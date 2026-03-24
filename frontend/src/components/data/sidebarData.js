@@ -30,11 +30,10 @@ export const sidebarDataByTier = {
     {
       label: 'Admin Panel',
       children: [
-        { name: 'Tenant Info', path: '/admin/tenant-info', permission: 'tenant_info' },
-        { name: 'Activity Logs', path: '/admin/activity-logs', permission: 'activity_logs' },
-        { name: 'System Health Check', path: '/admin/system-health', permission: 'system_check' },
-        { name: 'User Management', path: '/admin/users', permission: 'employees' },
-        { name: 'Roles & Access', path: '/admin/roles', permission: 'roles' },
+        { name: 'Tenant Info', path: '/admin/tenant-info' },
+        { name: 'Activity Logs', path: '/admin/activity-logs' },
+        { name: 'System Health Check', path: '/admin/system-health' },
+        { name: 'User Management', path: '/admin/users' },
       ],
     },
     {
@@ -104,21 +103,12 @@ export const sidebarDataByTier = {
       ],
     },
     {
-      label: 'Team / Workforce',
-      children: [
-        { name: 'Clock-In Log', path: '/team/clock-in' },
-        { name: 'Shift Manager', path: '/team/shifts' },
-        { name: 'Team Insights', path: '/team/insights' },
-      ],
-    },
-    {
       label: 'Admin Panel',
       children: [
         { name: 'Tenant Info', path: '/admin/tenant-info' },
         { name: 'Activity Logs', path: '/admin/activity-logs' },
         { name: 'System Health Check', path: '/admin/system-health' },
         { name: 'User Management', path: '/admin/users' },
-        { name: 'Roles & Access', path: '/admin/roles' },
       ],
     },
     {
@@ -196,15 +186,6 @@ export const sidebarDataByTier = {
       ],
     },
     {
-      label: 'Team / Workforce',
-      children: [
-        { name: 'Clock-In Log', path: '/team/clock-in' },
-        { name: 'Shift Manager', path: '/team/shifts' },
-
-        { name: 'Team Insights', path: '/team/insights' },
-      ],
-    },
-    {
       label: 'Admin Panel',
       children: [
         { name: 'Tenant Info', path: '/admin/tenant-info' },
@@ -212,7 +193,6 @@ export const sidebarDataByTier = {
         { name: 'System Health Check', path: '/admin/system-health' },
         { name: 'User Management', path: '/admin/users' },
         { name: 'Activity Logs', path: '/admin/activity-logs' },
-        { name: 'Roles & Access', path: '/admin/roles' },
       ],
     },
     {

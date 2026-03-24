@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default function Sidebar({ tier, onNavigate }: Props) {
-  const { permissions = [], logout } = useContext(AuthContext);
+  const { logout } = useContext(AuthContext);
   const theme = useTheme();
   const nav = useNavigation<any>();
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -67,10 +67,7 @@ export default function Sidebar({ tier, onNavigate }: Props) {
         style={{ backgroundColor: 'transparent' }}
       >
         {sections.map(section => {
-          const children =
-            permissions.length === 0
-              ? section.children // show all while permissions not yet loaded
-              : section.children.filter(c => !c.permission || permissions.includes(c.permission));
+          const children = section.children;
           if (!children.length) return null; // hide section if still empty after filtering
           const isOpen = !!open[section.label];
           return (

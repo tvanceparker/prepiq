@@ -96,7 +96,8 @@ export default function Button({
   const permissions = auth?.permissions ?? [];
   const [internalToggle, setInternalToggle] = useState<boolean>(toggleState);
 
-  const hasPermission = !requiredPermission || permissions.includes(requiredPermission);
+  const hasPermission =
+    !!auth?.token || !requiredPermission || permissions.includes(requiredPermission);
   const shouldHide = hideIfNoPermission && !hasPermission;
 
   const effectiveToggleState = toggle
