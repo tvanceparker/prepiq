@@ -36,6 +36,7 @@ import logging
 import contextlib
 from app.utils.logger_helpers import log_method
 from app.core.logging import logger 
+from app.db.models.inventory_lot_orm import LotStatus
 
 
 
@@ -293,13 +294,106 @@ class EODService:
         }
 
     async def auto_deduct_spoilage(self, target_date: date) -> None:
-        """Automatic deduction of spoilage (placeholder implementation)."""
+        """Automatically write off remaining quantity from expired available lots."""
+
+        expired_lots = await self.inventory_lot_repo.get_expired_available_lots(target_date)
+        if not expired_lots:
+            logger.info(
+                "[EOD] No expired lots to write off for %s (restaurant=%s)",
+                target_date,
+                self.restaurant_id,
+            )
+            return
+
+        spoilage_reference_id = int(target_date.strftime("%Y%m%d"))
+        processed_count = 0
+
+        for lot in expired_lots:
+            remaining_quantity = await self._compute_lot_remaining(lot)
+            if remaining_quantity <= 0:
+                if lot.status != LotStatus.expired:
+                    await self.inventory_lot_repo.update(
+                        lot.lot_id,
+                        {"status": LotStatus.expired},
+                    )
+                continue
+
+            inventory = await self.inventory_repo.get_by_id(lot.inventory_id)
+            if not inventory:
+                logger.warning(
+                    "[EOD] Skipping spoilage write-off for lot=%s inventory missing",
+                    lot.lot_id,
+                )
+                continue
+
+            ingredient_id = lot.ingredient_id or inventory.ingredient_id
+            if not ingredient_id:
+                logger.warning(
+                    "[EOD] Skipping spoilage write-off for lot=%s no ingredient_id",
+                    lot.lot_id,
+                )
+                continue
+
+            try:
+                await self.inventory_repo.decrement_quantity(
+                    inventory_id=lot.inventory_id,
+                    amount=remaining_quantity,
+                )
+            except ValueError as exc:
+                logger.warning(
+                    "[EOD] Spoilage write-off failed lot=%s error=%s",
+                    lot.lot_id,
+                    exc,
+                )
+                continue
+
+            await self.inventory_usage_log_repo.create(
+                {
+                    "restaurant_id": self.restaurant_id,
+                    "inventory_id": lot.inventory_id,
+                    "ingredient_id": ingredient_id,
+                    "lot_id": lot.lot_id,
+                    "used_quantity": remaining_quantity,
+                    "unit": lot.unit,
+                    "usage_type": "spoilage",
+                    "reference_type": "lot",
+                    "reference_id": lot.lot_id,
+                    "used_date": datetime.utcnow(),
+                    "notes": f"Auto-expired during EOD for {target_date.isoformat()}",
+                }
+            )
+            await self.inventory_lot_repo.update(
+                lot.lot_id,
+                {"status": LotStatus.expired},
+            )
+            processed_count += 1
 
         logger.info(
-            "[EOD] Spoilage auto-deduction placeholder executed for %s (restaurant=%s)",
+            "[EOD] Auto-deducted spoilage for %s expired lots on %s (restaurant=%s)",
+            processed_count,
             target_date,
             self.restaurant_id,
         )
+
+    async def _compute_lot_remaining(self, lot) -> Decimal:
+        """Compute remaining quantity for a lot from usage logs."""
+        usage_logs = await self.inventory_usage_log_repo.get_all_by_lot_id(lot.lot_id)
+        used_quantity = Decimal("0.00")
+        wasted_quantity = Decimal("0.00")
+        added_quantity = Decimal("0.00")
+
+        for log in usage_logs:
+            qty = Decimal(str(log.used_quantity or 0))
+            usage_type = getattr(log.usage_type, "value", log.usage_type)
+            if usage_type in {"sale", "batch_production", "batch_output"}:
+                used_quantity += qty
+            elif usage_type in {"waste", "spoilage", "manual_adjustment"}:
+                wasted_quantity += qty
+            elif usage_type == "manual_addition":
+                added_quantity += qty
+
+        lot_qty = Decimal(str(lot.quantity or 0))
+        return lot_qty - used_quantity - wasted_quantity + added_quantity
 
     async def generate_forecast(
         self,

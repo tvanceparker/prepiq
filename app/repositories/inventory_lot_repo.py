@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
 from app.db.models.inventory_lot_orm import InventoryLot
+from app.db.models.inventory_lot_orm import LotStatus
 from app.repositories.base_repository import BaseRepository
 from typing import List, Optional
 from datetime import timedelta, date
@@ -101,5 +102,19 @@ class InventoryLotRepository(BaseRepository):
                 InventoryLot.batch_recipe_id == batch_recipe_id,
             )
             .order_by(InventoryLot.delivery_date.asc(), InventoryLot.lot_id.asc())
+        )
+        return result.scalars().all()
+
+    async def get_expired_available_lots(self, target_date: date) -> List[InventoryLot]:
+        """Fetch lots that should be written off as spoilage on or before the target date."""
+        result = await self.db.execute(
+            select(InventoryLot)
+            .filter(
+                InventoryLot.restaurant_id == self.restaurant_id,
+                InventoryLot.status == LotStatus.available,
+                InventoryLot.spoilage_expected_date.isnot(None),
+                InventoryLot.spoilage_expected_date <= target_date,
+            )
+            .order_by(InventoryLot.spoilage_expected_date.asc(), InventoryLot.lot_id.asc())
         )
         return result.scalars().all()
