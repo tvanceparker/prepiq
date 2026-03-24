@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select
-from typing import List
+from typing import List, Optional
 from app.core.logging import logger
 from jose import JWTError, jwt
 from app.utils.security import SECRET_KEY, ALGORITHM, verify_device_token
@@ -14,7 +14,7 @@ from app.db.models.permissions_orm import Permission
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 class CurrentUser:
-    def __init__(self, username, restaurant_id, subscription_tier, employee_id, name, role_id):
+    def __init__(self, username, restaurant_id, subscription_tier, employee_id, name, role_id: Optional[int]):
         self.username = username
         self.restaurant_id = restaurant_id
         self.subscription_tier = subscription_tier
@@ -37,7 +37,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         employee_id = payload.get("employee_id")
         name = payload.get("name")
         role_id = payload.get("role_id")
-        if None in (username, restaurant_id, employee_id, name, role_id):
+        if None in (username, restaurant_id, employee_id, name):
             logger.warning("[Dependency]Missing claims in JWT token: "
                            f"username={username}, restaurant_id={restaurant_id}, "
                            f"employee_id={employee_id}, name={name}, role_id={role_id}")
@@ -101,6 +101,13 @@ def check_permissions(required_permissions: List[str]):
         current_user: CurrentUser = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
+        if current_user.role_id is None:
+            logger.info(
+                f"[Dependency]Skipping permission check for user {current_user.username} "
+                "because role_id is not present under the shared-access v1 model"
+            )
+            return
+
         logger.info(f"[Dependency]Checking permissions for user {current_user.username} "
                      f"(role_id={current_user.role_id}, restaurant_id={current_user.restaurant_id})")
 

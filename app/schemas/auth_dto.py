@@ -15,7 +15,7 @@ class UserInfo(BaseModel):
     name: str = Field(..., description="Employee name")
     email: Optional[str] = Field(None, description="Employee email")
     restaurant_id: int = Field(..., description="ID of the restaurant")
-    role_id: int = Field(..., description="Role ID")
+    role_id: Optional[int] = Field(None, description="Role ID when role-based access is in use")
     subscription_tier: str = Field(..., description="Subscription tier")
 
 class LoginResponse(TokenResponse):
@@ -25,7 +25,7 @@ class LoginResponse(TokenResponse):
     employee_id: int = Field(..., description="ID of employee")
     name: str = Field(..., description="Employee name")
     preferences: Preferences = Field(..., description="User preferences")
-    role: str = Field(...,description="The role for Permissions")
+    role_id: Optional[int] = Field(None, description="Role ID when role-based access is in use")
     expires_in: int = Field(..., description="Token expiry time in seconds")
 
 class MeResponse(BaseModel):

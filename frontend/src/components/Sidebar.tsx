@@ -1,7 +1,6 @@
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { sidebarDataByTier } from './data/sidebarData';
-import { AuthContext } from '../contexts/AuthContext';
 import {
   Box,
   List,
@@ -23,7 +22,6 @@ import type { SidebarProps } from '../interfaces/components';
 
 export default function Sidebar({ tier }: SidebarProps): JSX.Element | null {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
-  const { permissions = [] } = useContext(AuthContext) as { permissions: string[] };
   const theme = useTheme();
   const deviceCtx = useDevice();
   const pos = usePOS();
@@ -123,9 +121,7 @@ export default function Sidebar({ tier }: SidebarProps): JSX.Element | null {
       >
         <Box sx={{ height: 8 }} />
         {sidebarData.map((section: any) => {
-          const filteredChildren = section.children?.filter(
-            (child: any) => !child.permission || permissions.includes(child.permission)
-          );
+          const filteredChildren = section.children || [];
           if (!filteredChildren || filteredChildren.length === 0) return null;
           const isOpen = !!openSections[section.label];
 

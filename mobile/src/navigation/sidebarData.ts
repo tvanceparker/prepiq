@@ -1,7 +1,6 @@
 export interface SidebarChildItem {
   name: string;
   path: string;
-  permission?: string;
 }
 export interface SidebarSection {
   label: string;
@@ -40,11 +39,10 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
     {
       label: 'Admin Panel',
       children: [
-        { name: 'Tenant Info', path: '/admin/tenant-info', permission: 'tenant_info' },
-        { name: 'Activity Logs', path: '/admin/activity-logs', permission: 'activity_logs' },
-        { name: 'System Health Check', path: '/admin/system-health', permission: 'system_check' },
-        { name: 'User Management', path: '/admin/users', permission: 'employees' },
-        { name: 'Roles & Access', path: '/admin/roles', permission: 'roles' },
+        { name: 'Tenant Info', path: '/admin/tenant-info' },
+        { name: 'Activity Logs', path: '/admin/activity-logs' },
+        { name: 'System Health Check', path: '/admin/system-health' },
+        { name: 'User Management', path: '/admin/users' },
       ],
     },
     {
@@ -110,13 +108,6 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
       ],
     },
     {
-      label: 'Team / Workforce',
-      children: [
-        { name: 'Clock-In Log', path: '/team/clock-in' },
-        { name: 'Shift Manager', path: '/team/shifts' },
-      ],
-    },
-    {
       label: 'Analytics',
       children: [
         { name: 'Ingredient Cost Trends', path: '/analytics/ingredient-trends' },
@@ -126,11 +117,10 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
     {
       label: 'Admin Panel',
       children: [
-        { name: 'Tenant Info', path: '/admin/tenant-info', permission: 'tenant_info' },
-        { name: 'Activity Logs', path: '/admin/activity-logs', permission: 'activity_logs' },
-        { name: 'System Health Check', path: '/admin/system-health', permission: 'system_check' },
-        { name: 'User Management', path: '/admin/users', permission: 'employees' },
-        { name: 'Roles & Access', path: '/admin/roles', permission: 'roles' },
+        { name: 'Tenant Info', path: '/admin/tenant-info' },
+        { name: 'Activity Logs', path: '/admin/activity-logs' },
+        { name: 'System Health Check', path: '/admin/system-health' },
+        { name: 'User Management', path: '/admin/users' },
       ],
     },
     {
@@ -207,22 +197,13 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
       ],
     },
     {
-      label: 'Team / Workforce',
-      children: [
-        { name: 'Clock-In Log', path: '/team/clock-in' },
-        { name: 'Shift Manager', path: '/team/shifts' },
-        { name: 'Team Insights', path: '/team/insights' },
-      ],
-    },
-    {
       label: 'Admin Panel',
       children: [
         { name: 'Tenant Info', path: '/admin/tenant-info' },
-        { name: 'System Alerts', path: '/admin/system-alerts', permission: 'system_alerts' },
+        { name: 'System Alerts', path: '/admin/system-alerts' },
         { name: 'System Health Check', path: '/admin/system-health' },
         { name: 'User Management', path: '/admin/users' },
         { name: 'Activity Logs', path: '/admin/activity-logs' },
-        { name: 'Roles & Access', path: '/admin/roles' },
       ],
     },
     {

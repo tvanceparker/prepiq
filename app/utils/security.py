@@ -22,7 +22,10 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
     
     if expires_delta is None:
-        expires_delta = timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+        if ACCESS_TOKEN_EXPIRE_HOURS > 0:
+            expires_delta = timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+        else:
+            expires_delta = timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
     
     # Add unique jti (JWT ID) for token tracking
     to_encode["jti"] = str(uuid.uuid4())
