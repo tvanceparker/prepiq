@@ -6,7 +6,7 @@ import { Box, Typography, Paper, Button } from '@mui/material';
 import LockIcon from '@mui/icons-material/Lock';
 
 interface TierGatedRouteProps {
-  requiredTiers: string[]; // e.g., ['pro', 'master']
+  requiredTiers: string[];
 }
 
 export default function TierGatedRoute({ requiredTiers }: TierGatedRouteProps): JSX.Element {

@@ -18,15 +18,6 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
       ],
     },
     {
-      label: 'POS',
-      children: [
-        { name: 'Order Management', path: '/orders' },
-        { name: 'POS Terminal', path: '/pos' },
-        { name: 'Kitchen Display', path: '/kitchen' },
-        { name: 'Device Registration', path: '/pos/device-registration' },
-      ],
-    },
-    {
       label: 'Sales & Forecasting',
       children: [
         { name: 'Upcoming Forecast', path: '/sales/upcoming' },
@@ -40,8 +31,6 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
       label: 'Admin Panel',
       children: [
         { name: 'Tenant Info', path: '/admin/tenant-info' },
-        { name: 'Activity Logs', path: '/admin/activity-logs' },
-        { name: 'System Health Check', path: '/admin/system-health' },
         { name: 'User Management', path: '/admin/users' },
       ],
     },
@@ -49,27 +38,18 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
       label: 'Settings',
       children: [
         { name: 'Restaurant Settings', path: '/settings/restaurant' },
+        { name: 'Integration Settings', path: '/settings/integrations' },
         { name: 'Account Settings', path: '/settings/account-settings' },
       ],
     },
   ],
-  pro: [
+  full: [
     {
       label: 'Dashboard',
       children: [
         { name: 'Daily Overview', path: '/dashboard/daily-overview' },
         { name: 'Alerts & Insights Feed', path: '/dashboard/alerts' },
-        { name: 'Live Operations', path: '/dashboard/live-operations' },
         { name: 'Quick Analytics', path: '/dashboard/quick-analytics' },
-      ],
-    },
-    {
-      label: 'POS',
-      children: [
-        { name: 'Order Management', path: '/orders' },
-        { name: 'POS Terminal', path: '/pos' },
-        { name: 'Kitchen Display', path: '/kitchen' },
-        { name: 'Device Registration', path: '/pos/device-registration' },
       ],
     },
     {
@@ -95,96 +75,9 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
       children: [
         { name: 'Inventory Table', path: '/inventory/table' },
         { name: 'Stock Movements', path: '/inventory/stock-movements' },
+        { name: 'Purchase Orders', path: '/inventory/purchase-orders' },
         { name: 'Ingredient Catalog', path: '/menu/ingredient-costing' },
         { name: 'Suppliers', path: '/inventory/suppliers' },
-      ],
-    },
-    {
-      label: 'Prep Management',
-      children: [
-        { name: 'Prep Schedule', path: '/prep/schedule' },
-        { name: 'Batch Recipes', path: '/prep/batch-recipes' },
-        { name: 'Prep Logs', path: '/prep/logs' },
-      ],
-    },
-    {
-      label: 'Analytics',
-      children: [
-        { name: 'Ingredient Cost Trends', path: '/analytics/ingredient-trends' },
-        { name: 'Dish Profitability', path: '/analytics/dish-profitability' },
-      ],
-    },
-    {
-      label: 'Admin Panel',
-      children: [
-        { name: 'Tenant Info', path: '/admin/tenant-info' },
-        { name: 'Activity Logs', path: '/admin/activity-logs' },
-        { name: 'System Health Check', path: '/admin/system-health' },
-        { name: 'User Management', path: '/admin/users' },
-      ],
-    },
-    {
-      label: 'Settings',
-      children: [
-        { name: 'Restaurant Settings', path: '/settings/restaurant' },
-        { name: 'Integration Settings', path: '/settings/integrations' },
-        { name: 'Account Settings', path: '/settings/account-settings' },
-      ],
-    },
-  ],
-  master: [
-    {
-      label: 'Dashboard',
-      children: [
-        { name: 'Daily Overview', path: '/dashboard/daily-overview' },
-        { name: 'Alerts & Issues Feed', path: '/dashboard/alerts' },
-        { name: 'Live Operations', path: '/dashboard/live-operations' },
-        { name: 'Quick Analytics', path: '/dashboard/quick-analytics' },
-      ],
-    },
-    {
-      label: 'POS',
-      children: [
-        { name: 'Order Management', path: '/orders' },
-        { name: 'POS Terminal', path: '/pos' },
-        { name: 'Kitchen Display', path: '/kitchen' },
-        { name: 'Device Registration', path: '/pos/device-registration' },
-      ],
-    },
-    {
-      label: 'Sales & Forecasting',
-      children: [
-        { name: 'Forecast Accuracy', path: '/sales/forecast-accuracy' },
-        { name: 'Menu Mix Insights', path: '/sales/menu-mix' },
-        { name: 'Sales Patterns', path: '/sales/patterns' },
-        { name: 'Sales Explorer', path: '/sales/explorer' },
-      ],
-    },
-    {
-      label: 'Menu & Recipes',
-      children: [
-        { name: 'Menu Builder', path: '/menu/builder' },
-        { name: 'Recipe Editor', path: '/menu/recipe-editor' },
-        { name: 'Prep Batches', path: '/menu/prep-batches' },
-      ],
-    },
-    {
-      label: 'Inventory & Purchasing',
-      children: [
-        { name: 'Inventory Table', path: '/inventory/table' },
-        { name: 'Stock Movements', path: '/inventory/stock-movements' },
-        { name: 'Purchase Orders (POs)', path: '/inventory/pos' },
-        { name: 'Ingredient Catalog', path: '/menu/ingredient-costing' },
-        { name: 'Suppliers', path: '/inventory/suppliers' },
-      ],
-    },
-    {
-      label: 'Profit & Waste Analytics',
-      children: [
-        { name: 'Ingredient Cost Trends', path: '/analytics/ingredient-trends' },
-        { name: 'Dish Profitability', path: '/analytics/dish-profitability' },
-        { name: 'Waste Dashboard', path: '/analytics/waste' },
-        { name: 'Insights & Optimization', path: '/analytics/insights' },
       ],
     },
     {
@@ -197,13 +90,19 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
       ],
     },
     {
+      label: 'Analytics',
+      children: [
+        { name: 'Ingredient Cost Trends', path: '/analytics/ingredient-trends' },
+        { name: 'Dish Profitability', path: '/analytics/dish-profitability' },
+        { name: 'Waste Dashboard', path: '/analytics/waste' },
+        { name: 'Insights & Optimization', path: '/analytics/insights' },
+      ],
+    },
+    {
       label: 'Admin Panel',
       children: [
         { name: 'Tenant Info', path: '/admin/tenant-info' },
-        { name: 'System Alerts', path: '/admin/system-alerts' },
-        { name: 'System Health Check', path: '/admin/system-health' },
         { name: 'User Management', path: '/admin/users' },
-        { name: 'Activity Logs', path: '/admin/activity-logs' },
       ],
     },
     {
@@ -219,5 +118,6 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
 
 export function flattenSidebarPaths(tier?: string) {
   if (!tier) return [] as string[];
-  return (sidebarDataByTier[tier] || []).flatMap(s => s.children.map(c => c.path));
+  const normalizedTier = tier === 'basic' ? 'basic' : 'full';
+  return (sidebarDataByTier[normalizedTier] || []).flatMap(s => s.children.map(c => c.path));
 }

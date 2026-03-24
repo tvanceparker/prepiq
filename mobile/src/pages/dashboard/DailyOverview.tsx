@@ -4,7 +4,6 @@ import { Snackbar } from 'react-native-paper';
 import { AuthContext } from '../../contexts/AuthContext';
 import { useDailyOverview } from './hooks/useDailyOverview';
 import BasicOverviewMobile from './components/BasicOverviewMobile';
-import ProOverviewMobile from './components/ProOverviewMobile';
 import MasterOverviewMobile from './components/MasterOverviewMobile';
 
 export default function DailyOverview(props: any) {
@@ -55,20 +54,7 @@ export default function DailyOverview(props: any) {
           </Snackbar>
         </>
       );
-    case 'pro':
-      return (
-        <>
-          <ProOverviewMobile data={data} navigation={props?.navigation} />
-          <Snackbar
-            visible={snack.visible}
-            onDismiss={() => setSnack({ visible: false, message: '' })}
-            duration={2500}
-          >
-            {snack.message}
-          </Snackbar>
-        </>
-      );
-    case 'master':
+    case 'full':
       return (
         <>
           <MasterOverviewMobile data={data} navigation={props?.navigation} />

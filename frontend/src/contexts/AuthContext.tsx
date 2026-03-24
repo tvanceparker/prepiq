@@ -7,6 +7,11 @@ const SHARED_ACCESS_PERMISSIONS: string[] = [];
 
 const refetchSharedAccessPermissions = async () => SHARED_ACCESS_PERMISSIONS;
 
+const normalizeTier = (tier: string | null): string | null => {
+  if (!tier) return null;
+  return tier.toLowerCase() === 'basic' ? 'basic' : 'full';
+};
+
 export const AuthContext = createContext<AuthContextType>({
   user: null,
   token: null,
@@ -72,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem('user');
       }
     }
-    if (storedTier) setTier(storedTier);
+    if (storedTier) setTier(normalizeTier(storedTier));
     if (storedPrefs) {
       try {
         setPreferences(JSON.parse(storedPrefs));
@@ -100,14 +105,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     preferences?: Preferences;
   }) => {
     setToken(token);
-    setTier(tier);
+    const normalizedTier = normalizeTier(tier);
+    setTier(normalizedTier);
     setUser(user);
 
     const newPrefs = prefs || defaultPreferences;
     setPreferences(newPrefs);
 
     localStorage.setItem('token', token);
-    localStorage.setItem('tier', tier);
+    if (normalizedTier) {
+      localStorage.setItem('tier', normalizedTier);
+    }
     localStorage.setItem('user', JSON.stringify(user));
     localStorage.setItem('preferences', JSON.stringify(newPrefs));
 

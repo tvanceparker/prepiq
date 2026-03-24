@@ -36,7 +36,7 @@ export default function IngredientCatalog() {
   } = useIngredientForm();
 
   const { tier } = useContext(AuthContext);
-  const isPro = tier === 'pro' || tier === 'master';
+  const isFull = tier === 'full';
 
   const [newDialogOpen, setNewDialogOpen] = useState(false);
   const newIngredientDraft = useMemo(
@@ -52,7 +52,7 @@ export default function IngredientCatalog() {
   }, [ingredients]);
 
   const renderHeader = () => (
-    <Box mb={isPro ? 3 : 2}>
+    <Box mb={isFull ? 3 : 2}>
       <PageHeader title="Ingredient Catalog" />
       {loading && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -129,7 +129,7 @@ export default function IngredientCatalog() {
     <Box sx={{ maxWidth: '1400px', mx: 'auto', p: 4 }}>
       {renderHeader()}
 
-      {isPro && renderStats()}
+      {isFull && renderStats()}
 
       <Grid container spacing={3} alignItems="flex-start">
         <Grid item xs={12} md={4}>
@@ -139,7 +139,9 @@ export default function IngredientCatalog() {
               borderRadius: 3,
               border: '1px solid',
               borderColor: 'divider',
-              boxShadow: isPro ? '0px 10px 30px rgba(0,0,0,0.08)' : '0px 4px 12px rgba(0,0,0,0.05)',
+              boxShadow: isFull
+                ? '0px 10px 30px rgba(0,0,0,0.08)'
+                : '0px 4px 12px rgba(0,0,0,0.05)',
             }}
           >
             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5}>
@@ -168,7 +170,7 @@ export default function IngredientCatalog() {
 
         <Grid item xs={12} md={8}>
           <Paper
-            elevation={isPro ? 3 : 1}
+            elevation={isFull ? 3 : 1}
             sx={{
               flexGrow: 1,
               bgcolor: 'background.paper',
@@ -176,7 +178,9 @@ export default function IngredientCatalog() {
               p: { xs: 2.5, md: 3 },
               border: '1px solid',
               borderColor: 'divider',
-              boxShadow: isPro ? '0px 12px 36px rgba(0,0,0,0.08)' : '0px 4px 12px rgba(0,0,0,0.05)',
+              boxShadow: isFull
+                ? '0px 12px 36px rgba(0,0,0,0.08)'
+                : '0px 4px 12px rgba(0,0,0,0.05)',
             }}
           >
             <IngredientDetail

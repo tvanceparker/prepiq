@@ -10,8 +10,7 @@ export default function RestaurantSettings() {
   switch (tier) {
     case 'basic':
       return <BasicRestaurantSettings />;
-    case 'pro':
-    case 'master':
+    case 'full':
       return <ProRestaurantSettings />;
     default:
       return <BasicRestaurantSettings />;

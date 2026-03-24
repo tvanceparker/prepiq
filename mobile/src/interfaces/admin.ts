@@ -1,6 +1,6 @@
 // Mobile admin interfaces (ported from web frontend)
 
-export type SubscriptionTier = 'basic' | 'pro' | 'master';
+export type SubscriptionTier = 'basic' | 'full';
 export type SubscriptionStatus = 'active' | 'inactive';
 
 export interface DayHours {

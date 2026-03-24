@@ -78,7 +78,7 @@ export default function IntegrationSettings() {
     setApiKey(currentValue || '');
   };
 
-  const isMaster = tier === 'master';
+  const isFull = tier === 'full';
 
   return (
     <ScrollView
@@ -135,49 +135,8 @@ export default function IntegrationSettings() {
             </Card.Actions>
           </Card>
 
-          {/* Stripe Payments */}
-          <Card style={styles.card} mode="outlined">
-            <Card.Title
-              title="Stripe Payments"
-              titleVariant="titleMedium"
-              left={() => (
-                <MaterialCommunityIcons
-                  name="credit-card"
-                  size={24}
-                  color={theme.colors.primary}
-                  style={{ marginLeft: 16 }}
-                />
-              )}
-            />
-            <Card.Content>
-              <List.Item
-                title="Enable Stripe"
-                description="Accept credit card payments"
-                right={() => (
-                  <Switch
-                    value={config?.stripe_enabled || false}
-                    onValueChange={v => handleToggle('stripe_enabled', v)}
-                    disabled={updateMutation.isPending}
-                  />
-                )}
-              />
-              <Divider />
-              <List.Item
-                title="Stripe Terminal"
-                description="In-person card reader support"
-                right={() => (
-                  <Switch
-                    value={config?.stripe_terminal_enabled || false}
-                    onValueChange={v => handleToggle('stripe_terminal_enabled', v)}
-                    disabled={updateMutation.isPending || !config?.stripe_enabled}
-                  />
-                )}
-              />
-            </Card.Content>
-          </Card>
-
           {/* Weather API */}
-          {isMaster && (
+          {isFull && (
             <Card style={styles.card} mode="outlined">
               <Card.Title
                 title="Weather Integration"
@@ -258,8 +217,9 @@ export default function IntegrationSettings() {
               <View style={styles.infoRow}>
                 <List.Icon icon="information" color={theme.colors.primary} />
                 <Text variant="bodySmall" style={{ flex: 1, color: theme.colors.onSurfaceVariant }}>
-                  Some integrations require additional setup in the web dashboard. Visit the desktop
-                  version for full configuration options.
+                  PrepIQ v1 focuses this screen on external POS connection and sync visibility.
+                  Internal payment-terminal workflows are intentionally out of the active launch
+                  surface.
                 </Text>
               </View>
             </Card.Content>

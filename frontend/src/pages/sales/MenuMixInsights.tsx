@@ -15,10 +15,7 @@ export default function MenuMixInsights() {
   switch (tier) {
     case 'basic':
       return <MenuMixInsightsBasic />;
-    case 'pro':
-      return <MenuMixInsightsPro />;
-    case 'master':
-      // TODO: Implement Master tier with advanced cost trend analysis
+    case 'full':
       return <MenuMixInsightsPro />; // Fallback to Pro for now
     default:
       return <MenuMixInsightsBasic />;

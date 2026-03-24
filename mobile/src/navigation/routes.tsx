@@ -5,7 +5,6 @@ import AppLayout from '../components/AppLayout';
 import DailyOverview from '../pages/dashboard/DailyOverview';
 import AlertsFeed from '../pages/dashboard/AlertsFeed';
 import MenuItemQuickEntry from '../pages/dashboard/MenuItemQuickEntry';
-import LiveOperations from '../pages/dashboard/LiveOperations';
 import QuickAnalytics from '../pages/dashboard/QuickAnalytics';
 // Sales
 import UpcomingForecast from '../pages/sales/UpcomingForecast';
@@ -18,16 +17,8 @@ import SalesUploadWizard from '../pages/dashboard/components/SalesUploadWizard';
 import AccountSettings from '../pages/settings/AccountSettings';
 import RestaurantSettings from '../pages/settings/RestaurantSettings';
 // Admin
-import ActivityLogs from '../pages/admin/ActivityLogs';
-import {
-  TenantInfoBasic,
-  SystemHealthBasic,
-  UserManagementBasic,
-  SystemAlertsBasic,
-} from '../pages/admin/components'; // still used elsewhere if needed
+import { TenantInfoBasic, UserManagementBasic } from '../pages/admin/components'; // still used elsewhere if needed
 import TenantInfo from '../pages/admin/TenantInfo';
-import SystemHealth from '../pages/admin/SystemHealth';
-import SystemAlerts from '../pages/admin/SystemAlerts';
 import UserManagement from '../pages/admin/UserManagement';
 // Analytics
 import IngredientTrends from '../pages/analytics/IngredientTrends';
@@ -37,8 +28,6 @@ import InsightsOptimization from '../pages/analytics/InsightsOptimization';
 // Auth
 import LoginScreen from '../pages/auth/LoginScreen';
 import { AuthContext } from '../contexts/AuthContext';
-// POS
-import { KitchenDisplay, POSTerminal, OrdersManagement, DeviceRegistration } from '../pages/pos';
 // Inventory
 import { InventoryList, Suppliers, PurchaseOrders, StockMovements } from '../pages/inventory';
 // Menu
@@ -56,7 +45,6 @@ const routeComponents: Record<string, React.ComponentType<any>> = {
   'dashboard_daily-overview': DailyOverview,
   dashboard_alerts: AlertsFeed,
   'dashboard_menu-item-entry': MenuItemQuickEntry,
-  'dashboard_live-operations': LiveOperations,
   'dashboard_quick-analytics': QuickAnalytics,
   // Sales pages
   sales_upcoming: UpcomingForecast,
@@ -65,15 +53,11 @@ const routeComponents: Record<string, React.ComponentType<any>> = {
   sales_explorer: SalesExplorer,
   'sales_menu-mix': MenuMixInsights,
   'sales_upload-wizard': SalesUploadWizard,
-  // POS pages
-  orders: OrdersManagement,
-  pos: POSTerminal,
-  kitchen: KitchenDisplay,
-  'pos_device-registration': DeviceRegistration,
   // Inventory pages
   inventory_table: InventoryList,
   'inventory_stock-movements': StockMovements,
   inventory_pos: PurchaseOrders,
+  'inventory_purchase-orders': PurchaseOrders,
   inventory_suppliers: Suppliers,
   // Menu pages
   menu_builder: MenuBuilder,
@@ -87,9 +71,6 @@ const routeComponents: Record<string, React.ComponentType<any>> = {
   'prep_batch-recipes': BatchRecipes,
   // Admin pages
   'admin_tenant-info': TenantInfo,
-  'admin_activity-logs': ActivityLogs,
-  'admin_system-health': SystemHealth,
-  'admin_system-alerts': SystemAlerts,
   admin_users: UserManagement,
   // Analytics pages
   'analytics_ingredient-trends': IngredientTrends,
