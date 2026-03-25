@@ -454,3 +454,30 @@ class BatchAutoMatchResponse(BaseModel):
     matched: int
     unmapped: int
     total: int
+
+
+class POSImportHistoryItem(BaseModel):
+    order_id: int
+    external_order_id: Optional[str] = None
+    provider: Optional[str] = None
+    sales_channel: Optional[str] = None
+    imported_at: Optional[str] = None
+    order_timestamp: Optional[str] = None
+    total: float
+    inventory_deduction_state: str
+    unmapped_item_count: int = 0
+
+
+class POSImportHealthSummary(BaseModel):
+    total_recent_imports: int
+    unmapped_items: int
+    pending_deductions: int
+    failed_deductions: int
+    last_import_at: Optional[str] = None
+
+
+class POSImportHealthResponse(BaseModel):
+    provider: Optional[str] = None
+    summary: POSImportHealthSummary
+    unmapped_items: List[POSItemMappingResponse]
+    recent_imports: List[POSImportHistoryItem]

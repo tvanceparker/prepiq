@@ -1,59 +1,60 @@
 // src/pages/settings/IntegrationSettings.tsx
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import {
   Text,
   useTheme,
   Card,
   Button,
-  Switch,
   List,
   Divider,
   Snackbar,
   ActivityIndicator,
   Chip,
-  TextInput,
-  Portal,
-  Dialog,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '../../api';
-import { AuthContext } from '../../contexts/AuthContext';
-
-interface IntegrationConfig {
-  pos_provider: string | null;
-  weather_api_key: string | null;
-  stripe_enabled: boolean;
-  stripe_terminal_enabled: boolean;
-}
+import {
+  disconnectPOS,
+  getPOSImportHealth,
+  getPOSIntegrationStatus,
+  getPOSModeSettings,
+  triggerPOSSync,
+  updatePOSModeSettings,
+} from '../../api/settings';
+import type { POSMode, POSProvider } from '../../interfaces/pos';
 
 export default function IntegrationSettings() {
   const theme = useTheme();
   const queryClient = useQueryClient();
-  const { tier } = useContext(AuthContext);
 
-  const [dialogType, setDialogType] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState('');
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
 
-  // Fetch integration config
-  const { data: config, isLoading } = useQuery<IntegrationConfig>({
-    queryKey: ['integrations'],
-    queryFn: async () => {
-      const res = await api.get('/settings/integrations');
-      return res.data;
-    },
+  const posSettingsQuery = useQuery({
+    queryKey: ['mobilePosSettings'],
+    queryFn: getPOSModeSettings,
   });
 
-  // Update integration
-  const updateMutation = useMutation({
-    mutationFn: async (data: Partial<IntegrationConfig>) => {
-      const res = await api.patch('/settings/integrations', data);
-      return res.data;
+  const posStatusQuery = useQuery({
+    queryKey: ['mobilePosStatus'],
+    queryFn: getPOSIntegrationStatus,
+    enabled: posSettingsQuery.data?.pos_mode === 'external',
+  });
+
+  const posImportHealthQuery = useQuery({
+    queryKey: ['mobilePosImportHealth'],
+    queryFn: () => getPOSImportHealth(10),
+    enabled: posSettingsQuery.data?.pos_mode === 'external',
+  });
+
+  const updateModeMutation = useMutation({
+    mutationFn: (data: { pos_mode: POSMode; pos_provider?: string | null; cash_drawer_enabled?: boolean }) => {
+      return updatePOSModeSettings(data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['integrations'] });
+      queryClient.invalidateQueries({ queryKey: ['mobilePosSettings'] });
+      queryClient.invalidateQueries({ queryKey: ['mobilePosStatus'] });
+      queryClient.invalidateQueries({ queryKey: ['mobilePosImportHealth'] });
       setSnackbar({ visible: true, message: 'Settings updated' });
     },
     onError: (err: any) => {
@@ -61,24 +62,45 @@ export default function IntegrationSettings() {
     },
   });
 
-  const handleToggle = (key: keyof IntegrationConfig, value: boolean) => {
-    updateMutation.mutate({ [key]: value });
+  const syncMutation = useMutation({
+    mutationFn: () => triggerPOSSync(7),
+    onSuccess: data => {
+      queryClient.invalidateQueries({ queryKey: ['mobilePosStatus'] });
+      queryClient.invalidateQueries({ queryKey: ['mobilePosImportHealth'] });
+      setSnackbar({ visible: true, message: `Sync complete: ${data.orders_synced} orders synced` });
+    },
+    onError: (err: any) => {
+      setSnackbar({ visible: true, message: err?.message || 'Sync failed' });
+    },
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: disconnectPOS,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mobilePosSettings'] });
+      queryClient.invalidateQueries({ queryKey: ['mobilePosStatus'] });
+      queryClient.invalidateQueries({ queryKey: ['mobilePosImportHealth'] });
+      setSnackbar({ visible: true, message: 'POS disconnected' });
+    },
+    onError: (err: any) => {
+      setSnackbar({ visible: true, message: err?.message || 'Failed to disconnect POS' });
+    },
+  });
+
+  const handleModeChange = (newMode: POSMode) => {
+    updateModeMutation.mutate({
+      pos_mode: newMode,
+      pos_provider: newMode === 'external' ? 'square' : null,
+      cash_drawer_enabled: posSettingsQuery.data?.cash_drawer_enabled ?? true,
+    });
   };
 
-  const handleSaveApiKey = () => {
-    if (dialogType === 'weather') {
-      updateMutation.mutate({ weather_api_key: apiKey || null });
-    }
-    setDialogType(null);
-    setApiKey('');
-  };
+  const providerLabel = (provider?: POSProvider) => provider && provider !== 'none' ? provider : 'square';
 
-  const openDialog = (type: string, currentValue?: string | null) => {
-    setDialogType(type);
-    setApiKey(currentValue || '');
-  };
-
-  const isFull = tier === 'full';
+  const isLoading = posSettingsQuery.isLoading;
+  const posSettings = posSettingsQuery.data;
+  const posStatus = posStatusQuery.data;
+  const posImportHealth = posImportHealthQuery.data;
 
   return (
     <ScrollView
@@ -92,17 +114,16 @@ export default function IntegrationSettings() {
         variant="bodyMedium"
         style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}
       >
-        Manage third-party service connections
+        Connect your POS and monitor import health
       </Text>
 
       {isLoading ? (
         <ActivityIndicator style={styles.loader} size="large" />
       ) : (
         <>
-          {/* POS Integration */}
           <Card style={styles.card} mode="outlined">
             <Card.Title
-              title="POS System"
+              title="External POS Integration"
               titleVariant="titleMedium"
               left={() => (
                 <MaterialCommunityIcons
@@ -113,65 +134,149 @@ export default function IntegrationSettings() {
                 />
               )}
               right={() => (
-                <Chip compact mode={config?.pos_provider ? 'flat' : 'outlined'}>
-                  {config?.pos_provider || 'Not Connected'}
+                <Chip compact mode={posStatus?.connected ? 'flat' : 'outlined'}>
+                  {posStatus?.connected ? 'Connected' : 'Not Connected'}
                 </Chip>
               )}
             />
             <Card.Content>
               <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                Connect your POS system to sync orders and sales data automatically.
+                PrepIQ v1 uses your external POS as the source of truth for sales, inventory
+                deduction, and forecasting inputs.
               </Text>
+              {posSettings?.pos_mode !== 'external' && (
+                <Button mode="outlined" onPress={() => handleModeChange('external')} style={styles.inlineButton}>
+                  Switch to External Mode
+                </Button>
+              )}
+              {posStatus?.connected && (
+                <View style={styles.statusRow}>
+                  <Chip compact icon="store">{posStatus.merchant_id || 'Connected merchant'}</Chip>
+                  <Chip compact icon="map-marker">{posStatus.location_id || 'Default location'}</Chip>
+                </View>
+              )}
             </Card.Content>
             <Card.Actions>
-              <Button
-                mode="outlined"
-                onPress={() =>
-                  setSnackbar({ visible: true, message: 'POS setup available in web app' })
-                }
-              >
-                Configure POS
-              </Button>
+              {!posStatus?.connected ? (
+                <Button mode="outlined" onPress={() => setSnackbar({ visible: true, message: 'Connect POS from the web app to complete OAuth.' })}>
+                  Connect {providerLabel(posSettings?.pos_provider)}
+                </Button>
+              ) : (
+                <>
+                  <Button mode="outlined" onPress={() => syncMutation.mutate()} loading={syncMutation.isPending}>
+                    Sync Now
+                  </Button>
+                  <Button mode="text" textColor={theme.colors.error} onPress={() => disconnectMutation.mutate()} loading={disconnectMutation.isPending}>
+                    Disconnect
+                  </Button>
+                </>
+              )}
             </Card.Actions>
           </Card>
 
-          {/* Weather API */}
-          {isFull && (
-            <Card style={styles.card} mode="outlined">
-              <Card.Title
-                title="Weather Integration"
-                titleVariant="titleMedium"
-                left={() => (
-                  <MaterialCommunityIcons
-                    name="weather-partly-cloudy"
-                    size={24}
-                    color={theme.colors.primary}
-                    style={{ marginLeft: 16 }}
-                  />
-                )}
-                right={() => (
-                  <Chip compact mode={config?.weather_api_key ? 'flat' : 'outlined'}>
-                    {config?.weather_api_key ? 'Connected' : 'Not Set'}
-                  </Chip>
-                )}
-              />
-              <Card.Content>
-                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                  Weather data improves forecast accuracy by factoring in local conditions.
-                </Text>
-              </Card.Content>
-              <Card.Actions>
-                <Button
-                  mode="outlined"
-                  onPress={() => openDialog('weather', config?.weather_api_key)}
-                >
-                  {config?.weather_api_key ? 'Update API Key' : 'Add API Key'}
-                </Button>
-              </Card.Actions>
-            </Card>
+          {posStatus?.connected && (
+            <>
+              <Card style={styles.card} mode="outlined">
+                <Card.Title
+                  title="Import Health"
+                  titleVariant="titleMedium"
+                  left={() => (
+                    <MaterialCommunityIcons
+                      name="chart-timeline-variant"
+                      size={24}
+                      color={theme.colors.primary}
+                      style={{ marginLeft: 16 }}
+                    />
+                  )}
+                />
+                <Card.Content>
+                  {posImportHealthQuery.isLoading ? (
+                    <ActivityIndicator size="small" />
+                  ) : (
+                    <View style={styles.summaryWrap}>
+                      <Chip compact>Recent Imports: {posImportHealth?.summary.total_recent_imports ?? 0}</Chip>
+                      <Chip compact>Unmapped: {posImportHealth?.summary.unmapped_items ?? 0}</Chip>
+                      <Chip compact>Pending: {posImportHealth?.summary.pending_deductions ?? 0}</Chip>
+                      <Chip compact>Failures: {posImportHealth?.summary.failed_deductions ?? 0}</Chip>
+                    </View>
+                  )}
+                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 12 }}>
+                    Last imported sale:{' '}
+                    {posImportHealth?.summary.last_import_at
+                      ? new Date(posImportHealth.summary.last_import_at).toLocaleString()
+                      : 'No imports yet'}
+                  </Text>
+                </Card.Content>
+              </Card>
+
+              <Card style={styles.card} mode="outlined">
+                <Card.Title
+                  title="Unmapped POS Items"
+                  titleVariant="titleMedium"
+                  left={() => (
+                    <MaterialCommunityIcons
+                      name="alert-circle-outline"
+                      size={24}
+                      color={theme.colors.primary}
+                      style={{ marginLeft: 16 }}
+                    />
+                  )}
+                />
+                <Card.Content>
+                  {posImportHealth?.unmapped_items.length ? (
+                    posImportHealth.unmapped_items.map(item => (
+                      <List.Item
+                        key={item.mapping_id}
+                        title={item.external_item_name || item.external_item_id}
+                        description={`External ID: ${item.external_item_id}`}
+                        left={() => <List.Icon icon="link-off" />}
+                      />
+                    ))
+                  ) : (
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      All imported POS items are currently mapped.
+                    </Text>
+                  )}
+                </Card.Content>
+              </Card>
+
+              <Card style={styles.card} mode="outlined">
+                <Card.Title
+                  title="Recent Import History"
+                  titleVariant="titleMedium"
+                  left={() => (
+                    <MaterialCommunityIcons
+                      name="history"
+                      size={24}
+                      color={theme.colors.primary}
+                      style={{ marginLeft: 16 }}
+                    />
+                  )}
+                />
+                <Card.Content>
+                  {posImportHealth?.recent_imports.length ? (
+                    posImportHealth.recent_imports.map(item => (
+                      <List.Item
+                        key={item.order_id}
+                        title={item.external_order_id || `Import #${item.order_id}`}
+                        description={`$${item.total.toFixed(2)} • ${item.inventory_deduction_state} • ${item.unmapped_item_count} unmapped`}
+                        right={() => (
+                          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                            {item.imported_at ? new Date(item.imported_at).toLocaleDateString() : ''}
+                          </Text>
+                        )}
+                      />
+                    ))
+                  ) : (
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      No POS imports recorded yet.
+                    </Text>
+                  )}
+                </Card.Content>
+              </Card>
+            </>
           )}
 
-          {/* Data Sync Status */}
           <Card style={styles.card} mode="outlined">
             <Card.Title
               title="Data Sync"
@@ -188,27 +293,28 @@ export default function IntegrationSettings() {
             <Card.Content>
               <List.Item
                 title="Last Sync"
-                description="Automatic sync runs every hour"
+                description={
+                  posStatus?.last_sync
+                    ? new Date(posStatus.last_sync).toLocaleString()
+                    : 'No sync completed yet'
+                }
                 right={() => (
-                  <Chip compact icon="check-circle">
-                    Active
+                  <Chip compact icon={posStatus?.connected ? 'check-circle' : 'clock-outline'}>
+                    {posStatus?.sync_status || 'idle'}
                   </Chip>
                 )}
               />
               <Divider />
               <List.Item
-                title="EOD Processing"
-                description="End-of-day summaries"
+                title="Import Mode"
+                description="Square sales import straight into PrepIQ sales and inventory workflows"
                 right={() => (
-                  <Chip compact icon="calendar-check">
-                    Enabled
-                  </Chip>
+                  <Chip compact icon="database-import">External</Chip>
                 )}
               />
             </Card.Content>
           </Card>
 
-          {/* Info Card */}
           <Card
             style={[styles.card, { backgroundColor: theme.colors.surfaceVariant }]}
             mode="contained"
@@ -217,46 +323,15 @@ export default function IntegrationSettings() {
               <View style={styles.infoRow}>
                 <List.Icon icon="information" color={theme.colors.primary} />
                 <Text variant="bodySmall" style={{ flex: 1, color: theme.colors.onSurfaceVariant }}>
-                  PrepIQ v1 focuses this screen on external POS connection and sync visibility.
-                  Internal payment-terminal workflows are intentionally out of the active launch
-                  surface.
+                  PrepIQ v1 surfaces external POS connection status, unmapped imported items, and
+                  import history here. Live in-house order boards remain out of the active launch
+                  product.
                 </Text>
               </View>
             </Card.Content>
           </Card>
         </>
       )}
-
-      {/* API Key Dialog */}
-      <Portal>
-        <Dialog visible={!!dialogType} onDismiss={() => setDialogType(null)}>
-          <Dialog.Title>{dialogType === 'weather' ? 'Weather API Key' : 'API Key'}</Dialog.Title>
-          <Dialog.Content>
-            <TextInput
-              label="API Key"
-              value={apiKey}
-              onChangeText={setApiKey}
-              mode="outlined"
-              secureTextEntry
-              placeholder="Enter your API key"
-            />
-            <Text
-              variant="bodySmall"
-              style={{ marginTop: 8, color: theme.colors.onSurfaceVariant }}
-            >
-              {dialogType === 'weather'
-                ? 'Get your API key from OpenWeatherMap or your weather provider.'
-                : 'Enter your API key from the provider dashboard.'}
-            </Text>
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setDialogType(null)}>Cancel</Button>
-            <Button mode="contained" onPress={handleSaveApiKey}>
-              Save
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
 
       <Snackbar
         visible={snackbar.visible}
@@ -288,6 +363,21 @@ const styles = StyleSheet.create({
   },
   card: {
     marginBottom: 16,
+  },
+  inlineButton: {
+    alignSelf: 'flex-start',
+    marginTop: 12,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  summaryWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   infoRow: {
     flexDirection: 'row',

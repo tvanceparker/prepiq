@@ -5,7 +5,9 @@ import {
   getPOSModeSettings,
   updatePOSModeSettings,
   getPOSIntegrationStatus,
+  getPOSImportHealth,
   getPOSOAuthUrl,
+  completePOSOAuth,
   disconnectPOS,
   triggerPOSSync,
 } from '../../../api/settings';
@@ -23,6 +25,56 @@ export interface SnackbarState {
   message: string;
   severity: 'success' | 'error' | 'info' | 'warning';
 }
+
+const POS_OAUTH_SESSION_KEY = 'pos_oauth_session';
+
+export interface POSOAuthSession {
+  state: string;
+  provider: Exclude<POSProvider, null | 'none'>;
+  redirectUri: string;
+}
+
+export const storePOSOAuthSession = (session: POSOAuthSession) => {
+  sessionStorage.setItem(POS_OAUTH_SESSION_KEY, JSON.stringify(session));
+};
+
+export const getStoredPOSOAuthSession = (): POSOAuthSession | null => {
+  const raw = sessionStorage.getItem(POS_OAUTH_SESSION_KEY);
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as POSOAuthSession;
+  } catch {
+    sessionStorage.removeItem(POS_OAUTH_SESSION_KEY);
+    return null;
+  }
+};
+
+export const clearStoredPOSOAuthSession = () => {
+  sessionStorage.removeItem(POS_OAUTH_SESSION_KEY);
+};
+
+export const completeStoredPOSOAuth = async (code: string, state: string) => {
+  const session = getStoredPOSOAuthSession();
+
+  if (!session) {
+    throw new Error('Missing saved POS connection session. Start the connection again.');
+  }
+
+  if (session.state !== state) {
+    clearStoredPOSOAuthSession();
+    throw new Error('POS connection state check failed. Start the connection again.');
+  }
+
+  const result = await completePOSOAuth({
+    provider: session.provider,
+    code,
+    redirect_uri: session.redirectUri,
+  });
+
+  clearStoredPOSOAuthSession();
+  return result;
+};
 
 export function useIntegrationSettings() {
   const queryClient = useQueryClient();
@@ -56,6 +108,12 @@ export function useIntegrationSettings() {
   const posStatusQuery = useQuery({
     queryKey: ['posStatus'],
     queryFn: getPOSIntegrationStatus,
+    enabled: posSettingsQuery.data?.pos_mode === 'external',
+  });
+
+  const posImportHealthQuery = useQuery({
+    queryKey: ['posImportHealth'],
+    queryFn: () => getPOSImportHealth(10),
     enabled: posSettingsQuery.data?.pos_mode === 'external',
   });
 
@@ -93,6 +151,7 @@ export function useIntegrationSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['posSettings'] });
       queryClient.invalidateQueries({ queryKey: ['posStatus'] });
+      queryClient.invalidateQueries({ queryKey: ['posImportHealth'] });
       showSnackbar('POS disconnected', 'success');
     },
     onError: (error: any) => {
@@ -104,6 +163,7 @@ export function useIntegrationSettings() {
     mutationFn: () => triggerPOSSync(7),
     onSuccess: data => {
       posStatusQuery.refetch();
+      posImportHealthQuery.refetch();
       showSnackbar(`Sync complete: ${data.orders_synced} orders synced`, 'success');
     },
     onError: () => {
@@ -172,8 +232,11 @@ export function useIntegrationSettings() {
         redirect_uri: redirectUri,
         state,
       });
-      // Store state in sessionStorage for verification
-      sessionStorage.setItem('pos_oauth_state', state);
+      storePOSOAuthSession({
+        state,
+        provider: provider as Exclude<POSProvider, null | 'none'>,
+        redirectUri,
+      });
       // Redirect to OAuth
       window.location.href = result.oauth_url;
     } catch (error) {
@@ -220,12 +283,14 @@ export function useIntegrationSettings() {
     // Data
     posSettings: posSettingsQuery.data,
     posStatus: posStatusQuery.data,
+    posImportHealth: posImportHealthQuery.data,
     terminalReaders: terminalReadersQuery.data?.readers || [],
     terminalLocation: terminalLocationQuery.data,
 
     // Loading states
     isLoading: posSettingsQuery.isLoading,
     isStatusLoading: posStatusQuery.isLoading,
+    isImportHealthLoading: posImportHealthQuery.isLoading,
     isReadersLoading: terminalReadersQuery.isLoading,
 
     // Error states

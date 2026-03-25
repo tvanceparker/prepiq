@@ -2,9 +2,10 @@
 
 from datetime import date, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from app.db.models.orders_orm import Order
 from app.repositories.base_repository import BaseRepository
+from typing import Optional, List
 
 
 class OrdersRepository(BaseRepository):
@@ -22,6 +23,31 @@ class OrdersRepository(BaseRepository):
         stmt = select(Order).where(
             Order.restaurant_id == self.restaurant_id,
             Order.order_status.in_(active_statuses)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    async def get_by_external_id(self, external_id: str) -> Optional[Order]:
+        if not external_id:
+            return None
+
+        stmt = select(Order).where(
+            Order.restaurant_id == self.restaurant_id,
+            Order.external_id == external_id,
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    async def get_recent_external_import_orders(self, limit: int = 10) -> List[Order]:
+        source_expr = func.json_unquote(func.json_extract(Order.order_metadata, '$.source'))
+        stmt = (
+            select(Order)
+            .where(
+                Order.restaurant_id == self.restaurant_id,
+                source_expr == 'external_pos_import',
+            )
+            .order_by(Order.order_timestamp.desc())
+            .limit(limit)
         )
         result = await self.db.execute(stmt)
         return result.scalars().all()

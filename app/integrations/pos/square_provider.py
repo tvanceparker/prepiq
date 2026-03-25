@@ -54,6 +54,7 @@ class SquareProvider(BasePOSProvider):
         """Generate Square OAuth authorization URL."""
         params = {
             "client_id": self.client_id,
+            "redirect_uri": redirect_uri,
             "scope": "ORDERS_READ PAYMENTS_READ ITEMS_READ MERCHANT_PROFILE_READ",
             "session": "false",
             "state": state,
@@ -70,6 +71,7 @@ class SquareProvider(BasePOSProvider):
                     "client_secret": self.client_secret,
                     "code": code,
                     "grant_type": "authorization_code",
+                    "redirect_uri": redirect_uri,
                 }
             )
             response.raise_for_status()

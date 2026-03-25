@@ -15,13 +15,13 @@ from app.integrations.pos.base_provider import BasePOSProvider
 from app.integrations.pos.encryption_utils import encrypt_token, decrypt_token
 from app.repositories.restaurants_repo import RestaurantRepository
 from app.repositories.menu_items_repo import MenuItemRepository
+from app.repositories.order_items_repo import OrderItemsRepository
 from app.repositories.pos_item_mappings_repo import POSItemMappingsRepository
 from app.repositories.pos_merchant_mappings_repo import POSMerchantMappingsRepository
-from app.services.order_service import OrderService
+from app.repositories.orders_repo import OrdersRepository
 from app.services.helpers.pos_menu_matcher import POSMenuMatcher
 from app.services.utils.inventory_deduction_helper import InventoryDeductionHelper
 from app.repositories.sales_repo import SalesRepository
-from app.schemas.order_dto import OrderCreate, OrderItemCreate
 
 
 class POSIntegrationService:
@@ -46,7 +46,8 @@ class POSIntegrationService:
         self.employee_id = employee_id
         self.restaurant_repo = RestaurantRepository(db, restaurant_id)
         self.sales_repo = SalesRepository(db, restaurant_id)
-        self.order_service = OrderService(db, restaurant_id, subscription_tier, employee_id)
+        self.orders_repo = OrdersRepository(db, restaurant_id)
+        self.order_items_repo = OrderItemsRepository(db, restaurant_id)
         self.menu_item_repo = MenuItemRepository(db, restaurant_id)
         self.pos_item_mappings_repo = POSItemMappingsRepository(db, restaurant_id)
         self.pos_merchant_mappings_repo = POSMerchantMappingsRepository(db, restaurant_id)
@@ -161,6 +162,7 @@ class POSIntegrationService:
 
         # Update restaurant record
         await self.restaurant_repo.update(self.restaurant_id, {
+            "pos_mode": "external",
             "pos_provider": provider,
             "pos_connected": True,
             "pos_access_token": encrypted_access,
@@ -187,6 +189,7 @@ class POSIntegrationService:
 
         return {
             "status": "connected",
+            "connected": True,
             "provider": provider,
             "location_id": location_id,
             "merchant_id": merchant_id,
@@ -230,6 +233,7 @@ class POSIntegrationService:
         
         return {
             "status": "disconnected",
+            "connected": False,
             "provider": provider_name,
         }
     
@@ -319,18 +323,119 @@ class POSIntegrationService:
         if self.subscription_tier not in ("pro", "master"):
             return False
         return await self.inventory_helper.is_real_time_enabled()
+
+    def _derive_deduction_state(self, helper_result: Optional[Dict[str, Any]]) -> str:
+        if not helper_result:
+            return "failed"
+        if helper_result.get("failures"):
+            return "failed"
+        if helper_result.get("skipped"):
+            return "skipped"
+        return "succeeded"
+
+    async def _record_import_inventory_deduction_state(
+        self,
+        order_id: Optional[int],
+        helper_result: Optional[Dict[str, Any]],
+        fallback_state: str = "pending",
+    ) -> Optional[str]:
+        if not order_id:
+            return None
+
+        state = fallback_state
+        if helper_result is not None:
+            state = self._derive_deduction_state(helper_result)
+
+        await self.orders_repo.update(order_id, {"inventory_deduction_state": state})
+        return state
+
+    async def _create_import_order_trace(
+        self,
+        *,
+        external_order_id: Optional[str],
+        pos_provider: str,
+        sales_channel: str,
+        subtotal: float,
+        tax: float,
+        discount: float,
+        total: float,
+        order_timestamp: datetime,
+        mapped_items: List[Dict[str, Any]],
+        unmapped_items: List[Dict[str, Any]],
+    ) -> int:
+        order_record = await self.orders_repo.create(
+            {
+                "external_id": external_order_id,
+                "employee_id": self.employee_id,
+                "order_timestamp": order_timestamp,
+                "order_status": "completed",
+                "sales_channel": sales_channel,
+                "subtotal": subtotal,
+                "tax": tax,
+                "discount": discount,
+                "total": total,
+                "order_metadata": {
+                    "source": "external_pos_import",
+                    "provider": pos_provider,
+                    "imported_at": datetime.utcnow().isoformat(),
+                    "external_order_timestamp": order_timestamp.isoformat(),
+                    "unmapped_item_count": len(unmapped_items),
+                    "unmapped_items": unmapped_items,
+                },
+            }
+        )
+        order_id = getattr(order_record, self.orders_repo.pk_field)
+
+        for item in mapped_items:
+            await self.order_items_repo.create(
+                {
+                    "order_id": order_id,
+                    "menu_item_id": item["menu_item_id"],
+                    "quantity": item["quantity"],
+                    "unit_price": item["unit_price"],
+                    "line_total": item["unit_price"] * item["quantity"],
+                    "instructions": item.get("instructions"),
+                    "recipe_snapshot": {
+                        "menu_item_id": item["menu_item_id"],
+                        "source": "external_pos_import",
+                        "provider": pos_provider,
+                        "external_item_id": item.get("external_item_id"),
+                        "external_item_name": item.get("external_item_name"),
+                        "modifiers": item.get("modifiers", []),
+                    },
+                }
+            )
+
+        return order_id
     
-    async def _ingest_order(self, order_data: Dict[str, Any]) -> None:
+    async def _ingest_order(self, order_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Ingest a single order into PrepIQ database.
 
-        Creates both Order record and Sales records for analytics.
+        Creates an imported Order record for traceability and Sales records for analytics.
         Uses menu matcher to map external item IDs to internal menu items.
         """
         # Get provider from order metadata
         pos_provider = order_data.get("metadata", {}).get("provider", "square")
+        external_order_id = order_data.get("external_id")
+
+        if external_order_id:
+            existing_order = await self.orders_repo.get_by_external_id(external_order_id)
+            if existing_order:
+                logger.info(
+                    "[POS Integration] Skipping duplicate external order %s for restaurant %s",
+                    external_order_id,
+                    self.restaurant_id,
+                )
+                return {
+                    "status": "duplicate",
+                    "external_order_id": external_order_id,
+                    "mapped_items": 0,
+                    "unmapped_items": 0,
+                }
 
         items = []
+        unmapped_items = []
         for item in order_data.get("items", []):
             external_item_id = item.get("external_item_id")
             external_item_name = item.get("name")
@@ -344,51 +449,61 @@ class POSIntegrationService:
 
             # Skip items that couldn't be mapped
             if not menu_item_id:
+                unmapped_items.append({
+                    "external_item_id": external_item_id,
+                    "external_item_name": external_item_name,
+                })
                 logger.warning(
                     f"Skipping unmapped item: {external_item_name} "
                     f"(external_id: {external_item_id}, provider: {pos_provider})"
                 )
                 continue
 
-            items.append(OrderItemCreate(
-                menu_item_id=menu_item_id,
-                quantity=item["quantity"],
-                unit_price=item["unit_price"],
-                instructions=item.get("instructions"),
-                modifiers=item.get("modifiers", [])
-            ))
+            items.append({
+                "menu_item_id": menu_item_id,
+                "quantity": item["quantity"],
+                "unit_price": item["unit_price"],
+                "instructions": item.get("instructions"),
+                "modifiers": item.get("modifiers", []),
+                "external_item_id": external_item_id,
+                "external_item_name": external_item_name,
+            })
         
         if not items:
             logger.warning(f"[POS Integration] Skipping order {order_data.get('external_id')} - no mappable items")
-            return
+            return {
+                "status": "skipped",
+                "external_order_id": external_order_id,
+                "mapped_items": 0,
+                "unmapped_items": len(unmapped_items),
+                "unmapped_item_details": unmapped_items,
+            }
         
-        # Create order via OrderService
-        order_create = OrderCreate(
-            external_id=order_data["external_id"],
-            sales_channel=order_data.get("sales_channel", "in-house"),
-            items=items,
-            subtotal=order_data["subtotal"],
-            tax=order_data["tax"],
-            discount=order_data["discount"],
-            total=order_data["total"],
-        )
-        
-        created_order = await self.order_service.create_order(order_create)
-        order_id = created_order.get("order_id") if isinstance(created_order, dict) else None
-        
-        # Also create sales records for each item (for analytics/forecasting)
         order_timestamp = order_data.get("order_timestamp")
         if order_timestamp:
             if isinstance(order_timestamp, str):
                 order_timestamp = datetime.fromisoformat(order_timestamp.replace("Z", "+00:00"))
         else:
             order_timestamp = datetime.utcnow()
+
+        order_id = await self._create_import_order_trace(
+            external_order_id=external_order_id,
+            pos_provider=pos_provider,
+            sales_channel=order_data.get("sales_channel", "in-house"),
+            subtotal=order_data["subtotal"],
+            tax=order_data["tax"],
+            discount=order_data["discount"],
+            total=order_data["total"],
+            order_timestamp=order_timestamp,
+            mapped_items=items,
+            unmapped_items=unmapped_items,
+        )
         
         for item in items:
             await self.sales_repo.create({
                 "restaurant_id": self.restaurant_id,
-                "menu_item_id": item.menu_item_id,
-                "quantity_sold": item.quantity,
+                "menu_item_id": item["menu_item_id"],
+                "quantity_sold": item["quantity"],
                 "sale_timestamp": order_timestamp,
                 "sales_channel": order_data.get("sales_channel", "in-house"),
             })
@@ -396,7 +511,7 @@ class POSIntegrationService:
         if order_id:
             if await self._should_use_real_time_deduction():
                 menu_items_payload = [
-                    {"menu_item_id": item.menu_item_id, "quantity": float(item.quantity)}
+                    {"menu_item_id": item["menu_item_id"], "quantity": float(item["quantity"])}
                     for item in items
                 ]
                 helper_result: Optional[Dict[str, Any]] = None
@@ -414,17 +529,26 @@ class POSIntegrationService:
                         exc_info=True,
                     )
                     helper_result = {"failures": [{"error": str(exc)}]}
-                await self.order_service.record_inventory_deduction_state(
+                await self._record_import_inventory_deduction_state(
                     order_id,
                     helper_result,
                     fallback_state="failed",
                 )
             else:
-                await self.order_service.record_inventory_deduction_state(
+                await self._record_import_inventory_deduction_state(
                     order_id,
                     None,
                     fallback_state="pending",
                 )
+
+        return {
+            "status": "imported",
+            "external_order_id": external_order_id,
+            "order_id": order_id,
+            "mapped_items": len(items),
+            "unmapped_items": len(unmapped_items),
+            "unmapped_item_details": unmapped_items,
+        }
     
     @log_method("POS Integration: Handle Webhook")
     async def handle_webhook_event(
@@ -469,8 +593,13 @@ class POSIntegrationService:
             order_obj = event.get("object", {})
             if order_obj:
                 order_data = provider_instance.transform_order(order_obj)
-                await self._ingest_order(order_data)
-                return {"status": "processed", "event_type": event_type, "action": "order_ingested"}
+                ingest_result = await self._ingest_order(order_data)
+                return {
+                    "status": "processed",
+                    "event_type": event_type,
+                    "action": "order_ingested",
+                    "ingest_result": ingest_result,
+                }
         
         elif "payment" in event_type.lower():
             # Payment processed
@@ -478,6 +607,77 @@ class POSIntegrationService:
             return {"status": "processed", "event_type": event_type, "action": "payment_logged"}
         
         return {"status": "ignored", "event_type": event_type}
+
+    @log_method("POS Integration: Get Import Health")
+    async def get_import_health(self, limit: int = 10) -> Dict[str, Any]:
+        restaurant = await self._get_restaurant()
+        provider = None if restaurant.pos_provider == "none" else restaurant.pos_provider
+
+        unmapped_rows = []
+        if provider:
+            unmapped_rows = await self.pos_item_mappings_repo.get_unmapped_items(provider)
+
+        recent_import_orders = await self.orders_repo.get_recent_external_import_orders(limit=limit)
+
+        recent_imports = []
+        pending_deductions = 0
+        failed_deductions = 0
+        last_import_at = None
+
+        for order in recent_import_orders:
+            metadata = order.order_metadata or {}
+            imported_at = metadata.get("imported_at")
+            if imported_at and last_import_at is None:
+                last_import_at = imported_at
+
+            deduction_state = getattr(order, "inventory_deduction_state", "pending") or "pending"
+            if deduction_state == "pending":
+                pending_deductions += 1
+            elif deduction_state == "failed":
+                failed_deductions += 1
+
+            recent_imports.append(
+                {
+                    "order_id": int(order.order_id),
+                    "external_order_id": order.external_id,
+                    "provider": metadata.get("provider"),
+                    "sales_channel": order.sales_channel,
+                    "imported_at": imported_at,
+                    "order_timestamp": order.order_timestamp.isoformat()
+                    if getattr(order, "order_timestamp", None)
+                    else None,
+                    "total": float(order.total or 0),
+                    "inventory_deduction_state": deduction_state,
+                    "unmapped_item_count": int(metadata.get("unmapped_item_count", 0) or 0),
+                }
+            )
+
+        return {
+            "provider": provider,
+            "summary": {
+                "total_recent_imports": len(recent_imports),
+                "unmapped_items": len(unmapped_rows),
+                "pending_deductions": pending_deductions,
+                "failed_deductions": failed_deductions,
+                "last_import_at": last_import_at,
+            },
+            "unmapped_items": [
+                {
+                    "mapping_id": int(row.mapping_id),
+                    "restaurant_id": int(row.restaurant_id),
+                    "pos_provider": row.pos_provider,
+                    "external_item_id": row.external_item_id,
+                    "external_item_name": row.external_item_name,
+                    "menu_item_id": row.menu_item_id,
+                    "confidence_score": float(row.confidence_score or 0),
+                    "mapping_status": row.mapping_status,
+                    "created_at": row.created_at.isoformat() if row.created_at else None,
+                    "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                }
+                for row in unmapped_rows
+            ],
+            "recent_imports": recent_imports,
+        }
     
     @log_method("POS Integration: Get Sync Status")
     async def get_sync_status(self) -> Dict[str, Any]:
@@ -486,7 +686,7 @@ class POSIntegrationService:
         
         return {
             "connected": restaurant.pos_connected,
-            "provider": restaurant.pos_provider,
+            "provider": None if restaurant.pos_provider == "none" else restaurant.pos_provider,
             "location_id": restaurant.pos_location_id,
             "merchant_id": restaurant.pos_merchant_id,
             "last_sync": restaurant.pos_last_sync.isoformat() if restaurant.pos_last_sync else None,
@@ -494,4 +694,6 @@ class POSIntegrationService:
             "sync_orders": restaurant.pos_sync_orders,
             "sync_payments": restaurant.pos_sync_payments,
             "sync_menu": restaurant.pos_sync_menu,
+            "sync_status": "success" if restaurant.pos_last_sync else "idle",
+            "error_message": None,
         }

@@ -138,9 +138,54 @@ export interface ExternalPOSStatus {
   provider: POSProvider;
   connected: boolean;
   merchant_id: string | null;
+  location_id?: string | null;
   last_sync: string | null;
   sync_status: 'idle' | 'syncing' | 'error' | 'success';
+  sync_enabled?: boolean;
+  sync_orders?: boolean;
+  sync_payments?: boolean;
+  sync_menu?: boolean;
   error_message?: string;
+}
+
+export interface POSImportHealthSummary {
+  total_recent_imports: number;
+  unmapped_items: number;
+  pending_deductions: number;
+  failed_deductions: number;
+  last_import_at: string | null;
+}
+
+export interface POSImportHealthItem {
+  order_id: number;
+  external_order_id: string | null;
+  provider: string | null;
+  sales_channel: string | null;
+  imported_at: string | null;
+  order_timestamp: string | null;
+  total: number;
+  inventory_deduction_state: string;
+  unmapped_item_count: number;
+}
+
+export interface POSUnmappedItem {
+  mapping_id: number;
+  restaurant_id: number;
+  pos_provider: string;
+  external_item_id: string;
+  external_item_name: string | null;
+  menu_item_id: number | null;
+  confidence_score: number;
+  mapping_status: string;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface POSImportHealth {
+  provider: POSProvider;
+  summary: POSImportHealthSummary;
+  unmapped_items: POSUnmappedItem[];
+  recent_imports: POSImportHealthItem[];
 }
 
 // =============================================================================

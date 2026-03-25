@@ -6,6 +6,7 @@ from app.schemas.settings_dto import (RestaurantSettingsDTO, UpdateRestaurantSet
                                       ChangePasswordDTO, ChangeEmailDTO, ChangePhoneDTO,
                                         PreferencesDTO, UpdatePreferencesDTO, AccountInfoDTO,
                                          )
+from app.schemas.pos_dto import POSImportHealthResponse
 from app.utils.logger_helpers import log_route
 from app.core.logging import logger
 from app.utils.security import verify_password, get_password_hash
@@ -147,6 +148,16 @@ async def get_pos_sync_status(
     """Get current POS integration status and last sync info."""
     status_info = await pos_service.get_sync_status()
     return status_info
+
+
+@router.get("/pos/import-health", response_model=POSImportHealthResponse)
+@log_route("Get POS Import Health")
+async def get_pos_import_health(
+    limit: int = Query(10, ge=1, le=50, description="Number of recent imports to return"),
+    pos_service: POSIntegrationService = Depends(build_service(POSIntegrationService))
+):
+    """Get unmapped POS items and recent import history for product-facing settings screens."""
+    return await pos_service.get_import_health(limit=limit)
 
 
 @router.post("/pos/sync-now")

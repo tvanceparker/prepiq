@@ -130,6 +130,67 @@ class TestOrderService:
         mock_repos['orders'].update.assert_called_once_with(123, {'order_status': 'completed'})
 
     @pytest.mark.asyncio
+    async def test_create_order_can_skip_kitchen_broadcast_and_set_initial_status(self, order_service, mock_repos):
+        """External imports should be able to create a completed order without notifying the kitchen."""
+        mock_order = MagicMock()
+        mock_order.order_id = 321
+        mock_repos['orders'].pk_field = 'order_id'
+        mock_repos['orders'].create.return_value = mock_order
+
+        class MockTransaction:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc_val, exc_tb):
+                return None
+
+        order_service.db.begin = MagicMock(return_value=MockTransaction())
+
+        mock_item = MagicMock()
+        mock_item.order_item_id = 654
+        mock_repos['order_items'].pk_field = 'order_item_id'
+        mock_repos['order_items'].create.return_value = mock_item
+
+        with patch.object(manager, 'send_message', new=AsyncMock()) as mock_send_message:
+            order_data = OrderCreate(
+                external_id="EXT-001",
+                sales_channel="square",
+                items=[
+                    OrderItemCreate(
+                        menu_item_id=7,
+                        quantity=1,
+                        unit_price=12.50,
+                    )
+                ],
+                subtotal=12.50,
+                tax=0,
+                discount=0,
+                total=12.50,
+            )
+
+            result = await order_service.create_order(
+                order_data,
+                initial_status='completed',
+                broadcast_kitchen=False,
+                order_metadata={'source': 'external_pos_import'},
+            )
+
+        assert result['order_id'] == 321
+        mock_repos['orders'].create.assert_called_once_with({
+            'external_id': 'EXT-001',
+            'restaurant_id': 1,
+            'employee_id': 1,
+            'order_status': 'completed',
+            'sales_channel': 'square',
+            'subtotal': 12.50,
+            'tax': 0,
+            'discount': 0,
+            'total': 12.50,
+            'order_metadata': {'source': 'external_pos_import'},
+        })
+        mock_send_message.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_get_active_orders(self, order_service, mock_repos):
         """Test retrieving active orders"""
         order1 = MagicMock(order_id=1, external_id="A", sales_channel="in-house", order_status="open", subtotal=1, tax=1, discount=1, total=1)

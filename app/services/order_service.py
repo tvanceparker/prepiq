@@ -94,7 +94,14 @@ class OrderService:
         return items_dto
 
     @log_method("[Order] Create Order")
-    async def create_order(self, order: OrderCreate):
+    async def create_order(
+        self,
+        order: OrderCreate,
+        *,
+        initial_status: str = "open",
+        broadcast_kitchen: bool = True,
+        order_metadata: Optional[Dict[str, Any]] = None,
+    ):
         """
         Transactionally create order, order_items, and modifiers, snapshotting minimal item data.
         Returns the created order primary key.
@@ -104,12 +111,13 @@ class OrderService:
                 "external_id": order.external_id,
                 "restaurant_id": self.restaurant_id,
                 "employee_id": self.employee_id,
-                "order_status": "open",
+                "order_status": initial_status,
                 "sales_channel": order.sales_channel,
                 "subtotal": order.subtotal,
                 "tax": order.tax,
                 "discount": order.discount,
                 "total": order.total,
+                "order_metadata": order_metadata,
             }
             created = await self.order_repo.create(order_data)
             order_id = getattr(created, self.order_repo.pk_field)
@@ -138,10 +146,10 @@ class OrderService:
                     }
                     await self.mod_repo.create(mod_data)
 
-        # broadcast to kitchen room
-        room = f"kitchen_{self.restaurant_id}"
-        payload = {"type": "new_order", "order_id": order_id}
-        await manager.send_message(room, payload)
+        if broadcast_kitchen:
+            room = f"kitchen_{self.restaurant_id}"
+            payload = {"type": "new_order", "order_id": order_id}
+            await manager.send_message(room, payload)
 
         return {"order_id": order_id, "status": "created", "message": "Order created"}
     async def get_order_by_id(self, order_id: int):

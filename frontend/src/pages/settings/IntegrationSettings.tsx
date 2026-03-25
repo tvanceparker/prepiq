@@ -14,6 +14,13 @@ import {
   Divider,
   Chip,
   CircularProgress,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
 } from '@mui/material';
 import {
   PointOfSale as POSIcon,
@@ -30,8 +37,10 @@ export default function IntegrationSettings() {
   const {
     posSettings,
     posStatus,
+    posImportHealth,
     isLoading,
     isStatusLoading,
+    isImportHealthLoading,
     posError,
     isUpdatingMode,
     isDisconnecting,
@@ -165,6 +174,101 @@ export default function IntegrationSettings() {
                   {isSyncing ? 'Syncing...' : 'Sync Now'}
                 </Button>
               </Box>
+
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle2" color="text.secondary" mb={2}>
+                Import Health
+              </Typography>
+
+              {isImportHealthLoading ? (
+                <CircularProgress size={20} />
+              ) : (
+                <>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} mb={2}>
+                    <Chip
+                      label={`Recent Imports: ${posImportHealth?.summary.total_recent_imports ?? 0}`}
+                      size="small"
+                    />
+                    <Chip
+                      color={(posImportHealth?.summary.unmapped_items ?? 0) > 0 ? 'warning' : 'success'}
+                      label={`Unmapped Items: ${posImportHealth?.summary.unmapped_items ?? 0}`}
+                      size="small"
+                    />
+                    <Chip
+                      color={(posImportHealth?.summary.failed_deductions ?? 0) > 0 ? 'error' : 'default'}
+                      label={`Deduction Failures: ${posImportHealth?.summary.failed_deductions ?? 0}`}
+                      size="small"
+                    />
+                    <Chip
+                      label={`Pending Deductions: ${posImportHealth?.summary.pending_deductions ?? 0}`}
+                      size="small"
+                    />
+                  </Stack>
+
+                  <Typography variant="body2" color="text.secondary" mb={2}>
+                    Last imported sale:{' '}
+                    {posImportHealth?.summary.last_import_at
+                      ? new Date(posImportHealth.summary.last_import_at).toLocaleString()
+                      : 'No imports yet'}
+                  </Typography>
+
+                  <Box mb={2}>
+                    <Typography variant="subtitle2" mb={1}>
+                      Unmapped POS Items
+                    </Typography>
+                    {posImportHealth?.unmapped_items.length ? (
+                      <Stack spacing={1}>
+                        {posImportHealth.unmapped_items.map(item => (
+                          <Alert key={item.mapping_id} severity="warning">
+                            <strong>{item.external_item_name || item.external_item_id}</strong>
+                            {` `}is not mapped to a PrepIQ menu item yet.
+                          </Alert>
+                        ))}
+                      </Stack>
+                    ) : (
+                      <Alert severity="success">All imported POS items are currently mapped.</Alert>
+                    )}
+                  </Box>
+
+                  <Box>
+                    <Typography variant="subtitle2" mb={1}>
+                      Recent Import History
+                    </Typography>
+                    {posImportHealth?.recent_imports.length ? (
+                      <TableContainer>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>External ID</TableCell>
+                              <TableCell>Imported</TableCell>
+                              <TableCell>Total</TableCell>
+                              <TableCell>Inventory</TableCell>
+                              <TableCell>Unmapped</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {posImportHealth.recent_imports.map(item => (
+                              <TableRow key={item.order_id}>
+                                <TableCell>{item.external_order_id || `Import #${item.order_id}`}</TableCell>
+                                <TableCell>
+                                  {item.imported_at
+                                    ? new Date(item.imported_at).toLocaleString()
+                                    : 'Unknown'}
+                                </TableCell>
+                                <TableCell>${item.total.toFixed(2)}</TableCell>
+                                <TableCell>{item.inventory_deduction_state}</TableCell>
+                                <TableCell>{item.unmapped_item_count}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    ) : (
+                      <Alert severity="info">No POS imports recorded yet.</Alert>
+                    )}
+                  </Box>
+                </>
+              )}
             </>
           )}
 

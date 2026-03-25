@@ -51,6 +51,7 @@ import UserManagement from '../pages/admin/UserManagement';
 // Settings
 import RestaurantSettings from '../pages/settings/RestaurantSettings';
 import IntegrationSettings from '../pages/settings/IntegrationSettings';
+import POSOAuthCallback from '../pages/settings/POSOAuthCallback';
 import AccountSettings from '../pages/settings/AccountSettings';
 
 export default function AppRoutes(): JSX.Element {
@@ -118,6 +119,7 @@ export default function AppRoutes(): JSX.Element {
         {/* Settings */}
         <Route path="/settings/restaurant" element={<RestaurantSettings />} />
         <Route path="/settings/integrations" element={<IntegrationSettings />} />
+        <Route path="/settings/pos-callback" element={<POSOAuthCallback />} />
         <Route path="/settings/account-settings" element={<AccountSettings />} />
       </Route>
     </Routes>
