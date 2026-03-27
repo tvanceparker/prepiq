@@ -30,7 +30,12 @@ import {
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import DownloadIcon from '@mui/icons-material/Download';
 import { useIntegrationSettings } from './hooks/useIntegrationSettings';
+import { downloadSalesTemplate } from '../../api/dashboard';
+import SalesUploadModal from '../dashboard/components/SalesUploadModal';
+import { useUploadSalesData } from '../dashboard/hooks/useUploadSalesData';
 import type { POSProvider } from '../../interfaces/pos';
 
 export default function IntegrationSettings() {
@@ -57,8 +62,10 @@ export default function IntegrationSettings() {
     handleDisconnect,
     handleUpdatePOSMapping,
   } = useIntegrationSettings();
+  const { upload, uploading: isUploadingSalesFallback } = useUploadSalesData();
 
   const [selectedMenuItems, setSelectedMenuItems] = useState<Record<number, string>>({});
+  const [salesUploadOpen, setSalesUploadOpen] = useState(false);
 
   const menuOptions = useMemo(
     () =>
@@ -335,12 +342,47 @@ export default function IntegrationSettings() {
         </CardContent>
       </Card>
 
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" mb={1}>
+            Manual Sales Import Fallback
+          </Typography>
+          <Typography variant="body2" color="text.secondary" mb={2}>
+            If your POS is not connected yet or you need to backfill data, use the existing CSV/XLSX
+            sales import flow here instead of the connected Square ingest.
+          </Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            <Button
+              variant="outlined"
+              startIcon={<DownloadIcon />}
+              onClick={() => downloadSalesTemplate(new Date().toISOString())}
+            >
+              Download Template
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<UploadFileIcon />}
+              onClick={() => setSalesUploadOpen(true)}
+              disabled={isUploadingSalesFallback}
+            >
+              {isUploadingSalesFallback ? 'Uploading...' : 'Upload Sales File'}
+            </Button>
+          </Stack>
+        </CardContent>
+      </Card>
+
       {/* Snackbar */}
       <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={closeSnackbar}>
         <Alert severity={snackbar.severity} onClose={closeSnackbar}>
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      <SalesUploadModal
+        isOpen={salesUploadOpen}
+        onClose={() => setSalesUploadOpen(false)}
+        onUpload={upload}
+      />
     </Box>
   );
 }

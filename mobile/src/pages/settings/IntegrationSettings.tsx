@@ -29,7 +29,7 @@ import { getMenuItems } from '../../api/menu';
 import { updatePOSItemMapping } from '../../api/posMappings';
 import type { POSMode, POSProvider } from '../../interfaces/pos';
 
-export default function IntegrationSettings() {
+export default function IntegrationSettings({ navigation }: any) {
   const theme = useTheme();
   const queryClient = useQueryClient();
 
@@ -380,6 +380,32 @@ export default function IntegrationSettings() {
                 </Text>
               </View>
             </Card.Content>
+          </Card>
+
+          <Card style={styles.card} mode="outlined">
+            <Card.Title
+              title="Manual Sales Import Fallback"
+              titleVariant="titleMedium"
+              left={() => (
+                <MaterialCommunityIcons
+                  name="file-upload-outline"
+                  size={24}
+                  color={theme.colors.primary}
+                  style={{ marginLeft: 16 }}
+                />
+              )}
+            />
+            <Card.Content>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                If Square is not connected yet or you need to backfill sales, use the existing
+                manual sales upload flow from mobile.
+              </Text>
+            </Card.Content>
+            <Card.Actions>
+              <Button mode="contained" onPress={() => navigation.navigate('sales_upload-wizard')}>
+                Open Sales Upload
+              </Button>
+            </Card.Actions>
           </Card>
         </>
       )}

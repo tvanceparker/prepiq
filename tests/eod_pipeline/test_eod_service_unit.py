@@ -352,9 +352,12 @@ class TestEODServiceStages:
     ):
         """Test sales deduction stage execution."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.order_repo.mark_completed_orders_deducted_for_date = AsyncMock()
         service.ledger_repo.mark_stage_complete = AsyncMock()
         service.aggregate_daily_sales = AsyncMock(return_value=[{"ingredient_id": 1001}])
-        service.deduct_ingredients_from_inventory = AsyncMock()
+        service.deduct_ingredients_from_inventory = AsyncMock(
+            return_value={"deducted_items": [{"ingredient_id": 1001}], "failures": []}
+        )
         service._is_real_time_deduction_enabled = AsyncMock(return_value=False)
         
         ledger = sample_eod_ledger
@@ -362,6 +365,29 @@ class TestEODServiceStages:
         
         assert result == 1
         service.ledger_repo.mark_stage_complete.assert_called_once()
+        service.order_repo.mark_completed_orders_deducted_for_date.assert_awaited_once_with(
+            date(2025, 11, 20)
+        )
+
+    @pytest.mark.asyncio
+    async def test_stage_sales_deduction_leaves_pending_orders_when_deduction_fails(
+        self, mock_db_session, restaurant_id, sample_eod_ledger
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        service.order_repo.mark_completed_orders_deducted_for_date = AsyncMock()
+        service.ledger_repo.mark_stage_complete = AsyncMock()
+        service.aggregate_daily_sales = AsyncMock(return_value=[{"ingredient_id": 1001}])
+        service.deduct_ingredients_from_inventory = AsyncMock(
+            return_value={"deducted_items": [], "failures": [{"ingredient_id": 1001}]}
+        )
+        service._is_real_time_deduction_enabled = AsyncMock(return_value=False)
+
+        ledger = sample_eod_ledger
+        result = await service._stage_sales_deduction(date(2025, 11, 20), ledger)
+
+        assert result == 1
+        service.ledger_repo.mark_stage_complete.assert_called_once()
+        service.order_repo.mark_completed_orders_deducted_for_date.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_stage_sales_deduction_skip_when_complete(
