@@ -18,6 +18,8 @@ import {
   syncTerminalReaderStatus,
   getTerminalLocation,
 } from '../../../api/pos';
+import { getMenuItems } from '../../../api/menu';
+import { updatePOSItemMapping } from '../../../api/posMappings';
 import type { POSMode, POSProvider } from '../../../interfaces/pos';
 
 export interface SnackbarState {
@@ -131,6 +133,12 @@ export function useIntegrationSettings() {
     enabled: posSettingsQuery.data?.pos_mode === 'internal',
   });
 
+  const menuItemsQuery = useQuery({
+    queryKey: ['menuItemsForPOSMapping'],
+    queryFn: getMenuItems,
+    enabled: posSettingsQuery.data?.pos_mode === 'external',
+  });
+
   // =========================================================================
   // Mutations
   // =========================================================================
@@ -156,6 +164,22 @@ export function useIntegrationSettings() {
     },
     onError: (error: any) => {
       showSnackbar(error?.message || 'Failed to disconnect POS', 'error');
+    },
+  });
+
+  const updateMappingMutation = useMutation({
+    mutationFn: ({ mappingId, menuItemId }: { mappingId: number; menuItemId: number }) =>
+      updatePOSItemMapping(mappingId, {
+        menu_item_id: menuItemId,
+        mapping_status: 'manual',
+        confidence_score: 1,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['posImportHealth'] });
+      showSnackbar('POS item mapping saved', 'success');
+    },
+    onError: (error: any) => {
+      showSnackbar(error?.message || 'Failed to save POS item mapping', 'error');
     },
   });
 
@@ -275,6 +299,10 @@ export function useIntegrationSettings() {
     disconnectMutation.mutate();
   };
 
+  const handleUpdatePOSMapping = (mappingId: number, menuItemId: number) => {
+    updateMappingMutation.mutate({ mappingId, menuItemId });
+  };
+
   // =========================================================================
   // Return
   // =========================================================================
@@ -284,6 +312,7 @@ export function useIntegrationSettings() {
     posSettings: posSettingsQuery.data,
     posStatus: posStatusQuery.data,
     posImportHealth: posImportHealthQuery.data,
+    menuItems: menuItemsQuery.data || [],
     terminalReaders: terminalReadersQuery.data?.readers || [],
     terminalLocation: terminalLocationQuery.data,
 
@@ -291,6 +320,7 @@ export function useIntegrationSettings() {
     isLoading: posSettingsQuery.isLoading,
     isStatusLoading: posStatusQuery.isLoading,
     isImportHealthLoading: posImportHealthQuery.isLoading,
+    isMenuItemsLoading: menuItemsQuery.isLoading,
     isReadersLoading: terminalReadersQuery.isLoading,
 
     // Error states
@@ -300,6 +330,7 @@ export function useIntegrationSettings() {
     isUpdatingMode: updateModeMutation.isPending,
     isDisconnecting: disconnectMutation.isPending,
     isSyncing: syncMutation.isPending,
+    isUpdatingMapping: updateMappingMutation.isPending,
     isRegisteringReader: registerReaderMutation.isPending,
     isDeletingReader: deleteReaderMutation.isPending,
 
@@ -317,6 +348,7 @@ export function useIntegrationSettings() {
     handleSyncReaderStatus,
     handleSync,
     handleDisconnect,
+    handleUpdatePOSMapping,
 
     // Refetch
     refetchStatus: posStatusQuery.refetch,

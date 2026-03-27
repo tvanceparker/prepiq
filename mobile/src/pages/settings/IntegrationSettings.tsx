@@ -11,6 +11,9 @@ import {
   Snackbar,
   ActivityIndicator,
   Chip,
+  Dialog,
+  Portal,
+  RadioButton,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -22,6 +25,8 @@ import {
   triggerPOSSync,
   updatePOSModeSettings,
 } from '../../api/settings';
+import { getMenuItems } from '../../api/menu';
+import { updatePOSItemMapping } from '../../api/posMappings';
 import type { POSMode, POSProvider } from '../../interfaces/pos';
 
 export default function IntegrationSettings() {
@@ -29,6 +34,8 @@ export default function IntegrationSettings() {
   const queryClient = useQueryClient();
 
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
+  const [mappingDialogItemId, setMappingDialogItemId] = useState<number | null>(null);
+  const [selectedMenuItemId, setSelectedMenuItemId] = useState<string>('');
 
   const posSettingsQuery = useQuery({
     queryKey: ['mobilePosSettings'],
@@ -44,6 +51,12 @@ export default function IntegrationSettings() {
   const posImportHealthQuery = useQuery({
     queryKey: ['mobilePosImportHealth'],
     queryFn: () => getPOSImportHealth(10),
+    enabled: posSettingsQuery.data?.pos_mode === 'external',
+  });
+
+  const menuItemsQuery = useQuery({
+    queryKey: ['mobileMenuItemsForPOSMapping'],
+    queryFn: getMenuItems,
     enabled: posSettingsQuery.data?.pos_mode === 'external',
   });
 
@@ -87,6 +100,24 @@ export default function IntegrationSettings() {
     },
   });
 
+  const updateMappingMutation = useMutation({
+    mutationFn: ({ mappingId, menuItemId }: { mappingId: number; menuItemId: number }) =>
+      updatePOSItemMapping(mappingId, {
+        menu_item_id: menuItemId,
+        mapping_status: 'manual',
+        confidence_score: 1,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mobilePosImportHealth'] });
+      setMappingDialogItemId(null);
+      setSelectedMenuItemId('');
+      setSnackbar({ visible: true, message: 'POS item mapping saved' });
+    },
+    onError: (err: any) => {
+      setSnackbar({ visible: true, message: err?.message || 'Failed to save POS item mapping' });
+    },
+  });
+
   const handleModeChange = (newMode: POSMode) => {
     updateModeMutation.mutate({
       pos_mode: newMode,
@@ -96,11 +127,19 @@ export default function IntegrationSettings() {
   };
 
   const providerLabel = (provider?: POSProvider) => provider && provider !== 'none' ? provider : 'square';
+  const menuOptions = (menuItemsQuery.data || []).map((item: any) => ({
+    id: item.menu_item_id,
+    label: item.menu_item_name || item.name || `Menu Item #${item.menu_item_id}`,
+  }));
 
   const isLoading = posSettingsQuery.isLoading;
   const posSettings = posSettingsQuery.data;
   const posStatus = posStatusQuery.data;
   const posImportHealth = posImportHealthQuery.data;
+
+  const selectedMappingItem = posImportHealth?.unmapped_items.find(
+    item => item.mapping_id === mappingDialogItemId
+  );
 
   return (
     <ScrollView
@@ -230,6 +269,18 @@ export default function IntegrationSettings() {
                         title={item.external_item_name || item.external_item_id}
                         description={`External ID: ${item.external_item_id}`}
                         left={() => <List.Icon icon="link-off" />}
+                        right={() => (
+                          <Button
+                            mode="outlined"
+                            compact
+                            onPress={() => {
+                              setMappingDialogItemId(item.mapping_id);
+                              setSelectedMenuItemId('');
+                            }}
+                          >
+                            Map
+                          </Button>
+                        )}
                       />
                     ))
                   ) : (
@@ -340,6 +391,44 @@ export default function IntegrationSettings() {
       >
         {snackbar.message}
       </Snackbar>
+
+      <Portal>
+        <Dialog visible={mappingDialogItemId !== null} onDismiss={() => setMappingDialogItemId(null)}>
+          <Dialog.Title>Map POS Item</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium" style={{ marginBottom: 12 }}>
+              {selectedMappingItem?.external_item_name || selectedMappingItem?.external_item_id}
+            </Text>
+            {menuItemsQuery.isLoading ? (
+              <ActivityIndicator size="small" />
+            ) : (
+              <ScrollView style={{ maxHeight: 280 }}>
+                <RadioButton.Group value={selectedMenuItemId} onValueChange={setSelectedMenuItemId}>
+                  {menuOptions.map(option => (
+                    <RadioButton.Item key={option.id} label={option.label} value={String(option.id)} />
+                  ))}
+                </RadioButton.Group>
+              </ScrollView>
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setMappingDialogItemId(null)}>Cancel</Button>
+            <Button
+              mode="contained"
+              disabled={!selectedMenuItemId || updateMappingMutation.isPending}
+              onPress={() => {
+                if (!mappingDialogItemId || !selectedMenuItemId) return;
+                updateMappingMutation.mutate({
+                  mappingId: mappingDialogItemId,
+                  menuItemId: Number(selectedMenuItemId),
+                });
+              }}
+            >
+              Save Mapping
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </ScrollView>
   );
 }

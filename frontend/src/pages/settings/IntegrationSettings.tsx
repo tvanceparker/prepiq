@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
   Card,
@@ -38,13 +38,16 @@ export default function IntegrationSettings() {
     posSettings,
     posStatus,
     posImportHealth,
+    menuItems,
     isLoading,
     isStatusLoading,
     isImportHealthLoading,
+    isMenuItemsLoading,
     posError,
     isUpdatingMode,
     isDisconnecting,
     isSyncing,
+    isUpdatingMapping,
     snackbar,
     closeSnackbar,
     handleModeChange,
@@ -52,7 +55,19 @@ export default function IntegrationSettings() {
     handleConnectPOS,
     handleSync,
     handleDisconnect,
+    handleUpdatePOSMapping,
   } = useIntegrationSettings();
+
+  const [selectedMenuItems, setSelectedMenuItems] = useState<Record<number, string>>({});
+
+  const menuOptions = useMemo(
+    () =>
+      (menuItems || []).map((item: any) => ({
+        id: item.menu_item_id,
+        label: item.menu_item_name || item.name || `Menu Item #${item.menu_item_id}`,
+      })),
+    [menuItems]
+  );
 
   if (isLoading) {
     return (
@@ -220,8 +235,48 @@ export default function IntegrationSettings() {
                       <Stack spacing={1}>
                         {posImportHealth.unmapped_items.map(item => (
                           <Alert key={item.mapping_id} severity="warning">
-                            <strong>{item.external_item_name || item.external_item_id}</strong>
-                            {` `}is not mapped to a PrepIQ menu item yet.
+                            <Box>
+                              <Typography variant="subtitle2">
+                                {item.external_item_name || item.external_item_id}
+                              </Typography>
+                              <Typography variant="body2" sx={{ mb: 1.5 }}>
+                                External ID: {item.external_item_id}
+                              </Typography>
+                              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+                                <FormControl size="small" sx={{ minWidth: 260 }}>
+                                  <InputLabel>Map to Menu Item</InputLabel>
+                                  <Select
+                                    value={selectedMenuItems[item.mapping_id] || ''}
+                                    label="Map to Menu Item"
+                                    onChange={event =>
+                                      setSelectedMenuItems(prev => ({
+                                        ...prev,
+                                        [item.mapping_id]: String(event.target.value),
+                                      }))
+                                    }
+                                    disabled={isMenuItemsLoading || isUpdatingMapping}
+                                  >
+                                    {menuOptions.map(option => (
+                                      <MenuItem key={option.id} value={String(option.id)}>
+                                        {option.label}
+                                      </MenuItem>
+                                    ))}
+                                  </Select>
+                                </FormControl>
+                                <Button
+                                  variant="contained"
+                                  disabled={!selectedMenuItems[item.mapping_id] || isUpdatingMapping}
+                                  onClick={() =>
+                                    handleUpdatePOSMapping(
+                                      item.mapping_id,
+                                      Number(selectedMenuItems[item.mapping_id])
+                                    )
+                                  }
+                                >
+                                  Save Mapping
+                                </Button>
+                              </Stack>
+                            </Box>
                           </Alert>
                         ))}
                       </Stack>
