@@ -1,40 +1,67 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext, useEffect, useMemo } from 'react';
 import { View, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { Text, useTheme, IconButton, Button, Switch } from 'react-native-paper';
 import { useAppTheme } from '../contexts/ThemeContext';
 import { sidebarDataByTier, SidebarSection } from '../navigation/sidebarData';
 import { AuthContext } from '../contexts/AuthContext';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useNavigationState } from '@react-navigation/native';
 
 interface Props {
   tier?: string;
   onNavigate?: () => void;
 }
 
+function normalizePathToScreenName(path: string) {
+  return path.replace(/^\//, '').replace(/\//g, '_');
+}
+
+function getActiveRouteNames(state: any): string[] {
+  if (!state?.routes?.length) {
+    return [];
+  }
+
+  const activeRoute = state.routes[state.index ?? state.routes.length - 1];
+  const childRouteNames = activeRoute?.state ? getActiveRouteNames(activeRoute.state) : [];
+  return [activeRoute.name, ...childRouteNames].filter(Boolean);
+}
+
 export default function Sidebar({ tier, onNavigate }: Props) {
   const { logout } = useContext(AuthContext);
   const theme = useTheme();
   const nav = useNavigation<any>();
-  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [openSectionLabel, setOpenSectionLabel] = useState<string | null>(null);
+  const activeRouteNames = useNavigationState(state => getActiveRouteNames(state));
   if (!tier) return null;
   const normalizedTier = tier === 'basic' ? 'basic' : 'full';
   const sections: SidebarSection[] = sidebarDataByTier[normalizedTier] || [];
 
-  // open first two sections by default for quicker access
-  useEffect(() => {
-    if (Object.keys(open).length === 0) {
-      const init: Record<string, boolean> = {};
-      sections.slice(0, 2).forEach(s => {
-        init[s.label] = true;
-      });
-      setOpen(init);
-    }
-  }, [sections]);
+  const activeSectionLabel = useMemo(() => {
+    const activeSection = sections.find(section =>
+      section.children.some(child =>
+        activeRouteNames.includes(normalizePathToScreenName(child.path))
+      )
+    );
+    return activeSection?.label ?? null;
+  }, [activeRouteNames, sections]);
 
-  const toggle = (label: string) => setOpen(o => ({ ...o, [label]: !o[label] }));
+  useEffect(() => {
+    if (activeSectionLabel) {
+      setOpenSectionLabel(current =>
+        current === activeSectionLabel ? current : activeSectionLabel
+      );
+      return;
+    }
+
+    if (sections.length) {
+      setOpenSectionLabel(current => current ?? sections[0].label);
+    }
+  }, [activeSectionLabel, sections]);
+
+  const toggle = (label: string) =>
+    setOpenSectionLabel(current => (current === label ? null : label));
 
   const go = (path: string) => {
-    const screenName = path.replace(/^\//, '').replace(/\//g, '_');
+    const screenName = normalizePathToScreenName(path);
     try {
       nav.navigate(screenName as never);
     } catch {}
@@ -70,7 +97,7 @@ export default function Sidebar({ tier, onNavigate }: Props) {
         {sections.map(section => {
           const children = section.children;
           if (!children.length) return null; // hide section if still empty after filtering
-          const isOpen = !!open[section.label];
+          const isOpen = openSectionLabel === section.label;
           return (
             <View key={section.label} style={styles.section}>
               <TouchableOpacity
@@ -90,10 +117,8 @@ export default function Sidebar({ tier, onNavigate }: Props) {
               {isOpen && (
                 <View style={styles.items}>
                   {children.map(child => {
-                    const screenName = child.path.replace(/^\/?/, '').replace(/\//g, '_');
-                    const isActive = nav
-                      .getState?.()
-                      ?.routes?.some((r: any) => r.name === screenName);
+                    const screenName = normalizePathToScreenName(child.path);
+                    const isActive = activeRouteNames.includes(screenName);
                     return (
                       <TouchableOpacity
                         key={child.path}
