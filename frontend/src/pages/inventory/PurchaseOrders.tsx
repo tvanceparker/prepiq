@@ -45,6 +45,7 @@ import {
   updatePurchaseOrderItem,
   removeItemFromPurchaseOrder,
   updatePurchaseOrderStatus,
+  receivePurchaseOrder,
   getIngredientNames,
   generatePOSuggestions,
   createPOsFromSuggestions,
@@ -200,8 +201,12 @@ export default function PurchaseOrders() {
   });
 
   const updateStatusMut = useMutation({
-    mutationFn: (args: { order_id: number; status: PurchaseOrderStatus }) =>
-      updatePurchaseOrderStatus(args.order_id, args.status),
+    mutationFn: (args: { order_id: number; status: PurchaseOrderStatus }) => {
+      if (args.status === 'delivered') {
+        return receivePurchaseOrder(args.order_id);
+      }
+      return updatePurchaseOrderStatus(args.order_id, args.status);
+    },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['purchase_orders'] });
       setSelectedOrder(null);

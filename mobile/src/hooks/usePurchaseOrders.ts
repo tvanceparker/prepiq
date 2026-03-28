@@ -5,6 +5,7 @@ import {
   getPurchaseOrderDetail,
   createPurchaseOrder,
   updatePurchaseOrderStatus,
+  receivePurchaseOrder,
   addItemToPurchaseOrder,
   updatePurchaseOrderItem,
   removeItemFromPurchaseOrder,
@@ -49,8 +50,12 @@ export function usePurchaseOrders(options: UsePurchaseOrdersOptions = {}) {
 
   // Update status mutation
   const updateStatusMutation = useMutation({
-    mutationFn: ({ orderId, status }: { orderId: number; status: PurchaseOrderStatus }) =>
-      updatePurchaseOrderStatus(orderId, status),
+    mutationFn: ({ orderId, status }: { orderId: number; status: PurchaseOrderStatus }) => {
+      if (status === 'delivered') {
+        return receivePurchaseOrder(orderId);
+      }
+      return updatePurchaseOrderStatus(orderId, status);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
     },
@@ -72,11 +77,14 @@ export function usePurchaseOrders(options: UsePurchaseOrdersOptions = {}) {
   });
 
   // Group by status for tabs/filters
-  const ordersByStatus = (ordersQuery.data ?? []).reduce((acc, order) => {
-    if (!acc[order.status]) acc[order.status] = [];
-    acc[order.status].push(order);
-    return acc;
-  }, {} as Record<PurchaseOrderStatus, PurchaseOrder[]>);
+  const ordersByStatus = (ordersQuery.data ?? []).reduce(
+    (acc, order) => {
+      if (!acc[order.status]) acc[order.status] = [];
+      acc[order.status].push(order);
+      return acc;
+    },
+    {} as Record<PurchaseOrderStatus, PurchaseOrder[]>
+  );
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });

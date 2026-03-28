@@ -39,6 +39,15 @@ export async function updatePurchaseOrderStatus(
   );
 }
 
+export async function receivePurchaseOrder(
+  order_id: number,
+  actual_delivery_date?: string
+): Promise<any> {
+  return post(`/inventory/purchase_orders/${order_id}/receive`, {
+    actual_delivery_date,
+  });
+}
+
 export async function addItemToPurchaseOrder(
   order_id: number,
   item: Partial<PurchaseOrderItem>

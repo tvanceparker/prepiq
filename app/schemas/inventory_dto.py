@@ -35,6 +35,10 @@ class PurchaseOrderItemUpdateDTO(BaseModel):
     unit: Optional[str] = None
     ingredient_supplier_id: Optional[int] = None
 
+
+class PurchaseOrderReceiptDTO(BaseModel):
+    actual_delivery_date: Optional[date] = None
+
 class PurchaseOrderDTO(BaseModel):
     order_id: int
     restaurant_id: int
