@@ -802,11 +802,7 @@ export default function PurchaseOrders() {
             label={
               <Stack direction="row" alignItems="center" spacing={1}>
                 <span>{t.label}</span>
-                <Chip
-                  size="small"
-                  label={orderCountsByStatus[t.value]}
-                  sx={{ height: 20 }}
-                />
+                <Chip size="small" label={orderCountsByStatus[t.value]} sx={{ height: 20 }} />
               </Stack>
             }
           />
