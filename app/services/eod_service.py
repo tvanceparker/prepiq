@@ -20,14 +20,14 @@ from app.repositories.ingredient_supplier_repo import IngredientSupplierReposito
 from app.repositories.purchase_orders_repo import PurchaseOrderRepository
 from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
 from app.repositories.ingredients_repo import IngredientRepository
-from app.services.forecasting_engine import ForecastingEngine
+from app.services.forecasting_engine import ForecastingEngine, convert_forecast_dict_to_list
 from app.services.inventory_stats_service import InventoryStatsService
 from app.services.reorder_forecast_engine import ReorderForecastEngine
 from app.services.forecasting_engine_basic import ForecastingEngineBasic
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.utils.unit_conversion import convert_unit, normalize_unit
 from app.services.utils.inventory_deduction_helper import InventoryDeductionHelper
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import math
 from decimal import Decimal
 from datetime import date, datetime, timedelta
@@ -84,6 +84,90 @@ class EODService:
         from app.repositories.eod_run_ledger_repo import EODRunLedgerRepository
         self.ledger_repo = EODRunLedgerRepository(db, restaurant_id)
         self._purchase_order_suggestions = []
+        self.purchase_order_suggestions = []
+
+    def _set_purchase_order_suggestions(self, suggestions: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+        synced_suggestions = list(suggestions or [])
+        self._purchase_order_suggestions = synced_suggestions
+        self.purchase_order_suggestions = synced_suggestions
+        return synced_suggestions
+
+    async def _recover_ingredient_forecast_from_breakdowns(
+        self,
+        run_date: date,
+        reorder_horizon_days: int,
+    ) -> Dict[int, Dict[str, Any]]:
+        horizon_days = max(int(reorder_horizon_days or 1), 1)
+        end_date = run_date + timedelta(days=horizon_days)
+
+        breakdown_rows = (
+            await self.forecasting_engine.forecast_breakdown_repo.get_latest_by_date_range(
+                start_date=run_date,
+                end_date=end_date,
+            )
+        )
+        if not breakdown_rows:
+            logger.warning(
+                "[EOD] No persisted forecast breakdowns available for recovery date=%s end_date=%s",
+                run_date,
+                end_date,
+            )
+            return {}
+
+        menu_item_forecast: Dict[int, Dict[str, Any]] = {}
+        for row in breakdown_rows:
+            entry = menu_item_forecast.setdefault(
+                row.menu_item_id,
+                {"daily_breakdown": []},
+            )
+            entry["daily_breakdown"].append(
+                (row.forecast_date, Decimal(str(row.forecasted_quantity or 0)))
+            )
+
+        for entry in menu_item_forecast.values():
+            entry["daily_breakdown"].sort(key=lambda item: item[0])
+
+        batch_breakdown = await self.forecasting_engine.generate_batch_recipe_breakdown(
+            menu_item_forecast
+        )
+        ingredient_breakdown = await self.forecasting_engine.generate_ingredient_breakdown(
+            convert_forecast_dict_to_list(menu_item_forecast),
+            batch_breakdown,
+        )
+
+        recovered_forecast: Dict[int, Dict[str, Any]] = defaultdict(
+            lambda: {
+                "total_quantity": Decimal(0),
+                "unit": None,
+                "daily_breakdown": [],
+            }
+        )
+        cutoff_date = run_date + timedelta(days=horizon_days)
+
+        for entry in ingredient_breakdown:
+            forecast_date = entry["forecast_date"]
+            if forecast_date > cutoff_date:
+                continue
+
+            ingredient_id = entry["ingredient_id"]
+            quantity = Decimal(str(entry["quantity"]))
+            recovered_forecast[ingredient_id]["total_quantity"] += quantity
+            recovered_forecast[ingredient_id]["daily_breakdown"].append(
+                (forecast_date, quantity)
+            )
+            if not recovered_forecast[ingredient_id]["unit"]:
+                recovered_forecast[ingredient_id]["unit"] = entry.get("unit") or "count"
+
+        for data in recovered_forecast.values():
+            data["daily_breakdown"].sort(key=lambda item: item[0])
+
+        recovered_count = len(recovered_forecast)
+        logger.info(
+            "[EOD] Recovered ingredient forecast from persisted breakdowns date=%s ingredients=%s",
+            run_date,
+            recovered_count,
+        )
+        return dict(recovered_forecast)
 
     async def _is_real_time_deduction_enabled(self) -> bool:
         if not self.subscription_tier or self.subscription_tier not in ("pro", "master"):
@@ -134,10 +218,21 @@ class EODService:
         await self.ledger_repo.mark_stage_complete(ledger, 'forecast_completed', int((datetime.utcnow()-t0).total_seconds()*1000))
         return ingredient_forecast
 
-    async def _stage_reorder(self, run_date: date, ledger, ingredient_forecast) -> int:
+    async def _stage_reorder(
+        self,
+        run_date: date,
+        ledger,
+        ingredient_forecast,
+        reorder_horizon_days: int,
+    ) -> int:
         if ledger.reorder_completed:
             logger.debug('[EOD] Skip reorder already complete')
             return 0
+        if not ingredient_forecast and ledger.forecast_completed:
+            ingredient_forecast = await self._recover_ingredient_forecast_from_breakdowns(
+                run_date,
+                reorder_horizon_days,
+            )
         if not ingredient_forecast:
             logger.info('[EOD] No ingredient forecast; skip reorder stage')
             await self.ledger_repo.mark_stage_complete(ledger, 'reorder_completed', 0)
@@ -148,14 +243,25 @@ class EODService:
             ingredient_forecast,
             run_date=run_date,
         )
-        self._purchase_order_suggestions = suggestions
+        self._set_purchase_order_suggestions(suggestions)
         await self.ledger_repo.mark_stage_complete(ledger, 'reorder_completed', int((datetime.utcnow()-t0).total_seconds()*1000))
         return len(suggestions or [])
 
-    async def _stage_po_write(self, ledger, run_date: date) -> int:
+    async def _stage_po_write(self, ledger, run_date: date, reorder_horizon_days: int) -> int:
         if ledger.po_written:
             logger.debug('[EOD] Skip po_write already complete')
             return 0
+        if not self._purchase_order_suggestions and ledger.reorder_completed:
+            ingredient_forecast = await self._recover_ingredient_forecast_from_breakdowns(
+                run_date,
+                reorder_horizon_days,
+            )
+            if ingredient_forecast:
+                suggestions = await self.generate_suggested_purchase_orders(
+                    ingredient_forecast,
+                    run_date=run_date,
+                )
+                self._set_purchase_order_suggestions(suggestions)
         if not self._purchase_order_suggestions:
             logger.info('[EOD] No PO suggestions to write')
             await self.ledger_repo.mark_stage_complete(ledger, 'po_written', 0)
@@ -582,7 +688,7 @@ class EODService:
 
         logger.info(f"[EOD] Generated {len(purchase_orders)} purchase order suggestions")
 
-        self.purchase_order_suggestions = purchase_orders
+        self._set_purchase_order_suggestions(purchase_orders)
         return purchase_orders
 
     async def write_purchase_orders_to_db(self, run_date: Optional[date] = None) -> None:
@@ -729,12 +835,21 @@ class EODService:
                     await self.db.commit()
 
                 # Reorder suggestions
-                po_suggestions = await self._stage_reorder(date, ledger, ingredient_forecast)
+                po_suggestions = await self._stage_reorder(
+                    date,
+                    ledger,
+                    ingredient_forecast,
+                    reorder_horizon_days,
+                )
                 if commit:
                     await self.db.commit()
 
                 # Write POs
-                po_written = await self._stage_po_write(ledger, date)
+                po_written = await self._stage_po_write(
+                    ledger,
+                    date,
+                    reorder_horizon_days,
+                )
                 if commit:
                     await self.db.commit()
             else:
