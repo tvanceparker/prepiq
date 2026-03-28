@@ -313,6 +313,22 @@ class EODService:
         processed_count = 0
 
         for lot in expired_lots:
+            already_logged = await self.inventory_usage_log_repo.has_usage_type_for_lot(
+                lot.lot_id,
+                "spoilage",
+            )
+            if already_logged:
+                if lot.status != LotStatus.expired:
+                    await self.inventory_lot_repo.update(
+                        lot.lot_id,
+                        {"status": LotStatus.expired},
+                    )
+                logger.info(
+                    "[EOD] Skipping spoilage write-off for lot=%s (already logged)",
+                    lot.lot_id,
+                )
+                continue
+
             remaining_quantity = await self._compute_lot_remaining(lot)
             if remaining_quantity <= 0:
                 if lot.status != LotStatus.expired:

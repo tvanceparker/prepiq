@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch, ANY
 
+from app.db.models.inventory_lot_orm import LotStatus
 from app.services.eod_service import EODService
 
 
@@ -185,9 +186,39 @@ class TestEODServiceUnit:
     ):
         """Test spoilage deduction placeholder logs execution."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         
         # Should not raise
         await service.auto_deduct_spoilage(date(2025, 11, 20))
+
+    @pytest.mark.asyncio
+    async def test_auto_deduct_spoilage_skips_already_logged_lot(
+        self, mock_db_session, restaurant_id
+    ):
+        """A rerun should not decrement inventory twice for a lot already written off."""
+        service = EODService(mock_db_session, restaurant_id, "master")
+
+        expired_lot = MagicMock(
+            lot_id=55,
+            status="available",
+            inventory_id=901,
+            ingredient_id=1001,
+            unit="lb",
+        )
+        service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[expired_lot])
+        service.inventory_usage_log_repo.has_usage_type_for_lot = AsyncMock(return_value=True)
+        service.inventory_lot_repo.update = AsyncMock()
+        service.inventory_repo.decrement_quantity = AsyncMock()
+        service.inventory_usage_log_repo.create = AsyncMock()
+
+        await service.auto_deduct_spoilage(date(2025, 11, 20))
+
+        service.inventory_repo.decrement_quantity.assert_not_awaited()
+        service.inventory_usage_log_repo.create.assert_not_awaited()
+        service.inventory_lot_repo.update.assert_awaited_once_with(
+            55,
+            {"status": LotStatus.expired},
+        )
 
     @pytest.mark.asyncio
     async def test_generate_forecast_calls_forecasting_engine(
