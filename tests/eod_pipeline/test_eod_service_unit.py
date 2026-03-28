@@ -249,13 +249,14 @@ class TestEODServiceUnit:
         """Test PO suggestion generation from ingredient forecast."""
         service = EODService(mock_db_session, restaurant_id, "master")
         service.reorder_engine.suggest_reorder_quantity = AsyncMock(return_value=Decimal("25.00"))
+        run_date = date(2025, 11, 20)
         
         ingredient_forecast = {
             1001: {
                 "total_quantity": Decimal("30.00"),
                 "unit": "lb",
                 "daily_breakdown": [
-                    (date.today() + timedelta(days=i), Decimal("1.00"))
+                    (run_date + timedelta(days=i), Decimal("1.00"))
                     for i in range(10)
                 ],
             }
@@ -268,12 +269,54 @@ class TestEODServiceUnit:
             return_value=sample_inventory[0]
         )
         
-        result = await service.generate_suggested_purchase_orders(ingredient_forecast)
+        result = await service.generate_suggested_purchase_orders(
+            ingredient_forecast,
+            run_date=run_date,
+        )
         
         assert len(result) >= 1
         assert result[0]["ingredient_id"] == 1001
         assert result[0]["supplier_id"] == 501
         assert "suggested_packs_to_order" in result[0]
+
+    @pytest.mark.asyncio
+    async def test_generate_suggested_purchase_orders_uses_run_date_not_today(
+        self, mock_db_session, restaurant_id, sample_suppliers, sample_inventory
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        service.reorder_engine.suggest_reorder_quantity = AsyncMock(return_value=Decimal("25.00"))
+        run_date = date(2025, 11, 20)
+
+        ingredient_forecast = {
+            1001: {
+                "total_quantity": Decimal("30.00"),
+                "unit": "lb",
+                "daily_breakdown": [
+                    (run_date + timedelta(days=i), Decimal("2.00"))
+                    for i in range(5)
+                ],
+            }
+        }
+
+        service.ingredient_supplier_repo.get_all_by_ingredient_id = AsyncMock(
+            return_value=[sample_suppliers[0]]
+        )
+        service.inventory_repo.get_inventory_by_ingredient = AsyncMock(
+            return_value=sample_inventory[0]
+        )
+
+        with patch('app.services.eod_service.date') as mock_date:
+            mock_date.today.return_value = date(2026, 1, 15)
+            mock_date.side_effect = lambda *args, **kwargs: date(*args, **kwargs)
+
+            result = await service.generate_suggested_purchase_orders(
+                ingredient_forecast,
+                run_date=run_date,
+            )
+
+        assert len(result) == 1
+        assert result[0]["lead_demand"] == 6.0
+        assert result[0]["shelf_demand"] == 4.0
 
     @pytest.mark.asyncio
     async def test_generate_suggested_purchase_orders_skip_zero_qty(
@@ -492,7 +535,7 @@ class TestEODServiceStages:
         ledger = sample_eod_ledger
         ingredient_forecast = {1001: {"unit": "lb"}}
         
-        result = await service._stage_reorder(ledger, ingredient_forecast)
+        result = await service._stage_reorder(date(2025, 11, 20), ledger, ingredient_forecast)
         
         assert result == 1
         assert len(service._purchase_order_suggestions) == 1

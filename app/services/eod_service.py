@@ -134,7 +134,7 @@ class EODService:
         await self.ledger_repo.mark_stage_complete(ledger, 'forecast_completed', int((datetime.utcnow()-t0).total_seconds()*1000))
         return ingredient_forecast
 
-    async def _stage_reorder(self, ledger, ingredient_forecast) -> int:
+    async def _stage_reorder(self, run_date: date, ledger, ingredient_forecast) -> int:
         if ledger.reorder_completed:
             logger.debug('[EOD] Skip reorder already complete')
             return 0
@@ -144,7 +144,10 @@ class EODService:
             return 0
         t0 = datetime.utcnow()
         await self.reorder_engine.classify_all_ingredients()
-        suggestions = await self.generate_suggested_purchase_orders(ingredient_forecast)
+        suggestions = await self.generate_suggested_purchase_orders(
+            ingredient_forecast,
+            run_date=run_date,
+        )
         self._purchase_order_suggestions = suggestions
         await self.ledger_repo.mark_stage_complete(ledger, 'reorder_completed', int((datetime.utcnow()-t0).total_seconds()*1000))
         return len(suggestions or [])
@@ -437,9 +440,14 @@ class EODService:
 
         return ingredient_forecast
 
-    async def generate_suggested_purchase_orders(self, ingredient_forecast) -> None:
+    async def generate_suggested_purchase_orders(
+        self,
+        ingredient_forecast,
+        run_date: Optional[date] = None,
+    ) -> None:
         logger.info("[EOD] Generating suggested purchase orders")
         purchase_orders = []
+        effective_run_date = run_date or date.today()
 
         ingredient_ids = set(ingredient_forecast.keys())
         logger.debug(f"[EOD] Ingredient IDs to process: {ingredient_ids}")
@@ -491,10 +499,9 @@ class EODService:
                 print(f"[ERROR] Invalid reorder_days for ingredient {ingredient_id}")
                 continue
 
-            today = date.today()
-            lead_window = [today + timedelta(days=i) for i in range(lead_time)]
+            lead_window = [effective_run_date + timedelta(days=i) for i in range(lead_time)]
             shelf_window = [
-                today + timedelta(days=i) for i in range(lead_time, reorder_days)
+                effective_run_date + timedelta(days=i) for i in range(lead_time, reorder_days)
             ]
 
             daily_forecast = ingredient_forecast[ingredient_id].get(
@@ -722,7 +729,7 @@ class EODService:
                     await self.db.commit()
 
                 # Reorder suggestions
-                po_suggestions = await self._stage_reorder(ledger, ingredient_forecast)
+                po_suggestions = await self._stage_reorder(date, ledger, ingredient_forecast)
                 if commit:
                     await self.db.commit()
 
