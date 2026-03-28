@@ -147,6 +147,7 @@ class ReorderForecastEngine:
         )
 
         if current_stock >= reorder_point:
+            await self.alert_repo.resolve_open_low_stock_alerts(ingredient_id)
             logger.debug(
                 f"[REORDER] Skip ingredient={ingredient_id} current>reorder_point current={current_stock} point={reorder_point}"
             )
@@ -271,14 +272,35 @@ class ReorderForecastEngine:
             f"Low stock alert: '{ingredient.name}' stock is at {current_stock} "
             f"which is below the reorder point ({reorder_point})."
         )
+        alert_meta = {
+            "ingredient_id": ingredient_id,
+            "current_stock": float(current_stock),
+            "reorder_point": float(reorder_point),
+        }
+        existing_alert = await self.alert_repo.get_open_low_stock_alert(ingredient_id)
+        if existing_alert:
+            await self.alert_repo.update(
+                existing_alert.alert_id,
+                {
+                    "message": message,
+                    "meta": alert_meta,
+                },
+            )
+            logger.info(
+                f"[REORDER] AlertUpdated ingredient={ingredient_id} current={current_stock} reorder_point={reorder_point}"
+            )
+            return
+
         alert_data = {
             "restaurant_id": self.restaurant_id,
             "employee_id": None,  # system-generated
-            "role": None,
+            "role": "system",
             "alert_type": "LowStock",
             "message": message,
             "status": "Active",
             "is_acknowledged": 0,
+            "severity": "warning",
+            "meta": alert_meta,
         }
         await self.alert_repo.create(alert_data)
         logger.info(f"[REORDER] AlertCreated ingredient={ingredient_id} current={current_stock} reorder_point={reorder_point}")

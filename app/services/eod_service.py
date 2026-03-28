@@ -19,6 +19,9 @@ from app.repositories.orders_repo import OrdersRepository
 from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
 from app.repositories.purchase_orders_repo import PurchaseOrderRepository
 from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
+from app.repositories.eod_purchase_order_suggestion_repo import (
+    EODPurchaseOrderSuggestionRepository,
+)
 from app.repositories.ingredients_repo import IngredientRepository
 from app.services.forecasting_engine import ForecastingEngine, convert_forecast_dict_to_list
 from app.services.inventory_stats_service import InventoryStatsService
@@ -83,6 +86,7 @@ class EODService:
         logger.debug('[EOD] init service restaurant=%s tier=%s', self.restaurant_id, self.subscription_tier)
         from app.repositories.eod_run_ledger_repo import EODRunLedgerRepository
         self.ledger_repo = EODRunLedgerRepository(db, restaurant_id)
+        self.po_suggestion_repo = EODPurchaseOrderSuggestionRepository(db, restaurant_id)
         self._purchase_order_suggestions = []
         self.purchase_order_suggestions = []
 
@@ -91,6 +95,54 @@ class EODService:
         self._purchase_order_suggestions = synced_suggestions
         self.purchase_order_suggestions = synced_suggestions
         return synced_suggestions
+
+    async def _persist_purchase_order_suggestions(
+        self,
+        run_date: date,
+        suggestions: Optional[List[Dict[str, Any]]],
+    ) -> List[Dict[str, Any]]:
+        synced_suggestions = self._set_purchase_order_suggestions(suggestions)
+        await self.po_suggestion_repo.replace_for_run_date(run_date, synced_suggestions)
+        logger.info(
+            "[EOD] Persisted purchase order suggestions run_date=%s count=%s",
+            run_date,
+            len(synced_suggestions),
+        )
+        return synced_suggestions
+
+    async def _load_persisted_purchase_order_suggestions(
+        self,
+        run_date: date,
+    ) -> List[Dict[str, Any]]:
+        persisted_rows = await self.po_suggestion_repo.list_by_run_date(run_date)
+        suggestions = [
+            {
+                "ingredient_id": row.ingredient_id,
+                "ingredient_supplier_id": row.ingredient_supplier_id,
+                "supplier_id": row.supplier_id,
+                "lead_demand": float(row.lead_demand),
+                "shelf_demand": float(row.shelf_demand),
+                "forecast_unit": row.forecast_unit,
+                "converted_quantity_needed": float(row.converted_quantity_needed),
+                "suggested_packs_to_order": row.suggested_packs_to_order,
+                "total_quantity_ordered": float(row.total_quantity_ordered),
+                "supplier_unit": row.supplier_unit,
+                "inventory_unit": row.inventory_unit,
+                "lead_time_days": row.lead_time_days,
+                "shelf_life_days": row.shelf_life_days,
+                "pack_size": row.pack_size,
+                "quantity_per_pack_item": float(row.quantity_per_pack_item),
+                "min_order_quantity": float(row.min_order_quantity),
+            }
+            for row in persisted_rows
+        ]
+        if suggestions:
+            logger.info(
+                "[EOD] Loaded persisted purchase order suggestions run_date=%s count=%s",
+                run_date,
+                len(suggestions),
+            )
+        return self._set_purchase_order_suggestions(suggestions)
 
     async def _recover_ingredient_forecast_from_breakdowns(
         self,
@@ -243,7 +295,7 @@ class EODService:
             ingredient_forecast,
             run_date=run_date,
         )
-        self._set_purchase_order_suggestions(suggestions)
+        await self._persist_purchase_order_suggestions(run_date, suggestions)
         await self.ledger_repo.mark_stage_complete(ledger, 'reorder_completed', int((datetime.utcnow()-t0).total_seconds()*1000))
         return len(suggestions or [])
 
@@ -251,6 +303,8 @@ class EODService:
         if ledger.po_written:
             logger.debug('[EOD] Skip po_write already complete')
             return 0
+        if not self._purchase_order_suggestions and ledger.reorder_completed:
+            await self._load_persisted_purchase_order_suggestions(run_date)
         if not self._purchase_order_suggestions and ledger.reorder_completed:
             ingredient_forecast = await self._recover_ingredient_forecast_from_breakdowns(
                 run_date,
@@ -261,7 +315,7 @@ class EODService:
                     ingredient_forecast,
                     run_date=run_date,
                 )
-                self._set_purchase_order_suggestions(suggestions)
+                await self._persist_purchase_order_suggestions(run_date, suggestions)
         if not self._purchase_order_suggestions:
             logger.info('[EOD] No PO suggestions to write')
             await self.ledger_repo.mark_stage_complete(ledger, 'po_written', 0)
@@ -688,7 +742,10 @@ class EODService:
 
         logger.info(f"[EOD] Generated {len(purchase_orders)} purchase order suggestions")
 
-        self._set_purchase_order_suggestions(purchase_orders)
+        if run_date is not None:
+            await self._persist_purchase_order_suggestions(run_date, purchase_orders)
+        else:
+            self._set_purchase_order_suggestions(purchase_orders)
         return purchase_orders
 
     async def write_purchase_orders_to_db(self, run_date: Optional[date] = None) -> None:
@@ -716,6 +773,11 @@ class EODService:
                     effective_run_date,
                     existing_order.order_id,
                 )
+                await self.po_suggestion_repo.mark_written_for_supplier(
+                    effective_run_date,
+                    supplier_id,
+                    existing_order.order_id,
+                )
                 continue
 
             lead_time = items[0]["lead_time_days"] or 0
@@ -739,6 +801,11 @@ class EODService:
             )
 
             order_id = order.order_id
+            await self.po_suggestion_repo.mark_written_for_supplier(
+                effective_run_date,
+                supplier_id,
+                order_id,
+            )
             # Step 2: Create order items and calculate total price
             for item in items:
                 ingredient_id = item["ingredient_id"]
