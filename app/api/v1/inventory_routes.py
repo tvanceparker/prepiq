@@ -18,6 +18,7 @@ from app.schemas.inventory_dto import (
     PurchaseOrderCreateDTO,
     PurchaseOrderItemUpdateDTO,
     PurchaseOrderReceiptDTO,
+    PurchaseOrderReceiptSummaryDTO,
 )
 from typing import Dict, List
 
@@ -77,7 +78,7 @@ async def update_purchase_order_status(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.post("/purchase_orders/{order_id}/receive", response_model=dict)
+@router.post("/purchase_orders/{order_id}/receive", response_model=PurchaseOrderReceiptSummaryDTO)
 async def receive_purchase_order(
     order_id: int,
     payload: PurchaseOrderReceiptDTO,

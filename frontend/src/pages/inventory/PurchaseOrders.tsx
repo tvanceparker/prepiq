@@ -57,6 +57,7 @@ import type {
   PurchaseOrder,
   PurchaseOrderItem,
   PurchaseOrderCreate,
+  PurchaseOrderReceiptSummary,
   PurchaseOrderStatus,
   IngredientName,
   POSuggestionsResponse,
@@ -119,6 +120,16 @@ export default function PurchaseOrders() {
     message: string,
     severity: 'success' | 'info' | 'warning' | 'error' = 'success'
   ) => setSnackbar({ open: true, message, severity });
+
+  const formatReceiptSummary = (summary: PurchaseOrderReceiptSummary): string => {
+    if (summary.receipt_mode === 'already_received') {
+      return `PO #${summary.order_id} was already received on ${dayjs(summary.actual_delivery_date).format('MMM D, YYYY')}.`;
+    }
+    if (summary.receipt_mode === 'resumed') {
+      return `PO #${summary.order_id} receipt resumed: ${summary.newly_received_item_count} new item(s), ${summary.already_received_item_count} already received.`;
+    }
+    return `PO #${summary.order_id} received: ${summary.newly_received_item_count} item(s) on ${dayjs(summary.actual_delivery_date).format('MMM D, YYYY')}.`;
+  };
 
   // Queries
   const { data: ingredientNames = [] } = useQuery<IngredientName[]>({
@@ -222,9 +233,13 @@ export default function PurchaseOrders() {
       }
       return updatePurchaseOrderStatus(args.order_id, args.status);
     },
-    onSuccess: async () => {
+    onSuccess: async data => {
       await qc.invalidateQueries({ queryKey: ['purchase_orders'] });
       setSelectedOrder(null);
+      if (data && typeof data === 'object' && 'receipt_mode' in data) {
+        showToast(formatReceiptSummary(data as PurchaseOrderReceiptSummary), 'info');
+        return;
+      }
       showToast('Order status updated.');
     },
   });

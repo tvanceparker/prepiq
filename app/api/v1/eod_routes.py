@@ -4,11 +4,12 @@ from app.services.eod_service import EODService
 from app.api.dependencies import get_eod_service
 from datetime import date
 from app.core.logging import logger
+from app.schemas.eod_dto import EODLaunchSummaryDTO
 
 router = APIRouter(prefix="/eod", tags=["End of Day"])
 
 
-@router.get("/finalize")
+@router.get("/finalize", response_model=EODLaunchSummaryDTO)
 async def finalize_eod(
     background_tasks: BackgroundTasks,
     eod_date: date = Query(...),
@@ -30,4 +31,15 @@ async def finalize_eod(
     
     background_tasks.add_task(background_finalize)
 
-    return {"status": "processing", "detail": "EOD finalization started in background."}
+    return {
+        "status": "processing",
+        "detail": "EOD finalization started in background.",
+        "run_date": eod_date,
+        "trigger_source": "manual",
+        "run_mode": "force_rerun" if force else "idempotent_run",
+        "protections": [
+            "sales_deduction_idempotent",
+            "po_write_idempotent",
+            "po_receipt_replay_protected",
+        ],
+    }

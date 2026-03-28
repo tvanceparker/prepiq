@@ -176,19 +176,27 @@ class InventoryService:
         if not purchase_order:
             raise ValueError(f"Purchase order {order_id} not found.")
 
-        if purchase_order.status == "delivered" or purchase_order.actual_delivery_date:
-            raise ValueError(f"Purchase order {order_id} has already been received.")
+        if (
+            purchase_order.actual_delivery_date
+            and actual_delivery_date
+            and purchase_order.actual_delivery_date != actual_delivery_date
+        ):
+            raise ValueError(
+                f"Purchase order {order_id} was already received on "
+                f"{purchase_order.actual_delivery_date.isoformat()}; delivery date cannot be changed."
+            )
 
         items = await self.purchase_order_item_repo.get_by_field("order_id", order_id)
         if not items:
             raise ValueError(f"Purchase order {order_id} has no items to receive.")
 
-        delivery_date = actual_delivery_date or date.today()
+        delivery_date = actual_delivery_date or purchase_order.actual_delivery_date or date.today()
         if self.db.in_transaction():
             return await self._finalize_purchase_order_receipt(
                 order_id=order_id,
                 items=items,
                 delivery_date=delivery_date,
+                purchase_order=purchase_order,
             )
 
         async with self.db.begin():
@@ -196,6 +204,7 @@ class InventoryService:
                 order_id=order_id,
                 items=items,
                 delivery_date=delivery_date,
+                purchase_order=purchase_order,
             )
 
     async def _finalize_purchase_order_receipt(
@@ -203,10 +212,30 @@ class InventoryService:
         order_id: int,
         items: list,
         delivery_date: date,
+        purchase_order,
     ) -> dict:
         received_items = []
+        newly_received_count = 0
+        already_received_count = 0
 
         for item in items:
+            existing_lot = await self.inventory_lot_repo.get_by_purchase_order_item_id(
+                item.order_item_id
+            )
+            if existing_lot:
+                already_received_count += 1
+                received_items.append(
+                    {
+                        "order_item_id": item.order_item_id,
+                        "ingredient_id": item.ingredient_id,
+                        "lot_id": existing_lot.lot_id,
+                        "quantity_received": float(existing_lot.quantity),
+                        "unit": existing_lot.unit,
+                        "receipt_status": "already_received",
+                    }
+                )
+                continue
+
             if not item.ingredient_supplier_id:
                 raise ValueError(
                     f"Purchase order item {item.order_item_id} is missing ingredient_supplier_id required for receipt."
@@ -220,6 +249,7 @@ class InventoryService:
                 purchase_order_id=order_id,
                 purchase_order_item_id=item.order_item_id,
             )
+            newly_received_count += 1
             received_items.append(
                 {
                     "order_item_id": item.order_item_id,
@@ -227,18 +257,33 @@ class InventoryService:
                     "lot_id": receipt["lot_id"],
                     "quantity_received": float(receipt["received_quantity"]),
                     "unit": receipt["unit"],
+                    "receipt_status": "received",
                 }
             )
 
-        await self.purchase_order_repo.update(
-            order_id,
-            {"status": "delivered", "actual_delivery_date": delivery_date},
-        )
+        if (
+            purchase_order.status != "delivered"
+            or purchase_order.actual_delivery_date != delivery_date
+        ):
+            await self.purchase_order_repo.update(
+                order_id,
+                {"status": "delivered", "actual_delivery_date": delivery_date},
+            )
+
+        receipt_mode = "received"
+        if newly_received_count == 0 and already_received_count > 0:
+            receipt_mode = "already_received"
+        elif newly_received_count > 0 and already_received_count > 0:
+            receipt_mode = "resumed"
 
         return {
             "order_id": order_id,
             "status": "delivered",
-            "actual_delivery_date": delivery_date.isoformat(),
+            "actual_delivery_date": delivery_date,
+            "receipt_mode": receipt_mode,
+            "requested_item_count": len(items),
+            "newly_received_item_count": newly_received_count,
+            "already_received_item_count": already_received_count,
             "received_items": received_items,
         }
 

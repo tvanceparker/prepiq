@@ -88,6 +88,18 @@ class InventoryLotRepository(BaseRepository):
         total_quantity = result.scalar()
         return total_quantity or 0.0
 
+    async def get_by_purchase_order_item_id(
+        self,
+        purchase_order_item_id: int,
+    ) -> Optional[InventoryLot]:
+        result = await self.db.execute(
+            select(InventoryLot).filter(
+                InventoryLot.restaurant_id == self.restaurant_id,
+                InventoryLot.purchase_order_item_id == purchase_order_item_id,
+            )
+        )
+        return result.scalars().first()
+
     async def get_all_by_batch_recipe_id(
         self, batch_recipe_id: int
     ) -> List[InventoryLot]:

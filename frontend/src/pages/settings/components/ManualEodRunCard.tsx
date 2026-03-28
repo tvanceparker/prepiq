@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import { Autorenew as EodRunIcon } from '@mui/icons-material';
 import Button from '../../../components/Button';
-import { finalizeEod } from '../../../api/eod';
+import { finalizeEod, type FinalizeEodResponse } from '../../../api/eod';
 import { getLastEodDate } from '../../../api/inventory';
 import { useUIStore } from '../../../stores/uiStore';
 
@@ -25,6 +25,7 @@ export default function ManualEodRunCard() {
   const [eodDate, setEodDate] = useState(dayjs().format('YYYY-MM-DD'));
   const [forceRerun, setForceRerun] = useState(false);
   const [hasInitializedDate, setHasInitializedDate] = useState(false);
+  const [launchSummary, setLaunchSummary] = useState<FinalizeEodResponse | null>(null);
 
   const { data: lastEodData } = useQuery({
     queryKey: ['settings_last_eod_date'],
@@ -41,12 +42,13 @@ export default function ManualEodRunCard() {
   const finalizeMutation = useMutation({
     mutationFn: ({ selectedDate, force }: { selectedDate: string; force: boolean }) =>
       finalizeEod(selectedDate, force),
-    onSuccess: (_, variables) => {
+    onSuccess: response => {
       setForceRerun(false);
+      setLaunchSummary(response);
       showSnackbar(
-        variables.force
-          ? `Manual EOD rerun started for ${variables.selectedDate}.`
-          : `Manual EOD started for ${variables.selectedDate}.`,
+        response.run_mode === 'force_rerun'
+          ? `Forced EOD rerun queued for ${response.run_date}.`
+          : `Manual EOD queued for ${response.run_date}.`,
         'success'
       );
     },
@@ -147,6 +149,15 @@ export default function ManualEodRunCard() {
         ) : (
           <Alert severity="success">
             This starts a normal manual EOD run in the background for the selected date.
+          </Alert>
+        )}
+
+        {launchSummary && (
+          <Alert severity="info">
+            {launchSummary.run_mode === 'force_rerun'
+              ? `Forced rerun queued for ${dayjs(launchSummary.run_date).format('MMM D, YYYY')}.`
+              : `Background EOD queued for ${dayjs(launchSummary.run_date).format('MMM D, YYYY')}.`}{' '}
+            Protections active: {launchSummary.protections.join(', ')}.
           </Alert>
         )}
 

@@ -358,6 +358,7 @@ class TestEODServiceUnit:
     ):
         """Test writing purchase orders to database."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.po_suggestion_repo.mark_written_for_supplier = AsyncMock()
         
         service.purchase_order_suggestions = [
             {
@@ -419,6 +420,7 @@ class TestEODServiceUnit:
         self, mock_db_session, restaurant_id
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.po_suggestion_repo.mark_written_for_supplier = AsyncMock()
 
         service.purchase_order_suggestions = [
             {

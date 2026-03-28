@@ -1,6 +1,6 @@
 # app/db/models/inventory_lot_orm.py
 
-from sqlalchemy import Column, Integer, Date, Float, String, ForeignKey, DECIMAL, Enum
+from sqlalchemy import Column, Integer, Date, Float, String, ForeignKey, DECIMAL, Enum, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 from enum import Enum as PyEnum
@@ -14,6 +14,12 @@ class LotStatus(PyEnum):
 
 class InventoryLot(Base):
     __tablename__ = "inventory_lots"
+    __table_args__ = (
+        UniqueConstraint(
+            "purchase_order_item_id",
+            name="uq_inventory_lots_purchase_order_item_id",
+        ),
+    )
 
     lot_id = Column(Integer, primary_key=True, index=True)  # Unique ID for each lot
     inventory_id = Column(

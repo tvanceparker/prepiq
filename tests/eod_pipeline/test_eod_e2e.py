@@ -142,6 +142,7 @@ class TestEODPipelineE2E:
         
         # ===== Stage 6: Purchase Order Writing =====
         mock_order = MagicMock(order_id=7001)
+        service.po_suggestion_repo.mark_written_for_supplier = AsyncMock()
         service.purchase_order_repo.get_existing_eod_auto_order = AsyncMock(return_value=None)
         service.purchase_order_repo.create = AsyncMock(return_value=mock_order)
         service.purchase_order_item_repo.create = AsyncMock()

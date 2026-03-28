@@ -7,7 +7,7 @@ import pytest
 import math
 from datetime import date
 from decimal import Decimal
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.reorder_forecast_engine import ReorderForecastEngine
 
@@ -247,6 +247,7 @@ class TestReorderForecastEngineUnit:
         engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
         engine.stats_service = mock_inventory_stats
         engine.alert_repo = AsyncMock()
+        engine.alert_repo.get_open_low_stock_alert = AsyncMock(return_value=None)
         engine.alert_repo.create = AsyncMock()
         
         engine.ingredient_repo.get_by_id = AsyncMock(return_value=sample_ingredients[0])
@@ -321,6 +322,13 @@ class TestReorderForecastEngineUnit:
         engine.stats_service = mock_inventory_stats
         engine.ingredient_repo.get_all = AsyncMock(return_value=sample_ingredients)
         engine.ingredient_repo.update = AsyncMock()
+        engine.ingredient_supplier_repo.get_preferred_or_lowest_priority_supplier = AsyncMock(
+            side_effect=[
+                MagicMock(cost_per_unit=Decimal("5.00")),
+                MagicMock(cost_per_unit=Decimal("2.00")),
+                MagicMock(cost_per_unit=Decimal("3.00")),
+            ]
+        )
         
         # Mock usage values to create clear A/B/C distribution
         async def mock_usage(ingredient_id, days):

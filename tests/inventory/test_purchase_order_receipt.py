@@ -48,6 +48,7 @@ async def test_receive_purchase_order_creates_lots_updates_inventory_and_marks_d
 
     inventory_service.purchase_order_repo.get_by_id.return_value = purchase_order
     inventory_service.purchase_order_item_repo.get_by_field.return_value = [purchase_order_item]
+    inventory_service.inventory_lot_repo.get_by_purchase_order_item_id.return_value = None
     inventory_service.ingredient_supplier_repo.get_by_id.return_value = ingredient_supplier
     inventory_service.inventory_repo.get_inventory_by_ingredient.return_value = inventory
     inventory_service.ingredient_repo.get_by_id.return_value = ingredient
@@ -82,7 +83,11 @@ async def test_receive_purchase_order_creates_lots_updates_inventory_and_marks_d
     assert result == {
         'order_id': 55,
         'status': 'delivered',
-        'actual_delivery_date': '2026-03-28',
+        'actual_delivery_date': date(2026, 3, 28),
+        'receipt_mode': 'received',
+        'requested_item_count': 1,
+        'newly_received_item_count': 1,
+        'already_received_item_count': 0,
         'received_items': [
             {
                 'order_item_id': 11,
@@ -90,20 +95,71 @@ async def test_receive_purchase_order_creates_lots_updates_inventory_and_marks_d
                 'lot_id': 401,
                 'quantity_received': 30.0,
                 'unit': 'lb',
+                'receipt_status': 'received',
             }
         ],
     }
 
 
 @pytest.mark.asyncio
-async def test_receive_purchase_order_rejects_duplicate_receipt(inventory_service):
+async def test_receive_purchase_order_returns_existing_receipt_on_replay(inventory_service):
+    inventory_service.purchase_order_repo.get_by_id.return_value = MagicMock(
+        status='delivered',
+        actual_delivery_date=date(2026, 3, 27),
+    )
+    purchase_order_item = MagicMock(
+        order_item_id=11,
+        ingredient_id=101,
+        ingredient_supplier_id=201,
+        quantity_ordered=3,
+    )
+    existing_lot = MagicMock(
+        lot_id=401,
+        quantity=30,
+        unit='lb',
+    )
+
+    inventory_service.purchase_order_item_repo.get_by_field.return_value = [purchase_order_item]
+    inventory_service.inventory_lot_repo.get_by_purchase_order_item_id.return_value = existing_lot
+
+    result = await inventory_service.receive_purchase_order(order_id=55)
+
+    inventory_service.inventory_lot_repo.create.assert_not_called()
+    inventory_service.inventory_repo.update.assert_not_called()
+    inventory_service.purchase_order_repo.update.assert_not_called()
+    assert result == {
+        'order_id': 55,
+        'status': 'delivered',
+        'actual_delivery_date': date(2026, 3, 27),
+        'receipt_mode': 'already_received',
+        'requested_item_count': 1,
+        'newly_received_item_count': 0,
+        'already_received_item_count': 1,
+        'received_items': [
+            {
+                'order_item_id': 11,
+                'ingredient_id': 101,
+                'lot_id': 401,
+                'quantity_received': 30.0,
+                'unit': 'lb',
+                'receipt_status': 'already_received',
+            }
+        ],
+    }
+
+
+@pytest.mark.asyncio
+async def test_receive_purchase_order_rejects_replay_with_changed_delivery_date(inventory_service):
     inventory_service.purchase_order_repo.get_by_id.return_value = MagicMock(
         status='delivered',
         actual_delivery_date=date(2026, 3, 27),
     )
 
-    with pytest.raises(ValueError, match='already been received'):
-        await inventory_service.receive_purchase_order(order_id=55)
+    with pytest.raises(ValueError, match='delivery date cannot be changed'):
+        await inventory_service.receive_purchase_order(
+            order_id=55,
+            actual_delivery_date=date(2026, 3, 28),
+        )
 
     inventory_service.purchase_order_item_repo.get_by_field.assert_not_called()
     inventory_service.inventory_lot_repo.create.assert_not_called()
@@ -139,6 +195,7 @@ async def test_add_inventory_from_lots_marks_manual_receipt_provenance(inventory
     inventory_service.inventory_repo.get_inventory_by_ingredient.return_value = inventory
     inventory_service.ingredient_repo.get_by_id.return_value = ingredient
     inventory_service.inventory_lot_repo.create.return_value = lot
+    inventory_service.inventory_lot_repo.get_by_purchase_order_item_id.return_value = None
 
     result = await inventory_service.add_inventory_from_lots(
         ingredient_supplier_id=201,
@@ -176,6 +233,7 @@ async def test_receive_purchase_order_reuses_existing_transaction(inventory_serv
     inventory_service.db.in_transaction.return_value = True
     inventory_service.purchase_order_repo.get_by_id.return_value = purchase_order
     inventory_service.purchase_order_item_repo.get_by_field.return_value = [purchase_order_item]
+    inventory_service.inventory_lot_repo.get_by_purchase_order_item_id.return_value = None
     inventory_service.ingredient_supplier_repo.get_by_id.return_value = ingredient_supplier
     inventory_service.inventory_repo.get_inventory_by_ingredient.return_value = inventory
     inventory_service.ingredient_repo.get_by_id.return_value = ingredient
@@ -192,3 +250,80 @@ async def test_receive_purchase_order_reuses_existing_transaction(inventory_serv
         {'status': 'delivered', 'actual_delivery_date': date(2026, 3, 28)},
     )
     assert result['status'] == 'delivered'
+    assert result['receipt_mode'] == 'received'
+
+
+@pytest.mark.asyncio
+async def test_receive_purchase_order_resumes_partial_receipt_without_replaying_existing_lots(
+    inventory_service,
+):
+    purchase_order = MagicMock(status='pending', actual_delivery_date=None)
+    existing_item = MagicMock(
+        order_item_id=11,
+        ingredient_id=101,
+        ingredient_supplier_id=201,
+        quantity_ordered=3,
+    )
+    missing_item = MagicMock(
+        order_item_id=12,
+        ingredient_id=102,
+        ingredient_supplier_id=202,
+        quantity_ordered=4,
+    )
+    existing_lot = MagicMock(lot_id=401, quantity=30, unit='lb')
+    ingredient_supplier = MagicMock(
+        ingredient_id=102,
+        unit='lb',
+        pack_size=1,
+        quantity_per_pack_item=2,
+        shelf_life_days=5,
+    )
+    inventory = MagicMock(inventory_id=302, quantity_on_hand=10, unit='lb')
+    ingredient = MagicMock(unit='lb', average_weight_per_unit=None)
+    new_lot = MagicMock(lot_id=402)
+
+    inventory_service.purchase_order_repo.get_by_id.return_value = purchase_order
+    inventory_service.purchase_order_item_repo.get_by_field.return_value = [existing_item, missing_item]
+    inventory_service.inventory_lot_repo.get_by_purchase_order_item_id = AsyncMock(
+        side_effect=[existing_lot, None]
+    )
+    inventory_service.ingredient_supplier_repo.get_by_id.return_value = ingredient_supplier
+    inventory_service.inventory_repo.get_inventory_by_ingredient.return_value = inventory
+    inventory_service.ingredient_repo.get_by_id.return_value = ingredient
+    inventory_service.inventory_lot_repo.create.return_value = new_lot
+
+    result = await inventory_service.receive_purchase_order(
+        order_id=55,
+        actual_delivery_date=date(2026, 3, 28),
+    )
+
+    inventory_service.inventory_lot_repo.create.assert_awaited_once()
+    create_payload = inventory_service.inventory_lot_repo.create.await_args.args[0]
+    assert create_payload['purchase_order_item_id'] == 12
+    inventory_service.inventory_repo.update.assert_awaited_once()
+    inventory_service.purchase_order_repo.update.assert_awaited_once_with(
+        55,
+        {'status': 'delivered', 'actual_delivery_date': date(2026, 3, 28)},
+    )
+    assert result['received_items'] == [
+        {
+            'order_item_id': 11,
+            'ingredient_id': 101,
+            'lot_id': 401,
+            'quantity_received': 30.0,
+            'unit': 'lb',
+            'receipt_status': 'already_received',
+        },
+        {
+            'order_item_id': 12,
+            'ingredient_id': 102,
+            'lot_id': 402,
+            'quantity_received': 8.0,
+            'unit': 'lb',
+            'receipt_status': 'received',
+        },
+    ]
+    assert result['receipt_mode'] == 'resumed'
+    assert result['requested_item_count'] == 2
+    assert result['newly_received_item_count'] == 1
+    assert result['already_received_item_count'] == 1

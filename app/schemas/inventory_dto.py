@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from pydantic import ConfigDict
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Literal
 from datetime import date, datetime
 from decimal import Decimal
 class PurchaseOrderItemDTO(BaseModel):
@@ -38,6 +38,26 @@ class PurchaseOrderItemUpdateDTO(BaseModel):
 
 class PurchaseOrderReceiptDTO(BaseModel):
     actual_delivery_date: Optional[date] = None
+
+
+class PurchaseOrderReceiptItemSummaryDTO(BaseModel):
+    order_item_id: int
+    ingredient_id: int
+    lot_id: int
+    quantity_received: float
+    unit: str
+    receipt_status: Literal["received", "already_received"]
+
+
+class PurchaseOrderReceiptSummaryDTO(BaseModel):
+    order_id: int
+    status: Literal["delivered"]
+    actual_delivery_date: date
+    receipt_mode: Literal["received", "resumed", "already_received"]
+    requested_item_count: int
+    newly_received_item_count: int
+    already_received_item_count: int
+    received_items: List[PurchaseOrderReceiptItemSummaryDTO]
 
 class PurchaseOrderDTO(BaseModel):
     order_id: int

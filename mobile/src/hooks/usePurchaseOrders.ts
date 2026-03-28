@@ -18,6 +18,7 @@ import {
 import type {
   PurchaseOrder,
   PurchaseOrderCreate,
+  PurchaseOrderReceiptSummary,
   PurchaseOrderStatus,
   PurchaseOrderItem,
   POSuggestionsResponse,
@@ -90,6 +91,16 @@ export function usePurchaseOrders(options: UsePurchaseOrdersOptions = {}) {
     queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
   };
 
+  const formatReceiptSummary = (summary: PurchaseOrderReceiptSummary): string => {
+    if (summary.receipt_mode === 'already_received') {
+      return `PO #${summary.order_id} was already received on ${summary.actual_delivery_date}.`;
+    }
+    if (summary.receipt_mode === 'resumed') {
+      return `PO #${summary.order_id} resumed receipt: ${summary.newly_received_item_count} new, ${summary.already_received_item_count} already received.`;
+    }
+    return `PO #${summary.order_id} received: ${summary.newly_received_item_count} item(s).`;
+  };
+
   return {
     orders: ordersQuery.data ?? [],
     ordersByStatus,
@@ -105,6 +116,7 @@ export function usePurchaseOrders(options: UsePurchaseOrdersOptions = {}) {
 
     updateStatus: updateStatusMutation.mutateAsync,
     updatingStatus: updateStatusMutation.isPending,
+    formatReceiptSummary,
 
     refresh,
   };
