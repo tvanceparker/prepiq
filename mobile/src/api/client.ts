@@ -51,7 +51,9 @@ client.interceptors.request.use(async cfg => {
 client.interceptors.response.use(
   response => response,
   async error => {
-    const originalRequest = error.config as (typeof error.config & { _retry?: boolean }) | undefined;
+    const originalRequest = error.config as
+      | (typeof error.config & { _retry?: boolean })
+      | undefined;
     const requestUrl = originalRequest?.url ?? '';
 
     if (!originalRequest || error.response?.status !== 401 || originalRequest._retry) {

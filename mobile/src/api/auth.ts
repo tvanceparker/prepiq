@@ -98,7 +98,7 @@ export const me = async (): Promise<MeResponse> => {
 
   const res = await fetch(`${BASE_URL}/auth/me`, {
     method: 'GET',
-      credentials: 'include',
+    credentials: 'include',
     headers: {
       Authorization: `Bearer ${token}`,
     },
