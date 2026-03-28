@@ -670,18 +670,29 @@ class EODService:
         date: date,
         commit: bool = True,
         force: bool = False,
+        trigger_source: str = "system",
         forecast_horizon_days: int = 30,
         reorder_horizon_days: int = 30,
     ) -> Dict[str, int]:
         try:
+            normalized_trigger_source = (trigger_source or "system").lower()
+            if force and normalized_trigger_source != "manual":
+                raise ValueError("Force reruns are only allowed for manual EOD triggers.")
+
             logger.info(
-                "[EOD] Running finalize_end_of_day_summary for %s (tier=%s)",
+                "[EOD] Running finalize_end_of_day_summary for %s (tier=%s source=%s force=%s)",
                 date,
                 self.subscription_tier,
+                normalized_trigger_source,
+                force,
             )
             ledger = await self.ledger_repo.get_or_create(run_date=date)
             if force:
-                logger.info("[EOD] Force rerun enabled; resetting ledger for date=%s", date)
+                logger.info(
+                    "[EOD] Force rerun enabled; resetting ledger for date=%s source=%s",
+                    date,
+                    normalized_trigger_source,
+                )
                 await self.ledger_repo.reset(ledger)
             await self.ledger_repo.mark_running(ledger)
 

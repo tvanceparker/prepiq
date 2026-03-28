@@ -12,15 +12,19 @@ router = APIRouter(prefix="/eod", tags=["End of Day"])
 async def finalize_eod(
     background_tasks: BackgroundTasks,
     eod_date: date = Query(...),
-    force: bool = Query(False),
+    force: bool = Query(False, description="Manual rerun only. Resets the EOD ledger for the requested date before rerunning."),
     eod_service: EODService = Depends(get_eod_service),
 ):
-    logger.info(f"[ROUTE] Called /finalize with eod_date={eod_date}")
+    logger.info(f"[ROUTE] Called /finalize with eod_date={eod_date} force={force}")
     
     # ✅ Use async-compatible background task
     async def background_finalize():
         try:
-            await eod_service.finalize_end_of_day_summary(eod_date, force=force)
+            await eod_service.finalize_end_of_day_summary(
+                eod_date,
+                force=force,
+                trigger_source="manual",
+            )
         except Exception as e:
             logger.error(f"[EOD Background Task] Failed: {e}", exc_info=True)
     
