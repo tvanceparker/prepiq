@@ -184,37 +184,56 @@ class InventoryService:
             raise ValueError(f"Purchase order {order_id} has no items to receive.")
 
         delivery_date = actual_delivery_date or date.today()
-        received_items = []
+        if self.db.in_transaction():
+            return await self._finalize_purchase_order_receipt(
+                order_id=order_id,
+                items=items,
+                delivery_date=delivery_date,
+            )
 
         async with self.db.begin():
-            for item in items:
-                if not item.ingredient_supplier_id:
-                    raise ValueError(
-                        f"Purchase order item {item.order_item_id} is missing ingredient_supplier_id required for receipt."
-                    )
-
-                receipt = await self._create_inventory_receipt(
-                    ingredient_supplier_id=item.ingredient_supplier_id,
-                    total_received=item.quantity_ordered,
-                    delivery_date=delivery_date,
-                    receipt_source="purchase_order",
-                    purchase_order_id=order_id,
-                    purchase_order_item_id=item.order_item_id,
-                )
-                received_items.append(
-                    {
-                        "order_item_id": item.order_item_id,
-                        "ingredient_id": item.ingredient_id,
-                        "lot_id": receipt["lot_id"],
-                        "quantity_received": float(receipt["received_quantity"]),
-                        "unit": receipt["unit"],
-                    }
-                )
-
-            await self.purchase_order_repo.update(
-                order_id,
-                {"status": "delivered", "actual_delivery_date": delivery_date},
+            return await self._finalize_purchase_order_receipt(
+                order_id=order_id,
+                items=items,
+                delivery_date=delivery_date,
             )
+
+    async def _finalize_purchase_order_receipt(
+        self,
+        order_id: int,
+        items: list,
+        delivery_date: date,
+    ) -> dict:
+        received_items = []
+
+        for item in items:
+            if not item.ingredient_supplier_id:
+                raise ValueError(
+                    f"Purchase order item {item.order_item_id} is missing ingredient_supplier_id required for receipt."
+                )
+
+            receipt = await self._create_inventory_receipt(
+                ingredient_supplier_id=item.ingredient_supplier_id,
+                total_received=item.quantity_ordered,
+                delivery_date=delivery_date,
+                receipt_source="purchase_order",
+                purchase_order_id=order_id,
+                purchase_order_item_id=item.order_item_id,
+            )
+            received_items.append(
+                {
+                    "order_item_id": item.order_item_id,
+                    "ingredient_id": item.ingredient_id,
+                    "lot_id": receipt["lot_id"],
+                    "quantity_received": float(receipt["received_quantity"]),
+                    "unit": receipt["unit"],
+                }
+            )
+
+        await self.purchase_order_repo.update(
+            order_id,
+            {"status": "delivered", "actual_delivery_date": delivery_date},
+        )
 
         return {
             "order_id": order_id,

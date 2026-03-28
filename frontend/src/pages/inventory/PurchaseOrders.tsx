@@ -131,6 +131,21 @@ export default function PurchaseOrders() {
     queryFn: () => getPurchaseOrders({ status }),
   });
 
+  const { data: cartOrders = [] } = useQuery<PurchaseOrder[]>({
+    queryKey: ['purchase_orders', 'cart'],
+    queryFn: () => getPurchaseOrders({ status: 'cart' }),
+  });
+
+  const { data: pendingOrders = [] } = useQuery<PurchaseOrder[]>({
+    queryKey: ['purchase_orders', 'pending'],
+    queryFn: () => getPurchaseOrders({ status: 'pending' }),
+  });
+
+  const { data: deliveredOrders = [] } = useQuery<PurchaseOrder[]>({
+    queryKey: ['purchase_orders', 'delivered'],
+    queryFn: () => getPurchaseOrders({ status: 'delivered' }),
+  });
+
   const { data: stockLevels = [], isLoading: stockLoading } = useQuery<IngredientStockLevel[]>({
     queryKey: ['ingredients_stock_levels'],
     queryFn: getIngredientsStockLevels,
@@ -403,6 +418,15 @@ export default function PurchaseOrders() {
     });
     return Array.from(map.entries());
   }, [orders]);
+
+  const orderCountsByStatus = useMemo(
+    () => ({
+      cart: cartOrders.length,
+      pending: pendingOrders.length,
+      delivered: deliveredOrders.length,
+    }),
+    [cartOrders.length, pendingOrders.length, deliveredOrders.length]
+  );
 
   // Navigation helpers
   const canProceed = () => {
@@ -780,7 +804,7 @@ export default function PurchaseOrders() {
                 <span>{t.label}</span>
                 <Chip
                   size="small"
-                  label={orders.filter(o => o.status === t.value).length}
+                  label={orderCountsByStatus[t.value]}
                   sx={{ height: 20 }}
                 />
               </Stack>
