@@ -303,14 +303,18 @@ class TestEODServiceUnit:
         
         mock_order = MagicMock(order_id=7001)
         service.purchase_order_repo.create = AsyncMock(return_value=mock_order)
+        service.purchase_order_repo.get_existing_eod_auto_order = AsyncMock(return_value=None)
         service.purchase_order_item_repo.create = AsyncMock()
         service.ingredient_supplier_repo.get_price_per_unit = AsyncMock(return_value=Decimal("4.50"))
         service.purchase_order_repo.update = AsyncMock()
         
-        await service.write_purchase_orders_to_db()
+        await service.write_purchase_orders_to_db(run_date=date(2025, 11, 20))
         
         # Should create one order (grouped by supplier)
         service.purchase_order_repo.create.assert_called_once()
+        create_payload = service.purchase_order_repo.create.await_args.args[0]
+        assert create_payload["order_date"] == date(2025, 11, 20)
+        assert create_payload["notes"].startswith("[EOD_AUTO run_date=2025-11-20 supplier_id=501]")
         # Should create two items
         assert service.purchase_order_item_repo.create.call_count == 2
         # Should update order with total price
@@ -325,9 +329,41 @@ class TestEODServiceUnit:
         service.purchase_order_suggestions = []
         service.purchase_order_repo.create = AsyncMock()
         
-        await service.write_purchase_orders_to_db()
+        await service.write_purchase_orders_to_db(run_date=date(2025, 11, 20))
         
         service.purchase_order_repo.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_write_purchase_orders_to_db_skips_existing_eod_auto_order(
+        self, mock_db_session, restaurant_id
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+
+        service.purchase_order_suggestions = [
+            {
+                "ingredient_id": 1001,
+                "ingredient_supplier_id": 3001,
+                "supplier_id": 501,
+                "lead_demand": 15.0,
+                "shelf_demand": 20.0,
+                "total_quantity_ordered": 50.0,
+                "supplier_unit": "lb",
+                "lead_time_days": 3,
+            }
+        ]
+
+        service.purchase_order_repo.get_existing_eod_auto_order = AsyncMock(
+            return_value=MagicMock(order_id=7001)
+        )
+        service.purchase_order_repo.create = AsyncMock()
+        service.purchase_order_item_repo.create = AsyncMock()
+        service.purchase_order_repo.update = AsyncMock()
+
+        await service.write_purchase_orders_to_db(run_date=date(2025, 11, 20))
+
+        service.purchase_order_repo.create.assert_not_called()
+        service.purchase_order_item_repo.create.assert_not_called()
+        service.purchase_order_repo.update.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_check_sales_data_exists(
@@ -441,7 +477,7 @@ class TestEODServiceStages:
         service._purchase_order_suggestions = [{"ingredient_id": 1001}]
         
         ledger = sample_eod_ledger
-        result = await service._stage_po_write(ledger)
+        result = await service._stage_po_write(ledger, date(2025, 11, 20))
         
         assert result == 1
-        service.write_purchase_orders_to_db.assert_called_once()
+        service.write_purchase_orders_to_db.assert_called_once_with(run_date=date(2025, 11, 20))

@@ -6,6 +6,7 @@ from app.db.models.purchase_orders_orm import PurchaseOrder
 from app.repositories.base_repository import BaseRepository
 from typing import List, Optional
 from sqlalchemy.exc import IntegrityError
+from datetime import date
 
 
 class PurchaseOrderRepository(BaseRepository):
@@ -30,3 +31,19 @@ class PurchaseOrderRepository(BaseRepository):
 
         result = await self.db.execute(query)
         return result.scalars().all()
+
+    async def get_existing_eod_auto_order(
+        self,
+        supplier_id: int,
+        run_date: date,
+    ) -> Optional[PurchaseOrder]:
+        marker = f"[EOD_AUTO run_date={run_date.isoformat()} supplier_id={supplier_id}]"
+        query = select(PurchaseOrder).filter(
+            PurchaseOrder.restaurant_id == self.restaurant_id,
+            PurchaseOrder.supplier_id == supplier_id,
+            PurchaseOrder.notes.isnot(None),
+            PurchaseOrder.notes.contains(marker),
+        )
+
+        result = await self.db.execute(query)
+        return result.scalars().first()
