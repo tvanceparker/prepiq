@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useRestaurantSettings } from '../hooks/useRestaurantSettings';
 import { useUIStore } from '../../../stores/uiStore';
 import BasicRestaurantSettingsModal from './BasicRestaurantSettingsModal';
+import ManualEodRunCard from './ManualEodRunCard';
 import type { RestaurantSettings } from '../../../interfaces/settings';
 
 import {
@@ -264,6 +265,8 @@ export default function BasicRestaurantSettings() {
           </Box>
         </Grid>
       </Grid>
+
+      <ManualEodRunCard />
 
       <BasicRestaurantSettingsModal
         visible={isEditing}

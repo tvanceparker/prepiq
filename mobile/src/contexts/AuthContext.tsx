@@ -1,5 +1,7 @@
-import React, { createContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useState, useEffect, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BASE_URL } from '../api/config';
+import { registerUnauthorizedHandler, clearStoredAuthSession } from '../api/authSession';
 import { AuthContextType, Preferences, ThemeMode, UserInfo } from '../interfaces/auth';
 
 const normalizeTier = (tier: string | null): string | null => {
@@ -54,6 +56,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
+  const clearAuthState = useCallback(async () => {
+    setToken(null);
+    setTier(null);
+    setUser(null);
+    setPermissions([]);
+    await clearStoredAuthSession();
+  }, []);
+
+  useEffect(() => {
+    const unregister = registerUnauthorizedHandler(async () => {
+      await clearAuthState();
+    });
+
+    return unregister;
+  }, [clearAuthState]);
+
   const refetchPermissions = async () => [];
 
   const login = async ({
@@ -89,33 +107,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      // Call the new /auth/logout endpoint
       const token = await AsyncStorage.getItem('token');
       if (token) {
-        await fetch(
-          `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1'}/auth/logout`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        ).catch(e => console.warn('Logout API failed:', e));
+        await fetch(`${BASE_URL}/auth/logout`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }).catch(e => console.warn('Logout API failed:', e));
       }
     } catch (e) {
       console.warn('Logout failed:', e);
     }
 
-    setToken(null);
-    setTier(null);
-    setUser(null);
+    await clearAuthState();
     setPreferences(defaultPreferences);
     setTheme('light');
-    setPermissions([]);
     await Promise.all([
-      AsyncStorage.removeItem('token'),
-      AsyncStorage.removeItem('tier'),
-      AsyncStorage.removeItem('user'),
       AsyncStorage.setItem('preferences', JSON.stringify(defaultPreferences)),
       AsyncStorage.setItem('theme', 'light'),
     ]);

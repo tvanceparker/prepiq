@@ -21,6 +21,7 @@ from app.db.models.daily_forecast_accuracy_orm import DailyForecastAccuracy
 from app.db.models.devices_orm import Device
 from app.db.models.employees_orm import Employee
 from app.db.models.eod_run_ledger_orm import EODRunLedger
+from app.db.models.eod_purchase_order_suggestion_orm import EODPurchaseOrderSuggestion
 from app.db.models.error_logs_orm import ErrorLog
 from app.db.models.forecast_accuracy_orm import ForecastAccuracy
 from app.db.models.forecast_breakdown_orm import ForecastBreakdown

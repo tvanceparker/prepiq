@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch, ANY
 
+from app.db.models.inventory_lot_orm import LotStatus
 from app.services.eod_service import EODService
 
 
@@ -185,9 +186,39 @@ class TestEODServiceUnit:
     ):
         """Test spoilage deduction placeholder logs execution."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         
         # Should not raise
         await service.auto_deduct_spoilage(date(2025, 11, 20))
+
+    @pytest.mark.asyncio
+    async def test_auto_deduct_spoilage_skips_already_logged_lot(
+        self, mock_db_session, restaurant_id
+    ):
+        """A rerun should not decrement inventory twice for a lot already written off."""
+        service = EODService(mock_db_session, restaurant_id, "master")
+
+        expired_lot = MagicMock(
+            lot_id=55,
+            status="available",
+            inventory_id=901,
+            ingredient_id=1001,
+            unit="lb",
+        )
+        service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[expired_lot])
+        service.inventory_usage_log_repo.has_usage_type_for_lot = AsyncMock(return_value=True)
+        service.inventory_lot_repo.update = AsyncMock()
+        service.inventory_repo.decrement_quantity = AsyncMock()
+        service.inventory_usage_log_repo.create = AsyncMock()
+
+        await service.auto_deduct_spoilage(date(2025, 11, 20))
+
+        service.inventory_repo.decrement_quantity.assert_not_awaited()
+        service.inventory_usage_log_repo.create.assert_not_awaited()
+        service.inventory_lot_repo.update.assert_awaited_once_with(
+            55,
+            {"status": LotStatus.expired},
+        )
 
     @pytest.mark.asyncio
     async def test_generate_forecast_calls_forecasting_engine(
@@ -218,13 +249,15 @@ class TestEODServiceUnit:
         """Test PO suggestion generation from ingredient forecast."""
         service = EODService(mock_db_session, restaurant_id, "master")
         service.reorder_engine.suggest_reorder_quantity = AsyncMock(return_value=Decimal("25.00"))
+        service.po_suggestion_repo.replace_for_run_date = AsyncMock()
+        run_date = date(2025, 11, 20)
         
         ingredient_forecast = {
             1001: {
                 "total_quantity": Decimal("30.00"),
                 "unit": "lb",
                 "daily_breakdown": [
-                    (date.today() + timedelta(days=i), Decimal("1.00"))
+                    (run_date + timedelta(days=i), Decimal("1.00"))
                     for i in range(10)
                 ],
             }
@@ -237,12 +270,59 @@ class TestEODServiceUnit:
             return_value=sample_inventory[0]
         )
         
-        result = await service.generate_suggested_purchase_orders(ingredient_forecast)
+        result = await service.generate_suggested_purchase_orders(
+            ingredient_forecast,
+            run_date=run_date,
+        )
         
         assert len(result) >= 1
         assert result[0]["ingredient_id"] == 1001
         assert result[0]["supplier_id"] == 501
         assert "suggested_packs_to_order" in result[0]
+        service.po_suggestion_repo.replace_for_run_date.assert_awaited_once_with(
+            run_date,
+            result,
+        )
+
+    @pytest.mark.asyncio
+    async def test_generate_suggested_purchase_orders_uses_run_date_not_today(
+        self, mock_db_session, restaurant_id, sample_suppliers, sample_inventory
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        service.reorder_engine.suggest_reorder_quantity = AsyncMock(return_value=Decimal("25.00"))
+        service.po_suggestion_repo.replace_for_run_date = AsyncMock()
+        run_date = date(2025, 11, 20)
+
+        ingredient_forecast = {
+            1001: {
+                "total_quantity": Decimal("30.00"),
+                "unit": "lb",
+                "daily_breakdown": [
+                    (run_date + timedelta(days=i), Decimal("2.00"))
+                    for i in range(5)
+                ],
+            }
+        }
+
+        service.ingredient_supplier_repo.get_all_by_ingredient_id = AsyncMock(
+            return_value=[sample_suppliers[0]]
+        )
+        service.inventory_repo.get_inventory_by_ingredient = AsyncMock(
+            return_value=sample_inventory[0]
+        )
+
+        with patch('app.services.eod_service.date') as mock_date:
+            mock_date.today.return_value = date(2026, 1, 15)
+            mock_date.side_effect = lambda *args, **kwargs: date(*args, **kwargs)
+
+            result = await service.generate_suggested_purchase_orders(
+                ingredient_forecast,
+                run_date=run_date,
+            )
+
+        assert len(result) == 1
+        assert result[0]["lead_demand"] == 6.0
+        assert result[0]["shelf_demand"] == 4.0
 
     @pytest.mark.asyncio
     async def test_generate_suggested_purchase_orders_skip_zero_qty(
@@ -251,6 +331,7 @@ class TestEODServiceUnit:
         """Test PO generation skips ingredients with zero reorder quantity."""
         service = EODService(mock_db_session, restaurant_id, "master")
         service.reorder_engine.suggest_reorder_quantity = AsyncMock(return_value=Decimal("0.00"))
+        service.po_suggestion_repo.replace_for_run_date = AsyncMock()
         
         ingredient_forecast = {
             1001: {
@@ -277,6 +358,7 @@ class TestEODServiceUnit:
     ):
         """Test writing purchase orders to database."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.po_suggestion_repo.mark_written_for_supplier = AsyncMock()
         
         service.purchase_order_suggestions = [
             {
@@ -303,14 +385,18 @@ class TestEODServiceUnit:
         
         mock_order = MagicMock(order_id=7001)
         service.purchase_order_repo.create = AsyncMock(return_value=mock_order)
+        service.purchase_order_repo.get_existing_eod_auto_order = AsyncMock(return_value=None)
         service.purchase_order_item_repo.create = AsyncMock()
         service.ingredient_supplier_repo.get_price_per_unit = AsyncMock(return_value=Decimal("4.50"))
         service.purchase_order_repo.update = AsyncMock()
         
-        await service.write_purchase_orders_to_db()
+        await service.write_purchase_orders_to_db(run_date=date(2025, 11, 20))
         
         # Should create one order (grouped by supplier)
         service.purchase_order_repo.create.assert_called_once()
+        create_payload = service.purchase_order_repo.create.await_args.args[0]
+        assert create_payload["order_date"] == date(2025, 11, 20)
+        assert create_payload["notes"].startswith("[EOD_AUTO run_date=2025-11-20 supplier_id=501]")
         # Should create two items
         assert service.purchase_order_item_repo.create.call_count == 2
         # Should update order with total price
@@ -325,9 +411,42 @@ class TestEODServiceUnit:
         service.purchase_order_suggestions = []
         service.purchase_order_repo.create = AsyncMock()
         
-        await service.write_purchase_orders_to_db()
+        await service.write_purchase_orders_to_db(run_date=date(2025, 11, 20))
         
         service.purchase_order_repo.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_write_purchase_orders_to_db_skips_existing_eod_auto_order(
+        self, mock_db_session, restaurant_id
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        service.po_suggestion_repo.mark_written_for_supplier = AsyncMock()
+
+        service.purchase_order_suggestions = [
+            {
+                "ingredient_id": 1001,
+                "ingredient_supplier_id": 3001,
+                "supplier_id": 501,
+                "lead_demand": 15.0,
+                "shelf_demand": 20.0,
+                "total_quantity_ordered": 50.0,
+                "supplier_unit": "lb",
+                "lead_time_days": 3,
+            }
+        ]
+
+        service.purchase_order_repo.get_existing_eod_auto_order = AsyncMock(
+            return_value=MagicMock(order_id=7001)
+        )
+        service.purchase_order_repo.create = AsyncMock()
+        service.purchase_order_item_repo.create = AsyncMock()
+        service.purchase_order_repo.update = AsyncMock()
+
+        await service.write_purchase_orders_to_db(run_date=date(2025, 11, 20))
+
+        service.purchase_order_repo.create.assert_not_called()
+        service.purchase_order_item_repo.create.assert_not_called()
+        service.purchase_order_repo.update.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_check_sales_data_exists(
@@ -421,14 +540,111 @@ class TestEODServiceStages:
         service.ledger_repo.mark_stage_complete = AsyncMock()
         service.reorder_engine.classify_all_ingredients = AsyncMock()
         service.generate_suggested_purchase_orders = AsyncMock(return_value=[{"ingredient_id": 1001}])
+        service.po_suggestion_repo.replace_for_run_date = AsyncMock()
         
         ledger = sample_eod_ledger
         ingredient_forecast = {1001: {"unit": "lb"}}
         
-        result = await service._stage_reorder(ledger, ingredient_forecast)
+        result = await service._stage_reorder(
+            date(2025, 11, 20),
+            ledger,
+            ingredient_forecast,
+            30,
+        )
         
         assert result == 1
         assert len(service._purchase_order_suggestions) == 1
+        service.po_suggestion_repo.replace_for_run_date.assert_awaited_once_with(
+            date(2025, 11, 20),
+            [{"ingredient_id": 1001}],
+        )
+
+    @pytest.mark.asyncio
+    async def test_recover_ingredient_forecast_from_breakdowns(
+        self, mock_db_session, restaurant_id
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        run_date = date(2025, 11, 20)
+
+        service.forecasting_engine.forecast_breakdown_repo.get_latest_by_date_range = AsyncMock(
+            return_value=[
+                MagicMock(
+                    menu_item_id=101,
+                    forecast_date=run_date,
+                    forecasted_quantity=3,
+                ),
+                MagicMock(
+                    menu_item_id=101,
+                    forecast_date=run_date + timedelta(days=1),
+                    forecasted_quantity=2,
+                ),
+            ]
+        )
+        service.forecasting_engine.menu_item_recipe_repo.get_by_menu_item = AsyncMock(
+            return_value=[]
+        )
+        service.forecasting_engine.menu_item_recipe_repo.get_recipe_ids_for_menu_item = AsyncMock(
+            return_value=[301]
+        )
+        service.forecasting_engine.recipe_ingredient_repo.get_by_recipe_id = AsyncMock(
+            return_value=[
+                MagicMock(
+                    ingredient_type="ingredient",
+                    reference_id=1001,
+                    quantity_used=Decimal("0.50"),
+                )
+            ]
+        )
+        service.forecasting_engine.ingredient_repo.get_by_id = AsyncMock(
+            return_value=MagicMock(unit="lb")
+        )
+
+        result = await service._recover_ingredient_forecast_from_breakdowns(
+            run_date,
+            30,
+        )
+
+        assert list(result.keys()) == [1001]
+        assert result[1001]["unit"] == "lb"
+        assert result[1001]["total_quantity"] == Decimal("2.50")
+        assert result[1001]["daily_breakdown"] == [
+            (run_date, Decimal("1.50")),
+            (run_date + timedelta(days=1), Decimal("1.00")),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_stage_reorder_recovers_persisted_forecast_after_restart(
+        self, mock_db_session, restaurant_id, sample_eod_ledger
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        service.ledger_repo.mark_stage_complete = AsyncMock()
+        service.reorder_engine.classify_all_ingredients = AsyncMock()
+        service.generate_suggested_purchase_orders = AsyncMock(return_value=[{"ingredient_id": 1001}])
+        service.po_suggestion_repo.replace_for_run_date = AsyncMock()
+        service._recover_ingredient_forecast_from_breakdowns = AsyncMock(
+            return_value={1001: {"unit": "lb", "daily_breakdown": []}}
+        )
+
+        ledger = sample_eod_ledger
+        ledger.forecast_completed = True
+
+        result = await service._stage_reorder(
+            date(2025, 11, 20),
+            ledger,
+            {},
+            30,
+        )
+
+        assert result == 1
+        service._recover_ingredient_forecast_from_breakdowns.assert_awaited_once_with(
+            date(2025, 11, 20),
+            30,
+        )
+        service.generate_suggested_purchase_orders.assert_awaited_once_with(
+            {1001: {"unit": "lb", "daily_breakdown": []}},
+            run_date=date(2025, 11, 20),
+        )
+        assert service._purchase_order_suggestions == [{"ingredient_id": 1001}]
 
     @pytest.mark.asyncio
     async def test_stage_po_write_success(
@@ -439,9 +655,82 @@ class TestEODServiceStages:
         service.ledger_repo.mark_stage_complete = AsyncMock()
         service.write_purchase_orders_to_db = AsyncMock()
         service._purchase_order_suggestions = [{"ingredient_id": 1001}]
+        service.po_suggestion_repo.list_by_run_date = AsyncMock(return_value=[])
         
         ledger = sample_eod_ledger
-        result = await service._stage_po_write(ledger)
+        result = await service._stage_po_write(ledger, date(2025, 11, 20), 30)
         
         assert result == 1
-        service.write_purchase_orders_to_db.assert_called_once()
+        service.write_purchase_orders_to_db.assert_called_once_with(run_date=date(2025, 11, 20))
+
+    @pytest.mark.asyncio
+    async def test_stage_po_write_loads_persisted_suggestions_after_restart(
+        self, mock_db_session, restaurant_id, sample_eod_ledger
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        service.ledger_repo.mark_stage_complete = AsyncMock()
+        service.write_purchase_orders_to_db = AsyncMock()
+        service.po_suggestion_repo.list_by_run_date = AsyncMock(
+            return_value=[
+                MagicMock(
+                    ingredient_id=1001,
+                    ingredient_supplier_id=3001,
+                    supplier_id=501,
+                    lead_demand=Decimal("5.00"),
+                    shelf_demand=Decimal("10.00"),
+                    forecast_unit="lb",
+                    converted_quantity_needed=Decimal("12.00"),
+                    suggested_packs_to_order=3,
+                    total_quantity_ordered=Decimal("15.00"),
+                    supplier_unit="lb",
+                    inventory_unit="lb",
+                    lead_time_days=3,
+                    shelf_life_days=5,
+                    pack_size=1,
+                    quantity_per_pack_item=Decimal("5.00"),
+                    min_order_quantity=Decimal("10.00"),
+                )
+            ]
+        )
+
+        ledger = sample_eod_ledger
+        ledger.reorder_completed = True
+
+        result = await service._stage_po_write(ledger, date(2025, 11, 20), 30)
+
+        assert result == 1
+        service.po_suggestion_repo.list_by_run_date.assert_awaited_once_with(
+            date(2025, 11, 20)
+        )
+        service.write_purchase_orders_to_db.assert_awaited_once_with(
+            run_date=date(2025, 11, 20)
+        )
+
+    @pytest.mark.asyncio
+    async def test_stage_po_write_recovers_suggestions_from_forecast_when_store_empty(
+        self, mock_db_session, restaurant_id, sample_eod_ledger
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        service.ledger_repo.mark_stage_complete = AsyncMock()
+        service.write_purchase_orders_to_db = AsyncMock()
+        service.generate_suggested_purchase_orders = AsyncMock(return_value=[{"ingredient_id": 1001}])
+        service.po_suggestion_repo.list_by_run_date = AsyncMock(return_value=[])
+        service.po_suggestion_repo.replace_for_run_date = AsyncMock()
+        service._recover_ingredient_forecast_from_breakdowns = AsyncMock(
+            return_value={1001: {"unit": "lb", "daily_breakdown": []}}
+        )
+
+        ledger = sample_eod_ledger
+        ledger.reorder_completed = True
+
+        result = await service._stage_po_write(ledger, date(2025, 11, 20), 30)
+
+        assert result == 1
+        service._recover_ingredient_forecast_from_breakdowns.assert_awaited_once_with(
+            date(2025, 11, 20),
+            30,
+        )
+        service.generate_suggested_purchase_orders.assert_awaited_once_with(
+            {1001: {"unit": "lb", "daily_breakdown": []}},
+            run_date=date(2025, 11, 20),
+        )

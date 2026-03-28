@@ -63,7 +63,10 @@ async def run_eod_jobs():
                     eod_service = EODService(session, r.restaurant_id, r.subscription_tier)
                     try:
                         logger.info(f"[EOD] Trying Job for restaurant")
-                        await eod_service.finalize_end_of_day_summary(eod_date)
+                        await eod_service.finalize_end_of_day_summary(
+                            eod_date,
+                            trigger_source="scheduler",
+                        )
                         logger.info(f"[EOD] job for restaurant {r.restaurant_id} completed.")
                     except Exception as e:
                         logger.error(f"[EOD] Job Error finalize_end_of_day_summary failed for restaurant {r.restaurant_id}: {e}")

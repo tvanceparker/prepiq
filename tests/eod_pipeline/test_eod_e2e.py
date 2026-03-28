@@ -42,6 +42,7 @@ class TestEODPipelineE2E:
         """
         service = EODService(mock_db_session, restaurant_id, "master")
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
+        service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         
         # ===== Setup Ledger =====
         service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
@@ -141,6 +142,8 @@ class TestEODPipelineE2E:
         
         # ===== Stage 6: Purchase Order Writing =====
         mock_order = MagicMock(order_id=7001)
+        service.po_suggestion_repo.mark_written_for_supplier = AsyncMock()
+        service.purchase_order_repo.get_existing_eod_auto_order = AsyncMock(return_value=None)
         service.purchase_order_repo.create = AsyncMock(return_value=mock_order)
         service.purchase_order_item_repo.create = AsyncMock()
         service.ingredient_supplier_repo.get_price_per_unit = AsyncMock(
@@ -192,6 +195,7 @@ class TestEODPipelineE2E:
         """Test EOD pipeline handles gracefully when no sales data exists."""
         service = EODService(mock_db_session, restaurant_id, "master")
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
+        service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         
         service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
         service.ledger_repo.mark_running = AsyncMock()
@@ -232,6 +236,7 @@ class TestEODPipelineE2E:
         """Test EOD pipeline skips already-completed stages on re-run."""
         service = EODService(mock_db_session, restaurant_id, "master")
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
+        service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         
         # Mark stages as already complete
         ledger = sample_eod_ledger
@@ -262,6 +267,59 @@ class TestEODPipelineE2E:
         service.generate_forecast.assert_not_called()
         service.generate_suggested_purchase_orders.assert_not_called()
         service.write_purchase_orders_to_db.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_eod_pipeline_force_rerun_manual_resets_ledger(
+        self,
+        mock_db_session,
+        restaurant_id,
+        test_date,
+        sample_eod_ledger,
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
+        service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
+
+        service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
+        service.ledger_repo.reset = AsyncMock()
+        service.ledger_repo.mark_running = AsyncMock()
+        service.ledger_repo.finalize = AsyncMock()
+        service._stage_sales_deduction = AsyncMock(return_value=0)
+        service._stage_spoilage = AsyncMock()
+        service._stage_forecast = AsyncMock(return_value={})
+        service._stage_reorder = AsyncMock(return_value=0)
+        service._stage_po_write = AsyncMock(return_value=0)
+
+        await service.finalize_end_of_day_summary(
+            date=test_date,
+            commit=True,
+            force=True,
+            trigger_source="manual",
+            forecast_horizon_days=30,
+            reorder_horizon_days=30,
+        )
+
+        service.ledger_repo.reset.assert_awaited_once_with(sample_eod_ledger)
+        service.ledger_repo.mark_running.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_eod_pipeline_force_rerun_rejected_for_scheduler(
+        self,
+        mock_db_session,
+        restaurant_id,
+        test_date,
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+
+        with pytest.raises(ValueError, match="Force reruns are only allowed for manual EOD triggers."):
+            await service.finalize_end_of_day_summary(
+                date=test_date,
+                commit=True,
+                force=True,
+                trigger_source="scheduler",
+                forecast_horizon_days=30,
+                reorder_horizon_days=30,
+            )
 
     @pytest.mark.asyncio
     async def test_eod_pipeline_error_recovery(
@@ -307,6 +365,7 @@ class TestEODPipelineE2E:
         """Test EOD pipeline tracks timing for each stage."""
         service = EODService(mock_db_session, restaurant_id, "master")
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
+        service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         
         service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
         service.ledger_repo.mark_running = AsyncMock()

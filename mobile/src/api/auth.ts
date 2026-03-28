@@ -38,6 +38,7 @@ export const login = async (username: string, password: string): Promise<LoginRe
     res = await fetch(`${BASE_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'include',
       body: formData.toString(),
     });
   } catch (networkErr: any) {
@@ -75,6 +76,7 @@ export const logout = async (): Promise<void> => {
 
     const res = await fetch(`${BASE_URL}/auth/logout`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -96,6 +98,7 @@ export const me = async (): Promise<MeResponse> => {
 
   const res = await fetch(`${BASE_URL}/auth/me`, {
     method: 'GET',
+    credentials: 'include',
     headers: {
       Authorization: `Bearer ${token}`,
     },

@@ -5,6 +5,7 @@ import {
   getPurchaseOrderDetail,
   createPurchaseOrder,
   updatePurchaseOrderStatus,
+  receivePurchaseOrder,
   addItemToPurchaseOrder,
   updatePurchaseOrderItem,
   removeItemFromPurchaseOrder,
@@ -17,6 +18,7 @@ import {
 import type {
   PurchaseOrder,
   PurchaseOrderCreate,
+  PurchaseOrderReceiptSummary,
   PurchaseOrderStatus,
   PurchaseOrderItem,
   POSuggestionsResponse,
@@ -49,8 +51,12 @@ export function usePurchaseOrders(options: UsePurchaseOrdersOptions = {}) {
 
   // Update status mutation
   const updateStatusMutation = useMutation({
-    mutationFn: ({ orderId, status }: { orderId: number; status: PurchaseOrderStatus }) =>
-      updatePurchaseOrderStatus(orderId, status),
+    mutationFn: ({ orderId, status }: { orderId: number; status: PurchaseOrderStatus }) => {
+      if (status === 'delivered') {
+        return receivePurchaseOrder(orderId);
+      }
+      return updatePurchaseOrderStatus(orderId, status);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
     },
@@ -72,14 +78,27 @@ export function usePurchaseOrders(options: UsePurchaseOrdersOptions = {}) {
   });
 
   // Group by status for tabs/filters
-  const ordersByStatus = (ordersQuery.data ?? []).reduce((acc, order) => {
-    if (!acc[order.status]) acc[order.status] = [];
-    acc[order.status].push(order);
-    return acc;
-  }, {} as Record<PurchaseOrderStatus, PurchaseOrder[]>);
+  const ordersByStatus = (ordersQuery.data ?? []).reduce(
+    (acc, order) => {
+      if (!acc[order.status]) acc[order.status] = [];
+      acc[order.status].push(order);
+      return acc;
+    },
+    {} as Record<PurchaseOrderStatus, PurchaseOrder[]>
+  );
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
+  };
+
+  const formatReceiptSummary = (summary: PurchaseOrderReceiptSummary): string => {
+    if (summary.receipt_mode === 'already_received') {
+      return `PO #${summary.order_id} was already received on ${summary.actual_delivery_date}.`;
+    }
+    if (summary.receipt_mode === 'resumed') {
+      return `PO #${summary.order_id} resumed receipt: ${summary.newly_received_item_count} new, ${summary.already_received_item_count} already received.`;
+    }
+    return `PO #${summary.order_id} received: ${summary.newly_received_item_count} item(s).`;
   };
 
   return {
@@ -97,6 +116,7 @@ export function usePurchaseOrders(options: UsePurchaseOrdersOptions = {}) {
 
     updateStatus: updateStatusMutation.mutateAsync,
     updatingStatus: updateStatusMutation.isPending,
+    formatReceiptSummary,
 
     refresh,
   };

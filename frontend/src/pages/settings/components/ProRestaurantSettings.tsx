@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useRestaurantSettings } from '../hooks/useRestaurantSettings';
 import { useUIStore } from '../../../stores/uiStore';
 import ProRestaurantSettingsModal from './ProRestaurantSettingsModal.tsx';
+import ManualEodRunCard from './ManualEodRunCard';
 import type { RestaurantSettings } from '../../../interfaces/settings';
 
 import {
@@ -292,6 +293,8 @@ export default function ProRestaurantSettings() {
           </Alert>
         </Grid>
       </Grid>
+
+      <ManualEodRunCard />
 
       <ProRestaurantSettingsModal
         visible={isEditing}

@@ -7,7 +7,7 @@ import pytest
 import math
 from datetime import date
 from decimal import Decimal
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.reorder_forecast_engine import ReorderForecastEngine
 
@@ -220,6 +220,7 @@ class TestReorderForecastEngineUnit:
         """Test no reorder when current stock is above reorder point."""
         engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
         engine.stats_service = mock_inventory_stats
+        engine.alert_repo.resolve_open_low_stock_alerts = AsyncMock(return_value=1)
         
         engine.ingredient_repo.get_by_id = AsyncMock(return_value=sample_ingredients[0])
         mock_inventory_stats.get_current_inventory.return_value = (Decimal("100.00"), "lb")
@@ -236,6 +237,7 @@ class TestReorderForecastEngineUnit:
         
         # Current (100) > reorder_point (10 + 5 = 15), should return 0
         assert result == Decimal("0.00")
+        engine.alert_repo.resolve_open_low_stock_alerts.assert_awaited_once_with(1001)
 
     @pytest.mark.asyncio
     async def test_suggest_reorder_quantity_creates_alert(
@@ -245,6 +247,7 @@ class TestReorderForecastEngineUnit:
         engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
         engine.stats_service = mock_inventory_stats
         engine.alert_repo = AsyncMock()
+        engine.alert_repo.get_open_low_stock_alert = AsyncMock(return_value=None)
         engine.alert_repo.create = AsyncMock()
         
         engine.ingredient_repo.get_by_id = AsyncMock(return_value=sample_ingredients[0])
@@ -319,6 +322,13 @@ class TestReorderForecastEngineUnit:
         engine.stats_service = mock_inventory_stats
         engine.ingredient_repo.get_all = AsyncMock(return_value=sample_ingredients)
         engine.ingredient_repo.update = AsyncMock()
+        engine.ingredient_supplier_repo.get_preferred_or_lowest_priority_supplier = AsyncMock(
+            side_effect=[
+                MagicMock(cost_per_unit=Decimal("5.00")),
+                MagicMock(cost_per_unit=Decimal("2.00")),
+                MagicMock(cost_per_unit=Decimal("3.00")),
+            ]
+        )
         
         # Mock usage values to create clear A/B/C distribution
         async def mock_usage(ingredient_id, days):
@@ -361,6 +371,7 @@ class TestReorderForecastEngineUnit:
         engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
         engine.ingredient_repo.get_by_id = AsyncMock(return_value=sample_ingredients[0])
         engine.alert_repo = AsyncMock()
+        engine.alert_repo.get_open_low_stock_alert = AsyncMock(return_value=None)
         engine.alert_repo.create = AsyncMock()
         
         await engine.create_low_stock_alert(
@@ -376,3 +387,28 @@ class TestReorderForecastEngineUnit:
         assert "Ground Beef" in call_args["message"]
         assert "5" in call_args["message"]
         assert "15" in call_args["message"]
+        assert call_args["role"] == "system"
+        assert call_args["severity"] == "warning"
+        assert call_args["meta"]["ingredient_id"] == 1001
+
+    @pytest.mark.asyncio
+    async def test_create_low_stock_alert_updates_existing_open_alert(
+        self, mock_db_session, restaurant_id, sample_ingredients
+    ):
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine.ingredient_repo.get_by_id = AsyncMock(return_value=sample_ingredients[0])
+        engine.alert_repo = AsyncMock()
+        engine.alert_repo.get_open_low_stock_alert = AsyncMock(
+            return_value=MagicMock(alert_id=77)
+        )
+        engine.alert_repo.update = AsyncMock()
+        engine.alert_repo.create = AsyncMock()
+
+        await engine.create_low_stock_alert(
+            ingredient_id=1001,
+            current_stock=Decimal("4.00"),
+            reorder_point=Decimal("15.00")
+        )
+
+        engine.alert_repo.update.assert_awaited_once()
+        engine.alert_repo.create.assert_not_awaited()

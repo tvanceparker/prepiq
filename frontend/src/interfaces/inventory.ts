@@ -82,6 +82,26 @@ export interface PurchaseOrder {
   notes?: string | null;
 }
 
+export interface PurchaseOrderReceiptItemSummary {
+  order_item_id: number;
+  ingredient_id: number;
+  lot_id: number;
+  quantity_received: number;
+  unit: string;
+  receipt_status: 'received' | 'already_received';
+}
+
+export interface PurchaseOrderReceiptSummary {
+  order_id: number;
+  status: 'delivered';
+  actual_delivery_date: string;
+  receipt_mode: 'received' | 'resumed' | 'already_received';
+  requested_item_count: number;
+  newly_received_item_count: number;
+  already_received_item_count: number;
+  received_items: PurchaseOrderReceiptItemSummary[];
+}
+
 export interface PurchaseOrderCreateItem {
   ingredient_id: number;
   ingredient_supplier_id?: number | null;
@@ -107,6 +127,9 @@ export interface StockMovement {
   unit: string;
   source_or_destination?: string | null;
   lot_id?: number | null;
+  receipt_source?: string | null;
+  purchase_order_id?: number | null;
+  purchase_order_item_id?: number | null;
   notes?: string | null;
   running_balance?: number | null;
 }

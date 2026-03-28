@@ -17,6 +17,8 @@ from app.schemas.inventory_dto import (
     PurchaseOrderDTO,
     PurchaseOrderCreateDTO,
     PurchaseOrderItemUpdateDTO,
+    PurchaseOrderReceiptDTO,
+    PurchaseOrderReceiptSummaryDTO,
 )
 from typing import Dict, List
 
@@ -70,7 +72,28 @@ async def update_purchase_order_status(
     """
     Update the status of a purchase order (cart, pending, delivered, etc).
     """
-    return await inventory_service.update_purchase_order_status(order_id, status)
+    try:
+        return await inventory_service.update_purchase_order_status(order_id, status)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/purchase_orders/{order_id}/receive", response_model=PurchaseOrderReceiptSummaryDTO)
+async def receive_purchase_order(
+    order_id: int,
+    payload: PurchaseOrderReceiptDTO,
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Receive a purchase order into inventory by creating lots and updating stock.
+    """
+    try:
+        return await inventory_service.receive_purchase_order(
+            order_id=order_id,
+            actual_delivery_date=payload.actual_delivery_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 @router.post("/purchase_orders/{order_id}/items", response_model=dict)
 async def add_item_to_purchase_order(

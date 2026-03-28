@@ -1,6 +1,6 @@
 # core/services/inventory_service.py
 
-from typing import List, Union
+from typing import List, Optional, Union
 from decimal import Decimal
 from datetime import date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,8 @@ from app.repositories.ingredients_repo import IngredientRepository
 from app.repositories.lead_time_data_repo import LeadTimeDataRepository
 from app.repositories.inventory_usage_log_repo import InventoryUsageLogRepository
 from app.repositories.batch_recipes_repo import BatchRecipeRepository
+from app.repositories.purchase_orders_repo import PurchaseOrderRepository
+from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
 from app.services.utils.unit_conversion import convert_unit, round_decimal
 
 class InventoryService:
@@ -153,10 +155,137 @@ class InventoryService:
         """
         Update the status of a purchase order (cart, pending, delivered, etc).
         """
-        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
-        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
-        await po_repo.update(order_id, {"status": status})
+        if status == "delivered":
+            return await self.receive_purchase_order(order_id)
+
+        await self.purchase_order_repo.update(order_id, {"status": status})
         return {"order_id": order_id, "status": status}
+
+    async def receive_purchase_order(
+        self,
+        order_id: int,
+        actual_delivery_date: Optional[date] = None,
+    ) -> dict:
+        """
+        Receive a purchase order into inventory.
+
+        A receipt creates inventory lots first, then rolls the received quantity
+        into the aggregate inventory row and stamps the PO as delivered.
+        """
+        purchase_order = await self.purchase_order_repo.get_by_id(order_id)
+        if not purchase_order:
+            raise ValueError(f"Purchase order {order_id} not found.")
+
+        if (
+            purchase_order.actual_delivery_date
+            and actual_delivery_date
+            and purchase_order.actual_delivery_date != actual_delivery_date
+        ):
+            raise ValueError(
+                f"Purchase order {order_id} was already received on "
+                f"{purchase_order.actual_delivery_date.isoformat()}; delivery date cannot be changed."
+            )
+
+        items = await self.purchase_order_item_repo.get_by_field("order_id", order_id)
+        if not items:
+            raise ValueError(f"Purchase order {order_id} has no items to receive.")
+
+        delivery_date = actual_delivery_date or purchase_order.actual_delivery_date or date.today()
+        if self.db.in_transaction():
+            return await self._finalize_purchase_order_receipt(
+                order_id=order_id,
+                items=items,
+                delivery_date=delivery_date,
+                purchase_order=purchase_order,
+            )
+
+        async with self.db.begin():
+            return await self._finalize_purchase_order_receipt(
+                order_id=order_id,
+                items=items,
+                delivery_date=delivery_date,
+                purchase_order=purchase_order,
+            )
+
+    async def _finalize_purchase_order_receipt(
+        self,
+        order_id: int,
+        items: list,
+        delivery_date: date,
+        purchase_order,
+    ) -> dict:
+        received_items = []
+        newly_received_count = 0
+        already_received_count = 0
+
+        for item in items:
+            existing_lot = await self.inventory_lot_repo.get_by_purchase_order_item_id(
+                item.order_item_id
+            )
+            if existing_lot:
+                already_received_count += 1
+                received_items.append(
+                    {
+                        "order_item_id": item.order_item_id,
+                        "ingredient_id": item.ingredient_id,
+                        "lot_id": existing_lot.lot_id,
+                        "quantity_received": float(existing_lot.quantity),
+                        "unit": existing_lot.unit,
+                        "receipt_status": "already_received",
+                    }
+                )
+                continue
+
+            if not item.ingredient_supplier_id:
+                raise ValueError(
+                    f"Purchase order item {item.order_item_id} is missing ingredient_supplier_id required for receipt."
+                )
+
+            receipt = await self._create_inventory_receipt(
+                ingredient_supplier_id=item.ingredient_supplier_id,
+                total_received=item.quantity_ordered,
+                delivery_date=delivery_date,
+                receipt_source="purchase_order",
+                purchase_order_id=order_id,
+                purchase_order_item_id=item.order_item_id,
+            )
+            newly_received_count += 1
+            received_items.append(
+                {
+                    "order_item_id": item.order_item_id,
+                    "ingredient_id": item.ingredient_id,
+                    "lot_id": receipt["lot_id"],
+                    "quantity_received": float(receipt["received_quantity"]),
+                    "unit": receipt["unit"],
+                    "receipt_status": "received",
+                }
+            )
+
+        if (
+            purchase_order.status != "delivered"
+            or purchase_order.actual_delivery_date != delivery_date
+        ):
+            await self.purchase_order_repo.update(
+                order_id,
+                {"status": "delivered", "actual_delivery_date": delivery_date},
+            )
+
+        receipt_mode = "received"
+        if newly_received_count == 0 and already_received_count > 0:
+            receipt_mode = "already_received"
+        elif newly_received_count > 0 and already_received_count > 0:
+            receipt_mode = "resumed"
+
+        return {
+            "order_id": order_id,
+            "status": "delivered",
+            "actual_delivery_date": delivery_date,
+            "receipt_mode": receipt_mode,
+            "requested_item_count": len(items),
+            "newly_received_item_count": newly_received_count,
+            "already_received_item_count": already_received_count,
+            "received_items": received_items,
+        }
 
     async def add_item_to_purchase_order(self, order_id: int, item: dict) -> dict:
         """
@@ -646,6 +775,8 @@ class InventoryService:
         self.lead_time_data_repo = LeadTimeDataRepository(db, restaurant_id)
         self.inventory_usage_repo = InventoryUsageLogRepository(db, restaurant_id)
         self.batch_recipe_repo = BatchRecipeRepository(db,restaurant_id)
+        self.purchase_order_repo = PurchaseOrderRepository(db, restaurant_id)
+        self.purchase_order_item_repo = PurchaseOrderItemRepository(db, restaurant_id)
 
         print(f"Inventory Service: restaurant {self.restaurant_id}")
 
@@ -676,6 +807,8 @@ class InventoryService:
         
         batch_recipes = await self.batch_recipe_repo.get_all()
         batch_recipe_map = {br.batch_recipe_id: br.name for br in batch_recipes}
+        supplier_name_cache = {}
+        ingredient_supplier_cache = {}
 
         all_movements = []
 
@@ -701,25 +834,52 @@ class InventoryService:
             # Determine if this is a batch recipe lot or regular ingredient lot
             is_batch = lot.batch_recipe_id is not None
             item_name = batch_recipe_map.get(lot.batch_recipe_id, "Unknown Batch") if is_batch else ingredient_map.get(lot.ingredient_id, "Unknown")
+            receipt_source = getattr(lot, "receipt_source", None)
+            purchase_order_id = getattr(lot, "purchase_order_id", None)
+            purchase_order_item_id = getattr(lot, "purchase_order_item_id", None)
             
             # Get supplier name if available
             supplier_name = None
             if lot.ingredient_supplier_id:
-                supplier = await self.ingredient_supplier_repo.get_by_id(lot.ingredient_supplier_id)
+                supplier = ingredient_supplier_cache.get(lot.ingredient_supplier_id)
+                if supplier is None:
+                    supplier = await self.ingredient_supplier_repo.get_by_id(lot.ingredient_supplier_id)
+                    ingredient_supplier_cache[lot.ingredient_supplier_id] = supplier
                 if supplier:
-                    supplier_obj = await self.supplier_repo.get_by_id(supplier.supplier_id)
+                    supplier_obj = supplier_name_cache.get(supplier.supplier_id)
+                    if supplier_obj is None:
+                        supplier_obj = await self.supplier_repo.get_by_id(supplier.supplier_id)
+                        supplier_name_cache[supplier.supplier_id] = supplier_obj
                     supplier_name = supplier_obj.name if supplier_obj else None
+
+            if is_batch:
+                movement_type = "Batch Production"
+                movement_notes = f"Batch: {item_name}"
+                source_or_destination = "Production"
+            elif purchase_order_id:
+                movement_type = "Purchase Receipt"
+                movement_notes = f"Received via PO #{purchase_order_id}"
+                if purchase_order_item_id:
+                    movement_notes += f" item #{purchase_order_item_id}"
+                source_or_destination = supplier_name if supplier_name else f"PO #{purchase_order_id}"
+            else:
+                movement_type = "Manual Receipt"
+                movement_notes = "Manual lot receipt"
+                source_or_destination = supplier_name if supplier_name else "Manual Entry"
             
             all_movements.append({
                 "date": lot.delivery_date.isoformat(),
-                "type": "Batch Production" if is_batch else "Purchase",
+                "type": movement_type,
                 "ingredient_id": lot.ingredient_id if lot.ingredient_id else lot.batch_recipe_id,
                 "ingredient_name": item_name,
                 "quantity": float(lot.total_received if lot.total_received else lot.quantity),
                 "unit": lot.unit,
-                "source_or_destination": supplier_name if supplier_name else ("Production" if is_batch else None),
+                "source_or_destination": source_or_destination,
                 "lot_id": lot.lot_id,
-                "notes": f"Batch: {item_name}" if is_batch else None,
+                "receipt_source": receipt_source,
+                "purchase_order_id": purchase_order_id,
+                "purchase_order_item_id": purchase_order_item_id,
+                "notes": movement_notes,
             })
 
         # 2. INVENTORY OUT: Usage Logs (sales, waste, batch production input, etc.)
@@ -1443,6 +1603,115 @@ class InventoryService:
 
         return ingredient_supplier_view
 
+    async def _create_inventory_receipt(
+        self,
+        ingredient_supplier_id: int,
+        total_received: Union[float, int],
+        delivery_date: date,
+        receipt_source: str = "manual_receipt",
+        purchase_order_id: Optional[int] = None,
+        purchase_order_item_id: Optional[int] = None,
+    ) -> dict:
+        """
+        Add a new inventory lot and update inventory accordingly.
+        """
+        ingredient_supplier = await self.ingredient_supplier_repo.get_by_id(
+            ingredient_supplier_id,
+        )
+        if not ingredient_supplier:
+            raise ValueError(
+                f"IngredientSupplier ID {ingredient_supplier_id} not found."
+            )
+
+        ingredient_id = ingredient_supplier.ingredient_id
+        supplier_unit = ingredient_supplier.unit
+        pack_size = ingredient_supplier.pack_size or 1
+        quantity_per_pack_item = (
+            ingredient_supplier.quantity_per_pack_item or Decimal("1.00")
+        )
+        shelf_life_days = ingredient_supplier.shelf_life_days or 0
+        spoilage_expected_date = delivery_date + timedelta(days=shelf_life_days)
+
+        inventory = await self.inventory_repo.get_inventory_by_ingredient(ingredient_id)
+
+        ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+        if not ingredient:
+            raise ValueError(f"Ingredient ID {ingredient_id} not found.")
+
+        inventory_unit = inventory.unit if inventory else ingredient.unit
+        average_weight_per_unit = ingredient.average_weight_per_unit
+
+        if not inventory:
+            inventory_data = {
+                "restaurant_id": self.restaurant_id,
+                "ingredient_id": ingredient_id,
+                "unit": inventory_unit,
+                "quantity_on_hand": Decimal("0.00"),
+                "min_stock_level": Decimal("0.00"),
+                "last_delivery_date": delivery_date,
+                "spoilage_expected_date": spoilage_expected_date,
+            }
+            inventory = await self.inventory_repo.create(inventory_data)
+
+        raw_total_quantity = (
+            Decimal(total_received) * Decimal(pack_size) * quantity_per_pack_item
+        )
+
+        if inventory_unit == "count" and supplier_unit != "count":
+            quantity_in_grams = convert_unit(raw_total_quantity, supplier_unit, "g")
+
+            if not average_weight_per_unit:
+                raise ValueError(
+                    "average_weight_per_unit is required to convert to count."
+                )
+
+            converted_total_quantity = quantity_in_grams / average_weight_per_unit
+
+        elif supplier_unit != inventory_unit:
+            converted_total_quantity = convert_unit(
+                raw_total_quantity, supplier_unit, inventory_unit
+            )
+
+        else:
+            converted_total_quantity = raw_total_quantity
+
+        lot_payload = {
+            "inventory_id": inventory.inventory_id,
+            "ingredient_id": ingredient_id,
+            "restaurant_id": self.restaurant_id,
+            "receipt_source": receipt_source,
+            "purchase_order_id": purchase_order_id,
+            "purchase_order_item_id": purchase_order_item_id,
+            "delivery_date": delivery_date,
+            "spoilage_expected_date": spoilage_expected_date,
+            "quantity": Decimal(converted_total_quantity),
+            "unit": inventory_unit,
+            "total_received": Decimal(total_received),
+            "ingredient_supplier_id": ingredient_supplier_id,
+        }
+
+        lot = await self.inventory_lot_repo.create(lot_payload)
+
+        updated_quantity = (
+            Decimal(inventory.quantity_on_hand) or Decimal("0.00")
+        ) + Decimal(converted_total_quantity)
+
+        update_data = {
+            "quantity_on_hand": updated_quantity,
+            "last_delivery_date": delivery_date,
+            "spoilage_expected_date": spoilage_expected_date,
+        }
+
+        await self.inventory_repo.update(inventory.inventory_id, update_data)
+
+        return {
+            "lot_id": lot.lot_id,
+            "inventory_id": inventory.inventory_id,
+            "ingredient_id": ingredient_id,
+            "received_quantity": Decimal(converted_total_quantity),
+            "unit": inventory_unit,
+        }
+
     async def add_inventory_from_lots(
         self,
         ingredient_supplier_id: int,
@@ -1453,105 +1722,9 @@ class InventoryService:
         Add a new inventory lot and update inventory accordingly.
         """
         async with self.db.begin():
-            # 1. Get IngredientSupplier data
-            ingredient_supplier = await self.ingredient_supplier_repo.get_by_id(
-                ingredient_supplier_id,
+            return await self._create_inventory_receipt(
+                ingredient_supplier_id=ingredient_supplier_id,
+                total_received=total_received,
+                delivery_date=delivery_date,
+                receipt_source="manual_receipt",
             )
-            if not ingredient_supplier:
-                raise ValueError(
-                    f"❌ IngredientSupplier ID {ingredient_supplier_id} not found."
-                )
-
-            ingredient_id = ingredient_supplier.ingredient_id
-            supplier_unit = ingredient_supplier.unit
-            pack_size = ingredient_supplier.pack_size or 1
-            quantity_per_pack_item = (
-                ingredient_supplier.quantity_per_pack_item or Decimal("1.00")
-            )
-            shelf_life_days = ingredient_supplier.shelf_life_days or 0
-            spoilage_expected_date = delivery_date + timedelta(days=shelf_life_days)
-
-            # 2. Get inventory record
-            inventory = await self.inventory_repo.get_inventory_by_ingredient(
-                ingredient_id
-            )
-
-            # 3. Always get the ingredient (needed for average_weight_per_unit)
-            ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
-            if not ingredient:
-                raise ValueError(f"❌ Ingredient ID {ingredient_id} not found.")
-
-            inventory_unit = inventory.unit if inventory else ingredient.unit
-            average_weight_per_unit = ingredient.average_weight_per_unit  # in grams
-
-            # 4. If no inventory, create it
-            if not inventory:
-                inventory_data = {
-                    "restaurant_id": self.restaurant_id,
-                    "ingredient_id": ingredient_id,
-                    "unit": inventory_unit,
-                    "quantity_on_hand": Decimal("0.00"),
-                    "min_stock_level": Decimal("0.00"),
-                    "last_delivery_date": delivery_date,
-                    "spoilage_expected_date": spoilage_expected_date,
-                }
-                inventory = await self.inventory_repo.create(inventory_data)
-
-            # 5. Calculate total quantity in supplier unit
-            raw_total_quantity = (
-                Decimal(total_received) * Decimal(pack_size) * quantity_per_pack_item
-            )
-
-            # 6. Custom logic: inventory in count, supplier in weight
-            if inventory_unit == "count" and supplier_unit != "count":
-                quantity_in_grams = convert_unit(raw_total_quantity, supplier_unit, "g")
-
-                if not average_weight_per_unit:
-                    raise ValueError(
-                        "❌ average_weight_per_unit is required to convert to count."
-                    )
-
-                converted_total_quantity = quantity_in_grams / average_weight_per_unit
-
-            # 7. Generic conversion if units differ (not the special case above)
-            elif supplier_unit != inventory_unit:
-                converted_total_quantity = convert_unit(
-                    raw_total_quantity, supplier_unit, inventory_unit
-                )
-
-            # 8. Units match — use raw total
-            else:
-                converted_total_quantity = raw_total_quantity
-
-            # 9. Create Inventory Lot
-            lot_payload = {
-                "inventory_id": inventory.inventory_id,
-                "ingredient_id": ingredient_id,
-                "restaurant_id": self.restaurant_id,
-                "delivery_date": delivery_date,
-                "spoilage_expected_date": spoilage_expected_date,
-                "quantity": Decimal(converted_total_quantity),
-                "unit": inventory_unit,
-                "total_received": Decimal(total_received),
-                "ingredient_supplier_id": ingredient_supplier_id,
-            }
-            print(f"this is the lot payload: {lot_payload}")
-
-            await self.inventory_lot_repo.create(lot_payload)
-
-            # 10. Update inventory
-            updated_quantity = (
-                Decimal(inventory.quantity_on_hand) or Decimal("0.00")
-            ) + Decimal(converted_total_quantity)
-
-            update_data = {
-                "quantity_on_hand": updated_quantity,
-                "last_delivery_date": delivery_date,
-                "spoilage_expected_date": spoilage_expected_date,
-            }
-
-            await self.inventory_repo.update(inventory.inventory_id, update_data)
-
-        print(
-            f"✅ Added inventory lot + updated inventory for ingredient_id={ingredient_id}: +{converted_total_quantity} {inventory_unit}"
-        )

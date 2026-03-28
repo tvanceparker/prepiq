@@ -16,6 +16,7 @@ import {
   Divider,
   IconButton,
   FAB,
+  Snackbar,
   useTheme,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -85,6 +86,7 @@ export default function PurchaseOrders(): React.JSX.Element {
   // Inline item editing
   const [editingItem, setEditingItem] = useState<PurchaseOrderItem | null>(null);
   const [editQty, setEditQty] = useState('');
+  const [snackbar, setSnackbar] = useState({ open: false, message: '' });
 
   // Queries & hooks
   const {
@@ -93,6 +95,7 @@ export default function PurchaseOrders(): React.JSX.Element {
     refresh,
     updateStatus,
     updatingStatus,
+    formatReceiptSummary,
     createOrder,
     updateItem,
     updatingItem,
@@ -124,6 +127,8 @@ export default function PurchaseOrders(): React.JSX.Element {
     refresh();
     setRefreshing(false);
   }, [refresh]);
+
+  const showToast = (message: string) => setSnackbar({ open: true, message });
 
   // Filter POs
   const filteredPOs = useMemo(() => {
@@ -188,7 +193,12 @@ export default function PurchaseOrders(): React.JSX.Element {
 
   // Handle status update
   const handleStatusUpdate = async (poId: number, newStatus: PurchaseOrderStatus) => {
-    await updateStatus({ orderId: poId, status: newStatus });
+    const result = await updateStatus({ orderId: poId, status: newStatus });
+    if (result && typeof result === 'object' && 'receipt_mode' in result) {
+      showToast(formatReceiptSummary(result));
+    } else {
+      showToast('Order status updated.');
+    }
     setSelectedPO(null);
   };
 
@@ -996,8 +1006,8 @@ export default function PurchaseOrders(): React.JSX.Element {
                 {wizardStep === 0
                   ? 'Continue'
                   : wizardMode === 'supplier'
-                  ? 'Generate'
-                  : 'Continue'}
+                    ? 'Generate'
+                    : 'Continue'}
               </Button>
             ) : (
               <Button
@@ -1011,13 +1021,21 @@ export default function PurchaseOrders(): React.JSX.Element {
                 {creating
                   ? 'Creating...'
                   : wizardMode === 'supplier'
-                  ? `Create ${reviewTotals.supplierCount} Draft(s)`
-                  : `Create ${Math.max(1, ingredientReviewTotals.supplierCount)} Draft(s)`}
+                    ? `Create ${reviewTotals.supplierCount} Draft(s)`
+                    : `Create ${Math.max(1, ingredientReviewTotals.supplierCount)} Draft(s)`}
               </Button>
             )}
           </View>
         </Modal>
       </Portal>
+
+      <Snackbar
+        visible={snackbar.open}
+        onDismiss={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        duration={3500}
+      >
+        {snackbar.message}
+      </Snackbar>
     </View>
   );
 }

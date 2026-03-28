@@ -5,6 +5,7 @@ import type {
   PurchaseOrder,
   PurchaseOrderCreate,
   PurchaseOrderItem,
+  PurchaseOrderReceiptSummary,
   PurchaseOrderStatus,
   StockMovement,
   IngredientName,
@@ -135,6 +136,15 @@ export const updatePurchaseOrderStatus = async (
     `/inventory/purchase_orders/${order_id}/status?status=${encodeURIComponent(status)}`,
     {}
   );
+};
+
+export const receivePurchaseOrder = async (
+  order_id: number,
+  actual_delivery_date?: string
+): Promise<PurchaseOrderReceiptSummary> => {
+  return post(`/inventory/purchase_orders/${order_id}/receive`, {
+    actual_delivery_date,
+  });
 };
 
 export const addItemToPurchaseOrder = async (

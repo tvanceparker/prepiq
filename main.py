@@ -74,6 +74,7 @@ from app.db.models import (
     supplier_preferences_orm,
     batch_recipe_forecast_breakdown_orm,
     ingredient_forecast_breakdown_orm,
+    eod_purchase_order_suggestion_orm,
     orders_orm,
     order_items_orm,
     order_item_modifiers_orm,

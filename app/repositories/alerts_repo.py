@@ -3,6 +3,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
+from datetime import datetime
 from app.db.models.alerts_orm import Alert
 from app.repositories.base_repository import BaseRepository
 from typing import List, Optional, Union
@@ -66,4 +67,33 @@ class AlertRepository(BaseRepository):
             )
         )
         return result.scalar_one()
+
+    async def get_open_low_stock_alert(self, ingredient_id: int) -> Optional[Alert]:
+        stmt = (
+            select(Alert)
+            .where(
+                Alert.restaurant_id == self.restaurant_id,
+                Alert.alert_type == "LowStock",
+                Alert.status.in_(["Active", "Acknowledged"]),
+                func.json_unquote(func.json_extract(Alert.meta, '$.ingredient_id')) == str(ingredient_id),
+            )
+            .order_by(Alert.date_created.desc())
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    async def resolve_open_low_stock_alerts(self, ingredient_id: int) -> int:
+        stmt = select(Alert).where(
+            Alert.restaurant_id == self.restaurant_id,
+            Alert.alert_type == "LowStock",
+            Alert.status.in_(["Active", "Acknowledged"]),
+            func.json_unquote(func.json_extract(Alert.meta, '$.ingredient_id')) == str(ingredient_id),
+        )
+        result = await self.db.execute(stmt)
+        alerts = result.scalars().all()
+        for alert in alerts:
+            alert.status = "Resolved"
+            alert.date_resolved = datetime.utcnow()
+        await self.db.flush()
+        return len(alerts)
 

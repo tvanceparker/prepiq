@@ -4,6 +4,7 @@ import {
   PurchaseOrder,
   PurchaseOrderCreate,
   PurchaseOrderItem,
+  PurchaseOrderReceiptSummary,
   IngredientName,
   PurchaseOrderStatus,
   POSuggestionsResponse,
@@ -37,6 +38,15 @@ export async function updatePurchaseOrderStatus(
     `/inventory/purchase_orders/${order_id}/status?status=${encodeURIComponent(status)}`,
     {}
   );
+}
+
+export async function receivePurchaseOrder(
+  order_id: number,
+  actual_delivery_date?: string
+): Promise<PurchaseOrderReceiptSummary> {
+  return post(`/inventory/purchase_orders/${order_id}/receive`, {
+    actual_delivery_date,
+  });
 }
 
 export async function addItemToPurchaseOrder(

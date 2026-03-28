@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from pydantic import ConfigDict
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Literal
 from datetime import date, datetime
 from decimal import Decimal
 class PurchaseOrderItemDTO(BaseModel):
@@ -34,6 +34,30 @@ class PurchaseOrderItemUpdateDTO(BaseModel):
     unit_price: Optional[float] = None
     unit: Optional[str] = None
     ingredient_supplier_id: Optional[int] = None
+
+
+class PurchaseOrderReceiptDTO(BaseModel):
+    actual_delivery_date: Optional[date] = None
+
+
+class PurchaseOrderReceiptItemSummaryDTO(BaseModel):
+    order_item_id: int
+    ingredient_id: int
+    lot_id: int
+    quantity_received: float
+    unit: str
+    receipt_status: Literal["received", "already_received"]
+
+
+class PurchaseOrderReceiptSummaryDTO(BaseModel):
+    order_id: int
+    status: Literal["delivered"]
+    actual_delivery_date: date
+    receipt_mode: Literal["received", "resumed", "already_received"]
+    requested_item_count: int
+    newly_received_item_count: int
+    already_received_item_count: int
+    received_items: List[PurchaseOrderReceiptItemSummaryDTO]
 
 class PurchaseOrderDTO(BaseModel):
     order_id: int
@@ -187,6 +211,9 @@ class StockMovementItem(BaseModel):
     unit: str
     source_or_destination: Optional[str] = None
     lot_id: Optional[int] = None
+    receipt_source: Optional[str] = None
+    purchase_order_id: Optional[int] = None
+    purchase_order_item_id: Optional[int] = None
     notes: Optional[str] = None
     running_balance: Optional[float] = None
 

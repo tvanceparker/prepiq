@@ -45,6 +45,7 @@ import {
   updatePurchaseOrderItem,
   removeItemFromPurchaseOrder,
   updatePurchaseOrderStatus,
+  receivePurchaseOrder,
   getIngredientNames,
   generatePOSuggestions,
   createPOsFromSuggestions,
@@ -56,6 +57,7 @@ import type {
   PurchaseOrder,
   PurchaseOrderItem,
   PurchaseOrderCreate,
+  PurchaseOrderReceiptSummary,
   PurchaseOrderStatus,
   IngredientName,
   POSuggestionsResponse,
@@ -119,6 +121,16 @@ export default function PurchaseOrders() {
     severity: 'success' | 'info' | 'warning' | 'error' = 'success'
   ) => setSnackbar({ open: true, message, severity });
 
+  const formatReceiptSummary = (summary: PurchaseOrderReceiptSummary): string => {
+    if (summary.receipt_mode === 'already_received') {
+      return `PO #${summary.order_id} was already received on ${dayjs(summary.actual_delivery_date).format('MMM D, YYYY')}.`;
+    }
+    if (summary.receipt_mode === 'resumed') {
+      return `PO #${summary.order_id} receipt resumed: ${summary.newly_received_item_count} new item(s), ${summary.already_received_item_count} already received.`;
+    }
+    return `PO #${summary.order_id} received: ${summary.newly_received_item_count} item(s) on ${dayjs(summary.actual_delivery_date).format('MMM D, YYYY')}.`;
+  };
+
   // Queries
   const { data: ingredientNames = [] } = useQuery<IngredientName[]>({
     queryKey: ['ingredient_names'],
@@ -128,6 +140,21 @@ export default function PurchaseOrders() {
   const { data: orders = [], isLoading } = useQuery<PurchaseOrder[]>({
     queryKey: ['purchase_orders', status],
     queryFn: () => getPurchaseOrders({ status }),
+  });
+
+  const { data: cartOrders = [] } = useQuery<PurchaseOrder[]>({
+    queryKey: ['purchase_orders', 'cart'],
+    queryFn: () => getPurchaseOrders({ status: 'cart' }),
+  });
+
+  const { data: pendingOrders = [] } = useQuery<PurchaseOrder[]>({
+    queryKey: ['purchase_orders', 'pending'],
+    queryFn: () => getPurchaseOrders({ status: 'pending' }),
+  });
+
+  const { data: deliveredOrders = [] } = useQuery<PurchaseOrder[]>({
+    queryKey: ['purchase_orders', 'delivered'],
+    queryFn: () => getPurchaseOrders({ status: 'delivered' }),
   });
 
   const { data: stockLevels = [], isLoading: stockLoading } = useQuery<IngredientStockLevel[]>({
@@ -200,11 +227,19 @@ export default function PurchaseOrders() {
   });
 
   const updateStatusMut = useMutation({
-    mutationFn: (args: { order_id: number; status: PurchaseOrderStatus }) =>
-      updatePurchaseOrderStatus(args.order_id, args.status),
-    onSuccess: async () => {
+    mutationFn: (args: { order_id: number; status: PurchaseOrderStatus }) => {
+      if (args.status === 'delivered') {
+        return receivePurchaseOrder(args.order_id);
+      }
+      return updatePurchaseOrderStatus(args.order_id, args.status);
+    },
+    onSuccess: async data => {
       await qc.invalidateQueries({ queryKey: ['purchase_orders'] });
       setSelectedOrder(null);
+      if (data && typeof data === 'object' && 'receipt_mode' in data) {
+        showToast(formatReceiptSummary(data as PurchaseOrderReceiptSummary), 'info');
+        return;
+      }
       showToast('Order status updated.');
     },
   });
@@ -398,6 +433,15 @@ export default function PurchaseOrders() {
     });
     return Array.from(map.entries());
   }, [orders]);
+
+  const orderCountsByStatus = useMemo(
+    () => ({
+      cart: cartOrders.length,
+      pending: pendingOrders.length,
+      delivered: deliveredOrders.length,
+    }),
+    [cartOrders.length, pendingOrders.length, deliveredOrders.length]
+  );
 
   // Navigation helpers
   const canProceed = () => {
@@ -773,11 +817,7 @@ export default function PurchaseOrders() {
             label={
               <Stack direction="row" alignItems="center" spacing={1}>
                 <span>{t.label}</span>
-                <Chip
-                  size="small"
-                  label={orders.filter(o => o.status === t.value).length}
-                  sx={{ height: 20 }}
-                />
+                <Chip size="small" label={orderCountsByStatus[t.value]} sx={{ height: 20 }} />
               </Stack>
             }
           />
