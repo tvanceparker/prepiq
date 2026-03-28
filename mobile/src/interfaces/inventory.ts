@@ -142,6 +142,9 @@ export interface StockMovement {
   unit: string;
   source_or_destination?: string | null;
   lot_id?: number | null;
+  receipt_source?: string | null;
+  purchase_order_id?: number | null;
+  purchase_order_item_id?: number | null;
   notes?: string | null;
   running_balance?: number | null;
 }

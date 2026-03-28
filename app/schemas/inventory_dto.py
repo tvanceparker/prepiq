@@ -191,6 +191,9 @@ class StockMovementItem(BaseModel):
     unit: str
     source_or_destination: Optional[str] = None
     lot_id: Optional[int] = None
+    receipt_source: Optional[str] = None
+    purchase_order_id: Optional[int] = None
+    purchase_order_item_id: Optional[int] = None
     notes: Optional[str] = None
     running_balance: Optional[float] = None
 

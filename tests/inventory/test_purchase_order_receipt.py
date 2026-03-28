@@ -63,6 +63,9 @@ async def test_receive_purchase_order_creates_lots_updates_inventory_and_marks_d
     assert lot_payload['ingredient_id'] == 101
     assert float(lot_payload['quantity']) == 30.0
     assert lot_payload['total_received'] == 3
+    assert lot_payload['receipt_source'] == 'purchase_order'
+    assert lot_payload['purchase_order_id'] == 55
+    assert lot_payload['purchase_order_item_id'] == 11
 
     inventory_service.inventory_repo.update.assert_awaited_once()
     update_args = inventory_service.inventory_repo.update.await_args.args
@@ -116,3 +119,34 @@ async def test_update_purchase_order_status_delivered_delegates_to_receipt(inven
 
     inventory_service.receive_purchase_order.assert_awaited_once_with(55)
     assert result == {'order_id': 55, 'status': 'delivered'}
+
+
+@pytest.mark.asyncio
+async def test_add_inventory_from_lots_marks_manual_receipt_provenance(inventory_service):
+    ingredient_supplier = MagicMock(
+        ingredient_id=101,
+        unit='lb',
+        pack_size=1,
+        quantity_per_pack_item=2,
+        shelf_life_days=3,
+    )
+    inventory = MagicMock(inventory_id=301, quantity_on_hand=5, unit='lb')
+    ingredient = MagicMock(unit='lb', average_weight_per_unit=None)
+    lot = MagicMock(lot_id=999)
+
+    inventory_service.ingredient_supplier_repo.get_by_id.return_value = ingredient_supplier
+    inventory_service.inventory_repo.get_inventory_by_ingredient.return_value = inventory
+    inventory_service.ingredient_repo.get_by_id.return_value = ingredient
+    inventory_service.inventory_lot_repo.create.return_value = lot
+
+    result = await inventory_service.add_inventory_from_lots(
+        ingredient_supplier_id=201,
+        total_received=4,
+        delivery_date=date(2026, 3, 28),
+    )
+
+    lot_payload = inventory_service.inventory_lot_repo.create.await_args.args[0]
+    assert lot_payload['receipt_source'] == 'manual_receipt'
+    assert lot_payload['purchase_order_id'] is None
+    assert lot_payload['purchase_order_item_id'] is None
+    assert result['lot_id'] == 999

@@ -197,6 +197,9 @@ class InventoryService:
                     ingredient_supplier_id=item.ingredient_supplier_id,
                     total_received=item.quantity_ordered,
                     delivery_date=delivery_date,
+                    receipt_source="purchase_order",
+                    purchase_order_id=order_id,
+                    purchase_order_item_id=item.order_item_id,
                 )
                 received_items.append(
                     {
@@ -740,6 +743,8 @@ class InventoryService:
         
         batch_recipes = await self.batch_recipe_repo.get_all()
         batch_recipe_map = {br.batch_recipe_id: br.name for br in batch_recipes}
+        supplier_name_cache = {}
+        ingredient_supplier_cache = {}
 
         all_movements = []
 
@@ -765,25 +770,52 @@ class InventoryService:
             # Determine if this is a batch recipe lot or regular ingredient lot
             is_batch = lot.batch_recipe_id is not None
             item_name = batch_recipe_map.get(lot.batch_recipe_id, "Unknown Batch") if is_batch else ingredient_map.get(lot.ingredient_id, "Unknown")
+            receipt_source = getattr(lot, "receipt_source", None)
+            purchase_order_id = getattr(lot, "purchase_order_id", None)
+            purchase_order_item_id = getattr(lot, "purchase_order_item_id", None)
             
             # Get supplier name if available
             supplier_name = None
             if lot.ingredient_supplier_id:
-                supplier = await self.ingredient_supplier_repo.get_by_id(lot.ingredient_supplier_id)
+                supplier = ingredient_supplier_cache.get(lot.ingredient_supplier_id)
+                if supplier is None:
+                    supplier = await self.ingredient_supplier_repo.get_by_id(lot.ingredient_supplier_id)
+                    ingredient_supplier_cache[lot.ingredient_supplier_id] = supplier
                 if supplier:
-                    supplier_obj = await self.supplier_repo.get_by_id(supplier.supplier_id)
+                    supplier_obj = supplier_name_cache.get(supplier.supplier_id)
+                    if supplier_obj is None:
+                        supplier_obj = await self.supplier_repo.get_by_id(supplier.supplier_id)
+                        supplier_name_cache[supplier.supplier_id] = supplier_obj
                     supplier_name = supplier_obj.name if supplier_obj else None
+
+            if is_batch:
+                movement_type = "Batch Production"
+                movement_notes = f"Batch: {item_name}"
+                source_or_destination = "Production"
+            elif purchase_order_id:
+                movement_type = "Purchase Receipt"
+                movement_notes = f"Received via PO #{purchase_order_id}"
+                if purchase_order_item_id:
+                    movement_notes += f" item #{purchase_order_item_id}"
+                source_or_destination = supplier_name if supplier_name else f"PO #{purchase_order_id}"
+            else:
+                movement_type = "Manual Receipt"
+                movement_notes = "Manual lot receipt"
+                source_or_destination = supplier_name if supplier_name else "Manual Entry"
             
             all_movements.append({
                 "date": lot.delivery_date.isoformat(),
-                "type": "Batch Production" if is_batch else "Purchase",
+                "type": movement_type,
                 "ingredient_id": lot.ingredient_id if lot.ingredient_id else lot.batch_recipe_id,
                 "ingredient_name": item_name,
                 "quantity": float(lot.total_received if lot.total_received else lot.quantity),
                 "unit": lot.unit,
-                "source_or_destination": supplier_name if supplier_name else ("Production" if is_batch else None),
+                "source_or_destination": source_or_destination,
                 "lot_id": lot.lot_id,
-                "notes": f"Batch: {item_name}" if is_batch else None,
+                "receipt_source": receipt_source,
+                "purchase_order_id": purchase_order_id,
+                "purchase_order_item_id": purchase_order_item_id,
+                "notes": movement_notes,
             })
 
         # 2. INVENTORY OUT: Usage Logs (sales, waste, batch production input, etc.)
@@ -1512,6 +1544,9 @@ class InventoryService:
         ingredient_supplier_id: int,
         total_received: Union[float, int],
         delivery_date: date,
+        receipt_source: str = "manual_receipt",
+        purchase_order_id: Optional[int] = None,
+        purchase_order_item_id: Optional[int] = None,
     ) -> dict:
         """
         Add a new inventory lot and update inventory accordingly.
@@ -1580,6 +1615,9 @@ class InventoryService:
             "inventory_id": inventory.inventory_id,
             "ingredient_id": ingredient_id,
             "restaurant_id": self.restaurant_id,
+            "receipt_source": receipt_source,
+            "purchase_order_id": purchase_order_id,
+            "purchase_order_item_id": purchase_order_item_id,
             "delivery_date": delivery_date,
             "spoilage_expected_date": spoilage_expected_date,
             "quantity": Decimal(converted_total_quantity),
@@ -1624,4 +1662,5 @@ class InventoryService:
                 ingredient_supplier_id=ingredient_supplier_id,
                 total_received=total_received,
                 delivery_date=delivery_date,
+                receipt_source="manual_receipt",
             )

@@ -27,6 +27,13 @@ class InventoryLot(Base):
         ForeignKey("ingredient_supplier.ingredient_supplier_id"),
         nullable=True,  # Nullable for batch-produced lots (no external supplier)
     )  # Reference to ingredient_supplier
+    receipt_source = Column(String(50), nullable=True)
+    purchase_order_id = Column(
+        Integer, ForeignKey("purchase_orders.order_id"), nullable=True
+    )
+    purchase_order_item_id = Column(
+        Integer, ForeignKey("purchase_order_items.order_item_id"), nullable=True
+    )
     delivery_date = Column(Date, nullable=False)  # Delivery date of the lot
     spoilage_expected_date = Column(
         Date, nullable=True

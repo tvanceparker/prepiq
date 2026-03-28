@@ -116,18 +116,13 @@ export default function StockMovements(): React.JSX.Element {
 
   // Movement type styling
   const getMovementStyle = (type: string, qty: number) => {
-    // Handle positive quantity types
-    if (type === 'Purchase' || type === 'Adjustment' || qty > 0) {
+    if (qty > 0) {
       return { icon: 'arrow-down-bold', color: '#4caf50', bgColor: '#e8f5e9' };
-    }
-    // Handle negative quantity types
-    if (type === 'Sale' || type === 'Batch Production') {
-      return { icon: 'arrow-up-bold', color: '#2196f3', bgColor: '#e3f2fd' };
     }
     if (type === 'Waste') {
       return { icon: 'delete-outline', color: '#ff9800', bgColor: '#fff3e0' };
     }
-    return { icon: 'swap-horizontal', color: '#9e9e9e', bgColor: '#f5f5f5' };
+    return { icon: 'arrow-up-bold', color: '#2196f3', bgColor: '#e3f2fd' };
   };
 
   // Calculate stats from movements
@@ -138,12 +133,12 @@ export default function StockMovements(): React.JSX.Element {
 
     movements.forEach((m: StockMovement) => {
       const qty = Math.abs(m.quantity || 0);
-      if (m.type === 'Purchase' || m.type === 'Adjustment') {
+      if ((m.quantity || 0) > 0) {
         totalIn += qty;
-      } else if (m.type === 'Sale' || m.type === 'Batch Production') {
-        totalOut += qty;
       } else if (m.type === 'Waste') {
         waste += qty;
+      } else {
+        totalOut += qty;
       }
     });
 
@@ -164,7 +159,7 @@ export default function StockMovements(): React.JSX.Element {
 
   const renderItem = ({ item }: { item: StockMovement }) => {
     const style = getMovementStyle(item.type, item.quantity);
-    const isPositive = item.type === 'Purchase' || item.type === 'Adjustment' || item.quantity > 0;
+    const isPositive = item.quantity > 0;
 
     return (
       <Card style={styles.card} mode="outlined">
@@ -209,7 +204,8 @@ export default function StockMovements(): React.JSX.Element {
               variant="titleMedium"
               style={[styles.quantity, { color: isPositive ? '#4caf50' : '#f44336' }]}
             >
-              {isPositive ? '+' : ''}{item.quantity}
+              {isPositive ? '+' : ''}
+              {item.quantity}
             </Text>
             <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
               {item.unit || 'units'}
@@ -286,40 +282,65 @@ export default function StockMovements(): React.JSX.Element {
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <MaterialCommunityIcons name="arrow-down-bold" size={18} color="#4caf50" />
-            <Text variant="titleSmall" style={{ color: '#4caf50', fontWeight: '700', marginLeft: 4 }}>
+            <Text
+              variant="titleSmall"
+              style={{ color: '#4caf50', fontWeight: '700', marginLeft: 4 }}
+            >
               +{stats.totalIn.toFixed(0)}
             </Text>
-            <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}>
+            <Text
+              variant="labelSmall"
+              style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}
+            >
               In
             </Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <MaterialCommunityIcons name="arrow-up-bold" size={18} color="#2196f3" />
-            <Text variant="titleSmall" style={{ color: '#2196f3', fontWeight: '700', marginLeft: 4 }}>
+            <Text
+              variant="titleSmall"
+              style={{ color: '#2196f3', fontWeight: '700', marginLeft: 4 }}
+            >
               -{stats.totalOut.toFixed(0)}
             </Text>
-            <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}>
+            <Text
+              variant="labelSmall"
+              style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}
+            >
               Out
             </Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <MaterialCommunityIcons name="delete-outline" size={18} color="#ff9800" />
-            <Text variant="titleSmall" style={{ color: '#ff9800', fontWeight: '700', marginLeft: 4 }}>
+            <Text
+              variant="titleSmall"
+              style={{ color: '#ff9800', fontWeight: '700', marginLeft: 4 }}
+            >
               {stats.waste.toFixed(0)}
             </Text>
-            <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}>
+            <Text
+              variant="labelSmall"
+              style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}
+            >
               Waste
             </Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <MaterialCommunityIcons name="format-list-numbered" size={18} color={theme.colors.primary} />
+            <MaterialCommunityIcons
+              name="format-list-numbered"
+              size={18}
+              color={theme.colors.primary}
+            />
             <Text variant="titleSmall" style={{ fontWeight: '700', marginLeft: 4 }}>
               {stats.count}
             </Text>
-            <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}>
+            <Text
+              variant="labelSmall"
+              style={{ color: theme.colors.onSurfaceVariant, marginLeft: 4 }}
+            >
               Total
             </Text>
           </View>
