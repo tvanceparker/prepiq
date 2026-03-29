@@ -631,7 +631,9 @@ export default function PurchaseOrders() {
     if (!wizardMode) return null;
 
     const isSupplier = wizardMode === 'supplier';
-    const hasItems = isSupplier ? supplierSidebarGroups.length > 0 : ingredientSidebarGroups.length > 0;
+    const hasItems = isSupplier
+      ? supplierSidebarGroups.length > 0
+      : ingredientSidebarGroups.length > 0;
     const totals = isSupplier ? reviewTotals : ingredientCartTotals;
 
     return (
@@ -720,7 +722,12 @@ export default function PurchaseOrders() {
             <Stack spacing={1.5}>
               {supplierSidebarGroups.map(group => (
                 <Paper key={group.supplierId} variant="outlined" sx={{ p: 1.5 }}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    sx={{ mb: 1 }}
+                  >
                     <Typography variant="subtitle2" fontWeight={700}>
                       {group.supplierName}
                     </Typography>
@@ -730,7 +737,11 @@ export default function PurchaseOrders() {
                   </Stack>
                   <Stack spacing={1}>
                     {group.items.map(item => (
-                      <Paper key={item.key} variant="outlined" sx={{ p: 1.25, bgcolor: 'background.default' }}>
+                      <Paper
+                        key={item.key}
+                        variant="outlined"
+                        sx={{ p: 1.25, bgcolor: 'background.default' }}
+                      >
                         <Stack direction="row" spacing={1} alignItems="center">
                           <Box sx={{ flex: 1 }}>
                             <Typography variant="body2" fontWeight={600}>
@@ -744,7 +755,11 @@ export default function PurchaseOrders() {
                             <IconButton
                               size="small"
                               onClick={() =>
-                                updateSuggestedItemQty(group.supplierId, item.ingredientId, item.quantity - 1)
+                                updateSuggestedItemQty(
+                                  group.supplierId,
+                                  item.ingredientId,
+                                  item.quantity - 1
+                                )
                               }
                             >
                               <RemoveIcon fontSize="small" />
@@ -755,7 +770,11 @@ export default function PurchaseOrders() {
                             <IconButton
                               size="small"
                               onClick={() =>
-                                updateSuggestedItemQty(group.supplierId, item.ingredientId, item.quantity + 1)
+                                updateSuggestedItemQty(
+                                  group.supplierId,
+                                  item.ingredientId,
+                                  item.quantity + 1
+                                )
                               }
                             >
                               <AddIcon fontSize="small" />
@@ -782,7 +801,12 @@ export default function PurchaseOrders() {
             <Stack spacing={1.5}>
               {ingredientSidebarGroups.map(group => (
                 <Paper key={group.supplierId} variant="outlined" sx={{ p: 1.5 }}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    sx={{ mb: 1 }}
+                  >
                     <Box>
                       <Typography variant="subtitle2" fontWeight={700}>
                         {group.supplierName}
@@ -812,7 +836,11 @@ export default function PurchaseOrders() {
                             <IconButton
                               size="small"
                               onClick={() =>
-                                updateCartItemQty(item.ingredientId, item.supplierId, item.quantity - 1)
+                                updateCartItemQty(
+                                  item.ingredientId,
+                                  item.supplierId,
+                                  item.quantity - 1
+                                )
                               }
                             >
                               <RemoveIcon fontSize="small" />
@@ -823,7 +851,11 @@ export default function PurchaseOrders() {
                             <IconButton
                               size="small"
                               onClick={() =>
-                                updateCartItemQty(item.ingredientId, item.supplierId, item.quantity + 1)
+                                updateCartItemQty(
+                                  item.ingredientId,
+                                  item.supplierId,
+                                  item.quantity + 1
+                                )
                               }
                             >
                               <AddIcon fontSize="small" />
@@ -1304,11 +1336,7 @@ export default function PurchaseOrders() {
             </Button>
           )}
           {wizardStep === 0 ? (
-            <Button
-              variant="contained"
-              onClick={handleNext}
-              disabled={!canProceed()}
-            >
+            <Button variant="contained" onClick={handleNext} disabled={!canProceed()}>
               Continue
             </Button>
           ) : (

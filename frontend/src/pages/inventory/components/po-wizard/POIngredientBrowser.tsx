@@ -101,7 +101,10 @@ export default function POIngredientBrowser({
             minHeight: 420,
           }}
         >
-          <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <Paper
+            variant="outlined"
+            sx={{ p: 2, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+          >
             <TextField
               size="small"
               placeholder="Search ingredients"
@@ -154,7 +157,12 @@ export default function POIngredientBrowser({
                     >
                       <Stack direction="row" justifyContent="space-between" spacing={1}>
                         <Box sx={{ minWidth: 0 }}>
-                          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            alignItems="center"
+                            sx={{ flexWrap: 'wrap' }}
+                          >
                             <Typography variant="subtitle2" fontWeight={700}>
                               {ingredient.ingredient_name}
                             </Typography>
@@ -187,7 +195,10 @@ export default function POIngredientBrowser({
             )}
           </Paper>
 
-          <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <Paper
+            variant="outlined"
+            sx={{ p: 2, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+          >
             {!selectedIngredient ? (
               <Box
                 sx={{
@@ -226,10 +237,13 @@ export default function POIngredientBrowser({
                         />
                       </Stack>
                       <Typography variant="body2" color="text.secondary">
-                        Current stock: {selectedIngredient.current_stock.toFixed(1)} {selectedIngredient.unit}
+                        Current stock: {selectedIngredient.current_stock.toFixed(1)}{' '}
+                        {selectedIngredient.unit}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Reorder point: {selectedIngredient.reorder_point.toFixed(1)} {selectedIngredient.unit} • {supplierPreviewCount} supplier{supplierPreviewCount === 1 ? '' : 's'} available
+                        Reorder point: {selectedIngredient.reorder_point.toFixed(1)}{' '}
+                        {selectedIngredient.unit} • {supplierPreviewCount} supplier
+                        {supplierPreviewCount === 1 ? '' : 's'} available
                       </Typography>
                     </Box>
                   </Stack>
@@ -275,7 +289,12 @@ export default function POIngredientBrowser({
                           <Stack spacing={1.5}>
                             <Stack direction="row" justifyContent="space-between" spacing={2}>
                               <Box>
-                                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                                <Stack
+                                  direction="row"
+                                  spacing={1}
+                                  alignItems="center"
+                                  sx={{ mb: 0.5 }}
+                                >
                                   <Typography variant="subtitle1" fontWeight={600}>
                                     {supplier.supplier_name}
                                   </Typography>
@@ -283,14 +302,21 @@ export default function POIngredientBrowser({
                                     <Chip size="small" label="Preferred" color="primary" />
                                   )}
                                   {existingQty > 0 && (
-                                    <Chip size="small" label={`In draft: ${existingQty}`} variant="outlined" />
+                                    <Chip
+                                      size="small"
+                                      label={`In draft: ${existingQty}`}
+                                      variant="outlined"
+                                    />
                                   )}
                                 </Stack>
                                 <Typography variant="body2" color="text.secondary">
-                                  Lead time: {supplier.lead_time_days} day{supplier.lead_time_days === 1 ? '' : 's'} • Minimum: {supplier.min_order_quantity} {supplier.pack_unit}
+                                  Lead time: {supplier.lead_time_days} day
+                                  {supplier.lead_time_days === 1 ? '' : 's'} • Minimum:{' '}
+                                  {supplier.min_order_quantity} {supplier.pack_unit}
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary">
-                                  Pack: {supplier.pack_size} {supplier.pack_unit} • Supplier priority: {supplier.supplier_priority}
+                                  Pack: {supplier.pack_size} {supplier.pack_unit} • Supplier
+                                  priority: {supplier.supplier_priority}
                                 </Typography>
                               </Box>
                               <Box sx={{ textAlign: 'right' }}>
@@ -304,9 +330,16 @@ export default function POIngredientBrowser({
                             </Stack>
 
                             {selected && (
-                              <Paper variant="outlined" sx={{ p: 1.5, bgcolor: alpha('#1976d2', 0.04) }}>
+                              <Paper
+                                variant="outlined"
+                                sx={{ p: 1.5, bgcolor: alpha('#1976d2', 0.04) }}
+                              >
                                 <Stack spacing={1.5}>
-                                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                                  <Stack
+                                    direction={{ xs: 'column', sm: 'row' }}
+                                    spacing={2}
+                                    alignItems={{ xs: 'stretch', sm: 'center' }}
+                                  >
                                     <Stack direction="row" spacing={0.5} alignItems="center">
                                       <IconButton
                                         size="small"
@@ -342,18 +375,29 @@ export default function POIngredientBrowser({
                                     </Stack>
                                     <Box sx={{ flex: 1 }}>
                                       <Typography variant="body2" color="text.secondary">
-                                        {ingredientQty} pack{ingredientQty === 1 ? '' : 's'} × {supplier.pack_size} {supplier.pack_unit}
+                                        {ingredientQty} pack{ingredientQty === 1 ? '' : 's'} ×{' '}
+                                        {supplier.pack_size} {supplier.pack_unit}
                                       </Typography>
                                       <Typography variant="caption" color="text.secondary">
-                                        Total units: {ingredientQty * supplier.pack_size} {supplier.pack_unit}
+                                        Total units: {ingredientQty * supplier.pack_size}{' '}
+                                        {supplier.pack_unit}
                                       </Typography>
                                     </Box>
                                     <Typography variant="h6" color="primary.main">
-                                      ${(ingredientQty * supplier.pack_size * supplier.unit_price).toFixed(2)}
+                                      $
+                                      {(
+                                        ingredientQty *
+                                        supplier.pack_size *
+                                        supplier.unit_price
+                                      ).toFixed(2)}
                                     </Typography>
                                   </Stack>
 
-                                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                  <Stack
+                                    direction="row"
+                                    justifyContent="space-between"
+                                    alignItems="center"
+                                  >
                                     <Typography variant="caption" color="text.secondary">
                                       Add this supplier choice directly into the draft on the right.
                                     </Typography>
