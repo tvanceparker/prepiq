@@ -24,9 +24,6 @@ import {
   Alert,
   Chip,
   CircularProgress,
-  Stepper,
-  Step,
-  StepLabel,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -34,8 +31,8 @@ import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import RemoveIcon from '@mui/icons-material/Remove';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -69,7 +66,6 @@ import {
   POSupplierConfig,
   POIngredientBrowser,
   POSupplierReview,
-  POIngredientReview,
   WizardMode,
   IngredientCartItem,
 } from './components/po-wizard';
@@ -80,8 +76,7 @@ const statusTabs: { label: string; value: PurchaseOrderStatus }[] = [
   { label: 'Delivered', value: 'delivered' },
 ];
 
-type WizardStep = 0 | 1 | 2;
-const WIZARD_STEPS = ['Choose Method', 'Select Items', 'Review & Create'];
+type WizardStep = 0 | 1;
 
 export default function PurchaseOrders() {
   const qc = useQueryClient();
@@ -254,7 +249,6 @@ export default function PurchaseOrders() {
       });
       setSelectedItems(allItems);
       setExpandedSuppliers(new Set(data.suggestions.map(s => s.supplier_id)));
-      setWizardStep(2);
     },
     onError: (err: any) => {
       showToast(
@@ -412,6 +406,37 @@ export default function PurchaseOrders() {
     return { itemCount, total, supplierCount: supplierSet.size };
   }, [suggestions, selectedItems]);
 
+  const supplierSidebarGroups = useMemo(() => {
+    if (!suggestions) return [];
+
+    return suggestions.suggestions
+      .map(group => {
+        const items = group.items
+          .filter(item => selectedItems.has(`${group.supplier_id}-${item.ingredient_id}`))
+          .map(item => {
+            const key = `${group.supplier_id}-${item.ingredient_id}`;
+            const quantity = selectedItems.get(key) || item.quantity_to_order;
+            return {
+              key,
+              ingredientId: item.ingredient_id,
+              ingredientName: item.ingredient_name,
+              quantity,
+              unit: item.unit,
+              lineTotal: quantity * item.unit_price,
+              unitPrice: item.unit_price,
+            };
+          });
+
+        return {
+          supplierId: group.supplier_id,
+          supplierName: group.supplier_name,
+          items,
+          total: items.reduce((sum, item) => sum + item.lineTotal, 0),
+        };
+      })
+      .filter(group => group.items.length > 0);
+  }, [suggestions, selectedItems]);
+
   const ingredientCartTotals = useMemo(() => {
     const supplierSet = new Set<number>();
     let total = 0;
@@ -422,6 +447,49 @@ export default function PurchaseOrders() {
       total += item.qtyPacks * item.supplier.pack_size * item.supplier.unit_price;
     });
     return { itemCount, total, supplierCount: supplierSet.size };
+  }, [ingredientCart]);
+
+  const ingredientSidebarGroups = useMemo(() => {
+    const map = new Map<
+      number,
+      {
+        supplierId: number;
+        supplierName: string;
+        leadTime: number;
+        items: Array<{
+          ingredientId: number;
+          ingredientName: string;
+          quantity: number;
+          packSize: number;
+          packUnit: string;
+          lineTotal: number;
+          supplierId: number;
+        }>;
+      }
+    >();
+
+    ingredientCart.forEach(item => {
+      if (!map.has(item.supplier.supplier_id)) {
+        map.set(item.supplier.supplier_id, {
+          supplierId: item.supplier.supplier_id,
+          supplierName: item.supplier.supplier_name,
+          leadTime: item.supplier.lead_time_days,
+          items: [],
+        });
+      }
+
+      map.get(item.supplier.supplier_id)!.items.push({
+        ingredientId: item.ingredient.ingredient_id,
+        ingredientName: item.ingredient.ingredient_name,
+        quantity: item.qtyPacks,
+        packSize: item.supplier.pack_size,
+        packUnit: item.supplier.pack_unit,
+        lineTotal: item.qtyPacks * item.supplier.pack_size * item.supplier.unit_price,
+        supplierId: item.supplier.supplier_id,
+      });
+    });
+
+    return Array.from(map.values());
   }, [ingredientCart]);
 
   // Order list grouping
@@ -446,27 +514,19 @@ export default function PurchaseOrders() {
   // Navigation helpers
   const canProceed = () => {
     if (wizardStep === 0) return wizardMode !== null;
-    if (wizardStep === 1 && wizardMode === 'ingredient') return ingredientCart.length > 0;
-    if (wizardStep === 2) {
-      if (wizardMode === 'supplier') return selectedItems.size > 0;
-      return ingredientCart.length > 0;
-    }
+    if (wizardMode === 'supplier') return selectedItems.size > 0;
+    if (wizardMode === 'ingredient') return ingredientCart.length > 0;
     return true;
   };
 
   const handleNext = () => {
     if (wizardStep === 0) setWizardStep(1);
-    else if (wizardStep === 1 && wizardMode === 'ingredient' && ingredientCart.length > 0)
-      setWizardStep(2);
   };
 
   const handleBack = () => {
     if (wizardStep === 1) {
       setWizardStep(0);
       setSuggestions(null);
-    } else if (wizardStep === 2) {
-      if (wizardMode === 'supplier') setSuggestions(null);
-      setWizardStep(1);
     }
   };
 
@@ -475,14 +535,35 @@ export default function PurchaseOrders() {
     else handleCreateIngredientOrdersFromCart();
   };
 
-  // Wizard content
-  const renderWizardContent = () => {
+  const updateSuggestedItemQty = useCallback(
+    (supplierId: number, ingredientId: number, quantity: number) => {
+      setSelectedItems(prev => {
+        const next = new Map(prev);
+        const key = `${supplierId}-${ingredientId}`;
+        if (!next.has(key)) return next;
+        next.set(key, Math.max(1, quantity));
+        return next;
+      });
+    },
+    []
+  );
+
+  const removeSuggestedItem = useCallback((supplierId: number, ingredientId: number) => {
+    setSelectedItems(prev => {
+      const next = new Map(prev);
+      next.delete(`${supplierId}-${ingredientId}`);
+      return next;
+    });
+  }, []);
+
+  const renderWizardMainContent = () => {
     if (wizardStep === 0) {
       return <POMethodSelector selectedMode={wizardMode} onSelectMode={setWizardMode} />;
     }
+
     if (wizardMode === 'supplier') {
-      if (wizardStep === 1) {
-        return (
+      return (
+        <Stack spacing={3}>
           <POSupplierConfig
             useCachedForecast={useCachedForecast}
             setUseCachedForecast={setUseCachedForecast}
@@ -492,57 +573,294 @@ export default function PurchaseOrders() {
             onGenerate={() => generateMut.mutate()}
             isGenerating={generateMut.isPending}
           />
-        );
-      }
-      if (wizardStep === 2 && suggestions) {
-        return (
-          <POSupplierReview
-            suggestions={suggestions}
-            selectedItems={selectedItems}
-            setSelectedItems={setSelectedItems}
-            expandedSuppliers={expandedSuppliers}
-            setExpandedSuppliers={setExpandedSuppliers}
-            orderNotes={orderNotes}
-            setOrderNotes={setOrderNotes}
-          />
-        );
-      }
+
+          {suggestions ? (
+            <POSupplierReview
+              suggestions={suggestions}
+              selectedItems={selectedItems}
+              setSelectedItems={setSelectedItems}
+              expandedSuppliers={expandedSuppliers}
+              setExpandedSuppliers={setExpandedSuppliers}
+              orderNotes={orderNotes}
+              setOrderNotes={setOrderNotes}
+              showSummary={false}
+              showNotes={false}
+              title="Generated Suggestions"
+              maxHeight={480}
+            />
+          ) : (
+            <Paper variant="outlined" sx={{ p: 3, bgcolor: 'background.default' }}>
+              <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>
+                Suggestions will appear here
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Generate supplier recommendations, then refine quantities on the left while the
+                draft stays visible on the right.
+              </Typography>
+            </Paper>
+          )}
+        </Stack>
+      );
     }
+
     if (wizardMode === 'ingredient') {
-      if (wizardStep === 1) {
-        return (
-          <POIngredientBrowser
-            stockLevels={stockLevels}
-            stockLoading={stockLoading}
-            selectedIngredient={selectedIngredient}
-            setSelectedIngredient={setSelectedIngredient}
-            ingredientSuppliers={ingredientSuppliers}
-            suppliersLoading={suppliersLoading}
-            ingredientSupplier={ingredientSupplier}
-            setIngredientSupplier={setIngredientSupplier}
-            ingredientQty={ingredientQty}
-            setIngredientQty={setIngredientQty}
-            cartItems={ingredientCart}
-            onAddToCart={upsertIngredientCartItem}
-            onUpdateCartItemQty={updateCartItemQty}
-            onRemoveCartItem={removeCartItem}
-            onProceedToReview={() => setWizardStep(2)}
-          />
-        );
-      }
-      if (wizardStep === 2 && ingredientCart.length > 0) {
-        return (
-          <POIngredientReview
-            cartItems={ingredientCart}
-            onUpdateCartItemQty={updateCartItemQty}
-            onRemoveCartItem={removeCartItem}
-            orderNotes={orderNotes}
-            setOrderNotes={setOrderNotes}
-          />
-        );
-      }
+      return (
+        <POIngredientBrowser
+          stockLevels={stockLevels}
+          stockLoading={stockLoading}
+          selectedIngredient={selectedIngredient}
+          setSelectedIngredient={setSelectedIngredient}
+          ingredientSuppliers={ingredientSuppliers}
+          suppliersLoading={suppliersLoading}
+          ingredientSupplier={ingredientSupplier}
+          setIngredientSupplier={setIngredientSupplier}
+          ingredientQty={ingredientQty}
+          setIngredientQty={setIngredientQty}
+          cartItems={ingredientCart}
+          onAddToCart={upsertIngredientCartItem}
+          onUpdateCartItemQty={updateCartItemQty}
+          onRemoveCartItem={removeCartItem}
+        />
+      );
     }
+
     return null;
+  };
+
+  const renderBuilderSidebar = () => {
+    if (!wizardMode) return null;
+
+    const isSupplier = wizardMode === 'supplier';
+    const hasItems = isSupplier ? supplierSidebarGroups.length > 0 : ingredientSidebarGroups.length > 0;
+    const totals = isSupplier ? reviewTotals : ingredientCartTotals;
+
+    return (
+      <Paper
+        variant="outlined"
+        sx={{
+          p: 2.5,
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          bgcolor: 'background.paper',
+        }}
+      >
+        <Stack spacing={1.5} sx={{ mb: 2 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700}>
+                Current Draft
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {isSupplier
+                  ? 'Selected from supplier recommendations'
+                  : 'Items grouped by supplier as you build the order'}
+              </Typography>
+            </Box>
+            {isSupplier && suggestions && (
+              <Chip
+                size="small"
+                label={`${suggestions.forecast_source} · ${suggestions.horizon_days}d`}
+                variant="outlined"
+                color="primary"
+              />
+            )}
+          </Stack>
+
+          <Stack direction="row" spacing={1}>
+            <Paper variant="outlined" sx={{ p: 1.25, flex: 1, bgcolor: 'background.default' }}>
+              <Typography variant="caption" color="text.secondary">
+                Items
+              </Typography>
+              <Typography variant="h6" fontWeight={700}>
+                {totals.itemCount}
+              </Typography>
+            </Paper>
+            <Paper variant="outlined" sx={{ p: 1.25, flex: 1, bgcolor: 'background.default' }}>
+              <Typography variant="caption" color="text.secondary">
+                Suppliers
+              </Typography>
+              <Typography variant="h6" fontWeight={700}>
+                {totals.supplierCount}
+              </Typography>
+            </Paper>
+            <Paper variant="outlined" sx={{ p: 1.25, flex: 1, bgcolor: 'background.default' }}>
+              <Typography variant="caption" color="text.secondary">
+                Total
+              </Typography>
+              <Typography variant="h6" fontWeight={700} color="primary.main">
+                ${totals.total.toFixed(2)}
+              </Typography>
+            </Paper>
+          </Stack>
+        </Stack>
+
+        <Box sx={{ flex: 1, overflow: 'auto', pr: 0.5 }}>
+          {!hasItems ? (
+            <Paper
+              variant="outlined"
+              sx={{
+                p: 3,
+                textAlign: 'center',
+                color: 'text.secondary',
+                bgcolor: 'background.default',
+              }}
+            >
+              <ShoppingCartIcon sx={{ fontSize: 36, mb: 1, opacity: 0.45 }} />
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.5 }}>
+                No items in the draft yet
+              </Typography>
+              <Typography variant="body2">
+                {isSupplier
+                  ? 'Generate suggestions and choose the items you want to turn into draft purchase orders.'
+                  : 'Pick an ingredient, choose a supplier, and add quantities. The draft stays here while you work.'}
+              </Typography>
+            </Paper>
+          ) : isSupplier ? (
+            <Stack spacing={1.5}>
+              {supplierSidebarGroups.map(group => (
+                <Paper key={group.supplierId} variant="outlined" sx={{ p: 1.5 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      {group.supplierName}
+                    </Typography>
+                    <Typography variant="body2" color="primary.main" fontWeight={700}>
+                      ${group.total.toFixed(2)}
+                    </Typography>
+                  </Stack>
+                  <Stack spacing={1}>
+                    {group.items.map(item => (
+                      <Paper key={item.key} variant="outlined" sx={{ p: 1.25, bgcolor: 'background.default' }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="body2" fontWeight={600}>
+                              {item.ingredientName}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              ${item.unitPrice.toFixed(2)} per {item.unit}
+                            </Typography>
+                          </Box>
+                          <Stack direction="row" spacing={0.25} alignItems="center">
+                            <IconButton
+                              size="small"
+                              onClick={() =>
+                                updateSuggestedItemQty(group.supplierId, item.ingredientId, item.quantity - 1)
+                              }
+                            >
+                              <RemoveIcon fontSize="small" />
+                            </IconButton>
+                            <Typography sx={{ minWidth: 34, textAlign: 'center' }}>
+                              {item.quantity}
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              onClick={() =>
+                                updateSuggestedItemQty(group.supplierId, item.ingredientId, item.quantity + 1)
+                              }
+                            >
+                              <AddIcon fontSize="small" />
+                            </IconButton>
+                          </Stack>
+                          <Typography variant="body2" sx={{ minWidth: 82, textAlign: 'right' }}>
+                            ${item.lineTotal.toFixed(2)}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => removeSuggestedItem(group.supplierId, item.ingredientId)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Stack>
+                      </Paper>
+                    ))}
+                  </Stack>
+                </Paper>
+              ))}
+            </Stack>
+          ) : (
+            <Stack spacing={1.5}>
+              {ingredientSidebarGroups.map(group => (
+                <Paper key={group.supplierId} variant="outlined" sx={{ p: 1.5 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                    <Box>
+                      <Typography variant="subtitle2" fontWeight={700}>
+                        {group.supplierName}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Lead time: {group.leadTime} day{group.leadTime === 1 ? '' : 's'}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                  <Stack spacing={1}>
+                    {group.items.map(item => (
+                      <Paper
+                        key={`${item.ingredientId}-${item.supplierId}`}
+                        variant="outlined"
+                        sx={{ p: 1.25, bgcolor: 'background.default' }}
+                      >
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="body2" fontWeight={600}>
+                              {item.ingredientName}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {item.quantity * item.packSize} {item.packUnit}
+                            </Typography>
+                          </Box>
+                          <Stack direction="row" spacing={0.25} alignItems="center">
+                            <IconButton
+                              size="small"
+                              onClick={() =>
+                                updateCartItemQty(item.ingredientId, item.supplierId, item.quantity - 1)
+                              }
+                            >
+                              <RemoveIcon fontSize="small" />
+                            </IconButton>
+                            <Typography sx={{ minWidth: 34, textAlign: 'center' }}>
+                              {item.quantity}
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              onClick={() =>
+                                updateCartItemQty(item.ingredientId, item.supplierId, item.quantity + 1)
+                              }
+                            >
+                              <AddIcon fontSize="small" />
+                            </IconButton>
+                          </Stack>
+                          <Typography variant="body2" sx={{ minWidth: 82, textAlign: 'right' }}>
+                            ${item.lineTotal.toFixed(2)}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => removeCartItem(item.ingredientId, item.supplierId)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Stack>
+                      </Paper>
+                    ))}
+                  </Stack>
+                </Paper>
+              ))}
+            </Stack>
+          )}
+        </Box>
+
+        <Box sx={{ pt: 2 }}>
+          <TextField
+            fullWidth
+            label="Order Notes (optional)"
+            value={orderNotes}
+            onChange={e => setOrderNotes(e.target.value)}
+            multiline
+            rows={3}
+          />
+        </Box>
+      </Paper>
+    );
   };
 
   // Item Editor Component
@@ -926,29 +1244,55 @@ export default function PurchaseOrders() {
       <Dialog
         open={wizardOpen}
         onClose={closeWizard}
-        maxWidth="md"
+        maxWidth="lg"
         fullWidth
-        PaperProps={{ sx: { minHeight: 500 } }}
+        PaperProps={{ sx: { minHeight: 620 } }}
       >
         <DialogTitle sx={{ pb: 1 }}>
-          <Stack direction="row" alignItems="center" spacing={2}>
-            <ShoppingCartIcon color="primary" />
-            <Typography variant="h6">New Purchase Order</Typography>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+            <Stack direction="row" alignItems="center" spacing={2}>
+              <ShoppingCartIcon color="primary" />
+              <Box>
+                <Typography variant="h6">New Purchase Order</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Build the order on the left and keep the live draft anchored on the right.
+                </Typography>
+              </Box>
+            </Stack>
+            {wizardMode && wizardStep === 1 && (
+              <Chip
+                color={wizardMode === 'supplier' ? 'primary' : 'secondary'}
+                variant="outlined"
+                label={wizardMode === 'supplier' ? 'Supplier Builder' : 'Ingredient Builder'}
+              />
+            )}
           </Stack>
         </DialogTitle>
 
-        <Box sx={{ px: 3, pb: 2 }}>
-          <Stepper activeStep={wizardStep} alternativeLabel>
-            {WIZARD_STEPS.map((label, index) => (
-              <Step key={label} completed={wizardStep > index}>
-                <StepLabel>{label}</StepLabel>
-              </Step>
-            ))}
-          </Stepper>
-        </Box>
-
-        <DialogContent dividers sx={{ minHeight: 350 }}>
-          {renderWizardContent()}
+        <DialogContent
+          dividers
+          sx={{
+            minHeight: 460,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {wizardStep === 0 ? (
+            renderWizardMainContent()
+          ) : (
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1.55fr) minmax(320px, 0.95fr)' },
+                gap: 2,
+                flex: 1,
+                minHeight: 0,
+              }}
+            >
+              <Box sx={{ minWidth: 0 }}>{renderWizardMainContent()}</Box>
+              <Box sx={{ minWidth: 0 }}>{renderBuilderSidebar()}</Box>
+            </Box>
+          )}
         </DialogContent>
 
         <DialogActions sx={{ px: 3, py: 2 }}>
@@ -956,17 +1300,16 @@ export default function PurchaseOrders() {
           <Box sx={{ flex: 1 }} />
           {wizardStep > 0 && (
             <Button startIcon={<ArrowBackIcon />} onClick={handleBack}>
-              Back
+              Change Method
             </Button>
           )}
-          {wizardStep < 2 ? (
+          {wizardStep === 0 ? (
             <Button
               variant="contained"
-              endIcon={<ArrowForwardIcon />}
               onClick={handleNext}
               disabled={!canProceed()}
             >
-              {wizardStep === 0 ? 'Continue' : wizardMode === 'supplier' ? 'Generate' : 'Review'}
+              Continue
             </Button>
           ) : (
             <Button

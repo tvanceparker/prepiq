@@ -35,6 +35,10 @@ interface POSupplierReviewProps {
   setExpandedSuppliers: React.Dispatch<React.SetStateAction<Set<number>>>;
   orderNotes: string;
   setOrderNotes: (notes: string) => void;
+  showSummary?: boolean;
+  showNotes?: boolean;
+  title?: string;
+  maxHeight?: number;
 }
 
 export default function POSupplierReview({
@@ -45,6 +49,10 @@ export default function POSupplierReview({
   setExpandedSuppliers,
   orderNotes,
   setOrderNotes,
+  showSummary = true,
+  showNotes = true,
+  title = 'Review & Finalize Orders',
+  maxHeight = 350,
 }: POSupplierReviewProps) {
   // Update item quantity
   const updateItemQty = (key: string, delta: number) => {
@@ -127,7 +135,7 @@ export default function POSupplierReview({
       <Box>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
           <Typography variant="subtitle1" fontWeight={600}>
-            Review & Finalize Orders
+            {title}
           </Typography>
           <Chip
             label={`${suggestions.forecast_source} forecast`}
@@ -137,36 +145,38 @@ export default function POSupplierReview({
           />
         </Stack>
 
-        <Paper sx={{ p: 2, mb: 3, bgcolor: 'primary.50' }} variant="outlined">
-          <Grid container spacing={2}>
-            <Grid item xs={4}>
-              <Typography variant="caption" color="text.secondary">
-                Items Selected
-              </Typography>
-              <Typography variant="h5" fontWeight={600}>
-                {reviewTotals.itemCount}
-              </Typography>
+        {showSummary && (
+          <Paper sx={{ p: 2, mb: 3, bgcolor: 'primary.50' }} variant="outlined">
+            <Grid container spacing={2}>
+              <Grid item xs={4}>
+                <Typography variant="caption" color="text.secondary">
+                  Items Selected
+                </Typography>
+                <Typography variant="h5" fontWeight={600}>
+                  {reviewTotals.itemCount}
+                </Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="caption" color="text.secondary">
+                  Suppliers
+                </Typography>
+                <Typography variant="h5" fontWeight={600}>
+                  {reviewTotals.supplierCount}
+                </Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="caption" color="text.secondary">
+                  Total Cost
+                </Typography>
+                <Typography variant="h5" fontWeight={600} color="primary.main">
+                  ${reviewTotals.total.toFixed(2)}
+                </Typography>
+              </Grid>
             </Grid>
-            <Grid item xs={4}>
-              <Typography variant="caption" color="text.secondary">
-                Suppliers
-              </Typography>
-              <Typography variant="h5" fontWeight={600}>
-                {reviewTotals.supplierCount}
-              </Typography>
-            </Grid>
-            <Grid item xs={4}>
-              <Typography variant="caption" color="text.secondary">
-                Total Cost
-              </Typography>
-              <Typography variant="h5" fontWeight={600} color="primary.main">
-                ${reviewTotals.total.toFixed(2)}
-              </Typography>
-            </Grid>
-          </Grid>
-        </Paper>
+          </Paper>
+        )}
 
-        <Box sx={{ maxHeight: 350, overflow: 'auto' }}>
+        <Box sx={{ maxHeight, overflow: 'auto' }}>
           <List disablePadding>
             {suggestions.suggestions.map(supplier => {
               const supplierKeys = supplier.items.map(i => ({
@@ -305,15 +315,17 @@ export default function POSupplierReview({
           </List>
         </Box>
 
-        <TextField
-          fullWidth
-          label="Order Notes (optional)"
-          value={orderNotes}
-          onChange={e => setOrderNotes(e.target.value)}
-          multiline
-          rows={2}
-          sx={{ mt: 2 }}
-        />
+        {showNotes && (
+          <TextField
+            fullWidth
+            label="Order Notes (optional)"
+            value={orderNotes}
+            onChange={e => setOrderNotes(e.target.value)}
+            multiline
+            rows={2}
+            sx={{ mt: 2 }}
+          />
+        )}
       </Box>
     </Fade>
   );
