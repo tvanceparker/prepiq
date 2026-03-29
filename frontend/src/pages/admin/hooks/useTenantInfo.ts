@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getTenantInfo, updateTenantInfo } from "../../../api/admin.ts";
-import { TenantInfo } from "../../../interfaces/admin"; // Types for admin/tenant
+import { TenantInfo } from "../../../interfaces/admin.ts"; // Types for admin/tenant
 
 export default function useTenantInfo() {
   const queryClient = useQueryClient();

@@ -1,9 +1,9 @@
 import React, { useEffect } from 'react';
-import { useRestaurantSettings } from '../hooks/useRestaurantSettings';
-import { useUIStore } from '../../../stores/uiStore';
+import { useRestaurantSettings } from '../hooks/useRestaurantSettings.ts';
+import { useUIStore } from '../../../stores/uiStore.ts';
 import ProRestaurantSettingsModal from './ProRestaurantSettingsModal.tsx';
-import ManualEodRunCard from './ManualEodRunCard';
-import type { RestaurantSettings } from '../../../interfaces/settings';
+import ManualEodRunCard from './ManualEodRunCard.tsx';
+import type { RestaurantSettings } from '../../../interfaces/settings.ts';
 
 import {
   Paper,
@@ -28,7 +28,7 @@ import {
   Inventory2 as InventoryIcon,
   NotificationsActive as AlertIcon,
 } from '@mui/icons-material';
-import Button from '../../../components/Button';
+import Button from '../../../components/Button.tsx';
 
 interface SettingItemProps {
   icon: React.ReactNode;
