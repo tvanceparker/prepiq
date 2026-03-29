@@ -25,13 +25,11 @@ import {
   People,
   Restaurant,
 } from '@mui/icons-material';
-import { Chart } from 'react-chartjs-2';
+import * as ReactChartJs2 from 'react-chartjs-2';
 import {
   Chart as ChartJS,
-  BarController,
   CategoryScale,
   LinearScale,
-  LineController,
   PointElement,
   LineElement,
   BarElement,
@@ -43,11 +41,11 @@ import { useQuery } from '@tanstack/react-query';
 import { getQuickAnalytics } from '../../api/dashboard';
 import type { QuickAnalyticsData } from '../../interfaces/quickAnalytics';
 
+const { Line, Bar } = ReactChartJs2 as any;
+
 ChartJS.register(
-  BarController,
   CategoryScale,
   LinearScale,
-  LineController,
   PointElement,
   LineElement,
   BarElement,
@@ -247,7 +245,7 @@ const QuickAnalytics: React.FC = () => {
               Daily Sales Trend
             </Typography>
             <Box sx={{ height: 250 }}>
-              <Chart type="line" data={salesChartData} options={chartOptions} />
+              <Line data={salesChartData} options={chartOptions} />
             </Box>
           </Paper>
         </Grid>
@@ -257,7 +255,7 @@ const QuickAnalytics: React.FC = () => {
               Daily Orders
             </Typography>
             <Box sx={{ height: 250 }}>
-              <Chart type="bar" data={ordersChartData} options={chartOptions} />
+              <Bar data={ordersChartData} options={chartOptions} />
             </Box>
           </Paper>
         </Grid>
@@ -271,7 +269,7 @@ const QuickAnalytics: React.FC = () => {
               Average Hourly Order Pattern
             </Typography>
             <Box sx={{ height: 200 }}>
-              <Chart type="bar" data={hourlyChartData} options={chartOptions} />
+              <Bar data={hourlyChartData} options={chartOptions} />
             </Box>
           </Paper>
         </Grid>

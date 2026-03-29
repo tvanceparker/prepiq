@@ -10,9 +10,11 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import { Chart } from 'react-chartjs-2';
+import * as ReactChartJs2 from 'react-chartjs-2';
 import 'chart.js/auto';
 import { useWasteDashboard } from './hooks/useWasteDashboard';
+
+const { Line } = ReactChartJs2 as any;
 
 const currency = (value: number) => `$${(value ?? 0).toFixed(2)}`;
 
@@ -145,7 +147,7 @@ function WasteDashboard() {
           {filteredTrend.length === 0 ? (
             <Typography color="text.secondary">No waste logged for this range.</Typography>
           ) : (
-            <Chart type="line" data={chartData} />
+            <Line data={chartData} />
           )}
         </CardContent>
       </Card>

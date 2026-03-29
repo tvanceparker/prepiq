@@ -28,31 +28,21 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { getTeamInsights, TeamInsightsData } from '../../api/team';
-import { Chart } from 'react-chartjs-2';
+import * as ReactChartJs2 from 'react-chartjs-2';
 import {
   Chart as ChartJS,
-  BarController,
   CategoryScale,
   LinearScale,
   BarElement,
   ArcElement,
-  PieController,
   Title,
   Tooltip,
   Legend,
 } from 'chart.js';
 
-ChartJS.register(
-  BarController,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  ArcElement,
-  PieController,
-  Title,
-  Tooltip,
-  Legend
-);
+const { Bar, Pie } = ReactChartJs2 as any;
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend);
 
 const TeamInsights: React.FC = () => {
   const [startDate, setStartDate] = useState(dayjs().subtract(30, 'day').format('YYYY-MM-DD'));
@@ -242,9 +232,7 @@ const TeamInsights: React.FC = () => {
                   <Typography variant="h6" fontWeight="bold" sx={{ mb: 2 }}>
                     Hours Worked by Day
                   </Typography>
-                  {hoursChartData && (
-                    <Chart type="bar" data={hoursChartData} options={{ responsive: true }} />
-                  )}
+                  {hoursChartData && <Bar data={hoursChartData} options={{ responsive: true }} />}
                 </Paper>
               </Grid>
               <Grid item xs={12} md={4}>
@@ -253,8 +241,7 @@ const TeamInsights: React.FC = () => {
                     Shifts by Type
                   </Typography>
                   {shiftsTypeData && (
-                    <Chart
-                      type="pie"
+                    <Pie
                       data={shiftsTypeData}
                       options={{
                         responsive: true,

@@ -1,8 +1,7 @@
 import React, { useMemo } from 'react';
-import { Chart } from 'react-chartjs-2';
+import * as ReactChartJs2 from 'react-chartjs-2';
 import {
   Chart as ChartJS,
-  LineController,
   LineElement,
   PointElement,
   LinearScale,
@@ -13,16 +12,9 @@ import {
 } from 'chart.js';
 import { Typography, useTheme, Box } from '@mui/material';
 
-ChartJS.register(
-  LineController,
-  LineElement,
-  PointElement,
-  LinearScale,
-  Title,
-  Tooltip,
-  Legend,
-  CategoryScale
-);
+const { Line } = ReactChartJs2 as any;
+
+ChartJS.register(LineElement, PointElement, LinearScale, Title, Tooltip, Legend, CategoryScale);
 
 export default function SalesPatternsOverTimeChart({ data }) {
   const theme = useTheme();
@@ -195,7 +187,7 @@ export default function SalesPatternsOverTimeChart({ data }) {
       }}
     >
       <Box sx={{ minWidth: chartData.length * 40, height: '100%' }}>
-        <Chart type="line" data={chartDataConfig} options={chartOptions} />
+        <Line data={chartDataConfig} options={chartOptions} />
       </Box>
     </Box>
   );
