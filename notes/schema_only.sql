@@ -35,7 +35,7 @@ CREATE TABLE `activity_logs` (
   KEY `employee_id` (`employee_id`),
   CONSTRAINT `activity_logs_ibfk_1` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`),
   CONSTRAINT `activity_logs_ibfk_2` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=1592 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=1596 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -63,7 +63,7 @@ CREATE TABLE `alerts` (
   KEY `alerts_ibfk_2` (`employee_id`),
   CONSTRAINT `alerts_ibfk_1` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`),
   CONSTRAINT `alerts_ibfk_2` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=409 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=410 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -341,6 +341,51 @@ CREATE TABLE `employees` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `eod_purchase_order_suggestions`
+--
+
+DROP TABLE IF EXISTS `eod_purchase_order_suggestions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `eod_purchase_order_suggestions` (
+  `suggestion_id` int(11) NOT NULL AUTO_INCREMENT,
+  `restaurant_id` int(11) NOT NULL,
+  `run_date` date NOT NULL,
+  `supplier_id` int(11) NOT NULL,
+  `ingredient_id` int(11) NOT NULL,
+  `ingredient_supplier_id` int(11) NOT NULL,
+  `lead_demand` decimal(12,2) NOT NULL DEFAULT 0.00,
+  `shelf_demand` decimal(12,2) NOT NULL DEFAULT 0.00,
+  `forecast_unit` varchar(20) DEFAULT NULL,
+  `converted_quantity_needed` decimal(12,2) NOT NULL DEFAULT 0.00,
+  `suggested_packs_to_order` int(11) NOT NULL DEFAULT 0,
+  `total_quantity_ordered` decimal(12,2) NOT NULL DEFAULT 0.00,
+  `supplier_unit` varchar(20) NOT NULL,
+  `inventory_unit` varchar(20) DEFAULT NULL,
+  `lead_time_days` int(11) NOT NULL DEFAULT 0,
+  `shelf_life_days` int(11) NOT NULL DEFAULT 0,
+  `pack_size` int(11) NOT NULL DEFAULT 1,
+  `quantity_per_pack_item` decimal(12,2) NOT NULL DEFAULT 1.00,
+  `min_order_quantity` decimal(12,2) NOT NULL DEFAULT 0.00,
+  `purchase_order_id` int(11) DEFAULT NULL,
+  `written_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`suggestion_id`),
+  UNIQUE KEY `uq_eod_po_suggestions_restaurant_date_supplier_ingredient` (`restaurant_id`,`run_date`,`supplier_id`,`ingredient_id`),
+  KEY `fk_eod_po_suggestions_supplier` (`supplier_id`),
+  KEY `fk_eod_po_suggestions_ingredient` (`ingredient_id`),
+  KEY `fk_eod_po_suggestions_ingredient_supplier` (`ingredient_supplier_id`),
+  KEY `fk_eod_po_suggestions_purchase_order` (`purchase_order_id`),
+  KEY `ix_eod_po_suggestions_restaurant_run_date` (`restaurant_id`,`run_date`),
+  CONSTRAINT `fk_eod_po_suggestions_ingredient` FOREIGN KEY (`ingredient_id`) REFERENCES `ingredients` (`ingredient_id`),
+  CONSTRAINT `fk_eod_po_suggestions_ingredient_supplier` FOREIGN KEY (`ingredient_supplier_id`) REFERENCES `ingredient_supplier` (`ingredient_supplier_id`),
+  CONSTRAINT `fk_eod_po_suggestions_purchase_order` FOREIGN KEY (`purchase_order_id`) REFERENCES `purchase_orders` (`order_id`),
+  CONSTRAINT `fk_eod_po_suggestions_restaurant` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`),
+  CONSTRAINT `fk_eod_po_suggestions_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `supplier` (`supplier_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `eod_run_ledger`
 --
 
@@ -483,7 +528,7 @@ CREATE TABLE `forecast_run_ledger` (
   KEY `idx_finalized` (`finalized`),
   KEY `idx_restaurant_id` (`restaurant_id`),
   CONSTRAINT `forecast_run_ledger_ibfk_1` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -636,14 +681,22 @@ CREATE TABLE `inventory_lots` (
   `ingredient_id` int(11) DEFAULT NULL,
   `batch_recipe_id` int(11) DEFAULT NULL,
   `status` enum('available','used','expired') DEFAULT 'available',
+  `receipt_source` varchar(50) DEFAULT NULL,
+  `purchase_order_id` int(11) DEFAULT NULL,
+  `purchase_order_item_id` int(11) DEFAULT NULL,
   PRIMARY KEY (`lot_id`),
+  UNIQUE KEY `uq_inventory_lots_purchase_order_item_id` (`purchase_order_item_id`),
   KEY `inventory_id` (`inventory_id`),
   KEY `restaurant_id` (`restaurant_id`),
   KEY `fk_inventory_lots_ingredient_supplier` (`ingredient_supplier_id`),
+  KEY `idx_inventory_lots_purchase_order_id` (`purchase_order_id`),
+  KEY `idx_inventory_lots_purchase_order_item_id` (`purchase_order_item_id`),
   CONSTRAINT `fk_inventory_lots_ingredient_supplier` FOREIGN KEY (`ingredient_supplier_id`) REFERENCES `ingredient_supplier` (`ingredient_supplier_id`),
+  CONSTRAINT `fk_inventory_lots_purchase_order_id` FOREIGN KEY (`purchase_order_id`) REFERENCES `purchase_orders` (`order_id`),
+  CONSTRAINT `fk_inventory_lots_purchase_order_item_id` FOREIGN KEY (`purchase_order_item_id`) REFERENCES `purchase_order_items` (`order_item_id`),
   CONSTRAINT `inventory_lots_ibfk_1` FOREIGN KEY (`inventory_id`) REFERENCES `inventory` (`inventory_id`),
   CONSTRAINT `inventory_lots_ibfk_2` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=511 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=512 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -988,7 +1041,7 @@ CREATE TABLE `purchase_order_items` (
   CONSTRAINT `purchase_order_items_ibfk_1` FOREIGN KEY (`order_id`) REFERENCES `purchase_orders` (`order_id`),
   CONSTRAINT `purchase_order_items_ibfk_2` FOREIGN KEY (`ingredient_id`) REFERENCES `ingredients` (`ingredient_id`),
   CONSTRAINT `purchase_order_items_ibfk_3` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=5032 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5037 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1013,7 +1066,7 @@ CREATE TABLE `purchase_orders` (
   KEY `supplier_id` (`supplier_id`),
   CONSTRAINT `purchase_orders_ibfk_1` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`),
   CONSTRAINT `purchase_orders_ibfk_2` FOREIGN KEY (`supplier_id`) REFERENCES `supplier` (`supplier_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=509 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=513 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1369,4 +1422,4 @@ CREATE TABLE `weather_data` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2026-03-24 12:16:59
+-- Dump completed on 2026-04-01 15:52:16

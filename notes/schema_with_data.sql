@@ -35,7 +35,7 @@ CREATE TABLE `activity_logs` (
   KEY `employee_id` (`employee_id`),
   CONSTRAINT `activity_logs_ibfk_1` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`),
   CONSTRAINT `activity_logs_ibfk_2` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=1592 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=1596 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -680,7 +680,11 @@ INSERT INTO `activity_logs` VALUES
 (1588,5,501,'User Logout','User victoria_perrine logged out','2026-03-24 15:45:12'),
 (1589,3,301,'User Login','User marcus_canyon logged in','2026-03-24 15:45:21'),
 (1590,3,301,'User Logout','User marcus_canyon logged out','2026-03-24 15:47:55'),
-(1591,5,501,'User Login','User victoria_perrine logged in','2026-03-24 15:48:26');
+(1591,5,501,'User Login','User victoria_perrine logged in','2026-03-24 15:48:26'),
+(1592,5,501,'User Login','User victoria_perrine logged in','2026-03-24 19:26:38'),
+(1593,5,501,'pos_mode_updated','{\n  \"pos_mode\": \"external\",\n  \"pos_provider\": \"square\",\n  \"cash_drawer_enabled\": true,\n  \"terminal_payments_enabled\": null,\n  \"preferred_terminal_reader_id\": null\n}','2026-03-24 19:52:40'),
+(1594,5,501,'User Login','User victoria_perrine logged in','2026-03-28 11:19:12'),
+(1595,5,501,'User Login','User victoria_perrine logged in','2026-03-29 12:57:32');
 /*!40000 ALTER TABLE `activity_logs` ENABLE KEYS */;
 UNLOCK TABLES;
 COMMIT;
@@ -711,7 +715,7 @@ CREATE TABLE `alerts` (
   KEY `alerts_ibfk_2` (`employee_id`),
   CONSTRAINT `alerts_ibfk_1` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`),
   CONSTRAINT `alerts_ibfk_2` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=409 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=410 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -934,7 +938,8 @@ INSERT INTO `alerts` VALUES
 (405,5,NULL,NULL,'LowStock','Low stock alert: \'Parmesan\' stock is at 48.00 which is below the reorder point (217.79).','2026-01-31 03:25:04',NULL,'Active',0,NULL,'info'),
 (406,5,NULL,NULL,'LowStock','Low stock alert: \'Heavy Cream\' stock is at 22.00 which is below the reorder point (175.07).','2026-01-31 03:25:15',NULL,'Active',0,NULL,'info'),
 (407,5,NULL,NULL,'LowStock','Low stock alert: \'Butter\' stock is at 13.00 which is below the reorder point (174.54).','2026-01-31 03:25:26',NULL,'Active',0,NULL,'info'),
-(408,5,NULL,NULL,'LowStock','Low stock alert: \'Asparagus\' stock is at 48.00 which is below the reorder point (117.65).','2026-01-31 03:25:37',NULL,'Active',0,NULL,'info');
+(408,5,NULL,NULL,'LowStock','Low stock alert: \'Asparagus\' stock is at 48.00 which is below the reorder point (117.65).','2026-01-31 03:25:37',NULL,'Active',0,NULL,'info'),
+(409,5,NULL,'system','MissingSalesData','No sales data found for 2026-03-29 for restaurant 5','2026-03-29 12:58:23',NULL,'Active',0,'{}','urgent');
 /*!40000 ALTER TABLE `alerts` ENABLE KEYS */;
 UNLOCK TABLES;
 COMMIT;
@@ -2584,6 +2589,63 @@ INSERT INTO `employees` VALUES
 (504,5,'David Kim','david@perrineheights.com','david_perrine',NULL,'$argon2id$v=19$m=65536,t=3,p=4$m1Nq7b23ttb6P0cIgVDqHQ$4PU2CLuz2Qn0VHvi0hyYHmMr+/cEtgPe7AjlccleUSo','2026-01-22 15:34:13',1,3004,NULL,'hourly',NULL,0,NULL,504),
 (505,5,'Sarah Chen','sarah@perrineheights.com','sarah_perrine',NULL,'$argon2id$v=19$m=65536,t=3,p=4$m1Nq7b23ttb6P0cIgVDqHQ$4PU2CLuz2Qn0VHvi0hyYHmMr+/cEtgPe7AjlccleUSo','2026-01-22 15:34:13',1,3005,NULL,'hourly',NULL,0,NULL,504);
 /*!40000 ALTER TABLE `employees` ENABLE KEYS */;
+UNLOCK TABLES;
+COMMIT;
+SET AUTOCOMMIT=@OLD_AUTOCOMMIT;
+
+--
+-- Table structure for table `eod_purchase_order_suggestions`
+--
+
+DROP TABLE IF EXISTS `eod_purchase_order_suggestions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `eod_purchase_order_suggestions` (
+  `suggestion_id` int(11) NOT NULL AUTO_INCREMENT,
+  `restaurant_id` int(11) NOT NULL,
+  `run_date` date NOT NULL,
+  `supplier_id` int(11) NOT NULL,
+  `ingredient_id` int(11) NOT NULL,
+  `ingredient_supplier_id` int(11) NOT NULL,
+  `lead_demand` decimal(12,2) NOT NULL DEFAULT 0.00,
+  `shelf_demand` decimal(12,2) NOT NULL DEFAULT 0.00,
+  `forecast_unit` varchar(20) DEFAULT NULL,
+  `converted_quantity_needed` decimal(12,2) NOT NULL DEFAULT 0.00,
+  `suggested_packs_to_order` int(11) NOT NULL DEFAULT 0,
+  `total_quantity_ordered` decimal(12,2) NOT NULL DEFAULT 0.00,
+  `supplier_unit` varchar(20) NOT NULL,
+  `inventory_unit` varchar(20) DEFAULT NULL,
+  `lead_time_days` int(11) NOT NULL DEFAULT 0,
+  `shelf_life_days` int(11) NOT NULL DEFAULT 0,
+  `pack_size` int(11) NOT NULL DEFAULT 1,
+  `quantity_per_pack_item` decimal(12,2) NOT NULL DEFAULT 1.00,
+  `min_order_quantity` decimal(12,2) NOT NULL DEFAULT 0.00,
+  `purchase_order_id` int(11) DEFAULT NULL,
+  `written_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`suggestion_id`),
+  UNIQUE KEY `uq_eod_po_suggestions_restaurant_date_supplier_ingredient` (`restaurant_id`,`run_date`,`supplier_id`,`ingredient_id`),
+  KEY `fk_eod_po_suggestions_supplier` (`supplier_id`),
+  KEY `fk_eod_po_suggestions_ingredient` (`ingredient_id`),
+  KEY `fk_eod_po_suggestions_ingredient_supplier` (`ingredient_supplier_id`),
+  KEY `fk_eod_po_suggestions_purchase_order` (`purchase_order_id`),
+  KEY `ix_eod_po_suggestions_restaurant_run_date` (`restaurant_id`,`run_date`),
+  CONSTRAINT `fk_eod_po_suggestions_ingredient` FOREIGN KEY (`ingredient_id`) REFERENCES `ingredients` (`ingredient_id`),
+  CONSTRAINT `fk_eod_po_suggestions_ingredient_supplier` FOREIGN KEY (`ingredient_supplier_id`) REFERENCES `ingredient_supplier` (`ingredient_supplier_id`),
+  CONSTRAINT `fk_eod_po_suggestions_purchase_order` FOREIGN KEY (`purchase_order_id`) REFERENCES `purchase_orders` (`order_id`),
+  CONSTRAINT `fk_eod_po_suggestions_restaurant` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`),
+  CONSTRAINT `fk_eod_po_suggestions_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `supplier` (`supplier_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `eod_purchase_order_suggestions`
+--
+
+SET @OLD_AUTOCOMMIT=@@AUTOCOMMIT, @@AUTOCOMMIT=0;
+LOCK TABLES `eod_purchase_order_suggestions` WRITE;
+/*!40000 ALTER TABLE `eod_purchase_order_suggestions` DISABLE KEYS */;
+/*!40000 ALTER TABLE `eod_purchase_order_suggestions` ENABLE KEYS */;
 UNLOCK TABLES;
 COMMIT;
 SET AUTOCOMMIT=@OLD_AUTOCOMMIT;
@@ -7057,7 +7119,7 @@ CREATE TABLE `forecast_run_ledger` (
   KEY `idx_finalized` (`finalized`),
   KEY `idx_restaurant_id` (`restaurant_id`),
   CONSTRAINT `forecast_run_ledger_ibfk_1` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -7073,7 +7135,8 @@ INSERT INTO `forecast_run_ledger` VALUES
 (7,4,'2026-01-22',0,NULL,'2026-01-24 12:54:11.824753','2026-01-24 12:54:46.643434',1,1,1,1,1,1,4,4,'{}','[]','2026-01-24 12:54:11.819333','2026-01-24 12:54:46.643806'),
 (8,4,'2026-01-24',0,NULL,'2026-01-28 06:11:12.767334','2026-01-28 06:11:53.488766',1,1,1,1,1,1,4,4,'{}','[]','2026-01-28 06:11:12.765478','2026-01-28 06:11:53.489174'),
 (9,4,'2026-01-25',0,NULL,'2026-01-28 06:22:19.347373','2026-01-28 06:22:51.277891',1,1,1,1,1,1,4,4,'{}','[]','2026-01-28 06:22:19.345523','2026-01-28 06:22:51.278393'),
-(10,5,'2026-01-20',0,NULL,'2026-01-31 03:09:23.510216','2026-01-31 03:09:58.130342',1,1,1,1,1,1,4,4,'{}','[]','2026-01-31 03:09:23.508379','2026-01-31 03:09:58.130752');
+(10,5,'2026-01-20',0,NULL,'2026-01-31 03:09:23.510216','2026-01-31 03:09:58.130342',1,1,1,1,1,1,4,4,'{}','[]','2026-01-31 03:09:23.508379','2026-01-31 03:09:58.130752'),
+(11,5,'2026-03-29',0,NULL,'2026-03-29 12:58:23.399886','2026-03-29 12:58:23.416304',0,0,0,0,0,1,0,0,'{}','[]','2026-03-29 12:58:23.395576','2026-03-29 12:58:23.416881');
 /*!40000 ALTER TABLE `forecast_run_ledger` ENABLE KEYS */;
 UNLOCK TABLES;
 COMMIT;
@@ -7686,7 +7749,7 @@ INSERT INTO `inventory` VALUES
 (509,5,509,22.00,48.00,NULL,NULL,NULL,NULL,NULL,NULL,'oz'),
 (510,5,510,13.00,32.00,NULL,NULL,NULL,NULL,NULL,NULL,'oz'),
 (511,5,511,48.00,24.00,NULL,NULL,NULL,NULL,NULL,NULL,'oz'),
-(512,5,512,24.00,12.00,NULL,NULL,NULL,NULL,NULL,NULL,'oz'),
+(512,5,512,792.00,12.00,'2026-03-28','2026-04-01',NULL,NULL,NULL,NULL,'oz'),
 (513,5,513,26.75,18.00,NULL,NULL,NULL,NULL,NULL,NULL,'ea'),
 (514,5,514,48.00,24.00,NULL,NULL,NULL,NULL,NULL,NULL,'oz'),
 (515,5,515,192.00,96.00,NULL,NULL,NULL,NULL,NULL,NULL,'oz'),
@@ -7734,14 +7797,22 @@ CREATE TABLE `inventory_lots` (
   `ingredient_id` int(11) DEFAULT NULL,
   `batch_recipe_id` int(11) DEFAULT NULL,
   `status` enum('available','used','expired') DEFAULT 'available',
+  `receipt_source` varchar(50) DEFAULT NULL,
+  `purchase_order_id` int(11) DEFAULT NULL,
+  `purchase_order_item_id` int(11) DEFAULT NULL,
   PRIMARY KEY (`lot_id`),
+  UNIQUE KEY `uq_inventory_lots_purchase_order_item_id` (`purchase_order_item_id`),
   KEY `inventory_id` (`inventory_id`),
   KEY `restaurant_id` (`restaurant_id`),
   KEY `fk_inventory_lots_ingredient_supplier` (`ingredient_supplier_id`),
+  KEY `idx_inventory_lots_purchase_order_id` (`purchase_order_id`),
+  KEY `idx_inventory_lots_purchase_order_item_id` (`purchase_order_item_id`),
   CONSTRAINT `fk_inventory_lots_ingredient_supplier` FOREIGN KEY (`ingredient_supplier_id`) REFERENCES `ingredient_supplier` (`ingredient_supplier_id`),
+  CONSTRAINT `fk_inventory_lots_purchase_order_id` FOREIGN KEY (`purchase_order_id`) REFERENCES `purchase_orders` (`order_id`),
+  CONSTRAINT `fk_inventory_lots_purchase_order_item_id` FOREIGN KEY (`purchase_order_item_id`) REFERENCES `purchase_order_items` (`order_item_id`),
   CONSTRAINT `inventory_lots_ibfk_1` FOREIGN KEY (`inventory_id`) REFERENCES `inventory` (`inventory_id`),
   CONSTRAINT `inventory_lots_ibfk_2` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=511 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=512 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -7752,68 +7823,69 @@ SET @OLD_AUTOCOMMIT=@@AUTOCOMMIT, @@AUTOCOMMIT=0;
 LOCK TABLES `inventory_lots` WRITE;
 /*!40000 ALTER TABLE `inventory_lots` DISABLE KEYS */;
 INSERT INTO `inventory_lots` VALUES
-(1,1,1,'2025-04-22','2025-05-22',50.00,'count',5.00,1,1,NULL,'available'),
-(2,1,1,'2025-05-03','2025-06-02',100.00,'count',10.00,1,1,NULL,'available'),
-(3,2,1,'2025-05-05','2025-05-20',24.00,'count',2.00,5,2,NULL,'available'),
-(4,2,1,'2025-05-14','2025-05-29',24.00,'count',2.00,5,2,NULL,'available'),
-(7,3,1,'2025-05-20','2025-06-09',60.00,'count',4.00,9,3,NULL,'available'),
-(8,5,1,'2025-05-22','2025-11-18',1000.00,'g',1.00,17,5,NULL,'available'),
-(9,6,1,'2025-05-21','2025-11-17',1000.00,'g',1.00,20,8,NULL,'available'),
-(10,2,1,'2025-05-21','2025-06-05',166.67,'count',1.00,6,2,NULL,'available'),
-(11,7,1,'2025-05-22','2026-05-22',1000.00,'g',2.00,19,7,NULL,'available'),
-(12,8,1,'2025-05-22','2025-08-20',3750.00,'g',15.00,21,9,NULL,'available'),
-(13,9,1,'2025-05-22','2025-11-18',5000.00,'ml',5.00,22,10,NULL,'available'),
-(14,10,1,'2025-05-22','2025-09-19',3000.00,'g',1.00,23,11,NULL,'available'),
-(15,11,1,'2025-05-22','2025-09-19',20000.00,'g',5.00,24,12,NULL,'available'),
-(16,12,1,'2025-05-22','2025-08-20',25000.00,'g',25.00,25,13,NULL,'available'),
-(17,13,1,'2025-05-22','2026-05-22',12500.00,'g',50.00,26,14,NULL,'available'),
-(18,14,1,'2025-05-22','2025-06-21',4000.00,'g',2.00,28,16,NULL,'available'),
-(19,15,1,'2025-05-22','2025-07-06',2000.00,'g',2.00,29,17,NULL,'available'),
-(20,16,1,'2025-05-22','2025-07-21',3000.00,'g',2.00,30,18,NULL,'available'),
-(21,17,1,'2025-05-22','2025-05-29',2000.00,'g',1.00,31,19,NULL,'available'),
-(22,18,1,'2025-05-22','2025-05-27',2000.00,'g',1.00,32,20,NULL,'available'),
-(23,19,1,'2025-05-22','2025-06-05',15000.00,'g',5.00,33,21,NULL,'available'),
-(29,5,1,'2025-05-24','2025-11-20',4000.00,'g',4.00,17,5,NULL,'available'),
-(30,25,1,'2025-05-24','2025-05-24',50000.00,'ml',10.00,18,6,NULL,'available'),
-(31,7,1,'2025-05-24','2026-05-24',2500.00,'g',5.00,19,7,NULL,'available'),
-(32,6,1,'2025-05-24','2025-11-20',4000.00,'g',4.00,20,8,NULL,'available'),
-(33,8,1,'2025-05-24','2025-08-22',1000.00,'g',4.00,21,9,NULL,'available'),
-(34,6,1,'2025-05-24','2025-11-20',4000.00,'g',4.00,20,8,NULL,'available'),
-(35,9,1,'2025-05-24','2025-11-20',4000.00,'ml',4.00,22,10,NULL,'available'),
-(36,10,1,'2025-05-24','2025-09-21',12000.00,'g',4.00,23,11,NULL,'available'),
-(37,11,1,'2025-05-24','2025-09-21',16000.00,'g',4.00,24,12,NULL,'available'),
-(38,12,1,'2025-05-24','2025-08-22',4000.00,'g',4.00,25,13,NULL,'available'),
-(39,13,1,'2025-05-24','2026-05-24',1250.00,'g',5.00,26,14,NULL,'available'),
-(40,26,1,'2025-05-24','2025-11-20',5000.00,'ml',5.00,27,15,NULL,'available'),
-(41,14,1,'2025-05-24','2025-06-23',10000.00,'g',5.00,28,16,NULL,'available'),
-(42,15,1,'2025-05-24','2025-07-08',5000.00,'g',5.00,29,17,NULL,'available'),
-(43,16,1,'2025-05-24','2025-07-23',7500.00,'g',5.00,30,18,NULL,'available'),
-(44,17,1,'2025-05-24','2025-05-31',12000.00,'g',6.00,31,19,NULL,'available'),
-(45,18,1,'2025-05-24','2025-05-29',10000.00,'g',5.00,32,20,NULL,'available'),
-(46,19,1,'2025-05-24','2025-06-07',15000.00,'g',5.00,33,21,NULL,'available'),
-(48,28,1,'2025-05-24','2025-05-27',5000.00,'g',5000.00,NULL,NULL,1,'available'),
-(49,29,1,'2025-05-24','2025-05-29',4000.00,'g',4000.00,NULL,NULL,2,'available'),
-(52,4,1,'2025-05-27','2025-06-24',72000.00,'gram',4.00,15,4,NULL,'available'),
-(54,5,1,'2025-05-27','2025-11-23',2000.00,'g',2.00,17,5,NULL,'available'),
-(55,28,1,'2025-05-27','2025-05-30',5000.00,'g',5000.00,NULL,NULL,1,'available'),
-(65,28,1,'2025-07-01','2025-07-04',2500.00,'g',2500.00,NULL,NULL,1,'available'),
-(67,28,1,'2025-07-01','2025-07-04',2500.00,'g',2500.00,NULL,NULL,1,'available'),
-(401,401,4,'2025-12-20','2025-12-25',10.00,'lb',10.00,401,401,NULL,'available'),
-(402,402,4,'2025-12-19','2025-12-23',10.00,'lb',10.00,402,402,NULL,'available'),
-(403,403,4,'2025-12-20','2025-12-25',10.00,'lb',10.00,403,403,NULL,'available'),
-(404,411,4,'2025-12-22','2025-12-29',64.00,'oz',64.00,411,411,NULL,'available'),
-(405,415,4,'2025-12-23','2025-12-27',24.00,'ea',24.00,415,415,NULL,'available'),
-(406,422,4,'2025-12-24','2025-12-27',40.00,'oz',40.00,NULL,NULL,401,'available'),
-(407,423,4,'2025-12-24','2025-12-26',30.00,'oz',30.00,NULL,NULL,402,'available'),
-(500,500,1,'2025-06-20','2025-06-30',1.00,'g',5000.00,500,500,NULL,'expired'),
-(501,501,5,'2025-12-23','2025-12-26',4.00,'lb',4.00,501,501,NULL,'available'),
-(502,503,5,'2025-12-21','2025-12-26',6.00,'lb',6.00,503,503,NULL,'available'),
-(503,511,5,'2025-12-24','2025-12-29',24.00,'oz',24.00,511,511,NULL,'available'),
-(504,512,5,'2025-12-24','2025-12-28',12.00,'oz',12.00,512,512,NULL,'available'),
-(505,531,5,'2025-12-24','2026-01-07',20.00,'oz',20.00,NULL,NULL,501,'available'),
-(506,532,5,'2025-12-23','2026-01-02',30.00,'oz',30.00,NULL,NULL,502,'available'),
-(507,533,5,'2025-12-24','2025-12-29',22.00,'oz',22.00,NULL,NULL,503,'available'),
-(508,534,5,'2025-12-23','2025-12-30',15.00,'oz',15.00,NULL,NULL,504,'available');
+(1,1,1,'2025-04-22','2025-05-22',50.00,'count',5.00,1,1,NULL,'available',NULL,NULL,NULL),
+(2,1,1,'2025-05-03','2025-06-02',100.00,'count',10.00,1,1,NULL,'available',NULL,NULL,NULL),
+(3,2,1,'2025-05-05','2025-05-20',24.00,'count',2.00,5,2,NULL,'available',NULL,NULL,NULL),
+(4,2,1,'2025-05-14','2025-05-29',24.00,'count',2.00,5,2,NULL,'available',NULL,NULL,NULL),
+(7,3,1,'2025-05-20','2025-06-09',60.00,'count',4.00,9,3,NULL,'available',NULL,NULL,NULL),
+(8,5,1,'2025-05-22','2025-11-18',1000.00,'g',1.00,17,5,NULL,'available',NULL,NULL,NULL),
+(9,6,1,'2025-05-21','2025-11-17',1000.00,'g',1.00,20,8,NULL,'available',NULL,NULL,NULL),
+(10,2,1,'2025-05-21','2025-06-05',166.67,'count',1.00,6,2,NULL,'available',NULL,NULL,NULL),
+(11,7,1,'2025-05-22','2026-05-22',1000.00,'g',2.00,19,7,NULL,'available',NULL,NULL,NULL),
+(12,8,1,'2025-05-22','2025-08-20',3750.00,'g',15.00,21,9,NULL,'available',NULL,NULL,NULL),
+(13,9,1,'2025-05-22','2025-11-18',5000.00,'ml',5.00,22,10,NULL,'available',NULL,NULL,NULL),
+(14,10,1,'2025-05-22','2025-09-19',3000.00,'g',1.00,23,11,NULL,'available',NULL,NULL,NULL),
+(15,11,1,'2025-05-22','2025-09-19',20000.00,'g',5.00,24,12,NULL,'available',NULL,NULL,NULL),
+(16,12,1,'2025-05-22','2025-08-20',25000.00,'g',25.00,25,13,NULL,'available',NULL,NULL,NULL),
+(17,13,1,'2025-05-22','2026-05-22',12500.00,'g',50.00,26,14,NULL,'available',NULL,NULL,NULL),
+(18,14,1,'2025-05-22','2025-06-21',4000.00,'g',2.00,28,16,NULL,'available',NULL,NULL,NULL),
+(19,15,1,'2025-05-22','2025-07-06',2000.00,'g',2.00,29,17,NULL,'available',NULL,NULL,NULL),
+(20,16,1,'2025-05-22','2025-07-21',3000.00,'g',2.00,30,18,NULL,'available',NULL,NULL,NULL),
+(21,17,1,'2025-05-22','2025-05-29',2000.00,'g',1.00,31,19,NULL,'available',NULL,NULL,NULL),
+(22,18,1,'2025-05-22','2025-05-27',2000.00,'g',1.00,32,20,NULL,'available',NULL,NULL,NULL),
+(23,19,1,'2025-05-22','2025-06-05',15000.00,'g',5.00,33,21,NULL,'available',NULL,NULL,NULL),
+(29,5,1,'2025-05-24','2025-11-20',4000.00,'g',4.00,17,5,NULL,'available',NULL,NULL,NULL),
+(30,25,1,'2025-05-24','2025-05-24',50000.00,'ml',10.00,18,6,NULL,'available',NULL,NULL,NULL),
+(31,7,1,'2025-05-24','2026-05-24',2500.00,'g',5.00,19,7,NULL,'available',NULL,NULL,NULL),
+(32,6,1,'2025-05-24','2025-11-20',4000.00,'g',4.00,20,8,NULL,'available',NULL,NULL,NULL),
+(33,8,1,'2025-05-24','2025-08-22',1000.00,'g',4.00,21,9,NULL,'available',NULL,NULL,NULL),
+(34,6,1,'2025-05-24','2025-11-20',4000.00,'g',4.00,20,8,NULL,'available',NULL,NULL,NULL),
+(35,9,1,'2025-05-24','2025-11-20',4000.00,'ml',4.00,22,10,NULL,'available',NULL,NULL,NULL),
+(36,10,1,'2025-05-24','2025-09-21',12000.00,'g',4.00,23,11,NULL,'available',NULL,NULL,NULL),
+(37,11,1,'2025-05-24','2025-09-21',16000.00,'g',4.00,24,12,NULL,'available',NULL,NULL,NULL),
+(38,12,1,'2025-05-24','2025-08-22',4000.00,'g',4.00,25,13,NULL,'available',NULL,NULL,NULL),
+(39,13,1,'2025-05-24','2026-05-24',1250.00,'g',5.00,26,14,NULL,'available',NULL,NULL,NULL),
+(40,26,1,'2025-05-24','2025-11-20',5000.00,'ml',5.00,27,15,NULL,'available',NULL,NULL,NULL),
+(41,14,1,'2025-05-24','2025-06-23',10000.00,'g',5.00,28,16,NULL,'available',NULL,NULL,NULL),
+(42,15,1,'2025-05-24','2025-07-08',5000.00,'g',5.00,29,17,NULL,'available',NULL,NULL,NULL),
+(43,16,1,'2025-05-24','2025-07-23',7500.00,'g',5.00,30,18,NULL,'available',NULL,NULL,NULL),
+(44,17,1,'2025-05-24','2025-05-31',12000.00,'g',6.00,31,19,NULL,'available',NULL,NULL,NULL),
+(45,18,1,'2025-05-24','2025-05-29',10000.00,'g',5.00,32,20,NULL,'available',NULL,NULL,NULL),
+(46,19,1,'2025-05-24','2025-06-07',15000.00,'g',5.00,33,21,NULL,'available',NULL,NULL,NULL),
+(48,28,1,'2025-05-24','2025-05-27',5000.00,'g',5000.00,NULL,NULL,1,'available',NULL,NULL,NULL),
+(49,29,1,'2025-05-24','2025-05-29',4000.00,'g',4000.00,NULL,NULL,2,'available',NULL,NULL,NULL),
+(52,4,1,'2025-05-27','2025-06-24',72000.00,'gram',4.00,15,4,NULL,'available',NULL,NULL,NULL),
+(54,5,1,'2025-05-27','2025-11-23',2000.00,'g',2.00,17,5,NULL,'available',NULL,NULL,NULL),
+(55,28,1,'2025-05-27','2025-05-30',5000.00,'g',5000.00,NULL,NULL,1,'available',NULL,NULL,NULL),
+(65,28,1,'2025-07-01','2025-07-04',2500.00,'g',2500.00,NULL,NULL,1,'available',NULL,NULL,NULL),
+(67,28,1,'2025-07-01','2025-07-04',2500.00,'g',2500.00,NULL,NULL,1,'available',NULL,NULL,NULL),
+(401,401,4,'2025-12-20','2025-12-25',10.00,'lb',10.00,401,401,NULL,'available',NULL,NULL,NULL),
+(402,402,4,'2025-12-19','2025-12-23',10.00,'lb',10.00,402,402,NULL,'available',NULL,NULL,NULL),
+(403,403,4,'2025-12-20','2025-12-25',10.00,'lb',10.00,403,403,NULL,'available',NULL,NULL,NULL),
+(404,411,4,'2025-12-22','2025-12-29',64.00,'oz',64.00,411,411,NULL,'available',NULL,NULL,NULL),
+(405,415,4,'2025-12-23','2025-12-27',24.00,'ea',24.00,415,415,NULL,'available',NULL,NULL,NULL),
+(406,422,4,'2025-12-24','2025-12-27',40.00,'oz',40.00,NULL,NULL,401,'available',NULL,NULL,NULL),
+(407,423,4,'2025-12-24','2025-12-26',30.00,'oz',30.00,NULL,NULL,402,'available',NULL,NULL,NULL),
+(500,500,1,'2025-06-20','2025-06-30',1.00,'g',5000.00,500,500,NULL,'expired',NULL,NULL,NULL),
+(501,501,5,'2025-12-23','2025-12-26',4.00,'lb',4.00,501,501,NULL,'available',NULL,NULL,NULL),
+(502,503,5,'2025-12-21','2025-12-26',6.00,'lb',6.00,503,503,NULL,'available',NULL,NULL,NULL),
+(503,511,5,'2025-12-24','2025-12-29',24.00,'oz',24.00,511,511,NULL,'available',NULL,NULL,NULL),
+(504,512,5,'2025-12-24','2025-12-28',12.00,'oz',12.00,512,512,NULL,'available',NULL,NULL,NULL),
+(505,531,5,'2025-12-24','2026-01-07',20.00,'oz',20.00,NULL,NULL,501,'available',NULL,NULL,NULL),
+(506,532,5,'2025-12-23','2026-01-02',30.00,'oz',30.00,NULL,NULL,502,'available',NULL,NULL,NULL),
+(507,533,5,'2025-12-24','2025-12-29',22.00,'oz',22.00,NULL,NULL,503,'available',NULL,NULL,NULL),
+(508,534,5,'2025-12-23','2025-12-30',15.00,'oz',15.00,NULL,NULL,504,'available',NULL,NULL,NULL),
+(511,512,5,'2026-03-28','2026-04-01',768.00,'oz',48.00,512,512,NULL,'available','purchase_order',509,5032);
 /*!40000 ALTER TABLE `inventory_lots` ENABLE KEYS */;
 UNLOCK TABLES;
 COMMIT;
@@ -8630,7 +8702,7 @@ CREATE TABLE `purchase_order_items` (
   CONSTRAINT `purchase_order_items_ibfk_1` FOREIGN KEY (`order_id`) REFERENCES `purchase_orders` (`order_id`),
   CONSTRAINT `purchase_order_items_ibfk_2` FOREIGN KEY (`ingredient_id`) REFERENCES `ingredients` (`ingredient_id`),
   CONSTRAINT `purchase_order_items_ibfk_3` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=5032 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5037 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -8679,7 +8751,12 @@ INSERT INTO `purchase_order_items` VALUES
 (5028,5,507,504,55.00,'lb',4.50,504,247.50),
 (5029,5,508,508,192.00,'oz',0.45,508,86.40),
 (5030,5,508,509,256.00,'oz',0.08,509,20.48),
-(5031,5,508,510,256.00,'oz',0.12,510,30.72);
+(5031,5,508,510,256.00,'oz',0.12,510,30.72),
+(5032,5,509,512,48.00,'oz',0.18,512,8.64),
+(5033,5,510,521,256.00,'oz',0.06,521,15.36),
+(5034,5,511,512,48.00,'oz',0.18,512,8.64),
+(5035,5,511,511,64.00,'oz',0.20,511,12.80),
+(5036,5,512,521,256.00,'oz',0.06,521,15.36);
 /*!40000 ALTER TABLE `purchase_order_items` ENABLE KEYS */;
 UNLOCK TABLES;
 COMMIT;
@@ -8707,7 +8784,7 @@ CREATE TABLE `purchase_orders` (
   KEY `supplier_id` (`supplier_id`),
   CONSTRAINT `purchase_orders_ibfk_1` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`),
   CONSTRAINT `purchase_orders_ibfk_2` FOREIGN KEY (`supplier_id`) REFERENCES `supplier` (`supplier_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=509 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=513 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -8729,7 +8806,11 @@ INSERT INTO `purchase_orders` VALUES
 (505,5,501,'2026-01-30','2026-01-31',NULL,'pending',39.04,NULL),
 (506,5,504,'2026-01-30','2026-02-03',NULL,'pending',259.84,NULL),
 (507,5,502,'2026-01-30','2026-01-31',NULL,'pending',1097.50,NULL),
-(508,5,503,'2026-01-30','2026-02-01',NULL,'pending',137.60,NULL);
+(508,5,503,'2026-01-30','2026-02-01',NULL,'pending',137.60,NULL),
+(509,5,501,'2026-03-28','2026-03-29','2026-03-28','delivered',8.64,NULL),
+(510,5,504,'2026-03-28','2026-03-31',NULL,'cart',15.36,NULL),
+(511,5,501,'2026-03-29','2026-03-30',NULL,'cart',21.44,NULL),
+(512,5,504,'2026-03-29','2026-04-01',NULL,'cart',15.36,NULL);
 /*!40000 ALTER TABLE `purchase_orders` ENABLE KEYS */;
 UNLOCK TABLES;
 COMMIT;
@@ -8984,7 +9065,7 @@ INSERT INTO `restaurants` VALUES
 (2,'Basic Test Restaurant','(208) 555-8685','123 Main St','Twin Falls','ID','83301','basic','\"[{\\\"day\\\": \\\"Monday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"21:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Tuesday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"21:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Wednesday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"21:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Thursday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"21:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Friday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Saturday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"12:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Sunday\\\", \\\"open_time\\\": null, \\\"close_time\\\": null, \\\"is_closed\\\": true}]\"','contact@example.com','active','2025-08-18',14,7.75,'America/Los_Angeles',1,60,'[\"in-house\", \"doordash\", \"take-out\"]','2026-01-22','{}',0,0,'auto','none',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'none',NULL,0,42.562966,-114.460871),
 (3,'Canyon Rim Grill','208-555-3300','1250 Blue Lakes Blvd N','Twin Falls','ID','83301','basic','{\"monday\":{\"open\":\"11:00\",\"close\":\"21:00\"},\"tuesday\":{\"open\":\"11:00\",\"close\":\"21:00\"},\"wednesday\":{\"open\":\"11:00\",\"close\":\"21:00\"},\"thursday\":{\"open\":\"11:00\",\"close\":\"21:00\"},\"friday\":{\"open\":\"11:00\",\"close\":\"22:00\"},\"saturday\":{\"open\":\"11:00\",\"close\":\"22:00\"},\"sunday\":{\"open\":\"11:00\",\"close\":\"20:00\"}}','info@canyonrim.test','active','2027-06-25',7,6.00,'America/Boise',1,45,'[\"in-house\", \"takeout\", \"doordash\"]',NULL,'{}',0,1,'auto','none',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'internal',NULL,0,42.597000,-114.459700),
 (4,'Snake River Taqueria','208-555-4400','210 Falls Ave','Twin Falls','ID','83301','pro','{\"sunday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"monday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"tuesday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"wednesday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"thursday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"friday\":{\"open\":\"10:30\",\"close\":\"22:00\"},\"saturday\":{\"open\":\"10:30\",\"close\":\"22:00\"}}','info@snakerivertaq.test','active','2027-06-25',14,6.00,'America/Boise',1,60,'[\"in-house\", \"takeout\", \"doordash\"]',NULL,'{}',1,1,'auto','none',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'internal',NULL,0,42.588500,-114.460200),
-(5,'Perrine Heights Kitchen','208-555-5500','401 Shoshone St N','Twin Falls','ID','83301','master','{\"monday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"tuesday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"wednesday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"thursday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"friday\":{\"open\":\"10:00\",\"close\":\"23:00\"},\"saturday\":{\"open\":\"10:00\",\"close\":\"23:00\"},\"sunday\":{\"open\":\"10:00\",\"close\":\"20:00\"}}','info@perrineheights.test','active','2027-12-25',21,6.00,'America/Boise',1,60,'[\"in-house\", \"takeout\", \"doordash\"]',NULL,'{}',1,1,'auto','none',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'internal',NULL,1,42.563700,-114.460900);
+(5,'Perrine Heights Kitchen','208-555-5500','401 Shoshone St N','Twin Falls','ID','83301','master','{\"monday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"tuesday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"wednesday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"thursday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"friday\":{\"open\":\"10:00\",\"close\":\"23:00\"},\"saturday\":{\"open\":\"10:00\",\"close\":\"23:00\"},\"sunday\":{\"open\":\"10:00\",\"close\":\"20:00\"}}','info@perrineheights.test','active','2027-12-25',21,6.00,'America/Boise',1,60,'[\"in-house\", \"takeout\", \"doordash\"]',NULL,'{}',1,1,'auto','square',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'external',NULL,1,42.563700,-114.460900);
 /*!40000 ALTER TABLE `restaurants` ENABLE KEYS */;
 UNLOCK TABLES;
 COMMIT;
@@ -77885,4 +77966,4 @@ SET AUTOCOMMIT=@OLD_AUTOCOMMIT;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2026-03-24 12:17:16
+-- Dump completed on 2026-04-01 15:52:01
