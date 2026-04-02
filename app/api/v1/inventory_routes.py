@@ -7,10 +7,12 @@ from app.api.dependencies import get_inventory_service
 from app.schemas.inventory_dto import (
     InventoryByCategoryItem,
     InventoryAdjustmentIn,
+    InventoryAdjustmentResultDTO,
     InventoryDTO,
     InventoryDetailsDTO,
     SupplierOut,
     InventoryLotIn,
+    InventorySetCurrentStockIn,
 )
 from app.schemas.inventory_dto import (
     StockMovementItem,
@@ -456,7 +458,7 @@ async def add_inventory_lot(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.post("/adjust-inventory")
+@router.post("/adjust-inventory", response_model=InventoryAdjustmentResultDTO)
 async def adjust_inventory(
     payload: InventoryAdjustmentIn,
     inventory_service: InventoryService = Depends(get_inventory_service),
@@ -474,11 +476,34 @@ async def adjust_inventory(
             notes=payload.notes,
         )
         if response["success"]:
-            return {"detail": response["message"]}
+            return response
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=response["message"]
             )
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/set-current-stock", response_model=InventoryAdjustmentResultDTO)
+async def set_current_stock(
+    payload: InventorySetCurrentStockIn,
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Reconcile inventory to a freshly counted on-hand quantity.
+    """
+    try:
+        response = await inventory_service.set_inventory_current_stock(
+            inventory_id=payload.inventory_id,
+            counted_quantity=payload.counted_quantity,
+            lot_id=payload.lot_id,
+            reason=payload.reason,
+            notes=payload.notes,
+        )
+        if response["success"]:
+            return response
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=response["message"])
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

@@ -45,6 +45,7 @@ export default function InventoryTable() {
     stockError,
     discrepancies,
     adjustInventory,
+    setCurrentStock,
     adjusting,
   } = useInventoryTable();
 
@@ -66,6 +67,7 @@ export default function InventoryTable() {
 
   const [adjustDialogOpen, setAdjustDialogOpen] = useState(false);
   const [adjustLotId, setAdjustLotId] = useState<number | null>(null);
+  const [adjustDialogMode, setAdjustDialogMode] = useState<'lot-adjust' | 'review'>('lot-adjust');
 
   const [toast, setToast] = useState<{
     open: boolean;
@@ -114,19 +116,23 @@ export default function InventoryTable() {
 
   const handleOpenAdjustDialog = (lotId: number) => {
     if (!activeInventoryRow) return;
+    setAdjustDialogMode('lot-adjust');
     setAdjustLotId(lotId);
     setAdjustDialogOpen(true);
     setAnchorEl(null);
   };
 
   const getPreferredReviewLotId = useCallback((row: InventoryItem) => {
-    const availableLots = [...(row.packaging_breakdown || [])].filter(lot => lot.remaining_quantity > 0);
+    const availableLots = [...(row.packaging_breakdown || [])].filter(
+      lot => lot.remaining_quantity > 0
+    );
     if (availableLots.length === 0) {
       return null;
     }
 
     availableLots.sort((left, right) => {
-      const dateDiff = new Date(left.delivery_date).getTime() - new Date(right.delivery_date).getTime();
+      const dateDiff =
+        new Date(left.delivery_date).getTime() - new Date(right.delivery_date).getTime();
       if (dateDiff !== 0) {
         return dateDiff;
       }
@@ -139,6 +145,7 @@ export default function InventoryTable() {
   const handleReviewAdjust = useCallback(
     (row: InventoryItem) => {
       setActiveInventoryRow(row);
+      setAdjustDialogMode('review');
       setAdjustLotId(getPreferredReviewLotId(row));
       setAdjustDialogOpen(true);
       setAnchorEl(null);
@@ -175,6 +182,40 @@ export default function InventoryTable() {
     }
   };
 
+  const handleSetCurrentStockSubmit = async (payload: {
+    inventory_id: number;
+    counted_quantity: number;
+    lot_id?: number | null;
+    reason?: string | null;
+    notes?: string;
+  }) => {
+    try {
+      const response = await setCurrentStock(payload);
+      const resolvedCount = Number(response?.resolved_deduction_alerts || 0);
+      const delta =
+        Number(response.current_quantity_on_hand) - Number(response.previous_quantity_on_hand);
+      const direction = delta > 0 ? 'added' : delta < 0 ? 'removed' : 'changed';
+      const absoluteDelta = Math.abs(delta);
+
+      setToast({
+        open: true,
+        message:
+          resolvedCount > 0
+            ? `Stock set to ${response.current_quantity_on_hand} ${activeInventoryRow?.unit || ''}. Recorded ${response.previous_quantity_on_hand}; system ${direction} ${absoluteDelta}. ${resolvedCount} review ${resolvedCount === 1 ? 'alert cleared' : 'alerts cleared'}.`
+            : `Stock set to ${response.current_quantity_on_hand} ${activeInventoryRow?.unit || ''}. Recorded ${response.previous_quantity_on_hand}; system ${direction} ${absoluteDelta}.`,
+        severity: 'success',
+      });
+      setAdjustDialogOpen(false);
+    } catch (err: any) {
+      setToast({
+        open: true,
+        message: err?.message || 'Failed to set current stock',
+        severity: 'error',
+      });
+      throw err;
+    }
+  };
+
   const discrepancyMap = useMemo(() => {
     const map = new Map<string, InventoryDeductionDiscrepancy[]>();
 
@@ -193,6 +234,21 @@ export default function InventoryTable() {
 
     return map;
   }, [discrepancies]);
+
+  const activeReviewDiscrepancy = useMemo(() => {
+    if (!activeInventoryRow) {
+      return null;
+    }
+
+    const key =
+      activeInventoryRow.ingredient_id != null
+        ? `ingredient:${activeInventoryRow.ingredient_id}`
+        : activeInventoryRow.batch_recipe_id != null
+          ? `batch:${activeInventoryRow.batch_recipe_id}`
+          : 'unknown';
+
+    return (discrepancyMap.get(key) || [])[0] || null;
+  }, [activeInventoryRow, discrepancyMap]);
 
   const filteredInventory = useMemo(() => {
     if (filterType === 'ingredients') {
@@ -291,6 +347,36 @@ export default function InventoryTable() {
   const toolbarBackground = isDarkMode
     ? alpha(theme.palette.common.white, 0.02)
     : alpha(theme.palette.primary.main, 0.02);
+
+  const getTableBodyRowProps = ({ row }: any) => {
+    const key =
+      row.original.ingredient_id != null
+        ? `ingredient:${row.original.ingredient_id}`
+        : row.original.batch_recipe_id != null
+          ? `batch:${row.original.batch_recipe_id}`
+          : 'unknown';
+    const hasDiscrepancy = !row.getIsGrouped() && discrepancyMap.has(key);
+
+    return {
+      onClick: () => {
+        if (row.getIsGrouped()) {
+          row.toggleExpanded();
+        }
+      },
+      sx: {
+        backgroundColor: hasDiscrepancy
+          ? discrepancyBackground
+          : row.index % 2 === 0
+            ? rowEvenBackground
+            : rowOddBackground,
+        cursor: row.getIsGrouped() ? 'pointer' : 'default',
+        transition: 'background-color 0.15s ease',
+        '&:hover': {
+          backgroundColor: hasDiscrepancy ? discrepancyHoverBackground : rowHoverBackground,
+        },
+      },
+    };
+  };
 
   const columns = useMemo<MRT_ColumnDef<InventoryItem>[]>(
     () => [
@@ -772,37 +858,7 @@ export default function InventoryTable() {
               letterSpacing: '0.01em',
             },
           }}
-          muiTableBodyRowProps={({ row }) => {
-            const key =
-              row.original.ingredient_id != null
-                ? `ingredient:${row.original.ingredient_id}`
-                : row.original.batch_recipe_id != null
-                  ? `batch:${row.original.batch_recipe_id}`
-                  : 'unknown';
-            const hasDiscrepancy = !row.getIsGrouped() && discrepancyMap.has(key);
-
-            return {
-              onClick: () => {
-                if (row.getIsGrouped()) {
-                  row.toggleExpanded();
-                }
-              },
-              sx: {
-                backgroundColor: hasDiscrepancy
-                  ? discrepancyBackground
-                  : row.index % 2 === 0
-                    ? rowEvenBackground
-                    : rowOddBackground,
-                cursor: row.getIsGrouped() ? 'pointer' : 'default',
-                transition: 'background-color 0.15s ease',
-                '&:hover': {
-                  backgroundColor: hasDiscrepancy
-                    ? discrepancyHoverBackground
-                    : rowHoverBackground,
-                },
-              },
-            };
-          })}
+          muiTableBodyRowProps={getTableBodyRowProps}
           muiTableBodyCellProps={{
             sx: {
               borderColor: alpha(theme.palette.divider, isDarkMode ? 0.22 : 0.35),
@@ -850,14 +906,17 @@ export default function InventoryTable() {
         <LotAdjustDialog
           open={adjustDialogOpen}
           onClose={() => setAdjustDialogOpen(false)}
+          mode={adjustDialogMode}
           inventoryId={activeInventoryRow.inventory_id}
           inventoryName={activeInventoryRow.ingredient_name}
           unit={activeInventoryRow.unit}
           inventoryQuantity={activeInventoryRow.quantity_on_hand}
           lots={activeInventoryRow.packaging_breakdown}
           defaultLotId={adjustLotId}
+          reviewDiscrepancy={activeReviewDiscrepancy}
           loading={adjusting}
-          onSubmit={handleAdjustSubmit}
+          onSubmitAdjustment={handleAdjustSubmit}
+          onSubmitCount={handleSetCurrentStockSubmit}
         />
       )}
 

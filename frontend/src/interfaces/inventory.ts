@@ -185,6 +185,23 @@ export interface InventoryDeductionDiscrepancy {
   attempted_day?: string | null;
 }
 
+export interface InventoryAdjustmentResult {
+  success: boolean;
+  message: string;
+  adjusted_quantity: number;
+  previous_quantity_on_hand: number;
+  current_quantity_on_hand: number;
+  resolved_deduction_alerts: number;
+}
+
+export interface InventorySetCurrentStockRequest {
+  inventory_id: number;
+  counted_quantity: number;
+  lot_id?: number | null;
+  reason?: string | null;
+  notes?: string;
+}
+
 export interface SupplierInfo {
   supplier_name: string;
   ingredient_supplier_id?: number | null;

@@ -101,6 +101,23 @@ class InventoryAdjustmentIn(BaseModel):
     notes: Optional[str] = ""  # Optional notes to describe the adjustment
 
 
+class InventorySetCurrentStockIn(BaseModel):
+    inventory_id: int
+    counted_quantity: Decimal
+    lot_id: Optional[int] = None
+    reason: Optional[str] = None
+    notes: Optional[str] = ""
+
+
+class InventoryAdjustmentResultDTO(BaseModel):
+    success: bool
+    message: str
+    adjusted_quantity: float
+    previous_quantity_on_hand: float
+    current_quantity_on_hand: float
+    resolved_deduction_alerts: int = 0
+
+
 class InventoryLotIn(BaseModel):
     ingredient_supplier_id: int
     total_received: Union[float, int]

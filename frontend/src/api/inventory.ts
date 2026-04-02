@@ -10,6 +10,8 @@ import {
   POSuggestionsResponse,
   IngredientStockLevel,
   InventoryDeductionDiscrepancy,
+  InventoryAdjustmentResult,
+  InventorySetCurrentStockRequest,
   IngredientSupplierOption,
 } from '../interfaces/inventory';
 import { get, patch, post, del } from './index';
@@ -196,8 +198,14 @@ export const adjustInventory = async (adjustmentData: {
   usage_type: string;
   reference_id?: number;
   notes?: string;
-}): Promise<any> => {
+}): Promise<InventoryAdjustmentResult> => {
   return await post('/inventory/adjust-inventory', adjustmentData);
+};
+
+export const setInventoryCurrentStock = async (
+  reconciliationData: InventorySetCurrentStockRequest
+): Promise<InventoryAdjustmentResult> => {
+  return await post('/inventory/set-current-stock', reconciliationData);
 };
 
 export const getInventoryAdjustments = async (): Promise<any[]> => {

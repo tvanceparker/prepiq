@@ -1381,25 +1381,10 @@ class InventoryService:
                     raise Exception(f"Lot not found for lot_id={lot_id}")
 
                 # Step 3: Compute current remaining across lots (convert to inventory unit)
-                lots = await self.inventory_lot_repo.get_inventory_lots_by_inventory_and_restaurant(
-                    inventory_id
+                available_lots, lot_remaining_map, total_remaining = await self._get_inventory_remaining_snapshot(
+                    inventory_id=inventory_id,
+                    inventory_unit=inventory_item.unit,
                 )
-                available_lots = [l for l in lots if getattr(l.status, "value", l.status) == "available"]
-
-                lot_remaining_map = {}
-                total_remaining = Decimal("0")
-
-                for l in available_lots:
-                    remaining = await self._compute_lot_remaining(l)
-                    try:
-                        remaining_in_inventory_unit = Decimal(
-                            convert_unit(remaining, l.unit, inventory_item.unit)
-                        )
-                    except Exception:
-                        remaining_in_inventory_unit = remaining
-
-                    lot_remaining_map[l.lot_id] = remaining_in_inventory_unit
-                    total_remaining += remaining_in_inventory_unit
 
                 selected_lot_remaining = lot_remaining_map.get(lot_id, Decimal("0"))
 
@@ -1462,7 +1447,9 @@ class InventoryService:
             return {
                 "success": True,
                 "message": f"Inventory {'added to' if usage_type in add_types else 'adjusted by'} {adjustment_quantity} {inventory_item.unit}.",
-                "adjusted_quantity": adjustment_quantity,
+                "adjusted_quantity": float(requested_qty),
+                "previous_quantity_on_hand": float(total_remaining),
+                "current_quantity_on_hand": float(new_quantity),
                 "resolved_deduction_alerts": resolved_deduction_alerts,
             }
 
@@ -1471,6 +1458,186 @@ class InventoryService:
                 "success": False,
                 "message": f"Failed to log inventory adjustment: {str(e)}",
             }
+
+    async def set_inventory_current_stock(
+        self,
+        inventory_id: int,
+        counted_quantity: Decimal,
+        lot_id: Optional[int] = None,
+        reason: Optional[str] = None,
+        notes: str = "",
+    ) -> dict:
+        """
+        Reconcile inventory to the operator's counted on-hand quantity.
+
+        Positive deltas are added to a chosen lot. Negative deltas are removed
+        FIFO across available lots.
+        """
+        try:
+            counted_qty = Decimal(str(counted_quantity))
+            if counted_qty < 0:
+                raise Exception("Counted quantity cannot be negative.")
+
+            async with self.db.begin():
+                inventory_item = await self.inventory_repo.get_by_id(inventory_id)
+                if not inventory_item:
+                    raise Exception(f"Inventory item not found for inventory_id={inventory_id}")
+
+                available_lots, lot_remaining_map, total_remaining = await self._get_inventory_remaining_snapshot(
+                    inventory_id=inventory_id,
+                    inventory_unit=inventory_item.unit,
+                )
+
+                if not available_lots:
+                    raise Exception("No available lots found for this inventory item.")
+
+                delta = counted_qty - total_remaining
+                log_ingredient_id = getattr(inventory_item, "ingredient_id", None) or getattr(available_lots[0], "ingredient_id", None)
+                if not log_ingredient_id:
+                    raise Exception("This inventory item cannot be reconciled because it is missing an ingredient reference.")
+
+                reconciliation_notes = self._build_count_reconciliation_note(
+                    previous_quantity=total_remaining,
+                    counted_quantity=counted_qty,
+                    unit=inventory_item.unit,
+                    reason=reason,
+                    notes=notes,
+                )
+
+                if delta > 0:
+                    destination_lot = self._select_reconciliation_lot(
+                        available_lots=available_lots,
+                        lot_id=lot_id,
+                    )
+                    await self.inventory_usage_log_repo.create({
+                        "restaurant_id": self.restaurant_id,
+                        "inventory_id": inventory_id,
+                        "lot_id": destination_lot.lot_id,
+                        "ingredient_id": log_ingredient_id,
+                        "used_quantity": delta,
+                        "unit": inventory_item.unit,
+                        "usage_type": "manual_addition",
+                        "reference_type": "other",
+                        "reference_id": None,
+                        "notes": reconciliation_notes,
+                    })
+                elif delta < 0:
+                    remaining_to_remove = abs(delta)
+                    for lot in available_lots:
+                        lot_remaining = lot_remaining_map.get(lot.lot_id, Decimal("0"))
+                        if lot_remaining <= 0:
+                            continue
+
+                        quantity_to_remove = min(lot_remaining, remaining_to_remove)
+                        if quantity_to_remove <= 0:
+                            continue
+
+                        await self.inventory_usage_log_repo.create({
+                            "restaurant_id": self.restaurant_id,
+                            "inventory_id": inventory_id,
+                            "lot_id": lot.lot_id,
+                            "ingredient_id": log_ingredient_id,
+                            "used_quantity": quantity_to_remove,
+                            "unit": inventory_item.unit,
+                            "usage_type": "manual_adjustment",
+                            "reference_type": "other",
+                            "reference_id": None,
+                            "notes": reconciliation_notes,
+                        })
+                        remaining_to_remove -= quantity_to_remove
+                        if remaining_to_remove <= 0:
+                            break
+
+                    if remaining_to_remove > 0:
+                        raise Exception("Counted stock exceeds the inventory available to reconcile.")
+
+                await self.inventory_repo.update(
+                    inventory_id,
+                    {"quantity_on_hand": float(counted_qty)},
+                )
+
+                resolved_deduction_alerts = await self._resolve_satisfied_deduction_alerts(
+                    ingredient_id=getattr(inventory_item, "ingredient_id", None),
+                    current_quantity_on_hand=counted_qty,
+                )
+
+            if delta == 0:
+                message = f"Inventory already matched the counted stock of {float(counted_qty)} {inventory_item.unit}."
+            else:
+                direction = "added" if delta > 0 else "removed"
+                message = f"Inventory reconciled to {float(counted_qty)} {inventory_item.unit}; system {direction} {float(abs(delta))} {inventory_item.unit}."
+
+            return {
+                "success": True,
+                "message": message,
+                "adjusted_quantity": float(abs(delta)),
+                "previous_quantity_on_hand": float(total_remaining),
+                "current_quantity_on_hand": float(counted_qty),
+                "resolved_deduction_alerts": resolved_deduction_alerts,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Failed to reconcile inventory count: {str(e)}",
+            }
+
+    async def _get_inventory_remaining_snapshot(self, inventory_id: int, inventory_unit: str):
+        lots = await self.inventory_lot_repo.get_inventory_lots_by_inventory_and_restaurant(
+            inventory_id
+        )
+        available_lots = self._sort_lots_fifo(
+            [lot for lot in lots if self._lot_is_available(lot)]
+        )
+
+        lot_remaining_map = {}
+        total_remaining = Decimal("0")
+
+        for lot in available_lots:
+            remaining = await self._compute_lot_remaining(lot)
+            try:
+                remaining_in_inventory_unit = Decimal(
+                    str(convert_unit(remaining, lot.unit, inventory_unit))
+                )
+            except Exception:
+                remaining_in_inventory_unit = Decimal(str(remaining))
+
+            lot_remaining_map[lot.lot_id] = remaining_in_inventory_unit
+            total_remaining += remaining_in_inventory_unit
+
+        return available_lots, lot_remaining_map, total_remaining
+
+    def _lot_is_available(self, lot) -> bool:
+        return getattr(getattr(lot, "status", None), "value", getattr(lot, "status", None)) == "available"
+
+    def _sort_lots_fifo(self, lots):
+        return sorted(lots, key=lambda lot: (lot.delivery_date, lot.lot_id))
+
+    def _select_reconciliation_lot(self, available_lots, lot_id: Optional[int] = None):
+        if lot_id is None:
+            return available_lots[0]
+
+        for lot in available_lots:
+            if lot.lot_id == lot_id:
+                return lot
+
+        raise Exception(f"Lot not found for lot_id={lot_id}")
+
+    def _build_count_reconciliation_note(
+        self,
+        previous_quantity: Decimal,
+        counted_quantity: Decimal,
+        unit: str,
+        reason: Optional[str],
+        notes: str,
+    ) -> str:
+        note_parts = [
+            f"Count reconciliation: recorded {float(previous_quantity)} {unit}, counted {float(counted_quantity)} {unit}."
+        ]
+        if reason:
+            note_parts.append(f"Reason: {reason}.")
+        if notes:
+            note_parts.append(notes.strip())
+        return " ".join(part for part in note_parts if part)
 
     async def _compute_lot_remaining(self, lot) -> Decimal:
         """Compute remaining quantity for a lot using usage logs (no status filtering)."""

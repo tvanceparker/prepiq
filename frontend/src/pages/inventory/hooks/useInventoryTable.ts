@@ -7,6 +7,7 @@ import {
   fetchWastedUsageLogs,
   getInventoryDeductionDiscrepancies,
   getIngredientsStockLevels,
+  setInventoryCurrentStock,
 } from '../../../api/inventory';
 import {
   InventoryItem,
@@ -14,6 +15,7 @@ import {
   UsageLog,
   IngredientStockLevel,
   InventoryDeductionDiscrepancy,
+  InventoryAdjustmentResult,
 } from '../../../interfaces/inventory';
 
 // ✅ 1. Main inventory list
@@ -104,6 +106,26 @@ export function useInventoryTable() {
     [loadDiscrepancies, loadInventory, loadStockLevels]
   );
 
+  const setCurrentStockItem = useCallback(
+    async (payload: {
+      inventory_id: number;
+      counted_quantity: number;
+      lot_id?: number | null;
+      reason?: string | null;
+      notes?: string;
+    }): Promise<InventoryAdjustmentResult> => {
+      setAdjusting(true);
+      try {
+        const response = await setInventoryCurrentStock(payload);
+        await Promise.all([loadInventory(), loadStockLevels(), loadDiscrepancies()]);
+        return response;
+      } finally {
+        setAdjusting(false);
+      }
+    },
+    [loadDiscrepancies, loadInventory, loadStockLevels]
+  );
+
   return {
     inventory,
     loading,
@@ -115,6 +137,7 @@ export function useInventoryTable() {
     discrepancyLoading,
     discrepancyError,
     adjustInventory: adjustInventoryItem,
+    setCurrentStock: setCurrentStockItem,
     adjusting,
     refreshInventory: loadInventory,
     refreshStockLevels: loadStockLevels,
