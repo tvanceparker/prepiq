@@ -6,7 +6,7 @@
   "[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
   "[typescriptreact]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
   "python.envFile": "${workspaceFolder}/.env",
-  "python.defaultInterpreterPath": "/home/user/code/prepiq/.venv/bin/python",
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
   "python.terminal.activateEnvironment": true,
   "python.testing.pytestArgs": ["tests"],
   "python.testing.unittestEnabled": false,
@@ -34,5 +34,17 @@
       "icon": "python"
     }
   },
-  "terminal.integrated.defaultProfile.linux": "Python (workspace .venv)"
+  "terminal.integrated.defaultProfile.linux": "Python (workspace .venv)",
+  "terminal.integrated.profiles.osx": {
+    "Python (workspace .venv)": {
+      "path": "zsh",
+      "args": ["-l"],
+      "env": {
+        "VIRTUAL_ENV": "${workspaceFolder}/.venv",
+        "PATH": "${workspaceFolder}/.venv/bin:${env:PATH}"
+      },
+      "icon": "python"
+    }
+  },
+  "terminal.integrated.defaultProfile.osx": "Python (workspace .venv)"
 }
