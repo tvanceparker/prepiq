@@ -9,6 +9,7 @@ import {
   PurchaseOrderStatus,
   POSuggestionsResponse,
   IngredientStockLevel,
+  InventoryDeductionDiscrepancy,
   IngredientSupplierOption,
 } from '../interfaces/inventory';
 import { get, patch, post, del } from './index';
@@ -93,6 +94,12 @@ export async function createPOsFromSuggestions(suggestions: any[], notes?: strin
 // --- Ingredient Stock Levels & Suppliers ---
 export async function getIngredientsStockLevels(): Promise<IngredientStockLevel[]> {
   return get('/inventory/ingredients/stock-levels');
+}
+
+export async function getInventoryDeductionDiscrepancies(): Promise<
+  InventoryDeductionDiscrepancy[]
+> {
+  return get('/inventory/deduction-discrepancies');
 }
 
 export async function getIngredientSuppliers(

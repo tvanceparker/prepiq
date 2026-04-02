@@ -5,6 +5,7 @@ import {
   fetchLotInfo,
   fetchUsedUsageLogs,
   fetchWastedUsageLogs,
+  getInventoryDeductionDiscrepancies,
   getIngredientsStockLevels,
 } from '../../../api/inventory';
 import {
@@ -12,6 +13,7 @@ import {
   LotInfo,
   UsageLog,
   IngredientStockLevel,
+  InventoryDeductionDiscrepancy,
 } from '../../../interfaces/inventory';
 
 // ✅ 1. Main inventory list
@@ -25,6 +27,9 @@ export function useInventoryTable() {
   const [stockLevels, setStockLevels] = useState<IngredientStockLevel[]>([]);
   const [stockLoading, setStockLoading] = useState<boolean>(true);
   const [stockError, setStockError] = useState<Error | null>(null);
+  const [discrepancies, setDiscrepancies] = useState<InventoryDeductionDiscrepancy[]>([]);
+  const [discrepancyLoading, setDiscrepancyLoading] = useState<boolean>(true);
+  const [discrepancyError, setDiscrepancyError] = useState<Error | null>(null);
 
   const loadInventory = useCallback(async () => {
     setLoading(true);
@@ -52,6 +57,20 @@ export function useInventoryTable() {
     }
   }, []);
 
+  const loadDiscrepancies = useCallback(async () => {
+    setDiscrepancyLoading(true);
+    setDiscrepancyError(null);
+    try {
+      const data = await getInventoryDeductionDiscrepancies();
+      setDiscrepancies(data as InventoryDeductionDiscrepancy[]);
+    } catch (err) {
+      setDiscrepancyError(err as Error);
+      setDiscrepancies([]);
+    } finally {
+      setDiscrepancyLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadInventory();
   }, [loadInventory]);
@@ -59,6 +78,10 @@ export function useInventoryTable() {
   useEffect(() => {
     loadStockLevels();
   }, [loadStockLevels]);
+
+  useEffect(() => {
+    loadDiscrepancies();
+  }, [loadDiscrepancies]);
 
   const adjustInventoryItem = useCallback(
     async (payload: {
@@ -71,13 +94,14 @@ export function useInventoryTable() {
     }) => {
       setAdjusting(true);
       try {
-        await adjustInventory(payload);
-        await Promise.all([loadInventory(), loadStockLevels()]);
+        const response = await adjustInventory(payload);
+        await Promise.all([loadInventory(), loadStockLevels(), loadDiscrepancies()]);
+        return response;
       } finally {
         setAdjusting(false);
       }
     },
-    [loadInventory, loadStockLevels]
+    [loadDiscrepancies, loadInventory, loadStockLevels]
   );
 
   return {
@@ -87,10 +111,14 @@ export function useInventoryTable() {
     stockLevels,
     stockLoading,
     stockError,
+    discrepancies,
+    discrepancyLoading,
+    discrepancyError,
     adjustInventory: adjustInventoryItem,
     adjusting,
     refreshInventory: loadInventory,
     refreshStockLevels: loadStockLevels,
+    refreshDiscrepancies: loadDiscrepancies,
   };
 }
 

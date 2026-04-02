@@ -25,10 +25,16 @@ import { useInventoryTable } from './hooks/useInventoryTable';
 import PackagingPopper from './components/PackagingPopper';
 import ChipInfoPopper from './components/ChipInfoPopper';
 import LotAdjustDialog from './components/LotAdjustDialog';
-import { InventoryItem, LotBreakdown, IngredientStockLevel } from '../../interfaces/inventory';
+import {
+  InventoryItem,
+  LotBreakdown,
+  IngredientStockLevel,
+  InventoryDeductionDiscrepancy,
+} from '../../interfaces/inventory';
 
 export default function InventoryTable() {
   const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
 
   const {
     inventory,
@@ -37,17 +43,21 @@ export default function InventoryTable() {
     stockLevels,
     stockLoading,
     stockError,
+    discrepancies,
     adjustInventory,
     adjusting,
   } = useInventoryTable();
 
-  const [filterType, setFilterType] = useState<'all' | 'ingredients' | 'batches'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'ingredients' | 'batches' | 'review'>('all');
+  const [groupByCategory, setGroupByCategory] = useState(false);
 
-  const filterOptions: Array<{ key: 'all' | 'ingredients' | 'batches'; label: string }> = [
-    { key: 'all', label: 'All items' },
-    { key: 'ingredients', label: 'Ingredients' },
-    { key: 'batches', label: 'Batch recipes' },
-  ];
+  const filterOptions: Array<{ key: 'all' | 'ingredients' | 'batches' | 'review'; label: string }> =
+    [
+      { key: 'all', label: 'All items' },
+      { key: 'ingredients', label: 'Ingredients' },
+      { key: 'batches', label: 'Batch recipes' },
+      { key: 'review', label: 'Needs review' },
+    ];
 
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [selectedLots, setSelectedLots] = useState<LotBreakdown[]>([]);
@@ -109,6 +119,33 @@ export default function InventoryTable() {
     setAnchorEl(null);
   };
 
+  const getPreferredReviewLotId = useCallback((row: InventoryItem) => {
+    const availableLots = [...(row.packaging_breakdown || [])].filter(lot => lot.remaining_quantity > 0);
+    if (availableLots.length === 0) {
+      return null;
+    }
+
+    availableLots.sort((left, right) => {
+      const dateDiff = new Date(left.delivery_date).getTime() - new Date(right.delivery_date).getTime();
+      if (dateDiff !== 0) {
+        return dateDiff;
+      }
+      return left.lot_id - right.lot_id;
+    });
+
+    return availableLots[0].lot_id;
+  }, []);
+
+  const handleReviewAdjust = useCallback(
+    (row: InventoryItem) => {
+      setActiveInventoryRow(row);
+      setAdjustLotId(getPreferredReviewLotId(row));
+      setAdjustDialogOpen(true);
+      setAnchorEl(null);
+    },
+    [getPreferredReviewLotId]
+  );
+
   const handleAdjustSubmit = async (payload: {
     inventory_id: number;
     lot_id: number;
@@ -117,8 +154,16 @@ export default function InventoryTable() {
     notes?: string;
   }) => {
     try {
-      await adjustInventory(payload);
-      setToast({ open: true, message: 'Inventory adjusted', severity: 'success' });
+      const response = await adjustInventory(payload);
+      const resolvedCount = Number(response?.resolved_deduction_alerts || 0);
+      setToast({
+        open: true,
+        message:
+          resolvedCount > 0
+            ? `Inventory adjusted. ${resolvedCount} review ${resolvedCount === 1 ? 'alert cleared' : 'alerts cleared'}.`
+            : response?.message || 'Inventory adjusted',
+        severity: 'success',
+      });
       setAdjustDialogOpen(false);
     } catch (err: any) {
       setToast({
@@ -130,6 +175,25 @@ export default function InventoryTable() {
     }
   };
 
+  const discrepancyMap = useMemo(() => {
+    const map = new Map<string, InventoryDeductionDiscrepancy[]>();
+
+    discrepancies.forEach(discrepancy => {
+      let key = 'unknown';
+      if (discrepancy.ingredient_id != null) {
+        key = `ingredient:${discrepancy.ingredient_id}`;
+      } else if (discrepancy.batch_recipe_id != null) {
+        key = `batch:${discrepancy.batch_recipe_id}`;
+      }
+
+      const existing = map.get(key) || [];
+      existing.push(discrepancy);
+      map.set(key, existing);
+    });
+
+    return map;
+  }, [discrepancies]);
+
   const filteredInventory = useMemo(() => {
     if (filterType === 'ingredients') {
       return inventory.filter(item => item.batch_recipe_id === null);
@@ -137,8 +201,19 @@ export default function InventoryTable() {
     if (filterType === 'batches') {
       return inventory.filter(item => item.batch_recipe_id !== null);
     }
+    if (filterType === 'review') {
+      return inventory.filter(item => {
+        if (item.ingredient_id != null) {
+          return discrepancyMap.has(`ingredient:${item.ingredient_id}`);
+        }
+        if (item.batch_recipe_id != null) {
+          return discrepancyMap.has(`batch:${item.batch_recipe_id}`);
+        }
+        return false;
+      });
+    }
     return inventory;
-  }, [filterType, inventory]);
+  }, [discrepancyMap, filterType, inventory]);
 
   const stats = useMemo(() => {
     const categories = new Set<string>();
@@ -184,6 +259,39 @@ export default function InventoryTable() {
   const formatNumber = (value: number) =>
     Number.isFinite(value) ? value.toLocaleString('en-US') : '0';
 
+  const tableGrouping = groupByCategory ? ['category'] : [];
+  const panelBorderColor = alpha(theme.palette.divider, isDarkMode ? 0.45 : 0.85);
+  const cardBackground = isDarkMode
+    ? alpha(theme.palette.background.paper, 0.78)
+    : alpha(theme.palette.background.paper, 0.96);
+  const heroBackground = isDarkMode
+    ? `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.9)}, ${alpha(theme.palette.primary.main, 0.14)})`
+    : `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.98)}, ${alpha(theme.palette.primary.main, 0.08)})`;
+  const tableBackground = isDarkMode
+    ? alpha(theme.palette.background.paper, 0.72)
+    : alpha(theme.palette.background.paper, 0.98);
+  const rowEvenBackground = isDarkMode
+    ? alpha(theme.palette.common.white, 0.015)
+    : alpha(theme.palette.common.white, 0.72);
+  const rowOddBackground = isDarkMode
+    ? alpha(theme.palette.common.white, 0.03)
+    : alpha(theme.palette.primary.main, 0.018);
+  const rowHoverBackground = isDarkMode
+    ? alpha(theme.palette.primary.light, 0.1)
+    : alpha(theme.palette.primary.main, 0.05);
+  const discrepancyBackground = isDarkMode
+    ? alpha(theme.palette.warning.main, 0.14)
+    : alpha(theme.palette.warning.main, 0.08);
+  const discrepancyHoverBackground = isDarkMode
+    ? alpha(theme.palette.warning.main, 0.2)
+    : alpha(theme.palette.warning.main, 0.12);
+  const tableHeaderBackground = isDarkMode
+    ? alpha(theme.palette.common.white, 0.05)
+    : alpha(theme.palette.primary.main, 0.045);
+  const toolbarBackground = isDarkMode
+    ? alpha(theme.palette.common.white, 0.02)
+    : alpha(theme.palette.primary.main, 0.02);
+
   const columns = useMemo<MRT_ColumnDef<InventoryItem>[]>(
     () => [
       {
@@ -226,11 +334,66 @@ export default function InventoryTable() {
             <Typography
               sx={{
                 fontWeight: 'bold',
-                color: value > 0 ? theme.palette.success.main : theme.palette.error.main,
+                color: value > 0 ? theme.palette.text.primary : theme.palette.warning.main,
               }}
             >
               {value}
             </Typography>
+          );
+        },
+      },
+      {
+        id: 'reviewStatus',
+        header: 'Review',
+        size: 100,
+        enableColumnFilter: false,
+        Cell: ({ row }) => {
+          const original = row.original;
+          const key =
+            original.ingredient_id != null
+              ? `ingredient:${original.ingredient_id}`
+              : original.batch_recipe_id != null
+                ? `batch:${original.batch_recipe_id}`
+                : 'unknown';
+          const rowDiscrepancies = discrepancyMap.get(key) || [];
+
+          if (rowDiscrepancies.length === 0) {
+            return <Chip size="small" label="OK" variant="outlined" color="success" />;
+          }
+
+          return (
+            <Chip
+              size="small"
+              icon={<WarningAmberIcon />}
+              label={`${rowDiscrepancies.length} open`}
+              color="warning"
+            />
+          );
+        },
+      },
+      {
+        id: 'reviewAction',
+        header: 'Action',
+        size: 130,
+        enableColumnFilter: false,
+        Cell: ({ row }) => {
+          const original = row.original;
+          const key =
+            original.ingredient_id != null
+              ? `ingredient:${original.ingredient_id}`
+              : original.batch_recipe_id != null
+                ? `batch:${original.batch_recipe_id}`
+                : 'unknown';
+          const rowDiscrepancies = discrepancyMap.get(key) || [];
+
+          if (rowDiscrepancies.length === 0) {
+            return null;
+          }
+
+          return (
+            <Button size="small" variant="outlined" onClick={() => handleReviewAdjust(original)}>
+              Adjust stock
+            </Button>
           );
         },
       },
@@ -261,7 +424,13 @@ export default function InventoryTable() {
         },
       },
     ],
-    [theme.palette.error.main, theme.palette.success.main, handlePackagingClick]
+    [
+      discrepancyMap,
+      theme.palette.error.main,
+      theme.palette.success.main,
+      handlePackagingClick,
+      handleReviewAdjust,
+    ]
   );
 
   if (loading) {
@@ -310,8 +479,9 @@ export default function InventoryTable() {
         sx={{
           p: 3,
           borderRadius: 3,
-          border: `1px solid ${theme.palette.divider}`,
-          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.05)}, ${alpha(theme.palette.primary.main, 0.12)})`,
+          border: `1px solid ${panelBorderColor}`,
+          background: heroBackground,
+          backdropFilter: 'blur(12px)',
         }}
       >
         <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" gap={2}>
@@ -320,10 +490,21 @@ export default function InventoryTable() {
               Inventory Pulse
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Grouped by category with quick filters for ingredients or batch recipes
+              {filterType === 'review'
+                ? 'Review stock mismatches and reconcile the affected items directly from inventory'
+                : groupByCategory
+                  ? 'Grouped by category with quick filters for ingredients or batch recipes'
+                  : 'Flat inventory list with quick filters for ingredients or batch recipes'}
             </Typography>
           </Box>
           <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="flex-end">
+            <Chip
+              label={groupByCategory ? 'Grouped by category' : 'Flat list'}
+              color={groupByCategory ? 'secondary' : 'default'}
+              variant={groupByCategory ? 'filled' : 'outlined'}
+              onClick={() => setGroupByCategory(current => !current)}
+              sx={{ fontWeight: 600 }}
+            />
             {filterOptions.map(filter => (
               <Chip
                 key={filter.key}
@@ -344,8 +525,10 @@ export default function InventoryTable() {
           sx={{
             flex: 1,
             borderRadius: 3,
-            border: `1px solid ${theme.palette.divider}`,
-            '&:hover': { boxShadow: theme.shadows[4] },
+            border: `1px solid ${panelBorderColor}`,
+            backgroundColor: cardBackground,
+            boxShadow: 'none',
+            '&:hover': { boxShadow: theme.shadows[2] },
           }}
         >
           <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -373,8 +556,10 @@ export default function InventoryTable() {
           sx={{
             flex: 1,
             borderRadius: 3,
-            border: `1px solid ${theme.palette.divider}`,
-            '&:hover': { boxShadow: theme.shadows[4] },
+            border: `1px solid ${panelBorderColor}`,
+            backgroundColor: cardBackground,
+            boxShadow: 'none',
+            '&:hover': { boxShadow: theme.shadows[2] },
           }}
         >
           <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -402,8 +587,10 @@ export default function InventoryTable() {
           sx={{
             flex: 1,
             borderRadius: 3,
-            border: `1px solid ${theme.palette.divider}`,
-            '&:hover': { boxShadow: theme.shadows[4] },
+            border: `1px solid ${panelBorderColor}`,
+            backgroundColor: cardBackground,
+            boxShadow: 'none',
+            '&:hover': { boxShadow: theme.shadows[2] },
           }}
         >
           <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -428,8 +615,10 @@ export default function InventoryTable() {
           sx={{
             flex: 1,
             borderRadius: 3,
-            border: `1px solid ${theme.palette.divider}`,
-            '&:hover': { boxShadow: theme.shadows[4] },
+            border: `1px solid ${panelBorderColor}`,
+            backgroundColor: cardBackground,
+            boxShadow: 'none',
+            '&:hover': { boxShadow: theme.shadows[2] },
           }}
         >
           <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -453,12 +642,31 @@ export default function InventoryTable() {
         </Card>
       </Stack>
 
+      {discrepancies.length > 0 && (
+        <Alert
+          severity={filterType === 'review' ? 'info' : 'warning'}
+          sx={{ borderRadius: 3 }}
+          action={
+            filterType !== 'review' ? (
+              <Button color="inherit" size="small" onClick={() => setFilterType('review')}>
+                Open review queue
+              </Button>
+            ) : undefined
+          }
+        >
+          {filterType === 'review'
+            ? `${discrepancies.length} inventory deduction issue${discrepancies.length === 1 ? '' : 's'} are in review. Use Adjust stock to record what is actually on hand now. Start with the oldest lot when FIFO matches reality. If the corrected stock now covers the shortage, the review alert clears automatically.`
+            : `${discrepancies.length} inventory deduction issue${discrepancies.length === 1 ? '' : 's'} need review. Audit the affected item, then use lot adjustment to reconcile stock.`}
+        </Alert>
+      )}
+
       <Paper
         elevation={0}
         sx={{
           p: 2.5,
           borderRadius: 3,
-          border: `1px solid ${theme.palette.divider}`,
+          border: `1px solid ${panelBorderColor}`,
+          backgroundColor: cardBackground,
         }}
       >
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="stretch">
@@ -525,62 +733,86 @@ export default function InventoryTable() {
         elevation={0}
         sx={{
           borderRadius: 3,
-          border: `1px solid ${theme.palette.divider}`,
+          border: `1px solid ${panelBorderColor}`,
+          backgroundColor: tableBackground,
           overflow: 'hidden',
           boxShadow: 'none',
         }}
       >
         <MaterialReactTable
+          key={`inventory-table-${filterType}`}
           columns={columns}
           data={filteredInventory}
-          enableRowSelection={false}
           enableColumnFilters
           enableGrouping
           enableExpanding={true}
           enableColumnOrdering
           enablePinning
+          enableRowSelection={false}
           initialState={{
             density: 'comfortable',
             columnVisibility: {},
-            grouping: ['category'],
+            grouping: tableGrouping,
             columnFilters: [],
             showColumnFilters: true,
           }}
-          muiTablePaperProps={{ sx: { boxShadow: 'none', borderRadius: 0 } }}
-          muiTableHeadCellProps={{
+          muiTablePaperProps={{
             sx: {
-              backgroundColor: alpha(theme.palette.primary.main, 0.06),
-              fontWeight: 700,
-              borderColor: alpha(theme.palette.divider, 0.6),
+              boxShadow: 'none',
+              borderRadius: 0,
+              backgroundColor: 'transparent',
             },
           }}
-          muiTableBodyRowProps={({ row }) => ({
-            onClick: () => {
-              if (row.getIsGrouped()) {
-                row.toggleExpanded();
-              }
-            },
+          muiTableHeadCellProps={{
             sx: {
-              backgroundColor:
-                row.index % 2 === 0
-                  ? alpha(theme.palette.background.paper, 0.9)
-                  : alpha(theme.palette.action.hover, 0.6),
-              cursor: row.getIsGrouped() ? 'pointer' : 'default',
-              transition: 'background-color 0.15s ease',
-              '&:hover': {
-                backgroundColor: alpha(theme.palette.primary.main, 0.04),
-              },
+              backgroundColor: tableHeaderBackground,
+              color: theme.palette.text.primary,
+              fontWeight: 700,
+              borderColor: alpha(theme.palette.divider, isDarkMode ? 0.22 : 0.35),
+              letterSpacing: '0.01em',
             },
+          }}
+          muiTableBodyRowProps={({ row }) => {
+            const key =
+              row.original.ingredient_id != null
+                ? `ingredient:${row.original.ingredient_id}`
+                : row.original.batch_recipe_id != null
+                  ? `batch:${row.original.batch_recipe_id}`
+                  : 'unknown';
+            const hasDiscrepancy = !row.getIsGrouped() && discrepancyMap.has(key);
+
+            return {
+              onClick: () => {
+                if (row.getIsGrouped()) {
+                  row.toggleExpanded();
+                }
+              },
+              sx: {
+                backgroundColor: hasDiscrepancy
+                  ? discrepancyBackground
+                  : row.index % 2 === 0
+                    ? rowEvenBackground
+                    : rowOddBackground,
+                cursor: row.getIsGrouped() ? 'pointer' : 'default',
+                transition: 'background-color 0.15s ease',
+                '&:hover': {
+                  backgroundColor: hasDiscrepancy
+                    ? discrepancyHoverBackground
+                    : rowHoverBackground,
+                },
+              },
+            };
           })}
           muiTableBodyCellProps={{
             sx: {
-              borderColor: alpha(theme.palette.divider, 0.5),
+              borderColor: alpha(theme.palette.divider, isDarkMode ? 0.22 : 0.35),
+              color: theme.palette.text.primary,
             },
           }}
           muiTopToolbarProps={{
             sx: {
-              backgroundColor: alpha(theme.palette.primary.main, 0.02),
-              borderBottom: `1px solid ${theme.palette.divider}`,
+              backgroundColor: toolbarBackground,
+              borderBottom: `1px solid ${alpha(theme.palette.divider, isDarkMode ? 0.22 : 0.35)}`,
             },
           }}
           positionToolbarAlertBanner="none"

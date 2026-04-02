@@ -163,6 +163,28 @@ export interface InventoryItem {
   packaging_breakdown: LotBreakdown[];
 }
 
+export interface InventoryDeductionDiscrepancy {
+  alert_id: number;
+  alert_type: string;
+  message: string;
+  severity: string;
+  status: string;
+  is_acknowledged: boolean;
+  date_created: string;
+  item_kind: 'ingredient' | 'batch' | 'unknown';
+  ingredient_id?: number | null;
+  batch_recipe_id?: number | null;
+  item_name?: string | null;
+  unit?: string | null;
+  required_quantity: number;
+  available_quantity: number;
+  current_quantity_on_hand: number;
+  shortfall_quantity: number;
+  reference_type?: string | null;
+  reference_id?: number | null;
+  attempted_day?: string | null;
+}
+
 export interface SupplierInfo {
   supplier_name: string;
   ingredient_supplier_id?: number | null;

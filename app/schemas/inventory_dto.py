@@ -217,6 +217,28 @@ class StockMovementItem(BaseModel):
     notes: Optional[str] = None
     running_balance: Optional[float] = None
 
+
+class InventoryDeductionDiscrepancyDTO(BaseModel):
+    alert_id: int
+    alert_type: str
+    message: str
+    severity: str
+    status: str
+    is_acknowledged: bool
+    date_created: str
+    item_kind: Literal["ingredient", "batch", "unknown"]
+    ingredient_id: Optional[int] = None
+    batch_recipe_id: Optional[int] = None
+    item_name: Optional[str] = None
+    unit: Optional[str] = None
+    required_quantity: float
+    available_quantity: float
+    current_quantity_on_hand: float
+    shortfall_quantity: float
+    reference_type: Optional[str] = None
+    reference_id: Optional[int] = None
+    attempted_day: Optional[str] = None
+
 class SupplierOut(BaseModel):
     supplier_id: int
     name: str

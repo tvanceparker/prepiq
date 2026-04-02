@@ -114,6 +114,12 @@ export const LotAdjustDialog: React.FC<LotAdjustDialogProps> = ({
             newer stock.
           </Typography>
 
+          <Alert severity="info" variant="outlined">
+            Use this when review says sales were already recorded but stock on hand was too low to
+            deduct. Enter the quantity that needs to be added or removed so inventory matches what
+            is physically there now.
+          </Alert>
+
           <FormControl fullWidth>
             <InputLabel id="lot-select-label">Lot</InputLabel>
             <Select

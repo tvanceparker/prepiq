@@ -16,6 +16,7 @@ from app.schemas.inventory_dto import (
     StockMovementItem,
     PurchaseOrderDTO,
     PurchaseOrderCreateDTO,
+    InventoryDeductionDiscrepancyDTO,
     PurchaseOrderItemUpdateDTO,
     PurchaseOrderReceiptDTO,
     PurchaseOrderReceiptSummaryDTO,
@@ -205,6 +206,16 @@ async def get_ingredients_stock_levels(
     Returns status: 'critical', 'low', 'warning', or 'ok'.
     """
     return await inventory_service.get_ingredients_with_stock_levels()
+
+
+@router.get("/deduction-discrepancies", response_model=List[InventoryDeductionDiscrepancyDTO])
+async def get_inventory_deduction_discrepancies(
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    List open inventory deduction failures for review in the inventory workspace.
+    """
+    return await inventory_service.get_inventory_deduction_discrepancies()
 
 @router.get("/last-eod-date")
 async def get_last_eod_date(

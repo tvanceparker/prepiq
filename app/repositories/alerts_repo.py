@@ -36,6 +36,20 @@ class AlertRepository(BaseRepository):
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
+    async def get_open_inventory_deduction_alerts(self, limit: int = 200) -> List[Alert]:
+        stmt = (
+            select(Alert)
+            .where(
+                Alert.restaurant_id == self.restaurant_id,
+                Alert.alert_type == "Inventory:DeductionFailed",
+                Alert.status.in_(["Active", "Acknowledged"]),
+            )
+            .order_by(Alert.date_created.desc(), Alert.alert_id.desc())
+            .limit(limit)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
     async def alert_already_exists(self, alert_type: str, meta_sale_id: int) -> bool:
         stmt = (
             select(Alert.alert_id)
