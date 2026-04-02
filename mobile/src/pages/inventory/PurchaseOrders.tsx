@@ -976,11 +976,7 @@ export default function PurchaseOrders(): React.JSX.Element {
           <Divider />
 
           {/* Wizard Content */}
-          <ScrollView
-            style={{ flex: 1 }}
-            nestedScrollEnabled
-            keyboardShouldPersistTaps="handled"
-          >
+          <ScrollView style={{ flex: 1 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {renderWizardContent()}
           </ScrollView>
 

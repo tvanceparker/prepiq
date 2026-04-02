@@ -23,7 +23,11 @@ import {
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useInventory, useLotInfo } from '../../hooks/useInventory';
 import { AuthContext } from '../../contexts/AuthContext';
-import { InventoryDeductionDiscrepancy, InventoryItem, LotBreakdown } from '../../interfaces/inventory';
+import {
+  InventoryDeductionDiscrepancy,
+  InventoryItem,
+  LotBreakdown,
+} from '../../interfaces/inventory';
 
 interface InventorySection {
   title: string;
@@ -212,7 +216,8 @@ export default function InventoryList(): React.JSX.Element {
       });
 
       const resolvedCount = Number(response.resolved_deduction_alerts || 0);
-      const delta = Number(response.current_quantity_on_hand) - Number(response.previous_quantity_on_hand);
+      const delta =
+        Number(response.current_quantity_on_hand) - Number(response.previous_quantity_on_hand);
       const direction = delta > 0 ? 'added' : delta < 0 ? 'removed' : 'changed';
       const absoluteDelta = Math.abs(delta);
 
@@ -381,7 +386,7 @@ export default function InventoryList(): React.JSX.Element {
               </View>
 
               {hasReview && (
-                <View style={[styles.reviewBadge, { backgroundColor: '#fff3cd' }]}> 
+                <View style={[styles.reviewBadge, { backgroundColor: '#fff3cd' }]}>
                   <MaterialCommunityIcons name="alert" size={14} color="#b26a00" />
                   <Text variant="labelSmall" style={{ color: '#b26a00', marginLeft: 4 }}>
                     {rowDiscrepancies.length} need review

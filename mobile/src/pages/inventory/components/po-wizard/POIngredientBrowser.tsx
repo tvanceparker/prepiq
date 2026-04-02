@@ -136,9 +136,7 @@ export default function POIngredientBrowser({
 
         {cartItems.length > 0 && (
           <Card style={styles.cartCard} mode="outlined">
-            <Card.Title
-              title={`Current Draft (${cartItems.length})`}
-            />
+            <Card.Title title={`Current Draft (${cartItems.length})`} />
             <Card.Content>
               {cartItems.map((item, idx) => (
                 <View

@@ -45,12 +45,15 @@ export function useInventory(options: UseInventoryOptions = {}) {
   const inventory = (inventoryQuery.data ?? []) as unknown as InventoryItem[];
 
   // Group inventory by category for SectionList
-  const inventoryByCategory = inventory.reduce((acc, item) => {
-    const category = item.category || 'Uncategorized';
-    if (!acc[category]) acc[category] = [];
-    acc[category].push(item);
-    return acc;
-  }, {} as Record<string, InventoryItem[]>);
+  const inventoryByCategory = inventory.reduce(
+    (acc, item) => {
+      const category = item.category || 'Uncategorized';
+      if (!acc[category]) acc[category] = [];
+      acc[category].push(item);
+      return acc;
+    },
+    {} as Record<string, InventoryItem[]>
+  );
 
   // Get sections for SectionList
   const sections = Object.entries(inventoryByCategory)
