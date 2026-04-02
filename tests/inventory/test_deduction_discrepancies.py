@@ -111,6 +111,62 @@ async def test_get_inventory_deduction_discrepancies_returns_batch_alerts(invent
 
 
 @pytest.mark.asyncio
+async def test_get_inventory_deduction_discrepancies_derives_missing_shortfall(inventory_service):
+    alert = SimpleNamespace(
+        alert_id=91,
+        alert_type='Inventory:DeductionFailed',
+        message='Inventory deduction failed for flour.',
+        severity='urgent',
+        status='Active',
+        is_acknowledged=False,
+        date_created=datetime(2026, 4, 2, 9, 0, 0),
+        meta={
+            'ingredient_id': 201,
+            'ingredient_name': 'Flour',
+            'required_quantity': 12.95,
+            'available_quantity': 0,
+            'current_quantity_on_hand': 0,
+            'unit': 'lb',
+        },
+    )
+    inventory_service.alert_repo.get_open_inventory_deduction_alerts.return_value = [alert]
+    inventory_service.ingredient_repo.get_by_id.return_value = SimpleNamespace(name='Flour')
+
+    result = await inventory_service.get_inventory_deduction_discrepancies()
+
+    assert result[0]['required_quantity'] == 12.95
+    assert result[0]['current_quantity_on_hand'] == 0.0
+    assert result[0]['shortfall_quantity'] == 12.95
+
+
+@pytest.mark.asyncio
+async def test_get_inventory_deduction_discrepancies_uses_available_as_current_when_missing(inventory_service):
+    alert = SimpleNamespace(
+        alert_id=92,
+        alert_type='Inventory:DeductionFailed',
+        message='Inventory deduction failed for salmon fillet.',
+        severity='urgent',
+        status='Active',
+        is_acknowledged=False,
+        date_created=datetime(2026, 4, 2, 10, 0, 0),
+        meta={
+            'ingredient_id': 501,
+            'required_quantity': 12.95,
+            'available_quantity': 8.0,
+            'unit': 'lb',
+        },
+    )
+    inventory_service.alert_repo.get_open_inventory_deduction_alerts.return_value = [alert]
+    inventory_service.ingredient_repo.get_by_id.return_value = SimpleNamespace(name='Salmon Fillet')
+
+    result = await inventory_service.get_inventory_deduction_discrepancies()
+
+    assert result[0]['current_quantity_on_hand'] == 8.0
+    assert result[0]['shortfall_quantity'] == 4.95
+    assert result[0]['item_name'] == 'Salmon Fillet'
+
+
+@pytest.mark.asyncio
 async def test_resolve_satisfied_deduction_alerts_clears_matching_alerts(mock_db):
     service = InventoryService(mock_db, 1, 'full', employee_id=7)
     service.alert_repo = AsyncMock()

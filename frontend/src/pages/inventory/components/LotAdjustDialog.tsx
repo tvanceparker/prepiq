@@ -157,8 +157,8 @@ export const LotAdjustDialog: React.FC<LotAdjustDialogProps> = ({
           {mode === 'review' ? (
             <>
               <Typography variant="body2" color="text.secondary">
-                Count what is physically on hand right now. The system will calculate the difference
-                from the recorded amount and reconcile inventory automatically.
+                Count what is physically on hand right now. The system will compare it to the
+                quantity on hand in inventory and reconcile automatically.
               </Typography>
 
               <Alert severity="info" variant="outlined">
@@ -168,8 +168,9 @@ export const LotAdjustDialog: React.FC<LotAdjustDialogProps> = ({
 
               {reviewDiscrepancy && (
                 <Alert severity="warning" variant="outlined">
-                  Recorded: {reviewDiscrepancy.current_quantity_on_hand} {unit}. Needed for the
-                  failed deduction: {reviewDiscrepancy.required_quantity} {unit}. Shortfall:{' '}
+                  Quantity on hand in inventory: {reviewDiscrepancy.current_quantity_on_hand}{' '}
+                  {unit}. Quantity needed for the failed deduction:{' '}
+                  {reviewDiscrepancy.required_quantity} {unit}. Shortfall:{' '}
                   {reviewDiscrepancy.shortfall_quantity} {unit}.
                 </Alert>
               )}
@@ -261,7 +262,7 @@ export const LotAdjustDialog: React.FC<LotAdjustDialogProps> = ({
 
           <Stack spacing={0.5}>
             <Typography variant="body2" color="text.secondary">
-              Recorded stock: {inventoryQuantity} {unit}
+              Quantity on hand in inventory: {inventoryQuantity} {unit}
             </Typography>
             {mode === 'lot-adjust' && selectedLot && (
               <Typography variant="body2" color="text.secondary">

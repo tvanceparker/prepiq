@@ -808,6 +808,21 @@ class InventoryService:
             meta = getattr(alert, "meta", None) or {}
             ingredient_id = self._coerce_optional_int(meta.get("ingredient_id"))
             batch_recipe_id = self._coerce_optional_int(meta.get("batch_recipe_id"))
+            required_quantity = self._coerce_float(meta.get("required_quantity"))
+            available_quantity = self._coerce_float(meta.get("available_quantity"))
+            current_quantity_raw = meta.get("current_quantity_on_hand")
+            if current_quantity_raw is None:
+                current_quantity_on_hand = available_quantity
+            else:
+                current_quantity_on_hand = self._coerce_float(current_quantity_raw)
+            shortfall_quantity = meta.get("shortfall_quantity")
+            if shortfall_quantity is None:
+                baseline_available = available_quantity
+                if baseline_available <= 0 and current_quantity_on_hand > 0:
+                    baseline_available = current_quantity_on_hand
+                shortfall_quantity = round(max(required_quantity - baseline_available, 0.0), 2)
+            else:
+                shortfall_quantity = self._coerce_float(shortfall_quantity)
             item_kind = "unknown"
             item_name = None
 
@@ -842,10 +857,10 @@ class InventoryService:
                     "batch_recipe_id": batch_recipe_id,
                     "item_name": item_name,
                     "unit": meta.get("unit"),
-                    "required_quantity": self._coerce_float(meta.get("required_quantity")),
-                    "available_quantity": self._coerce_float(meta.get("available_quantity")),
-                    "current_quantity_on_hand": self._coerce_float(meta.get("current_quantity_on_hand")),
-                    "shortfall_quantity": self._coerce_float(meta.get("shortfall_quantity")),
+                    "required_quantity": required_quantity,
+                    "available_quantity": available_quantity,
+                    "current_quantity_on_hand": current_quantity_on_hand,
+                    "shortfall_quantity": shortfall_quantity,
                     "reference_type": meta.get("reference_type"),
                     "reference_id": self._coerce_optional_int(meta.get("reference_id")),
                     "attempted_day": meta.get("attempted_day"),

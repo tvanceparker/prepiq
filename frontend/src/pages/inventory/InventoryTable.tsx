@@ -201,8 +201,8 @@ export default function InventoryTable() {
         open: true,
         message:
           resolvedCount > 0
-            ? `Stock set to ${response.current_quantity_on_hand} ${activeInventoryRow?.unit || ''}. Recorded ${response.previous_quantity_on_hand}; system ${direction} ${absoluteDelta}. ${resolvedCount} review ${resolvedCount === 1 ? 'alert cleared' : 'alerts cleared'}.`
-            : `Stock set to ${response.current_quantity_on_hand} ${activeInventoryRow?.unit || ''}. Recorded ${response.previous_quantity_on_hand}; system ${direction} ${absoluteDelta}.`,
+            ? `Quantity on hand set to ${response.current_quantity_on_hand} ${activeInventoryRow?.unit || ''}. Previous quantity on hand was ${response.previous_quantity_on_hand}; system ${direction} ${absoluteDelta}. ${resolvedCount} review ${resolvedCount === 1 ? 'alert cleared' : 'alerts cleared'}.`
+            : `Quantity on hand set to ${response.current_quantity_on_hand} ${activeInventoryRow?.unit || ''}. Previous quantity on hand was ${response.previous_quantity_on_hand}; system ${direction} ${absoluteDelta}.`,
         severity: 'success',
       });
       setAdjustDialogOpen(false);
