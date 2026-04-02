@@ -76,6 +76,45 @@ export interface InventoryAdjustmentDTO {
   created_at: string;
 }
 
+export interface InventoryDeductionDiscrepancy {
+  alert_id: number;
+  alert_type: string;
+  message: string;
+  severity: string;
+  status: string;
+  is_acknowledged: boolean;
+  date_created: string;
+  item_kind: 'ingredient' | 'batch' | 'unknown';
+  ingredient_id?: number | null;
+  batch_recipe_id?: number | null;
+  item_name?: string | null;
+  unit?: string | null;
+  required_quantity: number;
+  available_quantity: number;
+  current_quantity_on_hand: number;
+  shortfall_quantity: number;
+  reference_type?: string | null;
+  reference_id?: number | null;
+  attempted_day?: string | null;
+}
+
+export interface InventoryAdjustmentResult {
+  success: boolean;
+  message: string;
+  adjusted_quantity: number;
+  previous_quantity_on_hand: number;
+  current_quantity_on_hand: number;
+  resolved_deduction_alerts: number;
+}
+
+export interface InventorySetCurrentStockRequest {
+  inventory_id: number;
+  counted_quantity: number;
+  lot_id?: number | null;
+  reason?: string | null;
+  notes?: string;
+}
+
 // =============================================================================
 // Purchase Orders
 // =============================================================================

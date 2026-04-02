@@ -18,11 +18,12 @@ import {
   ProgressBar,
   Snackbar,
   HelperText,
+  RadioButton,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useInventory, useLotInfo } from '../../hooks/useInventory';
 import { AuthContext } from '../../contexts/AuthContext';
-import { InventoryItem, LotBreakdown } from '../../interfaces/inventory';
+import { InventoryDeductionDiscrepancy, InventoryItem, LotBreakdown } from '../../interfaces/inventory';
 
 interface InventorySection {
   title: string;
@@ -35,7 +36,7 @@ export default function InventoryList(): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'ingredients' | 'batches'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'ingredients' | 'batches' | 'review'>('all');
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [selectedLotId, setSelectedLotId] = useState<number | null>(null);
   const [selectedLotRemaining, setSelectedLotRemaining] = useState<number | null>(null);
@@ -51,16 +52,39 @@ export default function InventoryList(): React.JSX.Element {
   const [adjustUsageType, setAdjustUsageType] = useState('manual_adjustment');
   const [adjustNotes, setAdjustNotes] = useState('');
   const [adjustError, setAdjustError] = useState<string | null>(null);
+  const [countedQuantity, setCountedQuantity] = useState('');
+  const [reviewReason, setReviewReason] = useState('count_correction');
+  const [reviewNotes, setReviewNotes] = useState('');
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   // Queries
   const {
     inventory,
+    discrepancies,
     loading: isLoading,
     refresh,
     adjustInventory: adjustInventoryMutation,
     adjusting,
+    setCurrentStock,
+    reconciling,
   } = useInventory();
   const { lotInfo, usedLogs, wastedLogs, loading: lotLoading } = useLotInfo(selectedLotId);
+
+  const discrepancyMap = React.useMemo(() => {
+    const map = new Map<string, InventoryDeductionDiscrepancy[]>();
+    discrepancies.forEach(discrepancy => {
+      const key =
+        discrepancy.ingredient_id != null
+          ? `ingredient:${discrepancy.ingredient_id}`
+          : discrepancy.batch_recipe_id != null
+            ? `batch:${discrepancy.batch_recipe_id}`
+            : 'unknown';
+      const existing = map.get(key) || [];
+      existing.push(discrepancy);
+      map.set(key, existing);
+    });
+    return map;
+  }, [discrepancies]);
 
   // Pull to refresh
   const onRefresh = useCallback(async () => {
@@ -86,6 +110,16 @@ export default function InventoryList(): React.JSX.Element {
       items = items.filter(item => item.batch_recipe_id === null);
     } else if (typeFilter === 'batches') {
       items = items.filter(item => item.batch_recipe_id !== null);
+    } else if (typeFilter === 'review') {
+      items = items.filter(item => {
+        if (item.ingredient_id != null) {
+          return discrepancyMap.has(`ingredient:${item.ingredient_id}`);
+        }
+        if (item.batch_recipe_id != null) {
+          return discrepancyMap.has(`batch:${item.batch_recipe_id}`);
+        }
+        return false;
+      });
     }
 
     if (categoryFilter !== 'all') {
@@ -98,7 +132,24 @@ export default function InventoryList(): React.JSX.Element {
     }
 
     return items;
-  }, [inventory, categoryFilter, searchQuery, typeFilter]);
+  }, [inventory, categoryFilter, discrepancyMap, searchQuery, typeFilter]);
+
+  const selectedItemDiscrepancies = React.useMemo(() => {
+    if (!selectedItem) {
+      return [];
+    }
+
+    const key =
+      selectedItem.ingredient_id != null
+        ? `ingredient:${selectedItem.ingredient_id}`
+        : selectedItem.batch_recipe_id != null
+          ? `batch:${selectedItem.batch_recipe_id}`
+          : 'unknown';
+
+    return discrepancyMap.get(key) || [];
+  }, [discrepancyMap, selectedItem]);
+
+  const primaryDiscrepancy = selectedItemDiscrepancies[0] || null;
 
   // Group by category for SectionList
   const sections: InventorySection[] = React.useMemo(() => {
@@ -120,6 +171,10 @@ export default function InventoryList(): React.JSX.Element {
   // Open lot breakdown modal
   const handleViewLots = (item: InventoryItem) => {
     setSelectedItem(item);
+    setCountedQuantity('');
+    setReviewReason('count_correction');
+    setReviewNotes('');
+    setReviewError(null);
     setShowLotModal(true);
   };
 
@@ -134,6 +189,50 @@ export default function InventoryList(): React.JSX.Element {
     setAdjustUsageType('manual_adjustment');
     setAdjustNotes('');
     setAdjustError(null);
+  };
+
+  const submitCurrentStockCount = async () => {
+    if (!selectedItem) {
+      setReviewError('Select an inventory item first');
+      return;
+    }
+
+    const qty = Number(countedQuantity);
+    if (!Number.isFinite(qty) || qty < 0) {
+      setReviewError('Enter a quantity on hand of zero or greater');
+      return;
+    }
+
+    try {
+      const response = await setCurrentStock({
+        inventory_id: selectedItem.inventory_id,
+        counted_quantity: qty,
+        reason: reviewReason,
+        notes: reviewNotes.trim() || undefined,
+      });
+
+      const resolvedCount = Number(response.resolved_deduction_alerts || 0);
+      const delta = Number(response.current_quantity_on_hand) - Number(response.previous_quantity_on_hand);
+      const direction = delta > 0 ? 'added' : delta < 0 ? 'removed' : 'changed';
+      const absoluteDelta = Math.abs(delta);
+
+      setSnackbar({
+        visible: true,
+        message:
+          resolvedCount > 0
+            ? `Quantity on hand set to ${response.current_quantity_on_hand} ${selectedItem.unit}. Previous quantity on hand was ${response.previous_quantity_on_hand}; system ${direction} ${absoluteDelta}. ${resolvedCount} review ${resolvedCount === 1 ? 'alert cleared' : 'alerts cleared'}.`
+            : `Quantity on hand set to ${response.current_quantity_on_hand} ${selectedItem.unit}. Previous quantity on hand was ${response.previous_quantity_on_hand}; system ${direction} ${absoluteDelta}.`,
+        type: 'success',
+      });
+      setReviewError(null);
+      setCountedQuantity('');
+      setReviewNotes('');
+      setShowLotModal(false);
+      await refresh();
+    } catch (err: any) {
+      setReviewError(err?.message || 'Failed to set current stock');
+      setSnackbar({ visible: true, message: 'Failed to set current stock', type: 'error' });
+    }
   };
 
   const handleAdjustLot = async (params: {
@@ -223,6 +322,14 @@ export default function InventoryList(): React.JSX.Element {
     const stockLevel = getStockLevel(item.quantity_on_hand);
     const lotsCount = item.packaging_breakdown?.length || 0;
     const isBatchRecipe = item.batch_recipe_id !== null;
+    const itemKey =
+      item.ingredient_id != null
+        ? `ingredient:${item.ingredient_id}`
+        : item.batch_recipe_id != null
+          ? `batch:${item.batch_recipe_id}`
+          : 'unknown';
+    const rowDiscrepancies = discrepancyMap.get(itemKey) || [];
+    const hasReview = rowDiscrepancies.length > 0;
 
     return (
       <Card style={styles.itemCard} mode="outlined">
@@ -272,6 +379,15 @@ export default function InventoryList(): React.JSX.Element {
                   {stockLevel.label}
                 </Text>
               </View>
+
+              {hasReview && (
+                <View style={[styles.reviewBadge, { backgroundColor: '#fff3cd' }]}> 
+                  <MaterialCommunityIcons name="alert" size={14} color="#b26a00" />
+                  <Text variant="labelSmall" style={{ color: '#b26a00', marginLeft: 4 }}>
+                    {rowDiscrepancies.length} need review
+                  </Text>
+                </View>
+              )}
 
               <Pressable style={styles.lotsButton} onPress={() => handleViewLots(item)}>
                 <MaterialCommunityIcons
@@ -412,11 +528,14 @@ export default function InventoryList(): React.JSX.Element {
             { key: 'all', label: 'All items' },
             { key: 'ingredients', label: 'Ingredients' },
             { key: 'batches', label: 'Batch recipes' },
+            { key: 'review', label: 'Needs review' },
           ].map(filter => (
             <Chip
               key={filter.key}
               selected={typeFilter === filter.key}
-              onPress={() => setTypeFilter(filter.key as 'all' | 'ingredients' | 'batches')}
+              onPress={() =>
+                setTypeFilter(filter.key as 'all' | 'ingredients' | 'batches' | 'review')
+              }
               style={styles.filterChip}
             >
               {filter.label}
@@ -495,6 +614,94 @@ export default function InventoryList(): React.JSX.Element {
               </View>
 
               <Divider />
+
+              {primaryDiscrepancy && (
+                <>
+                  <View style={styles.reviewSummaryCard}>
+                    <Text variant="titleSmall" style={{ fontWeight: '600', marginBottom: 8 }}>
+                      Needs review
+                    </Text>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      Quantity on hand in inventory: {primaryDiscrepancy.current_quantity_on_hand}{' '}
+                      {selectedItem.unit}
+                    </Text>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      Quantity needed for failed deduction: {primaryDiscrepancy.required_quantity}{' '}
+                      {selectedItem.unit}
+                    </Text>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      Shortfall: {primaryDiscrepancy.shortfall_quantity} {selectedItem.unit}
+                    </Text>
+                  </View>
+
+                  <Text
+                    variant="titleMedium"
+                    style={{ marginTop: 16, marginBottom: 12, fontWeight: '600' }}
+                  >
+                    Set current stock
+                  </Text>
+
+                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                    Count what is physically on hand right now. The system will compare it to the
+                    quantity on hand in inventory and reconcile automatically.
+                  </Text>
+
+                  <TextInput
+                    label={`Current counted stock (${selectedItem.unit})`}
+                    value={countedQuantity}
+                    onChangeText={setCountedQuantity}
+                    keyboardType="decimal-pad"
+                    mode="outlined"
+                    style={{ marginTop: 12, marginBottom: 8 }}
+                  />
+
+                  <Text variant="labelMedium" style={{ marginBottom: 8 }}>
+                    Reason
+                  </Text>
+                  <RadioButton.Group onValueChange={setReviewReason} value={reviewReason}>
+                    {[
+                      { key: 'count_correction', label: 'Count correction' },
+                      { key: 'waste_not_logged', label: 'Waste not logged' },
+                      { key: 'receipt_not_entered', label: 'Receipt not entered' },
+                      { key: 'prep_variance', label: 'Prep variance' },
+                      { key: 'other', label: 'Other' },
+                    ].map(option => (
+                      <Pressable
+                        key={option.key}
+                        onPress={() => setReviewReason(option.key)}
+                        style={styles.reasonRow}
+                      >
+                        <RadioButton value={option.key} />
+                        <Text>{option.label}</Text>
+                      </Pressable>
+                    ))}
+                  </RadioButton.Group>
+
+                  <TextInput
+                    label="Notes (optional)"
+                    value={reviewNotes}
+                    onChangeText={setReviewNotes}
+                    mode="outlined"
+                    multiline
+                    numberOfLines={2}
+                    style={{ marginTop: 8, marginBottom: 4 }}
+                  />
+
+                  {reviewError && <HelperText type="error">{reviewError}</HelperText>}
+
+                  <Button
+                    mode="contained"
+                    onPress={submitCurrentStockCount}
+                    loading={reconciling}
+                    disabled={reconciling}
+                    style={{ marginTop: 8 }}
+                  >
+                    Set current stock
+                  </Button>
+
+                  <Divider style={{ marginVertical: 16 }} />
+                </>
+              )}
 
               {/* Summary Stats */}
               <View style={styles.modalStats}>
@@ -859,6 +1066,14 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 16,
   },
+  reviewBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
+    marginLeft: 8,
+  },
   lotsButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -886,6 +1101,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingVertical: 16,
+  },
+  reviewSummaryCard: {
+    marginTop: 16,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#fff8e1',
+  },
+  reasonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   statItem: {
     alignItems: 'center',

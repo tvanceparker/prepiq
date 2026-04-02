@@ -7,9 +7,17 @@ import {
   fetchUsedUsageLogs,
   fetchWastedUsageLogs,
   adjustInventory,
+  getInventoryDeductionDiscrepancies,
   getInventoryAdjustments,
+  setInventoryCurrentStock,
 } from '../api/inventory';
-import type { InventoryItem, LotInfo, UsageLog } from '../interfaces/inventory';
+import type {
+  InventoryAdjustmentResult,
+  InventoryDeductionDiscrepancy,
+  InventoryItem,
+  LotInfo,
+  UsageLog,
+} from '../interfaces/inventory';
 
 export interface UseInventoryOptions {
   autoRefresh?: boolean;
@@ -24,6 +32,12 @@ export function useInventory(options: UseInventoryOptions = {}) {
   const inventoryQuery = useQuery({
     queryKey: ['inventory', 'all'],
     queryFn: fetchAllInventory,
+    refetchInterval: autoRefresh ? refetchInterval : false,
+  });
+
+  const discrepanciesQuery = useQuery({
+    queryKey: ['inventory', 'discrepancies'],
+    queryFn: getInventoryDeductionDiscrepancies,
     refetchInterval: autoRefresh ? refetchInterval : false,
   });
 
@@ -54,20 +68,40 @@ export function useInventory(options: UseInventoryOptions = {}) {
     },
   });
 
+  const setCurrentStockMutation = useMutation({
+    mutationFn: setInventoryCurrentStock,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['inventory'] });
   };
+
+  const discrepancies = (discrepanciesQuery.data ?? []) as InventoryDeductionDiscrepancy[];
 
   return {
     inventory,
     inventoryByCategory,
     sections,
+    discrepancies,
     loading: inventoryQuery.isLoading,
     error: inventoryQuery.error,
     isRefetching: inventoryQuery.isRefetching,
+    discrepancyLoading: discrepanciesQuery.isLoading,
+    discrepancyError: discrepanciesQuery.error,
 
     adjustInventory: adjustMutation.mutateAsync,
     adjusting: adjustMutation.isPending,
+    setCurrentStock: setCurrentStockMutation.mutateAsync as (payload: {
+      inventory_id: number;
+      counted_quantity: number;
+      lot_id?: number | null;
+      reason?: string | null;
+      notes?: string;
+    }) => Promise<InventoryAdjustmentResult>,
+    reconciling: setCurrentStockMutation.isPending,
 
     refresh,
   };

@@ -32,7 +32,6 @@ interface POIngredientBrowserProps {
   onAddToCart: (item: IngredientCartItem) => void;
   onUpdateCartItemQty: (ingredientId: number, supplierId: number, qtyPacks: number) => void;
   onRemoveCartItem: (ingredientId: number, supplierId: number) => void;
-  onProceedToReview: () => void;
 }
 
 const getStockStatusColor = (status: string): string => {
@@ -65,7 +64,6 @@ export default function POIngredientBrowser({
   onAddToCart,
   onUpdateCartItemQty,
   onRemoveCartItem,
-  onProceedToReview,
 }: POIngredientBrowserProps): React.JSX.Element {
   const theme = useTheme();
 
@@ -94,7 +92,11 @@ export default function POIngredientBrowser({
             <ActivityIndicator size="large" />
           </View>
         ) : (
-          <ScrollView style={styles.scrollArea}>
+          <ScrollView
+            style={styles.scrollArea}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
+          >
             {sortedStockLevels.map((ing, idx) => (
               <Card
                 key={`${ing.ingredient_id}-${idx}`}
@@ -135,12 +137,7 @@ export default function POIngredientBrowser({
         {cartItems.length > 0 && (
           <Card style={styles.cartCard} mode="outlined">
             <Card.Title
-              title={`Current Order (${cartItems.length})`}
-              right={() => (
-                <Button mode="contained-tonal" onPress={onProceedToReview} compact>
-                  Review
-                </Button>
-              )}
+              title={`Current Draft (${cartItems.length})`}
             />
             <Card.Content>
               {cartItems.map((item, idx) => (
@@ -250,7 +247,11 @@ export default function POIngredientBrowser({
           No suppliers configured for this ingredient.
         </Text>
       ) : (
-        <ScrollView style={styles.supplierScrollArea}>
+        <ScrollView
+          style={styles.supplierScrollArea}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
+        >
           {ingredientSuppliers.map(sup => (
             <Card
               key={sup.supplier_id}
@@ -360,11 +361,6 @@ export default function POIngredientBrowser({
               >
                 Add to order
               </Button>
-              {cartItems.length > 0 && (
-                <Button mode="outlined" onPress={onProceedToReview}>
-                  Review order
-                </Button>
-              )}
             </View>
           </Card.Content>
         </Card>

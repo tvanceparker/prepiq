@@ -50,8 +50,8 @@ interface POSection {
   data: PurchaseOrder[];
 }
 
-type WizardStep = 0 | 1 | 2;
-const WIZARD_STEPS = ['Method', 'Select', 'Review'];
+type WizardStep = 0 | 1;
+const WIZARD_STEPS = ['Method', 'Build'];
 
 export default function PurchaseOrders(): React.JSX.Element {
   const theme = useTheme();
@@ -282,7 +282,6 @@ export default function PurchaseOrders(): React.JSX.Element {
       setSelectedItems(allItems);
       const supplierIds = new Set(result.suggestions.map(s => s.supplier_id));
       setExpandedSuppliers(supplierIds);
-      setWizardStep(2);
     } catch (error) {
       console.error('Failed to generate suggestions:', error);
     }
@@ -352,8 +351,6 @@ export default function PurchaseOrders(): React.JSX.Element {
       )
     );
   };
-
-  const handleProceedToReview = () => setWizardStep(2);
 
   const handleCreateIngredientOrders = async () => {
     if (cartItems.length === 0) return;
@@ -437,27 +434,16 @@ export default function PurchaseOrders(): React.JSX.Element {
   // Navigation helpers
   const canProceed = () => {
     if (wizardStep === 0) return wizardMode !== null;
-    if (wizardStep === 1 && wizardMode === 'ingredient') {
-      return cartItems.length > 0;
-    }
-    if (wizardStep === 2) {
+    if (wizardStep === 1) {
       if (wizardMode === 'supplier') return selectedItems.size > 0;
       if (wizardMode === 'ingredient') return cartItems.length > 0;
     }
     return true;
   };
 
-  React.useEffect(() => {
-    if (wizardMode === 'ingredient' && wizardStep === 2 && cartItems.length === 0) {
-      setWizardStep(1);
-    }
-  }, [wizardMode, wizardStep, cartItems.length]);
-
   const handleNext = () => {
     if (wizardStep === 0) {
       setWizardStep(1);
-    } else if (wizardStep === 1 && wizardMode === 'ingredient') {
-      setWizardStep(2);
     }
   };
 
@@ -465,11 +451,6 @@ export default function PurchaseOrders(): React.JSX.Element {
     if (wizardStep === 1) {
       setWizardStep(0);
       resetSuggestions();
-    } else if (wizardStep === 2) {
-      if (wizardMode === 'supplier') {
-        resetSuggestions();
-      }
-      setWizardStep(1);
     }
   };
 
@@ -488,7 +469,7 @@ export default function PurchaseOrders(): React.JSX.Element {
       <Text variant="titleSmall" style={styles.sectionTitle}>
         {section.title}
       </Text>
-      <Chip compact style={styles.countChip}>
+      <Chip compact style={styles.countChip} textStyle={styles.countChipText}>
         {section.data.length}
       </Chip>
     </View>
@@ -561,37 +542,47 @@ export default function PurchaseOrders(): React.JSX.Element {
     }
 
     if (wizardMode === 'supplier') {
-      if (wizardStep === 1) {
-        return (
+      return (
+        <View>
           <POSupplierConfig
             useCachedForecast={useCachedForecast}
             setUseCachedForecast={setUseCachedForecast}
             horizonDays={horizonDays}
             setHorizonDays={setHorizonDays}
-            lastEodDate={lastEodDate}
+            lastEodDate={lastEodDate ?? undefined}
             onGenerate={handleGenerateSuggestions}
             isGenerating={generating}
           />
-        );
-      }
-      if (wizardStep === 2 && suggestions) {
-        return (
-          <POSupplierReview
-            suggestions={suggestions}
-            selectedItems={selectedItems}
-            setSelectedItems={setSelectedItems}
-            expandedSuppliers={expandedSuppliers}
-            setExpandedSuppliers={setExpandedSuppliers}
-            orderNotes={orderNotes}
-            setOrderNotes={setOrderNotes}
-          />
-        );
-      }
+          {suggestions ? (
+            <POSupplierReview
+              suggestions={suggestions}
+              selectedItems={selectedItems}
+              setSelectedItems={setSelectedItems}
+              expandedSuppliers={expandedSuppliers}
+              setExpandedSuppliers={setExpandedSuppliers}
+              orderNotes={orderNotes}
+              setOrderNotes={setOrderNotes}
+            />
+          ) : (
+            <Card style={styles.builderPlaceholderCard} mode="outlined">
+              <Card.Content>
+                <Text variant="titleSmall" style={{ fontWeight: '700', marginBottom: 6 }}>
+                  Suggestions will appear here
+                </Text>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  Generate supplier recommendations, then refine quantities and notes before
+                  creating draft purchase orders.
+                </Text>
+              </Card.Content>
+            </Card>
+          )}
+        </View>
+      );
     }
 
     if (wizardMode === 'ingredient') {
-      if (wizardStep === 1) {
-        return (
+      return (
+        <View>
           <POIngredientBrowser
             stockLevels={stockLevels}
             stockLoading={stockLoading}
@@ -607,21 +598,30 @@ export default function PurchaseOrders(): React.JSX.Element {
             onAddToCart={handleAddToCart}
             onUpdateCartItemQty={handleUpdateCartItemQty}
             onRemoveCartItem={handleRemoveCartItem}
-            onProceedToReview={handleProceedToReview}
           />
-        );
-      }
-      if (wizardStep === 2 && cartItems.length > 0) {
-        return (
-          <POIngredientReview
-            cartItems={cartItems}
-            onUpdateCartItemQty={handleUpdateCartItemQty}
-            onRemoveCartItem={handleRemoveCartItem}
-            orderNotes={orderNotes}
-            setOrderNotes={setOrderNotes}
-          />
-        );
-      }
+          {cartItems.length > 0 ? (
+            <POIngredientReview
+              cartItems={cartItems}
+              onUpdateCartItemQty={handleUpdateCartItemQty}
+              onRemoveCartItem={handleRemoveCartItem}
+              orderNotes={orderNotes}
+              setOrderNotes={setOrderNotes}
+            />
+          ) : (
+            <Card style={styles.builderPlaceholderCard} mode="outlined">
+              <Card.Content>
+                <Text variant="titleSmall" style={{ fontWeight: '700', marginBottom: 6 }}>
+                  Current draft will appear here
+                </Text>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  Pick an ingredient, choose a supplier, and add quantities. The draft stays below
+                  while you build the order.
+                </Text>
+              </Card.Content>
+            </Card>
+          )}
+        </View>
+      );
     }
 
     return null;
@@ -976,7 +976,13 @@ export default function PurchaseOrders(): React.JSX.Element {
           <Divider />
 
           {/* Wizard Content */}
-          <ScrollView style={{ flex: 1 }}>{renderWizardContent()}</ScrollView>
+          <ScrollView
+            style={{ flex: 1 }}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
+          >
+            {renderWizardContent()}
+          </ScrollView>
 
           {/* Wizard Footer */}
           <Divider />
@@ -995,7 +1001,7 @@ export default function PurchaseOrders(): React.JSX.Element {
                 Back
               </Button>
             )}
-            {wizardStep < 2 ? (
+            {wizardStep < 1 ? (
               <Button
                 mode="contained"
                 onPress={handleNext}
@@ -1003,11 +1009,7 @@ export default function PurchaseOrders(): React.JSX.Element {
                 icon="arrow-right"
                 contentStyle={{ flexDirection: 'row-reverse' }}
               >
-                {wizardStep === 0
-                  ? 'Continue'
-                  : wizardMode === 'supplier'
-                    ? 'Generate'
-                    : 'Continue'}
+                Continue
               </Button>
             ) : (
               <Button
@@ -1096,7 +1098,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   countChip: {
-    height: 22,
+    minHeight: 26,
+    justifyContent: 'center',
+    paddingVertical: 1,
+  },
+  countChipText: {
+    lineHeight: 16,
+    textAlignVertical: 'center',
   },
   card: {
     marginBottom: 8,
@@ -1111,12 +1119,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   statusChip: {
-    height: 24,
+    minHeight: 28,
+    justifyContent: 'center',
+    paddingVertical: 2,
   },
   statusText: {
     color: '#fff',
-    fontSize: 10,
+    fontSize: 11,
+    lineHeight: 16,
     fontWeight: '600',
+    textAlignVertical: 'center',
   },
   cardDetails: {
     flexDirection: 'row',
@@ -1155,9 +1167,17 @@ const styles = StyleSheet.create({
   modalStatus: {
     alignSelf: 'flex-start',
     marginTop: 8,
+    minHeight: 30,
+    justifyContent: 'center',
+    paddingVertical: 2,
   },
   modalActions: {
     marginTop: 8,
+  },
+  builderPlaceholderCard: {
+    margin: 16,
+    marginTop: 0,
+    borderRadius: 12,
   },
   wizardModal: {
     margin: 16,
