@@ -168,10 +168,9 @@ export const LotAdjustDialog: React.FC<LotAdjustDialogProps> = ({
 
               {reviewDiscrepancy && (
                 <Alert severity="warning" variant="outlined">
-                  Quantity on hand in inventory: {reviewDiscrepancy.current_quantity_on_hand}{' '}
-                  {unit}. Quantity needed for the failed deduction:{' '}
-                  {reviewDiscrepancy.required_quantity} {unit}. Shortfall:{' '}
-                  {reviewDiscrepancy.shortfall_quantity} {unit}.
+                  Quantity on hand in inventory: {reviewDiscrepancy.current_quantity_on_hand} {unit}
+                  . Quantity needed for the failed deduction: {reviewDiscrepancy.required_quantity}{' '}
+                  {unit}. Shortfall: {reviewDiscrepancy.shortfall_quantity} {unit}.
                 </Alert>
               )}
 
