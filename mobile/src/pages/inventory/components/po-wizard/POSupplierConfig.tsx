@@ -10,6 +10,7 @@ interface POSupplierConfigProps {
   setHorizonDays: (value: number) => void;
   lastEodDate?: string;
   onGenerate: () => void;
+  onGenerateFresh: () => void;
   isGenerating: boolean;
 }
 
@@ -20,6 +21,7 @@ export default function POSupplierConfig({
   setHorizonDays,
   lastEodDate,
   onGenerate,
+  onGenerateFresh,
   isGenerating,
 }: POSupplierConfigProps): React.JSX.Element {
   const theme = useTheme();
@@ -116,6 +118,16 @@ export default function POSupplierConfig({
       >
         {isGenerating ? 'Generating...' : 'Generate Suggestions'}
       </Button>
+
+      <Button
+        mode="outlined"
+        onPress={onGenerateFresh}
+        disabled={isGenerating}
+        style={styles.previewButton}
+        icon="play-circle-outline"
+      >
+        Run Fresh Preview
+      </Button>
     </View>
   );
 }
@@ -165,6 +177,10 @@ const styles = StyleSheet.create({
   generateButton: {
     marginTop: 24,
     paddingVertical: 8,
+    borderRadius: 8,
+  },
+  previewButton: {
+    marginTop: 12,
     borderRadius: 8,
   },
 });

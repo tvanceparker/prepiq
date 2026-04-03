@@ -30,6 +30,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RemoveIcon from '@mui/icons-material/Remove';
@@ -240,7 +241,11 @@ export default function PurchaseOrders() {
   });
 
   const generateMut = useMutation({
-    mutationFn: () => generatePOSuggestions(horizonDays, useCachedForecast),
+    mutationFn: (options?: { horizonDaysOverride?: number; useCachedForecastOverride?: boolean }) =>
+      generatePOSuggestions(
+        options?.horizonDaysOverride ?? horizonDays,
+        options?.useCachedForecastOverride ?? useCachedForecast
+      ),
     onSuccess: (data: POSuggestionsResponse) => {
       setSuggestions(data);
       const allItems = new Map<string, number>();
@@ -296,6 +301,24 @@ export default function PurchaseOrders() {
     setIngredientCart([]);
     setOrderNotes('');
   }, []);
+
+  const openSupplierPreviewWizard = useCallback(() => {
+    setWizardOpen(true);
+    setWizardStep(1);
+    setWizardMode('supplier');
+  }, []);
+
+  const handleRunFreshReorderPreview = useCallback(() => {
+    setUseCachedForecast(false);
+    setSuggestions(null);
+    setSelectedItems(new Map());
+    setExpandedSuppliers(new Set());
+    openSupplierPreviewWizard();
+    generateMut.mutate({
+      horizonDaysOverride: horizonDays,
+      useCachedForecastOverride: false,
+    });
+  }, [generateMut, horizonDays, openSupplierPreviewWizard]);
 
   const upsertIngredientCartItem = useCallback((item: IngredientCartItem) => {
     setIngredientCart(prev => {
@@ -570,7 +593,8 @@ export default function PurchaseOrders() {
             horizonDays={horizonDays}
             setHorizonDays={setHorizonDays}
             lastEodDate={lastEodData?.last_eod_run_date}
-            onGenerate={() => generateMut.mutate()}
+            onGenerate={() => generateMut.mutate({})}
+            onGenerateFresh={handleRunFreshReorderPreview}
             isGenerating={generateMut.isPending}
           />
 
@@ -1140,15 +1164,27 @@ export default function PurchaseOrders() {
             Create and manage supplier purchase orders
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          size="large"
-          startIcon={<AddIcon />}
-          onClick={() => setWizardOpen(true)}
-          sx={{ px: 4, py: 1.5, borderRadius: 2, boxShadow: 3, '&:hover': { boxShadow: 6 } }}
-        >
-          New Order
-        </Button>
+        <Stack direction="row" spacing={1.5}>
+          <Button
+            variant="outlined"
+            size="large"
+            startIcon={<PlayArrowIcon />}
+            onClick={handleRunFreshReorderPreview}
+            disabled={generateMut.isPending}
+            sx={{ px: 3, py: 1.5, borderRadius: 2 }}
+          >
+            {generateMut.isPending ? 'Running Preview...' : 'Run Reorder Preview'}
+          </Button>
+          <Button
+            variant="contained"
+            size="large"
+            startIcon={<AddIcon />}
+            onClick={() => setWizardOpen(true)}
+            sx={{ px: 4, py: 1.5, borderRadius: 2, boxShadow: 3, '&:hover': { boxShadow: 6 } }}
+          >
+            New Order
+          </Button>
+        </Stack>
       </Stack>
 
       {/* Tabs */}

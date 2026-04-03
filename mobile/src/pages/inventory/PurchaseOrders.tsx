@@ -271,6 +271,33 @@ export default function PurchaseOrders(): React.JSX.Element {
     setWizardMode(null);
   }, []);
 
+  const openSupplierPreviewWizard = useCallback(() => {
+    setWizardOpen(true);
+    setWizardStep(1);
+    setWizardMode('supplier');
+  }, []);
+
+  const handleRunFreshReorderPreview = useCallback(async () => {
+    setUseCachedForecast(false);
+    resetSuggestions();
+    setSelectedItems(new Map());
+    setExpandedSuppliers(new Set());
+    openSupplierPreviewWizard();
+
+    try {
+      const result = await generateSuggestions({ horizonDays, useCachedForecast: false });
+      const allItems = new Map<string, number>();
+      result.all_items.forEach(item => {
+        allItems.set(`${item.supplier_id}-${item.ingredient_id}`, item.quantity_to_order);
+      });
+      setSelectedItems(allItems);
+      const supplierIds = new Set(result.suggestions.map(s => s.supplier_id));
+      setExpandedSuppliers(supplierIds);
+    } catch (error) {
+      console.error('Failed to generate fresh preview suggestions:', error);
+    }
+  }, [generateSuggestions, horizonDays, openSupplierPreviewWizard, resetSuggestions]);
+
   // Generate suggestions
   const handleGenerateSuggestions = async () => {
     try {
@@ -551,6 +578,7 @@ export default function PurchaseOrders(): React.JSX.Element {
             setHorizonDays={setHorizonDays}
             lastEodDate={lastEodDate ?? undefined}
             onGenerate={handleGenerateSuggestions}
+            onGenerateFresh={handleRunFreshReorderPreview}
             isGenerating={generating}
           />
           {suggestions ? (
@@ -656,6 +684,17 @@ export default function PurchaseOrders(): React.JSX.Element {
           onChangeText={setSearchQuery}
           style={styles.searchbar}
         />
+
+        <Button
+          mode="contained-tonal"
+          icon="play"
+          onPress={handleRunFreshReorderPreview}
+          loading={generating}
+          disabled={generating}
+          style={styles.previewAction}
+        >
+          Run Reorder Preview
+        </Button>
 
         {/* Status Filter */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
@@ -1064,6 +1103,10 @@ const styles = StyleSheet.create({
   },
   searchbar: {
     marginBottom: 12,
+  },
+  previewAction: {
+    marginBottom: 12,
+    alignSelf: 'flex-start',
   },
   filterRow: {
     flexDirection: 'row',

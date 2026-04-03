@@ -474,32 +474,48 @@ class InventoryService:
             if not suppliers:
                 logger.warning(f"[PO_SUGGEST] No suppliers found ingredient={ingredient_id}")
                 continue
-            
-            # Get preferred or lowest priority supplier
-            preferred_suppliers = [s for s in suppliers if s.preferred]
-            if preferred_suppliers:
-                supplier = min(preferred_suppliers, key=lambda s: s.supplier_priority or 0)
-            else:
-                supplier = min(suppliers, key=lambda s: s.supplier_priority or float("inf"))
-            
+
+            supplier_selection = await reorder_engine.choose_supplier_option(suppliers)
+            if not supplier_selection:
+                continue
+
+            supplier = supplier_selection["supplier"]
             ingredient_supplier_id = supplier.ingredient_supplier_id
             supplier_id = supplier.supplier_id
             lead_time = supplier.lead_time_days or 0
             supplier_unit = supplier.unit
-            min_order_quantity = supplier.min_order_quantity or 0
+            min_order_quantity = Decimal(str(supplier.min_order_quantity or 0)).quantize(
+                Decimal("0.01")
+            )
             pack_size = supplier.pack_size or 1
-            quantity_per_pack_item = supplier.quantity_per_pack_item or 1
-            
+            quantity_per_pack_item = Decimal(str(supplier.quantity_per_pack_item or 1)).quantize(
+                Decimal("0.01")
+            )
+
             inventory = await inventory_repo.get_inventory_by_ingredient(ingredient_id)
             if inventory:
                 shelf_life = inventory.shelf_life_days or 0
                 inventory_unit = inventory.unit
-                current_stock = float(inventory.quantity_on_hand or 0)
+                current_stock = Decimal(str(inventory.quantity_on_hand or 0)).quantize(
+                    Decimal("0.01")
+                )
+                shelf_life_source = (
+                    "inventory"
+                    if inventory.shelf_life_days is not None
+                    else "missing_assumed_zero"
+                )
+                inventory_source = "inventory_summary"
             else:
                 shelf_life = supplier.shelf_life_days or 0
                 inventory_unit = supplier_unit
-                current_stock = 0
-            
+                current_stock = Decimal("0.00")
+                shelf_life_source = (
+                    "supplier"
+                    if supplier.shelf_life_days is not None
+                    else "missing_assumed_zero"
+                )
+                inventory_source = "missing_assumed_zero"
+
             reorder_days = lead_time + shelf_life
             if reorder_days <= 0:
                 continue
@@ -510,55 +526,95 @@ class InventoryService:
             
             daily_forecast = ingredient_forecast[ingredient_id].get("daily_breakdown", [])
             unit = ingredient_forecast[ingredient_id].get("unit", "?")
-            
+
             lead_demand = sum(qty for day, qty in daily_forecast if day in lead_window)
             shelf_demand = sum(qty for day, qty in daily_forecast if day in shelf_window)
             total_demand = lead_demand + shelf_demand
-            
-            # Calculate reorder quantity
-            reorder_qty = await reorder_engine.suggest_reorder_quantity(
+
+            decision = await reorder_engine.build_reorder_decision(
                 ingredient_id=ingredient_id,
                 lead_demand=Decimal(str(lead_demand)),
                 shelf_demand=Decimal(str(shelf_demand)),
                 total_demand=Decimal(str(total_demand)),
                 unit=unit,
                 lead_time=lead_time,
+                current_stock=current_stock,
+                current_unit=inventory_unit or supplier_unit,
+                moq=min_order_quantity,
+                manage_alerts=True,
             )
-            
-            if reorder_qty <= 0:
+
+            if not decision["should_reorder"]:
                 continue
-            
+
             # Convert units
+            unit_conversion_fallback = False
             try:
-                converted_qty = convert_unit(
-                    float(reorder_qty), from_unit=inventory_unit, to_unit=supplier_unit
-                )
+                converted_qty = Decimal(
+                    str(
+                        convert_unit(
+                            float(decision["final_quantity"]),
+                            from_unit=inventory_unit,
+                            to_unit=supplier_unit,
+                        )
+                    )
+                ).quantize(Decimal("0.01"))
             except Exception as e:
                 logger.warning(f"[PO_SUGGEST] Unit conversion failed ingredient={ingredient_id} error={e}")
-                converted_qty = float(reorder_qty)
-            
+                converted_qty = decision["final_quantity"]
+                unit_conversion_fallback = True
+
             # Round up to pack sizes
-            quantity_per_pack = pack_size * quantity_per_pack_item
+            quantity_per_pack = (
+                Decimal(str(pack_size or 1)) * quantity_per_pack_item
+            ).quantize(Decimal("0.01"))
             if quantity_per_pack <= 0:
                 continue
-            
-            packs_to_order = math.ceil(converted_qty / quantity_per_pack)
-            total_quantity_ordered = packs_to_order * quantity_per_pack
-            
+
+            packs_to_order = math.ceil(float(converted_qty / quantity_per_pack))
+            total_quantity_ordered = (quantity_per_pack * Decimal(packs_to_order)).quantize(
+                Decimal("0.01")
+            )
+
             # Get ingredient and supplier names
             ingredient = await ingredient_repo.get_by_id(ingredient_id)
             ingredient_name = ingredient.name if ingredient else f"Ingredient {ingredient_id}"
-            
+
             supplier_obj = await self.supplier_repo.get_by_id(supplier_id)
             supplier_name = supplier_obj.name if supplier_obj else f"Supplier {supplier_id}"
-            
+
+            explanation = reorder_engine.build_explanation_payload(
+                decision=decision,
+                supplier_selection=supplier_selection,
+                supplier_name=supplier_name,
+                inventory_unit=inventory_unit,
+                supplier_unit=supplier_unit,
+                converted_quantity_needed=converted_qty,
+                pack_size=pack_size,
+                quantity_per_pack_item=quantity_per_pack_item,
+                packs_to_order=packs_to_order,
+                total_quantity_ordered=total_quantity_ordered,
+                assumption_flags={
+                    "inventory_source": inventory_source,
+                    "lead_time_source": (
+                        "supplier" if supplier.lead_time_days is not None else "missing_assumed_zero"
+                    ),
+                    "moq_source": (
+                        "supplier" if supplier.min_order_quantity is not None else "missing_assumed_zero"
+                    ),
+                    "shelf_life_source": shelf_life_source,
+                    "unit_conversion_fallback": unit_conversion_fallback,
+                    "pricing_missing": supplier.cost_per_unit is None,
+                },
+            )
+
             suggestion = {
                 "ingredient_id": ingredient_id,
                 "ingredient_name": ingredient_name,
                 "ingredient_supplier_id": ingredient_supplier_id,
                 "supplier_id": supplier_id,
                 "supplier_name": supplier_name,
-                "current_stock": current_stock,
+                "current_stock": float(decision["current_stock"]),
                 "raw_quantity_needed": float(converted_qty),
                 "quantity_to_order": float(total_quantity_ordered),
                 "packs_to_order": packs_to_order,
@@ -568,9 +624,10 @@ class InventoryService:
                 "unit_price": float(supplier.cost_per_unit or 0),
                 "line_total": float(total_quantity_ordered) * float(supplier.cost_per_unit or 0),
                 "lead_time_days": lead_time,
-                "min_order_quantity": min_order_quantity,
+                "min_order_quantity": float(min_order_quantity),
                 "lead_demand": float(lead_demand),
                 "shelf_demand": float(shelf_demand),
+                "explanation": explanation,
             }
             
             all_suggestions.append(suggestion)

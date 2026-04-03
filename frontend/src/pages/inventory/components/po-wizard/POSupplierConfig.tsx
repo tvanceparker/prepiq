@@ -24,6 +24,7 @@ interface POSupplierConfigProps {
   setHorizonDays: (value: number) => void;
   lastEodDate: string | null | undefined;
   onGenerate: () => void;
+  onGenerateFresh: () => void;
   isGenerating: boolean;
 }
 
@@ -34,6 +35,7 @@ export default function POSupplierConfig({
   setHorizonDays,
   lastEodDate,
   onGenerate,
+  onGenerateFresh,
   isGenerating,
 }: POSupplierConfigProps) {
   return (
@@ -119,18 +121,29 @@ export default function POSupplierConfig({
           </Paper>
         </Box>
 
-        <Button
-          variant="contained"
-          size="large"
-          startIcon={
-            isGenerating ? <CircularProgress size={20} color="inherit" /> : <AutoAwesomeIcon />
-          }
-          onClick={onGenerate}
-          disabled={isGenerating}
-          sx={{ py: 1.5 }}
-        >
-          {isGenerating ? 'Generating Suggestions...' : 'Generate Order Suggestions'}
-        </Button>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+          <Button
+            variant="contained"
+            size="large"
+            startIcon={
+              isGenerating ? <CircularProgress size={20} color="inherit" /> : <AutoAwesomeIcon />
+            }
+            onClick={onGenerate}
+            disabled={isGenerating}
+            sx={{ py: 1.5, flex: 1 }}
+          >
+            {isGenerating ? 'Generating Suggestions...' : 'Generate Order Suggestions'}
+          </Button>
+          <Button
+            variant="outlined"
+            size="large"
+            onClick={onGenerateFresh}
+            disabled={isGenerating}
+            sx={{ py: 1.5, flex: 1 }}
+          >
+            Run Fresh Preview
+          </Button>
+        </Stack>
       </Stack>
     </Fade>
   );
