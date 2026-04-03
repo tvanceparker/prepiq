@@ -10,11 +10,13 @@ from app.repositories.batch_recipes_repo import BatchRecipeRepository
 from app.repositories.ingredients_repo import IngredientRepository
 from app.repositories.inventory_lot_repo import InventoryLotRepository
 from app.repositories.inventory_repo import InventoryRepository
+from app.repositories.inventory_deduction_discrepancies_repo import InventoryDeductionDiscrepancyRepository
 from app.repositories.inventory_usage_log_repo import InventoryUsageLogRepository
 from app.repositories.menu_item_recipes_repo import MenuItemRecipeRepository
 from app.repositories.recipe_ingredients_repo import RecipeIngredientRepository
 from app.repositories.restaurants_repo import RestaurantRepository
 from app.repositories.sales_repo import SalesRepository
+from app.repositories.alerts_repo import AlertRepository
 from app.services.alerts_service import AlertsService
 from app.services.utils.unit_conversion import convert_unit, normalize_unit
 
@@ -35,12 +37,14 @@ class InventoryDeductionHelper:
         self.inventory_repo = InventoryRepository(db, restaurant_id)
         self.inventory_lot_repo = InventoryLotRepository(db, restaurant_id)
         self.inventory_usage_log_repo = InventoryUsageLogRepository(db, restaurant_id)
+        self.discrepancy_repo = InventoryDeductionDiscrepancyRepository(db, restaurant_id)
         self.menu_item_recipe_repo = MenuItemRecipeRepository(db, restaurant_id)
         self.recipe_ingredient_repo = RecipeIngredientRepository(db, restaurant_id)
         self.ingredient_repo = IngredientRepository(db, restaurant_id)
         self.batch_recipe_repo = BatchRecipeRepository(db, restaurant_id)
         self.restaurant_repo = RestaurantRepository(db, restaurant_id)
         self.sales_repo = SalesRepository(db, restaurant_id)
+        self.alert_repo = AlertRepository(db, restaurant_id)
         self.alerts_service = AlertsService(db, restaurant_id, subscription_tier, employee_id)
 
     async def _reference_context(self, reference_type: str, reference_id: int) -> Dict[str, Any]:
@@ -232,11 +236,12 @@ class InventoryDeductionHelper:
             ingredient_id
         )
         if not inventory_entry:
-            await self._create_alert(
+            await self._record_deduction_discrepancy(
                 message=(
                     f"Inventory deduction failed for '{ingredient_name}': no inventory row found "
                     f"while processing {reference_type} {reference_id} on {ref_ctx['attempted_day']}."
                 ),
+                item_kind="ingredient",
                 meta={
                     "ingredient_id": ingredient_id,
                     "ingredient_name": ingredient_name,
@@ -258,12 +263,13 @@ class InventoryDeductionHelper:
         available_qty = Decimal(str(inventory_entry.quantity_on_hand or 0))
         if available_qty < qty:
             shortfall = qty - available_qty
-            await self._create_alert(
+            await self._record_deduction_discrepancy(
                 message=(
                     f"Inventory deduction failed for '{ingredient_name}': tried to deduct "
                     f"{float(qty)} {to_unit} for {reference_type} {reference_id} on {ref_ctx['attempted_day']}, "
                     f"but only {float(available_qty)} {to_unit} is on hand."
                 ),
+                item_kind="ingredient",
                 meta={
                     "ingredient_id": ingredient_id,
                     "ingredient_name": ingredient_name,
@@ -317,18 +323,44 @@ class InventoryDeductionHelper:
 
         lots = await self.inventory_lot_repo.get_all_by_batch_recipe_id(batch_recipe_id)
         if not lots:
-            await self._create_alert(
-                message=f"No inventory lots found for batch recipe {batch_recipe_id}",
-                meta={"batch_recipe_id": batch_recipe_id, "reference_id": reference_id},
+            await self._record_deduction_discrepancy(
+                message=(
+                    f"Inventory deduction failed for batch '{batch_name}': no inventory lots were "
+                    f"found while processing {reference_type} {reference_id} on {ref_ctx['attempted_day']}."
+                ),
+                item_kind="batch",
+                meta={
+                    "batch_recipe_id": batch_recipe_id,
+                    "batch_recipe_name": batch_name,
+                    "required_quantity": float(qty),
+                    "available_quantity": 0.0,
+                    "current_quantity_on_hand": 0.0,
+                    "shortfall_quantity": float(qty),
+                    "unit": from_unit,
+                    **ref_ctx,
+                },
             )
             return []
 
         inventory_ids = list({lot.inventory_id for lot in lots})
         inventories = await self.inventory_repo.get_all_by_ids(inventory_ids)
         if not inventories:
-            await self._create_alert(
-                message=f"No inventories found for batch recipe {batch_recipe_id}",
-                meta={"batch_recipe_id": batch_recipe_id, "reference_id": reference_id},
+            await self._record_deduction_discrepancy(
+                message=(
+                    f"Inventory deduction failed for batch '{batch_name}': no inventory rows were "
+                    f"found while processing {reference_type} {reference_id} on {ref_ctx['attempted_day']}."
+                ),
+                item_kind="batch",
+                meta={
+                    "batch_recipe_id": batch_recipe_id,
+                    "batch_recipe_name": batch_name,
+                    "required_quantity": float(qty),
+                    "available_quantity": 0.0,
+                    "current_quantity_on_hand": 0.0,
+                    "shortfall_quantity": float(qty),
+                    "unit": from_unit,
+                    **ref_ctx,
+                },
             )
             return []
 
@@ -341,12 +373,13 @@ class InventoryDeductionHelper:
         )
         if total_available < qty:
             shortfall = qty - total_available
-            await self._create_alert(
+            await self._record_deduction_discrepancy(
                 message=(
                     f"Inventory deduction failed for batch '{batch_name}': tried to deduct "
                     f"{float(qty)} {to_unit} for {reference_type} {reference_id} on {ref_ctx['attempted_day']}, "
                     f"but only {float(total_available)} {to_unit} is on hand."
                 ),
+                item_kind="batch",
                 meta={
                     "batch_recipe_id": batch_recipe_id,
                     "batch_recipe_name": batch_name,
@@ -402,6 +435,119 @@ class InventoryDeductionHelper:
             remaining -= deduct_qty
 
         return deducted_items
+
+    @staticmethod
+    def _coerce_float(value: Any) -> float:
+        try:
+            return float(value or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    @staticmethod
+    def _coerce_optional_int(value: Any) -> Optional[int]:
+        if value in (None, "", "null"):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _coerce_optional_day(value: Any):
+        if value in (None, "", "null"):
+            return None
+        if hasattr(value, "isoformat"):
+            return value
+        try:
+            return datetime.fromisoformat(str(value)).date()
+        except ValueError:
+            return None
+
+    async def _record_deduction_discrepancy(
+        self,
+        *,
+        message: str,
+        item_kind: str,
+        meta: Optional[Dict[str, Any]] = None,
+        severity: str = "urgent",
+    ) -> None:
+        discrepancy_meta = meta or {}
+        ingredient_id = self._coerce_optional_int(discrepancy_meta.get("ingredient_id"))
+        batch_recipe_id = self._coerce_optional_int(discrepancy_meta.get("batch_recipe_id"))
+        required_quantity = self._coerce_float(discrepancy_meta.get("required_quantity"))
+        available_quantity = self._coerce_float(discrepancy_meta.get("available_quantity"))
+        current_quantity_raw = discrepancy_meta.get("current_quantity_on_hand")
+        if current_quantity_raw is None:
+            current_quantity_on_hand = available_quantity
+        else:
+            current_quantity_on_hand = self._coerce_float(current_quantity_raw)
+        shortfall_quantity = discrepancy_meta.get("shortfall_quantity")
+        if shortfall_quantity is None:
+            shortfall_quantity = max(required_quantity - current_quantity_on_hand, 0.0)
+        else:
+            shortfall_quantity = self._coerce_float(shortfall_quantity)
+
+        existing = await self.discrepancy_repo.get_open_by_reference_item(
+            reference_type=discrepancy_meta.get("reference_type"),
+            reference_id=self._coerce_optional_int(discrepancy_meta.get("reference_id")),
+            ingredient_id=ingredient_id,
+            batch_recipe_id=batch_recipe_id,
+        )
+
+        alert_id = getattr(existing, "alert_id", None)
+        if alert_id is not None:
+            linked_alert = await self.alert_repo.get_by_id(alert_id)
+            if linked_alert:
+                await self.alert_repo.update(
+                    alert_id,
+                    {
+                        "message": message,
+                        "meta": discrepancy_meta,
+                        "severity": severity,
+                        "status": "Active",
+                        "is_acknowledged": False,
+                        "date_resolved": None,
+                    },
+                )
+            else:
+                alert_id = None
+
+        if alert_id is None:
+            alert_obj = await self.alerts_service.create_alert(
+                alert_type="Inventory:DeductionFailed",
+                message=message,
+                severity=severity,
+                employee_id=self.employee_id,
+                role="system",
+                meta=discrepancy_meta,
+            )
+            alert_id = self._coerce_optional_int(alert_obj.get("alert_id"))
+
+        payload = {
+            "alert_id": alert_id,
+            "message": message,
+            "severity": severity,
+            "status": "Active",
+            "is_acknowledged": False,
+            "date_resolved": None,
+            "item_kind": item_kind,
+            "ingredient_id": ingredient_id,
+            "batch_recipe_id": batch_recipe_id,
+            "item_name": discrepancy_meta.get("ingredient_name") or discrepancy_meta.get("batch_recipe_name"),
+            "unit": discrepancy_meta.get("unit"),
+            "required_quantity": required_quantity,
+            "available_quantity": available_quantity,
+            "current_quantity_on_hand": current_quantity_on_hand,
+            "shortfall_quantity": shortfall_quantity,
+            "reference_type": discrepancy_meta.get("reference_type"),
+            "reference_id": self._coerce_optional_int(discrepancy_meta.get("reference_id")),
+            "attempted_day": self._coerce_optional_day(discrepancy_meta.get("attempted_day")),
+        }
+
+        if existing:
+            await self.discrepancy_repo.update(existing.discrepancy_id, payload)
+        else:
+            await self.discrepancy_repo.create(payload)
 
     async def _create_alert(self, message: str, meta: Optional[Dict[str, Any]] = None) -> None:
         try:

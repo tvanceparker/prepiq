@@ -16,6 +16,7 @@ from app.repositories.batch_recipes_repo import BatchRecipeRepository
 from app.repositories.purchase_orders_repo import PurchaseOrderRepository
 from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
 from app.repositories.alerts_repo import AlertRepository
+from app.repositories.inventory_deduction_discrepancies_repo import InventoryDeductionDiscrepancyRepository
 from app.services.utils.unit_conversion import convert_unit, round_decimal
 
 class InventoryService:
@@ -779,6 +780,7 @@ class InventoryService:
         self.purchase_order_repo = PurchaseOrderRepository(db, restaurant_id)
         self.purchase_order_item_repo = PurchaseOrderItemRepository(db, restaurant_id)
         self.alert_repo = AlertRepository(db, restaurant_id)
+        self.discrepancy_repo = InventoryDeductionDiscrepancyRepository(db, restaurant_id)
 
         print(f"Inventory Service: restaurant {self.restaurant_id}")
 
@@ -798,76 +800,259 @@ class InventoryService:
         except (TypeError, ValueError):
             return 0.0
 
+    @staticmethod
+    def _coerce_optional_day(value) -> Optional[str]:
+        if value in (None, "", "null"):
+            return None
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return str(value)
+
+    async def _resolve_item_name(
+        self,
+        *,
+        item_kind: str,
+        ingredient_id: Optional[int],
+        batch_recipe_id: Optional[int],
+        current_name: Optional[str],
+        ingredient_cache: dict,
+        batch_cache: dict,
+    ) -> Optional[str]:
+        if current_name:
+            return current_name
+
+        if item_kind == "ingredient" and ingredient_id is not None:
+            ingredient = ingredient_cache.get(ingredient_id)
+            if ingredient is None:
+                ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+                ingredient_cache[ingredient_id] = ingredient
+            return getattr(ingredient, "name", None)
+
+        if item_kind == "batch" and batch_recipe_id is not None:
+            batch_recipe = batch_cache.get(batch_recipe_id)
+            if batch_recipe is None:
+                batch_recipe = await self.batch_recipe_repo.get_by_id(batch_recipe_id)
+                batch_cache[batch_recipe_id] = batch_recipe
+            return getattr(batch_recipe, "name", None)
+
+        return current_name
+
+    async def _serialize_discrepancy_record(
+        self,
+        discrepancy,
+        ingredient_cache: dict,
+        batch_cache: dict,
+    ) -> dict:
+        item_kind = getattr(discrepancy, "item_kind", "unknown") or "unknown"
+        ingredient_id = getattr(discrepancy, "ingredient_id", None)
+        batch_recipe_id = getattr(discrepancy, "batch_recipe_id", None)
+        item_name = await self._resolve_item_name(
+            item_kind=item_kind,
+            ingredient_id=ingredient_id,
+            batch_recipe_id=batch_recipe_id,
+            current_name=getattr(discrepancy, "item_name", None),
+            ingredient_cache=ingredient_cache,
+            batch_cache=batch_cache,
+        )
+
+        return {
+            "alert_id": getattr(discrepancy, "alert_id", None) or 0,
+            "alert_type": "Inventory:DeductionFailed",
+            "message": getattr(discrepancy, "message", "Inventory deduction discrepancy"),
+            "severity": str(getattr(discrepancy, "severity", "urgent")),
+            "status": getattr(discrepancy, "status", "Active"),
+            "is_acknowledged": bool(getattr(discrepancy, "is_acknowledged", False)),
+            "date_created": getattr(discrepancy, "date_created", None).isoformat()
+            if getattr(discrepancy, "date_created", None)
+            else "",
+            "item_kind": item_kind,
+            "ingredient_id": ingredient_id,
+            "batch_recipe_id": batch_recipe_id,
+            "item_name": item_name,
+            "unit": getattr(discrepancy, "unit", None),
+            "required_quantity": self._coerce_float(getattr(discrepancy, "required_quantity", 0)),
+            "available_quantity": self._coerce_float(getattr(discrepancy, "available_quantity", 0)),
+            "current_quantity_on_hand": self._coerce_float(getattr(discrepancy, "current_quantity_on_hand", 0)),
+            "shortfall_quantity": self._coerce_float(getattr(discrepancy, "shortfall_quantity", 0)),
+            "reference_type": getattr(discrepancy, "reference_type", None),
+            "reference_id": getattr(discrepancy, "reference_id", None),
+            "attempted_day": self._coerce_optional_day(getattr(discrepancy, "attempted_day", None)),
+        }
+
+    async def _serialize_legacy_discrepancy_alert(
+        self,
+        alert,
+        ingredient_cache: dict,
+        batch_cache: dict,
+    ) -> dict:
+        meta = getattr(alert, "meta", None) or {}
+        ingredient_id = self._coerce_optional_int(meta.get("ingredient_id"))
+        batch_recipe_id = self._coerce_optional_int(meta.get("batch_recipe_id"))
+        required_quantity = self._coerce_float(meta.get("required_quantity"))
+        available_quantity = self._coerce_float(meta.get("available_quantity"))
+        current_quantity_raw = meta.get("current_quantity_on_hand")
+        if current_quantity_raw is None:
+            current_quantity_on_hand = available_quantity
+        else:
+            current_quantity_on_hand = self._coerce_float(current_quantity_raw)
+        shortfall_quantity = meta.get("shortfall_quantity")
+        if shortfall_quantity is None:
+            baseline_available = available_quantity
+            if baseline_available <= 0 and current_quantity_on_hand > 0:
+                baseline_available = current_quantity_on_hand
+            shortfall_quantity = round(max(required_quantity - baseline_available, 0.0), 2)
+        else:
+            shortfall_quantity = self._coerce_float(shortfall_quantity)
+        item_kind = "unknown"
+        item_name = None
+
+        if ingredient_id is not None:
+            item_kind = "ingredient"
+            ingredient = ingredient_cache.get(ingredient_id)
+            if ingredient is None:
+                ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+                ingredient_cache[ingredient_id] = ingredient
+            item_name = getattr(ingredient, "name", None) or meta.get("ingredient_name")
+        elif batch_recipe_id is not None:
+            item_kind = "batch"
+            batch_recipe = batch_cache.get(batch_recipe_id)
+            if batch_recipe is None:
+                batch_recipe = await self.batch_recipe_repo.get_by_id(batch_recipe_id)
+                batch_cache[batch_recipe_id] = batch_recipe
+            item_name = getattr(batch_recipe, "name", None) or meta.get("batch_recipe_name")
+
+        return {
+            "alert_id": alert.alert_id,
+            "alert_type": alert.alert_type,
+            "message": alert.message,
+            "severity": str(
+                alert.severity.value if hasattr(alert.severity, "value") else alert.severity
+            ),
+            "status": alert.status,
+            "is_acknowledged": bool(getattr(alert, "is_acknowledged", False)),
+            "date_created": alert.date_created.isoformat() if getattr(alert, "date_created", None) else "",
+            "item_kind": item_kind,
+            "ingredient_id": ingredient_id,
+            "batch_recipe_id": batch_recipe_id,
+            "item_name": item_name,
+            "unit": meta.get("unit"),
+            "required_quantity": required_quantity,
+            "available_quantity": available_quantity,
+            "current_quantity_on_hand": current_quantity_on_hand,
+            "shortfall_quantity": shortfall_quantity,
+            "reference_type": meta.get("reference_type"),
+            "reference_id": self._coerce_optional_int(meta.get("reference_id")),
+            "attempted_day": meta.get("attempted_day"),
+        }
+
     async def get_inventory_deduction_discrepancies(self) -> list:
-        alerts = await self.alert_repo.get_open_inventory_deduction_alerts()
         ingredient_cache = {}
         batch_cache = {}
         discrepancies = []
+        tracked_discrepancy_records = await self.discrepancy_repo.get_open()
+        tracked_alert_ids = set()
 
-        for alert in alerts:
-            meta = getattr(alert, "meta", None) or {}
-            ingredient_id = self._coerce_optional_int(meta.get("ingredient_id"))
-            batch_recipe_id = self._coerce_optional_int(meta.get("batch_recipe_id"))
-            required_quantity = self._coerce_float(meta.get("required_quantity"))
-            available_quantity = self._coerce_float(meta.get("available_quantity"))
-            current_quantity_raw = meta.get("current_quantity_on_hand")
-            if current_quantity_raw is None:
-                current_quantity_on_hand = available_quantity
-            else:
-                current_quantity_on_hand = self._coerce_float(current_quantity_raw)
-            shortfall_quantity = meta.get("shortfall_quantity")
-            if shortfall_quantity is None:
-                baseline_available = available_quantity
-                if baseline_available <= 0 and current_quantity_on_hand > 0:
-                    baseline_available = current_quantity_on_hand
-                shortfall_quantity = round(max(required_quantity - baseline_available, 0.0), 2)
-            else:
-                shortfall_quantity = self._coerce_float(shortfall_quantity)
-            item_kind = "unknown"
-            item_name = None
-
-            if ingredient_id is not None:
-                item_kind = "ingredient"
-                ingredient = ingredient_cache.get(ingredient_id)
-                if ingredient is None:
-                    ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
-                    ingredient_cache[ingredient_id] = ingredient
-                item_name = getattr(ingredient, "name", None) or meta.get("ingredient_name")
-            elif batch_recipe_id is not None:
-                item_kind = "batch"
-                batch_recipe = batch_cache.get(batch_recipe_id)
-                if batch_recipe is None:
-                    batch_recipe = await self.batch_recipe_repo.get_by_id(batch_recipe_id)
-                    batch_cache[batch_recipe_id] = batch_recipe
-                item_name = getattr(batch_recipe, "name", None) or meta.get("batch_recipe_name")
-
+        for discrepancy in tracked_discrepancy_records:
             discrepancies.append(
+                await self._serialize_discrepancy_record(
+                    discrepancy,
+                    ingredient_cache=ingredient_cache,
+                    batch_cache=batch_cache,
+                )
+            )
+            if getattr(discrepancy, "alert_id", None):
+                tracked_alert_ids.add(discrepancy.alert_id)
+
+        alerts = await self.alert_repo.get_open_inventory_deduction_alerts()
+        for alert in alerts:
+            if alert.alert_id in tracked_alert_ids:
+                continue
+            discrepancies.append(
+                await self._serialize_legacy_discrepancy_alert(
+                    alert,
+                    ingredient_cache=ingredient_cache,
+                    batch_cache=batch_cache,
+                )
+            )
+
+        discrepancies.sort(
+            key=lambda item: (item.get("date_created") or "", item.get("alert_id") or 0),
+            reverse=True,
+        )
+
+        return discrepancies
+
+    async def get_inventory_discrepancy_history(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        ingredient_id: Optional[int] = None,
+    ) -> list:
+        if self.subscription_tier not in ["pro", "master"]:
+            raise Exception("Discrepancy history is only available for Pro and Master tiers.")
+
+        ingredient_cache = {}
+        batch_cache = {}
+        history_rows = await self.discrepancy_repo.get_history(
+            start_date=datetime.combine(start_date, datetime.min.time()),
+            end_date=datetime.combine(end_date, datetime.max.time()),
+            ingredient_id=ingredient_id,
+        )
+
+        history = []
+        for discrepancy in history_rows:
+            item_kind = getattr(discrepancy, "item_kind", "unknown") or "unknown"
+            item_name = await self._resolve_item_name(
+                item_kind=item_kind,
+                ingredient_id=getattr(discrepancy, "ingredient_id", None),
+                batch_recipe_id=getattr(discrepancy, "batch_recipe_id", None),
+                current_name=getattr(discrepancy, "item_name", None),
+                ingredient_cache=ingredient_cache,
+                batch_cache=batch_cache,
+            )
+
+            date_created = getattr(discrepancy, "date_created", None)
+            date_resolved = getattr(discrepancy, "date_resolved", None)
+            status = getattr(discrepancy, "status", "Active")
+            event_type = "deduction_blocked"
+            if status == "Resolved":
+                event_type = "discrepancy_resolved"
+            elif getattr(discrepancy, "is_acknowledged", False):
+                event_type = "discrepancy_acknowledged"
+
+            history.append(
                 {
-                    "alert_id": alert.alert_id,
-                    "alert_type": alert.alert_type,
-                    "message": alert.message,
-                    "severity": str(
-                        alert.severity.value if hasattr(alert.severity, "value") else alert.severity
-                    ),
-                    "status": alert.status,
-                    "is_acknowledged": bool(getattr(alert, "is_acknowledged", False)),
-                    "date_created": alert.date_created.isoformat() if getattr(alert, "date_created", None) else "",
+                    "discrepancy_id": discrepancy.discrepancy_id,
+                    "alert_id": getattr(discrepancy, "alert_id", None),
+                    "event_type": event_type,
+                    "status": status,
+                    "is_acknowledged": bool(getattr(discrepancy, "is_acknowledged", False)),
+                    "severity": str(getattr(discrepancy, "severity", "urgent")),
                     "item_kind": item_kind,
-                    "ingredient_id": ingredient_id,
-                    "batch_recipe_id": batch_recipe_id,
+                    "ingredient_id": getattr(discrepancy, "ingredient_id", None),
+                    "batch_recipe_id": getattr(discrepancy, "batch_recipe_id", None),
                     "item_name": item_name,
-                    "unit": meta.get("unit"),
-                    "required_quantity": required_quantity,
-                    "available_quantity": available_quantity,
-                    "current_quantity_on_hand": current_quantity_on_hand,
-                    "shortfall_quantity": shortfall_quantity,
-                    "reference_type": meta.get("reference_type"),
-                    "reference_id": self._coerce_optional_int(meta.get("reference_id")),
-                    "attempted_day": meta.get("attempted_day"),
+                    "unit": getattr(discrepancy, "unit", None),
+                    "message": getattr(discrepancy, "message", "Inventory discrepancy"),
+                    "required_quantity": self._coerce_float(getattr(discrepancy, "required_quantity", 0)),
+                    "available_quantity": self._coerce_float(getattr(discrepancy, "available_quantity", 0)),
+                    "current_quantity_on_hand": self._coerce_float(getattr(discrepancy, "current_quantity_on_hand", 0)),
+                    "shortfall_quantity": self._coerce_float(getattr(discrepancy, "shortfall_quantity", 0)),
+                    "reference_type": getattr(discrepancy, "reference_type", None),
+                    "reference_id": getattr(discrepancy, "reference_id", None),
+                    "attempted_day": self._coerce_optional_day(getattr(discrepancy, "attempted_day", None)),
+                    "date_created": date_created.isoformat() if date_created else "",
+                    "date_resolved": date_resolved.isoformat() if date_resolved else None,
+                    "last_updated": (date_resolved or date_created).isoformat() if (date_resolved or date_created) else "",
                 }
             )
 
-        return discrepancies
+        history.sort(
+            key=lambda item: (item.get("last_updated") or "", item.get("discrepancy_id") or 0),
+            reverse=True,
+        )
+        return history
 
     async def _resolve_satisfied_deduction_alerts(
         self,
@@ -879,11 +1064,53 @@ class InventoryService:
         if ingredient_id is None and batch_recipe_id is None:
             return 0
 
-        alerts = await self.alert_repo.get_open_inventory_deduction_alerts()
         current_qty = float(current_quantity_on_hand)
         resolved_count = 0
+        tracked_alert_ids = set()
+
+        discrepancies = await self.discrepancy_repo.get_open_by_item(
+            ingredient_id=ingredient_id,
+            batch_recipe_id=batch_recipe_id,
+        )
+        for discrepancy in discrepancies:
+            required_quantity = self._coerce_float(getattr(discrepancy, "required_quantity", 0))
+            if current_qty < required_quantity:
+                continue
+
+            updated_discrepancy = await self.discrepancy_repo.update(
+                discrepancy.discrepancy_id,
+                {
+                    "status": "Resolved",
+                    "is_acknowledged": True,
+                    "date_resolved": datetime.utcnow(),
+                    "current_quantity_on_hand": current_qty,
+                    "available_quantity": current_qty,
+                    "shortfall_quantity": 0.0,
+                },
+            )
+            if not updated_discrepancy:
+                continue
+
+            alert_id = getattr(discrepancy, "alert_id", None)
+            if alert_id:
+                tracked_alert_ids.add(alert_id)
+                alert = await self.alert_repo.get_by_id(alert_id)
+                if alert and getattr(alert, "status", None) in ["Active", "Acknowledged"]:
+                    updated_alert = await self.alert_repo.update(
+                        alert_id,
+                        {"status": "Resolved", "date_resolved": datetime.utcnow()},
+                    )
+                    if updated_alert:
+                        resolved_count += 1
+            else:
+                resolved_count += 1
+
+        alerts = await self.alert_repo.get_open_inventory_deduction_alerts()
 
         for alert in alerts:
+            if alert.alert_id in tracked_alert_ids:
+                continue
+
             meta = getattr(alert, "meta", None) or {}
             alert_ingredient_id = self._coerce_optional_int(meta.get("ingredient_id"))
             alert_batch_recipe_id = self._coerce_optional_int(meta.get("batch_recipe_id"))

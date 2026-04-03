@@ -185,6 +185,31 @@ export interface InventoryDeductionDiscrepancy {
   attempted_day?: string | null;
 }
 
+export interface InventoryDiscrepancyHistoryItem {
+  discrepancy_id: number;
+  alert_id?: number | null;
+  event_type: 'deduction_blocked' | 'discrepancy_acknowledged' | 'discrepancy_resolved';
+  status: string;
+  is_acknowledged: boolean;
+  severity: string;
+  item_kind: 'ingredient' | 'batch' | 'unknown';
+  ingredient_id?: number | null;
+  batch_recipe_id?: number | null;
+  item_name?: string | null;
+  unit?: string | null;
+  message: string;
+  required_quantity: number;
+  available_quantity: number;
+  current_quantity_on_hand: number;
+  shortfall_quantity: number;
+  reference_type?: string | null;
+  reference_id?: number | null;
+  attempted_day?: string | null;
+  date_created: string;
+  date_resolved?: string | null;
+  last_updated: string;
+}
+
 export interface InventoryAdjustmentResult {
   success: boolean;
   message: string;

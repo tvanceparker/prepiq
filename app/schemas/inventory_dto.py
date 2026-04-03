@@ -256,6 +256,31 @@ class InventoryDeductionDiscrepancyDTO(BaseModel):
     reference_id: Optional[int] = None
     attempted_day: Optional[str] = None
 
+
+class InventoryDiscrepancyHistoryItemDTO(BaseModel):
+    discrepancy_id: int
+    alert_id: Optional[int] = None
+    event_type: Literal["deduction_blocked", "discrepancy_acknowledged", "discrepancy_resolved"]
+    status: str
+    is_acknowledged: bool
+    severity: str
+    item_kind: Literal["ingredient", "batch", "unknown"]
+    ingredient_id: Optional[int] = None
+    batch_recipe_id: Optional[int] = None
+    item_name: Optional[str] = None
+    unit: Optional[str] = None
+    message: str
+    required_quantity: float
+    available_quantity: float
+    current_quantity_on_hand: float
+    shortfall_quantity: float
+    reference_type: Optional[str] = None
+    reference_id: Optional[int] = None
+    attempted_day: Optional[str] = None
+    date_created: str
+    date_resolved: Optional[str] = None
+    last_updated: str
+
 class SupplierOut(BaseModel):
     supplier_id: int
     name: str
