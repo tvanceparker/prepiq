@@ -254,6 +254,16 @@ export default function PurchaseOrders() {
       });
       setSelectedItems(allItems);
       setExpandedSuppliers(new Set(data.suggestions.map(s => s.supplier_id)));
+      if (data.all_items.length === 0) {
+        showToast(
+          `No reorder suggestions were generated from the ${data.forecast_source} forecast.`,
+          'info'
+        );
+        return;
+      }
+      showToast(
+        `Generated ${data.all_items.length} suggestion${data.all_items.length === 1 ? '' : 's'} across ${data.suggestions.length} supplier${data.suggestions.length === 1 ? '' : 's'} using the ${data.forecast_source} forecast.`
+      );
     },
     onError: (err: any) => {
       showToast(
@@ -599,19 +609,31 @@ export default function PurchaseOrders() {
           />
 
           {suggestions ? (
-            <POSupplierReview
-              suggestions={suggestions}
-              selectedItems={selectedItems}
-              setSelectedItems={setSelectedItems}
-              expandedSuppliers={expandedSuppliers}
-              setExpandedSuppliers={setExpandedSuppliers}
-              orderNotes={orderNotes}
-              setOrderNotes={setOrderNotes}
-              showSummary={false}
-              showNotes={false}
-              title="Generated Suggestions"
-              maxHeight={480}
-            />
+            suggestions.all_items.length > 0 ? (
+              <POSupplierReview
+                suggestions={suggestions}
+                selectedItems={selectedItems}
+                setSelectedItems={setSelectedItems}
+                expandedSuppliers={expandedSuppliers}
+                setExpandedSuppliers={setExpandedSuppliers}
+                orderNotes={orderNotes}
+                setOrderNotes={setOrderNotes}
+                showSummary={false}
+                showNotes={false}
+                title="Generated Suggestions"
+                maxHeight={480}
+              />
+            ) : (
+              <Paper variant="outlined" sx={{ p: 3, bgcolor: 'background.default' }}>
+                <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>
+                  No reorder suggestions were generated
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  That usually means current stock stayed above reorder points for this horizon, or
+                  the forecast did not produce enough projected demand to trigger an order.
+                </Typography>
+              </Paper>
+            )
           ) : (
             <Paper variant="outlined" sx={{ p: 3, bgcolor: 'background.default' }}>
               <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>

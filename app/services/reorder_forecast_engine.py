@@ -48,7 +48,12 @@ class ReorderForecastEngine:
         if value is None:
             return None
         try:
-            return float(value)
+            if isinstance(value, Decimal) and not value.is_finite():
+                return None
+            converted = float(value)
+            if not math.isfinite(converted):
+                return None
+            return converted
         except (TypeError, ValueError):
             return None
 

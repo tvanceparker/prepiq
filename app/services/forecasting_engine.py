@@ -250,7 +250,6 @@ class ForecastingEngine:
                 "actual_quantity": int(total_actual),
                 "forecast_error": int(abs(total_predicted - total_actual)),
                 "error_percentage": round(mean_smape, 2),
-                "r2": round(float(r2), 4),
             }
 
             logger.info("[ACCURACY] Forecast accuracy data: %s", accuracy_data)
@@ -366,14 +365,18 @@ class ForecastingEngine:
     async def should_retrain_model(
         self, menu_item_id: int, threshold_mape: float, threshold_r2: float
     ) -> bool:
-        try:
-            if not h2o.connection():
-                h2o.init()
-        except Exception:
-            h2o.init()
-
         model = load_model(self.restaurant_id, menu_item_id)
         if model is None:
+            try:
+                if not h2o.connection():
+                    h2o.init()
+            except Exception as exc:
+                logger.warning(
+                    "[FORECAST] H2O unavailable for menu_item %s; using fallback forecast instead of retraining: %s",
+                    menu_item_id,
+                    exc,
+                )
+                return False
             return True
 
         metrics = await self._compute_forecast_accuracy_metrics(menu_item_id)
@@ -383,10 +386,26 @@ class ForecastingEngine:
         current_mape = metrics.get("mape")
         current_r2 = metrics.get("r2")
 
-        return bool(
+        retrain_needed = bool(
             (current_mape is None or current_mape > threshold_mape)
             or (current_r2 is None or current_r2 < threshold_r2)
         )
+
+        if not retrain_needed:
+            return False
+
+        try:
+            if not h2o.connection():
+                h2o.init()
+        except Exception as exc:
+            logger.warning(
+                "[FORECAST] H2O unavailable for menu_item %s; skipping retrain and reusing existing model/fallback: %s",
+                menu_item_id,
+                exc,
+            )
+            return False
+
+        return True
 
     @log_method("Train Forecast Model (H2O)")
     async def train_menu_item_model(
@@ -1237,6 +1256,64 @@ class ForecastingEngine:
 
         return aggregated
 
+    async def _recover_persisted_aggregated_forecast(
+        self,
+        forecast_date: date,
+        horizon_days: int,
+        reorder_horizon_days: int,
+    ) -> Dict[int, Dict[str, Any]]:
+        end_date = forecast_date + timedelta(days=max(horizon_days - 1, 0))
+        rows = await self.forecast_breakdown_repo.get_latest_by_date_range(
+            start_date=forecast_date,
+            end_date=end_date,
+        )
+        if not rows:
+            return {}
+
+        menu_item_forecast: Dict[int, Dict[str, Any]] = defaultdict(
+            lambda: {"daily_breakdown": []}
+        )
+        for row in rows:
+            menu_item_forecast[row.menu_item_id]["daily_breakdown"].append(
+                (row.forecast_date, row.forecasted_quantity)
+            )
+
+        for data in menu_item_forecast.values():
+            data["daily_breakdown"].sort(key=lambda item: item[0])
+
+        batch_data = await self.generate_batch_recipe_breakdown(menu_item_forecast)
+        ingredient_data = await self.generate_ingredient_breakdown(
+            convert_forecast_dict_to_list(menu_item_forecast),
+            batch_data,
+        )
+        aggregated = await self.aggregate_ingredient_demand_for_reorder(
+            ingredient_data,
+            reorder_horizon_days,
+        )
+
+        self.latest_menu_item_forecasts = dict(menu_item_forecast)
+        self.latest_batch_breakdown = batch_data
+        self.latest_ingredient_breakdown = ingredient_data
+        self.latest_aggregated_ingredient_demand = aggregated
+        return aggregated
+
+    async def _reset_ledger_for_rerun(self, ledger: Any) -> None:
+        ledger.running = False
+        ledger.finalized = False
+        ledger.accuracy_evaluated = False
+        ledger.daily_accuracy_evaluated = False
+        ledger.forecasts_generated = False
+        ledger.batch_breakdown_calculated = False
+        ledger.ingredient_breakdown_calculated = False
+        ledger.menu_items_processed = 0
+        ledger.menu_items_total = 0
+        ledger.current_step = None
+        ledger.started_at = None
+        ledger.finished_at = None
+        ledger.durations = {}
+        ledger.errors = []
+        await self.db.flush()
+
     def log_forecast_metadata(
         self, forecast_version: int, used_in_order_generation: bool
     ) -> None:
@@ -1273,12 +1350,25 @@ class ForecastingEngine:
 
         # Check if already finalized
         if ledger.finalized:
+            recovered = await self._recover_persisted_aggregated_forecast(
+                forecast_date=forecast_date,
+                horizon_days=horizon_days,
+                reorder_horizon_days=reorder_horizon_days,
+            )
+            if recovered:
+                logger.info(
+                    "[FORECAST] Reused persisted forecast results for %s on %s",
+                    self.restaurant_id,
+                    forecast_date,
+                )
+                return recovered
+
             logger.info(
-                "[FORECAST] Pipeline already finalized for %s on %s",
+                "[FORECAST] Finalized ledger had no reusable persisted forecast rows for %s on %s; resetting for rerun",
                 self.restaurant_id,
                 forecast_date,
             )
-            return {}
+            await self._reset_ledger_for_rerun(ledger)
 
         try:
             # Mark as running

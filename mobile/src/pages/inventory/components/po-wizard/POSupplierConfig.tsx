@@ -1,7 +1,33 @@
 // src/pages/inventory/components/po-wizard/POSupplierConfig.tsx
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Button, Card, Chip, IconButton, RadioButton, Text, useTheme } from 'react-native-paper';
+import {
+  Button,
+  Card,
+  Chip,
+  IconButton,
+  ProgressBar,
+  RadioButton,
+  Text,
+  useTheme,
+} from 'react-native-paper';
+
+const getProgressMeta = (useCachedForecast: boolean, progress: number): string => {
+  const stages = useCachedForecast
+    ? [
+        { threshold: 0.25, label: 'Loading cached forecast snapshot' },
+        { threshold: 0.65, label: 'Applying reorder rules' },
+        { threshold: 1, label: 'Grouping supplier suggestions' },
+      ]
+    : [
+        { threshold: 0.2, label: 'Running fresh forecast' },
+        { threshold: 0.55, label: 'Breaking demand into ingredients' },
+        { threshold: 0.85, label: 'Applying reorder rules' },
+        { threshold: 1, label: 'Grouping supplier suggestions' },
+      ];
+
+  return stages.find(stage => progress <= stage.threshold)?.label ?? 'Finalizing suggestions';
+};
 
 interface POSupplierConfigProps {
   useCachedForecast: boolean;
@@ -25,6 +51,31 @@ export default function POSupplierConfig({
   isGenerating,
 }: POSupplierConfigProps): React.JSX.Element {
   const theme = useTheme();
+  const [estimatedProgress, setEstimatedProgress] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!isGenerating) {
+      setEstimatedProgress(0);
+      return;
+    }
+
+    const startedAt = Date.now();
+    const durationMs = useCachedForecast ? 6000 : 18000;
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      const ratio = Math.min(elapsed / durationMs, 0.92);
+      setEstimatedProgress(ratio);
+    }, 150);
+
+    return () => clearInterval(interval);
+  }, [isGenerating, useCachedForecast]);
+
+  const progressLabel = React.useMemo(
+    () => getProgressMeta(useCachedForecast, estimatedProgress),
+    [estimatedProgress, useCachedForecast]
+  );
+  const progressPercent = Math.max(5, Math.round(estimatedProgress * 100));
 
   return (
     <View style={styles.container}>
@@ -116,18 +167,59 @@ export default function POSupplierConfig({
         style={styles.generateButton}
         icon="auto-fix"
       >
-        {isGenerating ? 'Generating...' : 'Generate Suggestions'}
+        {isGenerating
+          ? 'Generating...'
+          : useCachedForecast
+            ? 'Generate Cached Suggestions'
+            : 'Generate Fresh Suggestions'}
       </Button>
 
-      <Button
-        mode="outlined"
-        onPress={onGenerateFresh}
-        disabled={isGenerating}
-        style={styles.previewButton}
-        icon="play-circle-outline"
+      {useCachedForecast && (
+        <Button
+          mode="outlined"
+          onPress={onGenerateFresh}
+          disabled={isGenerating}
+          style={styles.previewButton}
+          icon="play-circle-outline"
+        >
+          Run Fresh Preview
+        </Button>
+      )}
+
+      <Text
+        variant="bodySmall"
+        style={[styles.helperText, { color: theme.colors.onSurfaceVariant }]}
       >
-        Run Fresh Preview
-      </Button>
+        Generate Suggestions uses the forecast source selected above. Run Fresh Preview is a
+        shortcut that switches to a live forecast and starts it immediately.
+      </Text>
+
+      {isGenerating && (
+        <Card style={styles.progressCard} mode="outlined">
+          <Card.Content>
+            <View style={styles.progressHeader}>
+              <Text variant="bodyMedium" style={styles.progressTitle}>
+                {progressLabel}
+              </Text>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                {progressPercent}%
+              </Text>
+            </View>
+            <ProgressBar
+              progress={progressPercent / 100}
+              color={theme.colors.primary}
+              style={styles.progressBar}
+            />
+            <Text
+              variant="bodySmall"
+              style={[styles.progressCaption, { color: theme.colors.onSurfaceVariant }]}
+            >
+              Estimated progress only. If the request is interrupted, nothing is saved and you can
+              rerun it safely.
+            </Text>
+          </Card.Content>
+        </Card>
+      )}
     </View>
   );
 }
@@ -182,5 +274,31 @@ const styles = StyleSheet.create({
   previewButton: {
     marginTop: 12,
     borderRadius: 8,
+  },
+  helperText: {
+    marginTop: 12,
+    lineHeight: 18,
+  },
+  progressCard: {
+    marginTop: 12,
+    borderRadius: 12,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  progressTitle: {
+    fontWeight: '600',
+    flex: 1,
+    marginRight: 12,
+  },
+  progressBar: {
+    height: 8,
+    borderRadius: 999,
+  },
+  progressCaption: {
+    marginTop: 8,
   },
 });
