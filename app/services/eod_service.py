@@ -646,15 +646,18 @@ class EODService:
                 ingredient_id
             )
             if inventory:
-                shelf_life = inventory.shelf_life_days or 0
+                if inventory.shelf_life_days is not None:
+                    shelf_life = inventory.shelf_life_days
+                    shelf_life_source = "inventory"
+                elif supplier.shelf_life_days is not None:
+                    shelf_life = supplier.shelf_life_days
+                    shelf_life_source = "supplier"
+                else:
+                    shelf_life = 0
+                    shelf_life_source = "missing_assumed_zero"
                 inventory_unit = inventory.unit
                 current_stock = Decimal(str(inventory.quantity_on_hand or 0)).quantize(
                     Decimal("0.01")
-                )
-                shelf_life_source = (
-                    "inventory"
-                    if inventory.shelf_life_days is not None
-                    else "missing_assumed_zero"
                 )
                 inventory_source = "inventory_summary"
             else:

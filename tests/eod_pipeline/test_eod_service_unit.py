@@ -248,7 +248,6 @@ class TestEODServiceUnit:
     ):
         """Test PO suggestion generation from ingredient forecast."""
         service = EODService(mock_db_session, restaurant_id, "master")
-        service.reorder_engine.suggest_reorder_quantity = AsyncMock(return_value=Decimal("25.00"))
         service.po_suggestion_repo.replace_for_run_date = AsyncMock()
         run_date = date(2025, 11, 20)
         
@@ -269,6 +268,42 @@ class TestEODServiceUnit:
         service.inventory_repo.get_inventory_by_ingredient = AsyncMock(
             return_value=sample_inventory[0]
         )
+        service.ingredient_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Test Ingredient"))
+        service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Supplier 501"))
+        service.reorder_engine.choose_supplier_option = AsyncMock(
+            return_value={
+                "supplier": sample_suppliers[0],
+                "reason_code": "preferred_lowest_priority",
+                "preferred_supplier_available": True,
+                "selected_supplier_priority": 1,
+                "selected_supplier_preferred": True,
+                "pricing_available": True,
+            }
+        )
+        service.reorder_engine.build_reorder_decision = AsyncMock(
+            return_value={
+                "current_stock": Decimal("100.00"),
+                "current_unit": "lb",
+                "lead_demand": Decimal("3.00"),
+                "shelf_demand": Decimal("7.00"),
+                "total_demand": Decimal("10.00"),
+                "safety_stock": Decimal("1.00"),
+                "reorder_point": Decimal("4.00"),
+                "reorder_target": Decimal("11.00"),
+                "raw_order_quantity": Decimal("25.00"),
+                "buffered_quantity": Decimal("25.00"),
+                "moq": Decimal("5.00"),
+                "moq_floor": Decimal("5.00"),
+                "max_allowed": Decimal("100.00"),
+                "final_quantity": Decimal("25.00"),
+                "should_reorder": True,
+                "service_level_z": Decimal("1.65"),
+                "abc_class": "B",
+                "abc_multiplier": Decimal("1.1"),
+                "abc_defaulted": False,
+            }
+        )
+        service.reorder_engine.build_explanation_payload = MagicMock(return_value={"summary": "ok"})
         
         result = await service.generate_suggested_purchase_orders(
             ingredient_forecast,
@@ -289,7 +324,6 @@ class TestEODServiceUnit:
         self, mock_db_session, restaurant_id, sample_suppliers, sample_inventory
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
-        service.reorder_engine.suggest_reorder_quantity = AsyncMock(return_value=Decimal("25.00"))
         service.po_suggestion_repo.replace_for_run_date = AsyncMock()
         run_date = date(2025, 11, 20)
 
@@ -310,6 +344,42 @@ class TestEODServiceUnit:
         service.inventory_repo.get_inventory_by_ingredient = AsyncMock(
             return_value=sample_inventory[0]
         )
+        service.ingredient_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Test Ingredient"))
+        service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Supplier 501"))
+        service.reorder_engine.choose_supplier_option = AsyncMock(
+            return_value={
+                "supplier": sample_suppliers[0],
+                "reason_code": "preferred_lowest_priority",
+                "preferred_supplier_available": True,
+                "selected_supplier_priority": 1,
+                "selected_supplier_preferred": True,
+                "pricing_available": True,
+            }
+        )
+        service.reorder_engine.build_reorder_decision = AsyncMock(
+            return_value={
+                "current_stock": Decimal("100.00"),
+                "current_unit": "lb",
+                "lead_demand": Decimal("6.00"),
+                "shelf_demand": Decimal("4.00"),
+                "total_demand": Decimal("10.00"),
+                "safety_stock": Decimal("1.00"),
+                "reorder_point": Decimal("7.00"),
+                "reorder_target": Decimal("11.00"),
+                "raw_order_quantity": Decimal("25.00"),
+                "buffered_quantity": Decimal("25.00"),
+                "moq": Decimal("5.00"),
+                "moq_floor": Decimal("5.00"),
+                "max_allowed": Decimal("100.00"),
+                "final_quantity": Decimal("25.00"),
+                "should_reorder": True,
+                "service_level_z": Decimal("1.65"),
+                "abc_class": "B",
+                "abc_multiplier": Decimal("1.1"),
+                "abc_defaulted": False,
+            }
+        )
+        service.reorder_engine.build_explanation_payload = MagicMock(return_value={"summary": "ok"})
 
         with patch('app.services.eod_service.date') as mock_date:
             mock_date.today.return_value = date(2026, 1, 15)
@@ -330,7 +400,6 @@ class TestEODServiceUnit:
     ):
         """Test PO generation skips ingredients with zero reorder quantity."""
         service = EODService(mock_db_session, restaurant_id, "master")
-        service.reorder_engine.suggest_reorder_quantity = AsyncMock(return_value=Decimal("0.00"))
         service.po_suggestion_repo.replace_for_run_date = AsyncMock()
         
         ingredient_forecast = {
@@ -345,12 +414,122 @@ class TestEODServiceUnit:
             return_value=[sample_suppliers[0]]
         )
         service.inventory_repo.get_inventory_by_ingredient = AsyncMock(
-            return_value=MagicMock(shelf_life_days=7, unit="lb")
+            return_value=MagicMock(quantity_on_hand=Decimal("5.00"), shelf_life_days=7, unit="lb")
+        )
+        service.reorder_engine.choose_supplier_option = AsyncMock(
+            return_value={
+                "supplier": sample_suppliers[0],
+                "reason_code": "preferred_lowest_priority",
+                "preferred_supplier_available": True,
+                "selected_supplier_priority": 1,
+                "selected_supplier_preferred": True,
+                "pricing_available": True,
+            }
+        )
+        service.reorder_engine.build_reorder_decision = AsyncMock(
+            return_value={
+                "current_stock": Decimal("5.00"),
+                "current_unit": "lb",
+                "lead_demand": Decimal("0.00"),
+                "shelf_demand": Decimal("0.00"),
+                "total_demand": Decimal("0.00"),
+                "safety_stock": Decimal("0.00"),
+                "reorder_point": Decimal("0.00"),
+                "reorder_target": Decimal("0.00"),
+                "raw_order_quantity": Decimal("0.00"),
+                "buffered_quantity": Decimal("0.00"),
+                "moq": Decimal("0.00"),
+                "moq_floor": Decimal("0.00"),
+                "max_allowed": Decimal("100.00"),
+                "final_quantity": Decimal("0.00"),
+                "should_reorder": False,
+                "service_level_z": Decimal("1.65"),
+                "abc_class": "B",
+                "abc_multiplier": Decimal("1.1"),
+                "abc_defaulted": False,
+            }
         )
         
         result = await service.generate_suggested_purchase_orders(ingredient_forecast)
         
         assert len(result) == 0
+
+    @pytest.mark.asyncio
+    async def test_generate_suggested_purchase_orders_falls_back_to_supplier_shelf_life(
+        self, mock_db_session, restaurant_id, sample_suppliers
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        run_date = date(2025, 11, 20)
+
+        supplier = sample_suppliers[0]
+        supplier.shelf_life_days = 7
+        service.ingredient_supplier_repo.get_all_by_ingredient_id = AsyncMock(
+            return_value=[supplier]
+        )
+        service.inventory_repo.get_inventory_by_ingredient = AsyncMock(
+            return_value=MagicMock(
+                quantity_on_hand=Decimal("5.00"),
+                unit="lb",
+                shelf_life_days=None,
+            )
+        )
+        service.ingredient_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Test Ingredient"))
+        service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Supplier 501"))
+        service.po_suggestion_repo.replace_for_run_date = AsyncMock()
+
+        ingredient_forecast = {
+            1001: {
+                "total_quantity": Decimal("30.00"),
+                "unit": "lb",
+                "daily_breakdown": [
+                    (run_date + timedelta(days=i), Decimal("1.00"))
+                    for i in range(10)
+                ],
+            }
+        }
+
+        service.reorder_engine.choose_supplier_option = AsyncMock(
+            return_value={
+                "supplier": supplier,
+                "reason_code": "preferred_lowest_priority",
+                "preferred_supplier_available": True,
+                "selected_supplier_priority": 1,
+                "selected_supplier_preferred": True,
+                "pricing_available": True,
+            }
+        )
+        service.reorder_engine.build_reorder_decision = AsyncMock(
+            return_value={
+                "current_stock": Decimal("5.00"),
+                "current_unit": "lb",
+                "lead_demand": Decimal("3.00"),
+                "shelf_demand": Decimal("7.00"),
+                "total_demand": Decimal("10.00"),
+                "safety_stock": Decimal("1.00"),
+                "reorder_point": Decimal("4.00"),
+                "reorder_target": Decimal("11.00"),
+                "raw_order_quantity": Decimal("6.00"),
+                "buffered_quantity": Decimal("6.60"),
+                "moq": Decimal("5.00"),
+                "moq_floor": Decimal("5.00"),
+                "max_allowed": Decimal("100.00"),
+                "final_quantity": Decimal("6.60"),
+                "should_reorder": True,
+                "service_level_z": Decimal("1.65"),
+                "abc_class": "B",
+                "abc_multiplier": Decimal("1.1"),
+                "abc_defaulted": False,
+            }
+        )
+        service.reorder_engine.build_explanation_payload = MagicMock(return_value={"summary": "ok"})
+
+        await service.generate_suggested_purchase_orders(
+            ingredient_forecast,
+            run_date=run_date,
+        )
+
+        explanation_kwargs = service.reorder_engine.build_explanation_payload.call_args.kwargs
+        assert explanation_kwargs["assumption_flags"]["shelf_life_source"] == "supplier"
 
     @pytest.mark.asyncio
     async def test_write_purchase_orders_to_db(
