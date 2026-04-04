@@ -12,6 +12,9 @@ import type {
   POSuggestionsResponse,
   IngredientStockLevel,
   IngredientSupplierOption,
+  InventoryAdjustmentResult,
+  InventoryDeductionDiscrepancy,
+  InventorySetCurrentStockRequest,
 } from '../interfaces/inventory';
 
 // =============================================================================
@@ -97,8 +100,14 @@ export const adjustInventory = async (adjustmentData: {
   usage_type: string;
   reference_id?: number;
   notes?: string;
-}): Promise<any> => {
-  return post('/inventory/adjust-inventory', adjustmentData);
+}): Promise<InventoryAdjustmentResult> => {
+  return post<InventoryAdjustmentResult>('/inventory/adjust-inventory', adjustmentData);
+};
+
+export const setInventoryCurrentStock = async (
+  reconciliationData: InventorySetCurrentStockRequest
+): Promise<InventoryAdjustmentResult> => {
+  return post<InventoryAdjustmentResult>('/inventory/set-current-stock', reconciliationData);
 };
 
 export const getInventoryAdjustments = async (): Promise<any[]> => {
@@ -203,6 +212,12 @@ export const createPOsFromSuggestions = async (
 
 export const getIngredientsStockLevels = async (): Promise<IngredientStockLevel[]> => {
   return get<IngredientStockLevel[]>('/inventory/ingredients/stock-levels');
+};
+
+export const getInventoryDeductionDiscrepancies = async (): Promise<
+  InventoryDeductionDiscrepancy[]
+> => {
+  return get<InventoryDeductionDiscrepancy[]>('/inventory/deduction-discrepancies');
 };
 
 export const getIngredientSuppliers = async (

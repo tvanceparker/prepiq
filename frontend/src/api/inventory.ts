@@ -10,6 +10,7 @@ import {
   POSuggestionsResponse,
   IngredientStockLevel,
   InventoryDeductionDiscrepancy,
+  InventoryDiscrepancyHistoryItem,
   InventoryAdjustmentResult,
   InventorySetCurrentStockRequest,
   IngredientSupplierOption,
@@ -102,6 +103,19 @@ export async function getInventoryDeductionDiscrepancies(): Promise<
   InventoryDeductionDiscrepancy[]
 > {
   return get('/inventory/deduction-discrepancies');
+}
+
+export async function getInventoryDiscrepancyHistory(
+  startDate: string,
+  endDate: string,
+  ingredientId?: number
+): Promise<InventoryDiscrepancyHistoryItem[]> {
+  const params = new URLSearchParams({
+    start_date: startDate,
+    end_date: endDate,
+  });
+  if (ingredientId) params.append('ingredient_id', ingredientId.toString());
+  return get(`/inventory/discrepancy-history?${params.toString()}`);
 }
 
 export async function getIngredientSuppliers(

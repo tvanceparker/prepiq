@@ -12,10 +12,28 @@ import {
   CircularProgress,
   Chip,
   Fade,
+  LinearProgress,
 } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import dayjs from 'dayjs';
+
+const getProgressMeta = (useCachedForecast: boolean, progress: number) => {
+  const stages = useCachedForecast
+    ? [
+        { threshold: 0.25, label: 'Loading cached forecast snapshot' },
+        { threshold: 0.65, label: 'Applying reorder rules' },
+        { threshold: 1, label: 'Grouping supplier suggestions' },
+      ]
+    : [
+        { threshold: 0.2, label: 'Running fresh forecast' },
+        { threshold: 0.55, label: 'Breaking demand into ingredients' },
+        { threshold: 0.85, label: 'Applying reorder rules' },
+        { threshold: 1, label: 'Grouping supplier suggestions' },
+      ];
+
+  return stages.find(stage => progress <= stage.threshold)?.label ?? 'Finalizing suggestions';
+};
 
 interface POSupplierConfigProps {
   useCachedForecast: boolean;
@@ -24,6 +42,7 @@ interface POSupplierConfigProps {
   setHorizonDays: (value: number) => void;
   lastEodDate: string | null | undefined;
   onGenerate: () => void;
+  onGenerateFresh: () => void;
   isGenerating: boolean;
 }
 
@@ -34,8 +53,36 @@ export default function POSupplierConfig({
   setHorizonDays,
   lastEodDate,
   onGenerate,
+  onGenerateFresh,
   isGenerating,
 }: POSupplierConfigProps) {
+  const [estimatedProgress, setEstimatedProgress] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!isGenerating) {
+      setEstimatedProgress(0);
+      return;
+    }
+
+    const startedAt = Date.now();
+    const durationMs = useCachedForecast ? 6000 : 18000;
+
+    const interval = window.setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      const ratio = Math.min(elapsed / durationMs, 0.92);
+      setEstimatedProgress(ratio);
+    }, 150);
+
+    return () => window.clearInterval(interval);
+  }, [isGenerating, useCachedForecast]);
+
+  const progressLabel = React.useMemo(
+    () => getProgressMeta(useCachedForecast, estimatedProgress),
+    [estimatedProgress, useCachedForecast]
+  );
+
+  const progressPercent = Math.max(5, Math.round(estimatedProgress * 100));
+
   return (
     <Fade in timeout={300}>
       <Stack spacing={3}>
@@ -119,18 +166,64 @@ export default function POSupplierConfig({
           </Paper>
         </Box>
 
-        <Button
-          variant="contained"
-          size="large"
-          startIcon={
-            isGenerating ? <CircularProgress size={20} color="inherit" /> : <AutoAwesomeIcon />
-          }
-          onClick={onGenerate}
-          disabled={isGenerating}
-          sx={{ py: 1.5 }}
-        >
-          {isGenerating ? 'Generating Suggestions...' : 'Generate Order Suggestions'}
-        </Button>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+          <Button
+            variant="contained"
+            size="large"
+            startIcon={
+              isGenerating ? <CircularProgress size={20} color="inherit" /> : <AutoAwesomeIcon />
+            }
+            onClick={onGenerate}
+            disabled={isGenerating}
+            sx={{ py: 1.5, flex: 1 }}
+          >
+            {isGenerating
+              ? 'Generating Suggestions...'
+              : useCachedForecast
+                ? 'Generate Cached Suggestions'
+                : 'Generate Fresh Suggestions'}
+          </Button>
+          {useCachedForecast && (
+            <Button
+              variant="outlined"
+              size="large"
+              onClick={onGenerateFresh}
+              disabled={isGenerating}
+              sx={{ py: 1.5, flex: 1 }}
+            >
+              Run Fresh Preview
+            </Button>
+          )}
+        </Stack>
+
+        <Typography variant="caption" color="text.secondary">
+          Generate Suggestions uses the forecast source selected above. Run Fresh Preview is just a
+          shortcut that flips to a live forecast and starts it immediately.
+        </Typography>
+
+        {isGenerating && (
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Stack spacing={1.25}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography variant="body2" fontWeight={600}>
+                  {progressLabel}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {progressPercent}%
+                </Typography>
+              </Stack>
+              <LinearProgress
+                variant="determinate"
+                value={progressPercent}
+                sx={{ height: 8, borderRadius: 999 }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                Estimated progress only. If the request is interrupted, nothing is saved and you can
+                rerun it safely.
+              </Typography>
+            </Stack>
+          </Paper>
+        )}
       </Stack>
     </Fade>
   );

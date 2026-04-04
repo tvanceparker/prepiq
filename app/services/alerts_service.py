@@ -5,6 +5,7 @@ from scipy.stats import zscore
 import numpy as np
 from collections import defaultdict
 from app.repositories.alerts_repo import AlertRepository
+from app.repositories.inventory_deduction_discrepancies_repo import InventoryDeductionDiscrepancyRepository
 from app.repositories.sales_repo import SalesRepository
 from app.repositories.activity_logs_repo import ActivityLogRepository
 from app.repositories.menu_items_repo import MenuItemRepository
@@ -33,6 +34,7 @@ class AlertsService:
         self.subscription_tier = subscription_tier
         self.employee_id = employee_id
         self.alert_repo = AlertRepository(db,restaurant_id)
+        self.discrepancy_repo = InventoryDeductionDiscrepancyRepository(db, restaurant_id)
         self.sales_repo = SalesRepository(db,restaurant_id)
         self.menu_item_repo = MenuItemRepository(db,restaurant_id)
         self.inventory_repo = InventoryRepository(db, restaurant_id)
@@ -120,6 +122,9 @@ class AlertsService:
         update_data = {"status": "Resolved", "date_resolved": datetime.utcnow()}
         updated_alert = await self.alert_repo.update(alert_id, update_data)
 
+        if updated_alert and alert_obj.alert_type == "Inventory:DeductionFailed":
+            await self.discrepancy_repo.mark_resolved_by_alert_id(alert_id)
+
         await self.log_activity("Resolve Alert", {
             "alert_id": alert_id,
             "new_status": update_data["status"],
@@ -136,6 +141,9 @@ class AlertsService:
 
         update_data = {"is_acknowledged": True, "status": "Acknowledged"}
         updated_alert = await self.alert_repo.update(alert_id, update_data)
+
+        if updated_alert and alert_obj.alert_type == "Inventory:DeductionFailed":
+            await self.discrepancy_repo.mark_acknowledged_by_alert_id(alert_id)
 
         await self.log_activity("Acknowledge Alert", {
             "alert_id": alert_id,

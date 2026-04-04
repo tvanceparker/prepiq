@@ -76,6 +76,45 @@ export interface InventoryAdjustmentDTO {
   created_at: string;
 }
 
+export interface InventoryDeductionDiscrepancy {
+  alert_id: number;
+  alert_type: string;
+  message: string;
+  severity: string;
+  status: string;
+  is_acknowledged: boolean;
+  date_created: string;
+  item_kind: 'ingredient' | 'batch' | 'unknown';
+  ingredient_id?: number | null;
+  batch_recipe_id?: number | null;
+  item_name?: string | null;
+  unit?: string | null;
+  required_quantity: number;
+  available_quantity: number;
+  current_quantity_on_hand: number;
+  shortfall_quantity: number;
+  reference_type?: string | null;
+  reference_id?: number | null;
+  attempted_day?: string | null;
+}
+
+export interface InventoryAdjustmentResult {
+  success: boolean;
+  message: string;
+  adjusted_quantity: number;
+  previous_quantity_on_hand: number;
+  current_quantity_on_hand: number;
+  resolved_deduction_alerts: number;
+}
+
+export interface InventorySetCurrentStockRequest {
+  inventory_id: number;
+  counted_quantity: number;
+  lot_id?: number | null;
+  reason?: string | null;
+  notes?: string;
+}
+
 // =============================================================================
 // Purchase Orders
 // =============================================================================
@@ -230,6 +269,57 @@ export interface UsageLog {
 // PO Suggestion Types
 // =============================================================================
 
+export interface POReorderExplanation {
+  summary: string;
+  why_reorder: {
+    current_stock: number | null;
+    current_unit: string;
+    reorder_point: number | null;
+    lead_demand: number | null;
+    shelf_demand: number | null;
+    safety_stock: number | null;
+    reorder_target: number | null;
+  };
+  quantity_factors: {
+    raw_order_quantity: number | null;
+    buffered_quantity: number | null;
+    final_quantity_before_pack_rounding: number | null;
+    converted_quantity_needed: number | null;
+    pack_size: number;
+    quantity_per_pack_item: number | null;
+    quantity_per_pack: number | null;
+    packs_to_order: number;
+    total_quantity_ordered: number | null;
+    inventory_unit: string | null;
+    supplier_unit: string;
+  };
+  policy_factors: {
+    service_level_z: number | null;
+    abc_class: string;
+    abc_multiplier: number | null;
+    moq: number | null;
+    moq_floor: number | null;
+    max_allowed: number | null;
+  };
+  supplier_factors: {
+    selected_supplier: string;
+    selection_rule: string;
+    preferred_supplier_available: boolean;
+    selected_supplier_priority: number | null;
+    selected_supplier_preferred: boolean;
+    pricing_available: boolean;
+  };
+  assumption_flags: {
+    inventory_source: string;
+    lead_time_source: string;
+    moq_source: string;
+    shelf_life_source: string;
+    unit_conversion_fallback: boolean;
+    pricing_missing: boolean;
+    abc_defaulted: boolean;
+  };
+}
+
 export interface POSuggestionItem {
   ingredient_id: number;
   ingredient_name: string;
@@ -249,6 +339,7 @@ export interface POSuggestionItem {
   min_order_quantity: number;
   lead_demand: number;
   shelf_demand: number;
+  explanation?: POReorderExplanation;
 }
 
 export interface POSuggestionGroup {

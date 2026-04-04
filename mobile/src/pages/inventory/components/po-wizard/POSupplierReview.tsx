@@ -13,6 +13,54 @@ import {
 } from 'react-native-paper';
 import { POSuggestionsResponse, POSuggestionGroup } from '../../../../interfaces/inventory';
 
+const formatValue = (value: number | null | undefined): string => {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return 'n/a';
+  }
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+};
+
+const formatSelectionRule = (rule?: string): string => {
+  if (rule === 'preferred_lowest_priority') {
+    return 'preferred supplier rule';
+  }
+  if (rule === 'fallback_lowest_priority') {
+    return 'fallback to lowest supplier priority';
+  }
+  return rule || 'supplier rule';
+};
+
+const getAssumptionWarnings = (item: POSuggestionsResponse['all_items'][number]): string[] => {
+  const flags = item.explanation?.assumption_flags;
+  if (!flags) {
+    return [];
+  }
+
+  const warnings: string[] = [];
+  if (flags.lead_time_source !== 'supplier') {
+    warnings.push('lead time fallback');
+  }
+  if (flags.moq_source !== 'supplier') {
+    warnings.push('MOQ fallback');
+  }
+  if (flags.shelf_life_source === 'missing_assumed_zero') {
+    warnings.push('shelf life assumed 0');
+  }
+  if (flags.inventory_source !== 'inventory_summary') {
+    warnings.push('inventory fallback');
+  }
+  if (flags.unit_conversion_fallback) {
+    warnings.push('unit conversion fallback');
+  }
+  if (flags.pricing_missing) {
+    warnings.push('pricing missing');
+  }
+  if (flags.abc_defaulted) {
+    warnings.push('ABC defaulted to C');
+  }
+  return warnings;
+};
+
 interface POSupplierReviewProps {
   suggestions: POSuggestionsResponse;
   selectedItems: Map<string, number>;
@@ -187,6 +235,8 @@ export default function POSupplierReview({
                   const key = `${supplier.supplier_id}-${item.ingredient_id}`;
                   const isSelected = selectedItems.has(key);
                   const qty = selectedItems.get(key) || item.quantity_to_order;
+                  const explanation = item.explanation;
+                  const assumptionWarnings = getAssumptionWarnings(item);
 
                   return (
                     <View
@@ -208,6 +258,91 @@ export default function POSupplierReview({
                         <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                           Suggested: {item.quantity_to_order} {item.unit}
                         </Text>
+                        {item.explanation?.summary ? (
+                          <Text
+                            variant="bodySmall"
+                            style={[
+                              styles.itemExplanation,
+                              { color: theme.colors.onSurfaceVariant },
+                            ]}
+                          >
+                            {item.explanation.summary}
+                          </Text>
+                        ) : null}
+                        {explanation ? (
+                          <View style={styles.explanationCard}>
+                            <Text
+                              variant="bodySmall"
+                              style={[
+                                styles.explanationLine,
+                                { color: theme.colors.onSurfaceVariant },
+                              ]}
+                            >
+                              Stock {formatValue(explanation.why_reorder.current_stock)}{' '}
+                              {explanation.why_reorder.current_unit} vs reorder point{' '}
+                              {formatValue(explanation.why_reorder.reorder_point)}.
+                            </Text>
+                            <Text
+                              variant="bodySmall"
+                              style={[
+                                styles.explanationLine,
+                                { color: theme.colors.onSurfaceVariant },
+                              ]}
+                            >
+                              Lead {formatValue(explanation.why_reorder.lead_demand)} + shelf{' '}
+                              {formatValue(explanation.why_reorder.shelf_demand)} + safety{' '}
+                              {formatValue(explanation.why_reorder.safety_stock)} = target{' '}
+                              {formatValue(explanation.why_reorder.reorder_target)}.
+                            </Text>
+                            <Text
+                              variant="bodySmall"
+                              style={[
+                                styles.explanationLine,
+                                { color: theme.colors.onSurfaceVariant },
+                              ]}
+                            >
+                              ABC {explanation.policy_factors.abc_class} x
+                              {formatValue(explanation.policy_factors.abc_multiplier)}; MOQ floor{' '}
+                              {formatValue(explanation.policy_factors.moq_floor)}; final before
+                              packs{' '}
+                              {formatValue(
+                                explanation.quantity_factors.final_quantity_before_pack_rounding
+                              )}
+                              .
+                            </Text>
+                            <Text
+                              variant="bodySmall"
+                              style={[
+                                styles.explanationLine,
+                                { color: theme.colors.onSurfaceVariant },
+                              ]}
+                            >
+                              {formatValue(explanation.quantity_factors.packs_to_order)} packs x{' '}
+                              {formatValue(explanation.quantity_factors.quantity_per_pack)}{' '}
+                              {explanation.quantity_factors.supplier_unit} ={' '}
+                              {formatValue(explanation.quantity_factors.total_quantity_ordered)}{' '}
+                              {explanation.quantity_factors.supplier_unit}.
+                            </Text>
+                            <Text
+                              variant="bodySmall"
+                              style={[
+                                styles.explanationLine,
+                                { color: theme.colors.onSurfaceVariant },
+                              ]}
+                            >
+                              Supplier: {explanation.supplier_factors.selected_supplier} (
+                              {formatSelectionRule(explanation.supplier_factors.selection_rule)}).
+                            </Text>
+                            {assumptionWarnings.length > 0 ? (
+                              <Text
+                                variant="bodySmall"
+                                style={[styles.assumptionLine, { color: theme.colors.error }]}
+                              >
+                                Assumptions: {assumptionWarnings.join(', ')}.
+                              </Text>
+                            ) : null}
+                          </View>
+                        ) : null}
                       </View>
                       <View style={styles.qtyControls}>
                         <IconButton
@@ -301,6 +436,22 @@ const styles = StyleSheet.create({
   },
   itemInfo: {
     flex: 1,
+  },
+  itemExplanation: {
+    marginTop: 4,
+  },
+  explanationCard: {
+    marginTop: 6,
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  explanationLine: {
+    marginTop: 2,
+  },
+  assumptionLine: {
+    marginTop: 6,
+    fontWeight: '500',
   },
   qtyControls: {
     flexDirection: 'row',

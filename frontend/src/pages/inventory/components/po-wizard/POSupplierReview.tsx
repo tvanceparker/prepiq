@@ -27,6 +27,54 @@ import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import type { POSuggestionsResponse, POSuggestionGroup } from '../../../../interfaces/inventory';
 
+const formatValue = (value: number | null | undefined) => {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return 'n/a';
+  }
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+};
+
+const formatSelectionRule = (rule?: string) => {
+  if (rule === 'preferred_lowest_priority') {
+    return 'preferred supplier rule';
+  }
+  if (rule === 'fallback_lowest_priority') {
+    return 'fallback to lowest supplier priority';
+  }
+  return rule || 'supplier rule';
+};
+
+const getAssumptionWarnings = (item: POSuggestionsResponse['all_items'][number]) => {
+  const flags = item.explanation?.assumption_flags;
+  if (!flags) {
+    return [] as string[];
+  }
+
+  const warnings: string[] = [];
+  if (flags.lead_time_source !== 'supplier') {
+    warnings.push('lead time fallback');
+  }
+  if (flags.moq_source !== 'supplier') {
+    warnings.push('MOQ fallback');
+  }
+  if (flags.shelf_life_source === 'missing_assumed_zero') {
+    warnings.push('shelf life assumed 0');
+  }
+  if (flags.inventory_source !== 'inventory_summary') {
+    warnings.push('inventory fallback');
+  }
+  if (flags.unit_conversion_fallback) {
+    warnings.push('unit conversion fallback');
+  }
+  if (flags.pricing_missing) {
+    warnings.push('pricing missing');
+  }
+  if (flags.abc_defaulted) {
+    warnings.push('ABC defaulted to C');
+  }
+  return warnings;
+};
+
 interface POSupplierReviewProps {
   suggestions: POSuggestionsResponse;
   selectedItems: Map<string, number>;
@@ -244,6 +292,8 @@ export default function POSupplierReview({
                           const key = `${supplier.supplier_id}-${item.ingredient_id}`;
                           const isSelected = selectedItems.has(key);
                           const qty = selectedItems.get(key) || item.quantity_to_order;
+                          const explanation = item.explanation;
+                          const assumptionWarnings = getAssumptionWarnings(item);
 
                           return (
                             <TableRow key={key} sx={{ opacity: isSelected ? 1 : 0.5 }}>
@@ -264,6 +314,96 @@ export default function POSupplierReview({
                                 <Typography variant="caption" color="text.secondary">
                                   Suggested: {item.quantity_to_order} {item.unit}
                                 </Typography>
+                                {item.explanation?.summary && (
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{ display: 'block', mt: 0.5 }}
+                                  >
+                                    {item.explanation.summary}
+                                  </Typography>
+                                )}
+                                {explanation && (
+                                  <Box
+                                    sx={{
+                                      mt: 1,
+                                      p: 1,
+                                      borderRadius: 1,
+                                      bgcolor: 'grey.50',
+                                      border: '1px solid',
+                                      borderColor: 'divider',
+                                    }}
+                                  >
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{ display: 'block' }}
+                                    >
+                                      Stock {formatValue(explanation.why_reorder.current_stock)}{' '}
+                                      {explanation.why_reorder.current_unit} vs reorder point{' '}
+                                      {formatValue(explanation.why_reorder.reorder_point)}.
+                                    </Typography>
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{ display: 'block' }}
+                                    >
+                                      Lead {formatValue(explanation.why_reorder.lead_demand)} +
+                                      shelf {formatValue(explanation.why_reorder.shelf_demand)} +
+                                      safety {formatValue(explanation.why_reorder.safety_stock)} =
+                                      target {formatValue(explanation.why_reorder.reorder_target)}.
+                                    </Typography>
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{ display: 'block' }}
+                                    >
+                                      ABC {explanation.policy_factors.abc_class} x
+                                      {formatValue(explanation.policy_factors.abc_multiplier)}; MOQ
+                                      floor {formatValue(explanation.policy_factors.moq_floor)};
+                                      final before packs{' '}
+                                      {formatValue(
+                                        explanation.quantity_factors
+                                          .final_quantity_before_pack_rounding
+                                      )}
+                                      .
+                                    </Typography>
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{ display: 'block' }}
+                                    >
+                                      {formatValue(explanation.quantity_factors.packs_to_order)}{' '}
+                                      packs x{' '}
+                                      {formatValue(explanation.quantity_factors.quantity_per_pack)}{' '}
+                                      {explanation.quantity_factors.supplier_unit} ={' '}
+                                      {formatValue(
+                                        explanation.quantity_factors.total_quantity_ordered
+                                      )}{' '}
+                                      {explanation.quantity_factors.supplier_unit}.
+                                    </Typography>
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{ display: 'block' }}
+                                    >
+                                      Supplier: {explanation.supplier_factors.selected_supplier} (
+                                      {formatSelectionRule(
+                                        explanation.supplier_factors.selection_rule
+                                      )}
+                                      ).
+                                    </Typography>
+                                    {assumptionWarnings.length > 0 && (
+                                      <Typography
+                                        variant="caption"
+                                        color="warning.main"
+                                        sx={{ display: 'block', mt: 0.5 }}
+                                      >
+                                        Assumptions: {assumptionWarnings.join(', ')}.
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                )}
                               </TableCell>
                               <TableCell align="center">
                                 <Stack

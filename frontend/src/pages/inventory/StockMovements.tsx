@@ -1,8 +1,12 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { MaterialReactTable, type MRT_ColumnDef } from 'material-react-table';
-import { getStockMovements, adjustInventory } from '../../api/inventory';
+import {
+  getStockMovements,
+  getInventoryDiscrepancyHistory,
+  adjustInventory,
+} from '../../api/inventory';
 import { fetchIngredientNames, IngredientName } from '../../api/ingredients';
-import { StockMovement } from '../../interfaces/inventory';
+import { InventoryDiscrepancyHistoryItem, StockMovement } from '../../interfaces/inventory';
 import {
   Box,
   Typography,
@@ -24,6 +28,8 @@ import {
   MenuItem,
   Alert,
   Snackbar,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 
@@ -38,11 +44,15 @@ export default function StockMovementsPage() {
   const [ingredient, setIngredient] = useState<IngredientName | null>(null);
   const [ingredientOptions, setIngredientOptions] = useState<IngredientName[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [historyItems, setHistoryItems] = useState<InventoryDiscrepancyHistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'movements' | 'discrepancies'>('movements');
 
-  // Adjustment dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedIngredient, setSelectedIngredient] = useState<IngredientName | null>(null);
   const [quantity, setQuantity] = useState('');
@@ -63,13 +73,27 @@ export default function StockMovementsPage() {
       .finally(() => setLoading(false));
   }, [startDate, endDate, ingredient]);
 
+  const fetchHistory = useCallback(() => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    getInventoryDiscrepancyHistory(startDate, endDate, ingredient?.ingredient_id)
+      .then(setHistoryItems)
+      .catch(e => setHistoryError(e.message))
+      .finally(() => setHistoryLoading(false));
+  }, [startDate, endDate, ingredient]);
+
+  const refreshData = useCallback(() => {
+    fetchMovements();
+    fetchHistory();
+  }, [fetchHistory, fetchMovements]);
+
   useEffect(() => {
     fetchIngredientNames().then(setIngredientOptions);
   }, []);
 
   useEffect(() => {
-    fetchMovements();
-  }, [startDate, endDate, ingredient]);
+    refreshData();
+  }, [refreshData]);
 
   const handleAdjustment = async () => {
     if (!selectedIngredient || !quantity) {
@@ -82,11 +106,9 @@ export default function StockMovementsPage() {
     }
 
     try {
-      // For simplicity, we'll use a placeholder inventory_id and lot_id
-      // In a real app, you'd fetch the current inventory record for the ingredient
       await adjustInventory({
-        inventory_id: selectedIngredient.ingredient_id, // Placeholder - should be actual inventory_id
-        lot_id: 1, // Placeholder - should be actual lot_id
+        inventory_id: selectedIngredient.ingredient_id,
+        lot_id: 1,
         adjustment_quantity: parseFloat(quantity),
         usage_type: adjustmentType,
         notes,
@@ -97,22 +119,30 @@ export default function StockMovementsPage() {
       setSelectedIngredient(null);
       setQuantity('');
       setNotes('');
-      fetchMovements(); // Refresh the list
+      refreshData();
     } catch (err) {
       setSnackbar({ open: true, message: 'Failed to adjust inventory', severity: 'error' });
     }
   };
 
-  // Filter by type if set
   const filteredMovements = useMemo(() => {
     if (!typeFilter) return movements;
     return movements.filter(m => m.type === typeFilter);
   }, [movements, typeFilter]);
 
-  // Get all unique types for filter chips
   const allTypes = useMemo(() => Array.from(new Set(movements.map(m => m.type))), [movements]);
 
-  const columns = useMemo<MRT_ColumnDef<StockMovement>[]>(
+  const filteredHistory = useMemo(() => {
+    if (!historyStatusFilter) return historyItems;
+    return historyItems.filter(item => item.status === historyStatusFilter);
+  }, [historyItems, historyStatusFilter]);
+
+  const allHistoryStatuses = useMemo(
+    () => Array.from(new Set(historyItems.map(item => item.status))).sort(),
+    [historyItems]
+  );
+
+  const movementColumns = useMemo<MRT_ColumnDef<StockMovement>[]>(
     () => [
       {
         accessorKey: 'date',
@@ -199,18 +229,121 @@ export default function StockMovementsPage() {
     [theme]
   );
 
+  const historyColumns = useMemo<MRT_ColumnDef<InventoryDiscrepancyHistoryItem>[]>(
+    () => [
+      {
+        accessorKey: 'last_updated',
+        header: 'Updated',
+        size: 150,
+        Cell: ({ cell }) => new Date(cell.getValue<string>()).toLocaleString(),
+      },
+      {
+        accessorKey: 'status',
+        header: 'Status',
+        size: 120,
+        Cell: ({ row }) => {
+          const status = row.original.status;
+          const color =
+            status === 'Resolved' ? 'success' : status === 'Acknowledged' ? 'warning' : 'error';
+          return <Chip label={status} size="small" color={color} />;
+        },
+      },
+      {
+        accessorKey: 'item_name',
+        header: 'Item',
+        size: 180,
+        Cell: ({ row }) => (
+          <Stack spacing={0.5}>
+            <Typography fontWeight={600}>{row.original.item_name || 'Unknown item'}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {row.original.item_kind === 'batch' ? 'Batch recipe' : 'Ingredient'}
+            </Typography>
+          </Stack>
+        ),
+      },
+      {
+        accessorKey: 'shortfall_quantity',
+        header: 'Shortfall',
+        size: 110,
+        Cell: ({ row }) => `${row.original.shortfall_quantity} ${row.original.unit || ''}`.trim(),
+      },
+      {
+        accessorKey: 'current_quantity_on_hand',
+        header: 'Qty On Hand',
+        size: 130,
+        Cell: ({ row }) =>
+          `${row.original.current_quantity_on_hand} ${row.original.unit || ''}`.trim(),
+      },
+      {
+        accessorKey: 'required_quantity',
+        header: 'Needed',
+        size: 120,
+        Cell: ({ row }) => `${row.original.required_quantity} ${row.original.unit || ''}`.trim(),
+      },
+      {
+        accessorKey: 'reference_type',
+        header: 'Source',
+        size: 150,
+        Cell: ({ row }) => {
+          if (!row.original.reference_type) return '-';
+          return row.original.reference_id
+            ? `${row.original.reference_type} #${row.original.reference_id}`
+            : row.original.reference_type;
+        },
+      },
+      {
+        accessorKey: 'attempted_day',
+        header: 'Attempted',
+        size: 120,
+        Cell: ({ cell }) => cell.getValue<string>() || '-',
+      },
+      {
+        accessorKey: 'date_resolved',
+        header: 'Resolved',
+        size: 150,
+        Cell: ({ cell }) => {
+          const value = cell.getValue<string | null>();
+          return value ? new Date(value).toLocaleString() : '-';
+        },
+      },
+      {
+        accessorKey: 'message',
+        header: 'Details',
+        size: 320,
+      },
+    ],
+    []
+  );
+
   return (
     <Box sx={{ p: 2 }}>
       <Paper sx={{ p: 3, bgcolor: 'background.paper' }} elevation={0}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-          <Typography variant="h5">Stock Movements</Typography>
+          <Typography variant="h5">
+            {viewMode === 'movements' ? 'Stock Movements' : 'Discrepancy History'}
+          </Typography>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
             Adjust Inventory
           </Button>
         </Stack>
         <Typography variant="body2" color="text.secondary" gutterBottom>
-          Track all inventory movements including purchases, sales, waste, and batch production
+          {viewMode === 'movements'
+            ? 'Track all inventory movements including purchases, sales, waste, and batch production'
+            : 'Review blocked deductions and how they were acknowledged or resolved over time'}
         </Typography>
+
+        <ToggleButtonGroup
+          value={viewMode}
+          exclusive
+          onChange={(_, nextValue) => {
+            if (nextValue) setViewMode(nextValue);
+          }}
+          size="small"
+          sx={{ mt: 2, mb: 1 }}
+        >
+          <ToggleButton value="movements">Movements</ToggleButton>
+          <ToggleButton value="discrepancies">Discrepancies</ToggleButton>
+        </ToggleButtonGroup>
 
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} my={3} alignItems="center">
           <TextField
@@ -233,42 +366,62 @@ export default function StockMovementsPage() {
             options={ingredientOptions}
             getOptionLabel={option => option.ingredient_name}
             value={ingredient}
-            onChange={(_, v) => setIngredient(v)}
+            onChange={(_, value) => setIngredient(value)}
             sx={{ minWidth: 250 }}
             size="small"
             renderInput={params => <TextField {...params} label="Filter by Ingredient" />}
-            isOptionEqualToValue={(o, v) => o.ingredient_id === v.ingredient_id}
+            isOptionEqualToValue={(left, right) => left.ingredient_id === right.ingredient_id}
           />
         </Stack>
 
-        <Stack direction="row" spacing={1} mb={2} flexWrap="wrap" gap={1}>
-          <Chip
-            label="All Types"
-            color={!typeFilter ? 'primary' : 'default'}
-            onClick={() => setTypeFilter(null)}
-            size="small"
-          />
-          {allTypes.map(type => (
+        {viewMode === 'movements' ? (
+          <Stack direction="row" spacing={1} mb={2} flexWrap="wrap" gap={1}>
             <Chip
-              key={type}
-              label={type}
-              color={typeFilter === type ? 'primary' : 'default'}
-              onClick={() => setTypeFilter(type)}
-              sx={{ textTransform: 'capitalize' }}
+              label="All Types"
+              color={!typeFilter ? 'primary' : 'default'}
+              onClick={() => setTypeFilter(null)}
               size="small"
             />
-          ))}
-        </Stack>
+            {allTypes.map(type => (
+              <Chip
+                key={type}
+                label={type}
+                color={typeFilter === type ? 'primary' : 'default'}
+                onClick={() => setTypeFilter(type)}
+                sx={{ textTransform: 'capitalize' }}
+                size="small"
+              />
+            ))}
+          </Stack>
+        ) : (
+          <Stack direction="row" spacing={1} mb={2} flexWrap="wrap" gap={1}>
+            <Chip
+              label="All Statuses"
+              color={!historyStatusFilter ? 'primary' : 'default'}
+              onClick={() => setHistoryStatusFilter(null)}
+              size="small"
+            />
+            {allHistoryStatuses.map(status => (
+              <Chip
+                key={status}
+                label={status}
+                color={historyStatusFilter === status ? 'primary' : 'default'}
+                onClick={() => setHistoryStatusFilter(status)}
+                size="small"
+              />
+            ))}
+          </Stack>
+        )}
 
-        {loading ? (
+        {viewMode === 'movements' && loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
             <CircularProgress />
           </Box>
-        ) : error ? (
+        ) : viewMode === 'movements' && error ? (
           <Typography color="error">{error}</Typography>
-        ) : (
+        ) : viewMode === 'movements' ? (
           <MaterialReactTable
-            columns={columns}
+            columns={movementColumns}
             data={filteredMovements}
             enableRowSelection={false}
             enableColumnFilters
@@ -294,10 +447,47 @@ export default function StockMovementsPage() {
               },
             }}
           />
+        ) : historyLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+            <CircularProgress />
+          </Box>
+        ) : historyError ? (
+          <Typography color="error">{historyError}</Typography>
+        ) : (
+          <MaterialReactTable
+            columns={historyColumns}
+            data={filteredHistory}
+            enableRowSelection={false}
+            enableColumnFilters
+            enableSorting
+            enablePagination
+            enableColumnOrdering
+            enableDensityToggle
+            initialState={{
+              density: 'compact',
+              pagination: { pageSize: 25, pageIndex: 0 },
+              sorting: [{ id: 'last_updated', desc: true }],
+            }}
+            muiTableBodyRowProps={({ row }) => ({
+              sx: {
+                backgroundColor:
+                  row.original.status === 'Resolved'
+                    ? 'rgba(56, 142, 60, 0.04)'
+                    : row.original.status === 'Acknowledged'
+                      ? 'rgba(237, 108, 2, 0.06)'
+                      : 'rgba(211, 47, 47, 0.04)',
+              },
+            })}
+            muiTableHeadCellProps={{
+              sx: {
+                backgroundColor: theme.palette.action.selected,
+                fontWeight: 'bold',
+              },
+            }}
+          />
         )}
       </Paper>
 
-      {/* Adjustment Dialog */}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Adjust Inventory</DialogTitle>
         <DialogContent>
@@ -306,9 +496,9 @@ export default function StockMovementsPage() {
               options={ingredientOptions}
               getOptionLabel={option => option.ingredient_name}
               value={selectedIngredient}
-              onChange={(_, v) => setSelectedIngredient(v)}
+              onChange={(_, value) => setSelectedIngredient(value)}
               renderInput={params => <TextField {...params} label="Select Ingredient" />}
-              isOptionEqualToValue={(o, v) => o.ingredient_id === v.ingredient_id}
+              isOptionEqualToValue={(left, right) => left.ingredient_id === right.ingredient_id}
             />
 
             <TextField
@@ -351,7 +541,6 @@ export default function StockMovementsPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={4000}

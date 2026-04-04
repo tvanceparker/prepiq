@@ -19,6 +19,7 @@ from app.schemas.inventory_dto import (
     PurchaseOrderDTO,
     PurchaseOrderCreateDTO,
     InventoryDeductionDiscrepancyDTO,
+    InventoryDiscrepancyHistoryItemDTO,
     PurchaseOrderItemUpdateDTO,
     PurchaseOrderReceiptDTO,
     PurchaseOrderReceiptSummaryDTO,
@@ -218,6 +219,43 @@ async def get_inventory_deduction_discrepancies(
     List open inventory deduction failures for review in the inventory workspace.
     """
     return await inventory_service.get_inventory_deduction_discrepancies()
+
+
+@router.get("/discrepancy-history", response_model=List[InventoryDiscrepancyHistoryItemDTO])
+async def get_inventory_discrepancy_history(
+    start_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
+    end_date: str = Query(..., description="End date (YYYY-MM-DD)"),
+    ingredient_id: int = Query(None, description="Ingredient ID (optional)"),
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    List discrepancy and recovery history for the inventory workspace.
+    """
+    try:
+        from datetime import datetime
+
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+        if start > end:
+            raise HTTPException(status_code=400, detail="Start date must be before or equal to end date")
+
+        return await inventory_service.get_inventory_discrepancy_history(
+            start_date=start,
+            end_date=end,
+            ingredient_id=ingredient_id,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid date format. Use YYYY-MM-DD. Error: {str(e)}",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        if "only available for" in str(e).lower():
+            raise HTTPException(status_code=403, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error fetching discrepancy history: {str(e)}")
 
 @router.get("/last-eod-date")
 async def get_last_eod_date(
