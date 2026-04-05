@@ -648,6 +648,7 @@ class TestEODServiceUnit:
         service.purchase_order_repo.create.assert_called_once()
         create_payload = service.purchase_order_repo.create.await_args.args[0]
         assert create_payload["order_date"] == date(2025, 11, 20)
+        assert create_payload["status"] == "cart"
         parsed_notes = parse_purchase_order_notes(create_payload["notes"])
         assert parsed_notes["system_note"] is not None
         assert "[EOD_AUTO run_date=2025-11-20 supplier_id=501]" in parsed_notes["system_note"]

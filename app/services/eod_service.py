@@ -887,7 +887,7 @@ class EODService:
                     "supplier_id": supplier_id,
                     "order_date": order_date,
                     "expected_delivery_date": expected_delivery_date,
-                    "status": "pending",
+                    "status": "cart",
                     "total_order_price": total_order_price,  # placeholder
                     "notes": serialize_purchase_order_notes(
                         system_note=notes,

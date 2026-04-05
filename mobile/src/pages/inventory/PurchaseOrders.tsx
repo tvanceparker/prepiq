@@ -75,10 +75,10 @@ const formatSelectionRule = (rule?: string | null): string => {
 
 const getOrderSourceLabel = (sourceType?: 'manual' | 'suggestion' | 'eod_auto' | null): string => {
   if (sourceType === 'eod_auto') {
-    return 'EOD generated';
+    return 'EOD draft';
   }
   if (sourceType === 'suggestion') {
-    return 'Suggestion-based';
+    return 'Reorder draft';
   }
   return 'Manual order';
 };
@@ -411,6 +411,13 @@ export default function PurchaseOrders(): React.JSX.Element {
       console.error('Failed to create orders:', error);
     }
   };
+
+  const wizardDescriptor =
+    wizardStep === 0
+      ? 'Choose how you want to build the draft, then move into a focused order workspace.'
+      : wizardMode === 'supplier'
+        ? 'Review forecast-driven lines while the live draft stays visible before you save it.'
+        : 'Assemble a supplier-grouped draft with ingredient-level control before you save it.';
 
   // Create ingredient order
   const handleAddToCart = (item: IngredientCartItem) => {
@@ -1065,7 +1072,7 @@ export default function PurchaseOrders(): React.JSX.Element {
                     onPress={() => handleStatusUpdate(selectedPO.order_id, 'pending')}
                     loading={updatingStatus}
                   >
-                    Submit Order
+                    Submit Draft
                   </Button>
                 )}
                 {['cart', 'pending'].includes(selectedPO.status) && (
@@ -1135,11 +1142,27 @@ export default function PurchaseOrders(): React.JSX.Element {
         >
           {/* Wizard Header */}
           <View style={styles.wizardHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <MaterialCommunityIcons name="cart-plus" size={24} color={theme.colors.primary} />
-              <Text variant="titleLarge" style={{ fontWeight: '600' }}>
-                New Order
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <MaterialCommunityIcons name="cart-plus" size={24} color={theme.colors.primary} />
+                <Text variant="titleLarge" style={{ fontWeight: '600' }}>
+                  Build Draft Purchase Order
+                </Text>
+              </View>
+              <Text
+                variant="bodySmall"
+                style={{ marginTop: 6, color: theme.colors.onSurfaceVariant }}
+              >
+                {wizardDescriptor}
               </Text>
+              <View style={[styles.modalMetaRow, { marginTop: 10 }]}> 
+                <Chip compact mode="outlined">{`Step ${wizardStep + 1} of 2`}</Chip>
+                {wizardMode && wizardStep === 1 ? (
+                  <Chip compact mode="outlined">
+                    {wizardMode === 'supplier' ? 'Supplier Builder' : 'Ingredient Builder'}
+                  </Chip>
+                ) : null}
+              </View>
             </View>
             <IconButton
               icon={() => (
@@ -1203,6 +1226,22 @@ export default function PurchaseOrders(): React.JSX.Element {
           <Divider />
 
           {/* Wizard Content */}
+          <View
+            style={{
+              marginHorizontal: 16,
+              marginTop: 16,
+              marginBottom: 8,
+              padding: 12,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: theme.colors.outlineVariant,
+              backgroundColor: theme.colors.surfaceVariant,
+            }}
+          >
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Save drafts first, then submit them when you are actually ready to place the order.
+            </Text>
+          </View>
           <ScrollView style={{ flex: 1 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {renderWizardContent()}
           </ScrollView>
@@ -1211,7 +1250,7 @@ export default function PurchaseOrders(): React.JSX.Element {
           <Divider />
           <View style={styles.wizardFooter}>
             <Button mode="text" onPress={closeWizard}>
-              Cancel
+              Close
             </Button>
             <View style={{ flex: 1 }} />
             {wizardStep > 0 && (
@@ -1246,8 +1285,8 @@ export default function PurchaseOrders(): React.JSX.Element {
                 {creating
                   ? 'Creating...'
                   : wizardMode === 'supplier'
-                    ? `Create ${reviewTotals.supplierCount} Draft(s)`
-                    : `Create ${Math.max(1, ingredientReviewTotals.supplierCount)} Draft(s)`}
+                    ? `Save ${reviewTotals.supplierCount} Draft(s)`
+                    : `Save ${Math.max(1, ingredientReviewTotals.supplierCount)} Draft(s)`}
               </Button>
             )}
           </View>

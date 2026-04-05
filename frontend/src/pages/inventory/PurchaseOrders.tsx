@@ -99,10 +99,10 @@ const formatSelectionRule = (rule?: string | null) => {
 
 const getOrderSourceLabel = (sourceType?: 'manual' | 'suggestion' | 'eod_auto' | null) => {
   if (sourceType === 'eod_auto') {
-    return 'EOD generated';
+    return 'EOD draft';
   }
   if (sourceType === 'suggestion') {
-    return 'Suggestion-based';
+    return 'Reorder draft';
   }
   return 'Manual order';
 };
@@ -638,6 +638,13 @@ export default function PurchaseOrders() {
     else handleCreateIngredientOrdersFromCart();
   };
 
+  const wizardDescriptor =
+    wizardStep === 0
+      ? 'Choose a draft-building method, then move into a focused order workspace.'
+      : wizardMode === 'supplier'
+        ? 'Review forecast-driven lines on the left while the live draft and totals stay anchored on the right.'
+        : 'Assemble a supplier-grouped draft with ingredient-level control before you save it.';
+
   const updateSuggestedItemQty = useCallback(
     (supplierId: number, ingredientId: number, quantity: number) => {
       setSelectedItems(prev => {
@@ -1099,7 +1106,10 @@ export default function PurchaseOrders() {
             </Typography>
           </Box>
           <Stack direction="row" spacing={1} flexWrap="wrap">
-            <Chip label={order.status.toUpperCase()} color={order.status === 'pending' ? 'warning' : 'default'} />
+            <Chip
+              label={order.status.toUpperCase()}
+              color={order.status === 'pending' ? 'warning' : 'default'}
+            />
             <Chip label={sourceLabel} variant="outlined" color="primary" />
             {order.review_context?.source_run_date && (
               <Chip
@@ -1128,7 +1138,9 @@ export default function PurchaseOrders() {
               Expected Delivery
             </Typography>
             <Typography variant="subtitle1" fontWeight={700}>
-              {order.expected_delivery_date ? dayjs(order.expected_delivery_date).format('MMM D, YYYY') : '-'}
+              {order.expected_delivery_date
+                ? dayjs(order.expected_delivery_date).format('MMM D, YYYY')
+                : '-'}
             </Typography>
           </Paper>
           <Paper variant="outlined" sx={{ p: 1.5, flex: 1, bgcolor: 'background.default' }}>
@@ -1160,38 +1172,38 @@ export default function PurchaseOrders() {
 
         {order.status === 'cart' && (
           <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap' }}>
-          <Autocomplete
-            options={ingredientNames}
-            getOptionLabel={opt => opt.ingredient_name}
-            value={selIngredient}
-            onChange={(_, v) => setSelIngredient(v)}
-            renderInput={params => <TextField {...params} label="Ingredient" size="small" />}
-            sx={{ minWidth: 240 }}
-          />
-          <TextField
-            size="small"
-            label="Qty"
-            value={qty}
-            onChange={e => setQty(e.target.value)}
-            sx={{ width: 100 }}
-          />
-          <TextField
-            size="small"
-            label="Unit"
-            value={unit}
-            onChange={e => setUnit(e.target.value)}
-            sx={{ width: 120 }}
-          />
-          <TextField
-            size="small"
-            label="Unit Price"
-            value={price}
-            onChange={e => setPrice(e.target.value)}
-            sx={{ width: 140 }}
-          />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={addItem}>
-            Add Item
-          </Button>
+            <Autocomplete
+              options={ingredientNames}
+              getOptionLabel={opt => opt.ingredient_name}
+              value={selIngredient}
+              onChange={(_, v) => setSelIngredient(v)}
+              renderInput={params => <TextField {...params} label="Ingredient" size="small" />}
+              sx={{ minWidth: 240 }}
+            />
+            <TextField
+              size="small"
+              label="Qty"
+              value={qty}
+              onChange={e => setQty(e.target.value)}
+              sx={{ width: 100 }}
+            />
+            <TextField
+              size="small"
+              label="Unit"
+              value={unit}
+              onChange={e => setUnit(e.target.value)}
+              sx={{ width: 120 }}
+            />
+            <TextField
+              size="small"
+              label="Unit Price"
+              value={price}
+              onChange={e => setPrice(e.target.value)}
+              sx={{ width: 140 }}
+            />
+            <Button variant="contained" startIcon={<AddIcon />} onClick={addItem}>
+              Add Item
+            </Button>
           </Stack>
         )}
 
@@ -1205,9 +1217,17 @@ export default function PurchaseOrders() {
                 const explanation = item.explanation;
                 const warnings = getReviewItemWarnings(explanation);
                 return (
-                  <Paper key={`${item.supplier_id}-${item.ingredient_id}`} variant="outlined" sx={{ p: 2 }}>
+                  <Paper
+                    key={`${item.supplier_id}-${item.ingredient_id}`}
+                    variant="outlined"
+                    sx={{ p: 2 }}
+                  >
                     <Stack spacing={0.75}>
-                      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1}>
+                      <Stack
+                        direction={{ xs: 'column', md: 'row' }}
+                        justifyContent="space-between"
+                        spacing={1}
+                      >
                         <Box>
                           <Typography variant="body1" fontWeight={600}>
                             {item.ingredient_name}
@@ -1236,33 +1256,42 @@ export default function PurchaseOrders() {
                             {formatExplanationValue(explanation.why_reorder.reorder_point)}.
                           </Typography>
                           <Typography variant="caption" color="text.secondary" display="block">
-                            Lead {formatExplanationValue(explanation.why_reorder.lead_demand)} + shelf{' '}
-                            {formatExplanationValue(explanation.why_reorder.shelf_demand)} + safety{' '}
-                            {formatExplanationValue(explanation.why_reorder.safety_stock)} = target{' '}
-                            {formatExplanationValue(explanation.why_reorder.reorder_target)}.
+                            Lead {formatExplanationValue(explanation.why_reorder.lead_demand)} +
+                            shelf {formatExplanationValue(explanation.why_reorder.shelf_demand)} +
+                            safety {formatExplanationValue(explanation.why_reorder.safety_stock)} =
+                            target {formatExplanationValue(explanation.why_reorder.reorder_target)}.
                           </Typography>
                           <Typography variant="caption" color="text.secondary" display="block">
                             ABC {explanation.policy_factors.abc_class} x{' '}
-                            {formatExplanationValue(explanation.policy_factors.abc_multiplier)}; MOQ floor{' '}
-                            {formatExplanationValue(explanation.policy_factors.moq_floor)}; final before packs{' '}
+                            {formatExplanationValue(explanation.policy_factors.abc_multiplier)}; MOQ
+                            floor {formatExplanationValue(explanation.policy_factors.moq_floor)};
+                            final before packs{' '}
                             {formatExplanationValue(
                               explanation.quantity_factors.final_quantity_before_pack_rounding
-                            )}.
+                            )}
+                            .
                           </Typography>
                           <Typography variant="caption" color="text.secondary" display="block">
-                            {formatExplanationValue(explanation.quantity_factors.packs_to_order)} packs x{' '}
+                            {formatExplanationValue(explanation.quantity_factors.packs_to_order)}{' '}
+                            packs x{' '}
                             {formatExplanationValue(explanation.quantity_factors.quantity_per_pack)}{' '}
                             {explanation.quantity_factors.supplier_unit} ={' '}
-                            {formatExplanationValue(explanation.quantity_factors.total_quantity_ordered)}{' '}
+                            {formatExplanationValue(
+                              explanation.quantity_factors.total_quantity_ordered
+                            )}{' '}
                             {explanation.quantity_factors.supplier_unit}.
                           </Typography>
                           <Typography variant="caption" color="text.secondary" display="block">
-                            Supplier: {explanation.supplier_factors.selected_supplier} ({formatSelectionRule(
-                              explanation.supplier_factors.selection_rule
-                            )}).
+                            Supplier: {explanation.supplier_factors.selected_supplier} (
+                            {formatSelectionRule(explanation.supplier_factors.selection_rule)}).
                           </Typography>
                           {warnings.length > 0 && (
-                            <Typography variant="caption" color="warning.main" display="block" sx={{ mt: 0.5 }}>
+                            <Typography
+                              variant="caption"
+                              color="warning.main"
+                              display="block"
+                              sx={{ mt: 0.5 }}
+                            >
                               Assumptions: {warnings.join(', ')}.
                             </Typography>
                           )}
@@ -1386,7 +1415,7 @@ export default function PurchaseOrders() {
                 updateStatusMut.mutate({ order_id: order.order_id, status: 'pending' })
               }
             >
-              Submit Order
+              Submit Draft
             </Button>
           )}
           {order.status === 'pending' && (
@@ -1537,7 +1566,8 @@ export default function PurchaseOrders() {
             <ShoppingCartIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
             <Typography variant="body1">Select an order to open the review dialog</Typography>
             <Typography variant="body2" sx={{ mt: 1, textAlign: 'center', maxWidth: 320 }}>
-              Drafts and pending orders now use a focused review surface instead of the old flat editor.
+              Drafts and pending orders now use a focused review surface instead of the old flat
+              editor.
             </Typography>
           </Box>
         </Paper>
@@ -1601,24 +1631,27 @@ export default function PurchaseOrders() {
         fullWidth
         PaperProps={{ sx: { minHeight: 620 } }}
       >
-        <DialogTitle sx={{ pb: 1 }}>
+        <DialogTitle sx={{ pb: 1.5 }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
             <Stack direction="row" alignItems="center" spacing={2}>
               <ShoppingCartIcon color="primary" />
               <Box>
-                <Typography variant="h6">New Purchase Order</Typography>
+                <Typography variant="h6">Build Draft Purchase Order</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Build the order on the left and keep the live draft anchored on the right.
+                  {wizardDescriptor}
                 </Typography>
               </Box>
             </Stack>
-            {wizardMode && wizardStep === 1 && (
-              <Chip
-                color={wizardMode === 'supplier' ? 'primary' : 'secondary'}
-                variant="outlined"
-                label={wizardMode === 'supplier' ? 'Supplier Builder' : 'Ingredient Builder'}
-              />
-            )}
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Chip label={`Step ${wizardStep + 1} of 2`} variant="outlined" />
+              {wizardMode && wizardStep === 1 && (
+                <Chip
+                  color={wizardMode === 'supplier' ? 'primary' : 'secondary'}
+                  variant="outlined"
+                  label={wizardMode === 'supplier' ? 'Supplier Builder' : 'Ingredient Builder'}
+                />
+              )}
+            </Stack>
           </Stack>
         </DialogTitle>
 
@@ -1630,6 +1663,29 @@ export default function PurchaseOrders() {
             flexDirection: 'column',
           }}
         >
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 1.5,
+              mb: 2,
+              borderRadius: 2,
+              bgcolor: 'background.default',
+            }}
+          >
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={1.5}
+              justifyContent="space-between"
+            >
+              <Typography variant="body2" color="text.secondary">
+                Save drafts first, then submit them when you are actually ready to place the order.
+              </Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Chip size="small" label="Draft-first flow" color="primary" variant="outlined" />
+                <Chip size="small" label="Review before submit" variant="outlined" />
+              </Stack>
+            </Stack>
+          </Paper>
           {wizardStep === 0 ? (
             renderWizardMainContent()
           ) : (
@@ -1649,7 +1705,7 @@ export default function PurchaseOrders() {
         </DialogContent>
 
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={closeWizard}>Cancel</Button>
+          <Button onClick={closeWizard}>Close</Button>
           <Box sx={{ flex: 1 }} />
           {wizardStep > 0 && (
             <Button startIcon={<ArrowBackIcon />} onClick={handleBack}>
@@ -1679,8 +1735,8 @@ export default function PurchaseOrders() {
               {wizardMode === 'supplier'
                 ? createFromSuggestionsMut.isPending
                   ? 'Creating...'
-                  : `Create ${reviewTotals.supplierCount} Draft(s)`
-                : `Create ${ingredientCartTotals.supplierCount || 1} Draft${ingredientCartTotals.supplierCount === 1 ? '' : 's'}`}
+                  : `Save ${reviewTotals.supplierCount} Draft(s)`
+                : `Save ${ingredientCartTotals.supplierCount || 1} Draft${ingredientCartTotals.supplierCount === 1 ? '' : 's'}`}
             </Button>
           )}
         </DialogActions>
