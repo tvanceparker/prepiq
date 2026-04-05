@@ -21,19 +21,29 @@ from app.repositories.ingredient_forecast_breakdown_repo import IngredientForeca
 from app.repositories.forecast_run_ledger_repo import ForecastRunLedgerRepository
 from app.repositories.forecasts_repo import ForecastRepository
 from app.services.utils.unit_conversion import convert_unit, round_decimal
+from app.services.utils.purchase_order_note_helper import (
+    build_purchase_order_explanation_item,
+    build_purchase_order_review_context,
+    parse_purchase_order_notes,
+    serialize_purchase_order_notes,
+)
 
 class InventoryService:
     # --- Purchase Orders ---
-    async def create_purchase_order(self, supplier_id: int, expected_delivery_date, items: list, notes: str = None) -> dict:
+    async def create_purchase_order(
+        self,
+        supplier_id: int,
+        expected_delivery_date,
+        items: list,
+        notes: str = None,
+        *,
+        review_context: Optional[dict] = None,
+        system_note: Optional[str] = None,
+    ) -> dict:
         """
         Create a new purchase order with items.
         """
-        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
-        from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
-        from sqlalchemy import func
         import datetime
-        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
-        poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
         async with self.db.begin():
             order_date = datetime.date.today()
             po_data = {
@@ -43,9 +53,13 @@ class InventoryService:
                 "expected_delivery_date": expected_delivery_date,
                 "status": "cart",
                 "total_order_price": 0.0,
-                "notes": notes,
+                "notes": serialize_purchase_order_notes(
+                    user_note=notes,
+                    system_note=system_note,
+                    review_context=review_context,
+                ),
             }
-            po = await po_repo.create(po_data)
+            po = await self.purchase_order_repo.create(po_data)
             total = 0.0
             item_objs = []
             for item in items:
@@ -60,31 +74,27 @@ class InventoryService:
                     "total_item_price": float(item["quantity_ordered"]) * float(item["unit_price"]),
                 }
                 total += item_data["total_item_price"]
-                item_obj = await poi_repo.create(item_data)
+                item_obj = await self.purchase_order_item_repo.create(item_data)
                 item_objs.append(item_obj)
-            await po_repo.update(po.order_id, {"total_order_price": total})
+            await self.purchase_order_repo.update(po.order_id, {"total_order_price": total})
         return {"order_id": po.order_id, "total_order_price": total, "status": "cart"}
 
     async def get_purchase_orders(self, status: str = None, supplier_id: int = None) -> list:
         """
         List purchase orders, optionally filter by status or supplier.
         """
-        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
-        from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
-        from app.repositories.supplier_repo import SupplierRepository
-        from app.repositories.ingredients_repo import IngredientRepository
-        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
-        poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
-        supplier_repo = SupplierRepository(self.db, self.restaurant_id)
-        ingredient_repo = IngredientRepository(self.db, self.restaurant_id)
-        pos = await po_repo.list_purchase_orders(status=status, supplier_id=supplier_id)
+        pos = await self.purchase_order_repo.list_purchase_orders(
+            status=status,
+            supplier_id=supplier_id,
+        )
         result = []
         for po in pos:
-            supplier = await supplier_repo.get_by_id(po.supplier_id)
-            items = await poi_repo.get_by_field("order_id", po.order_id)
+            supplier = await self.supplier_repo.get_by_id(po.supplier_id)
+            items = await self.purchase_order_item_repo.get_by_field("order_id", po.order_id)
+            parsed_notes = parse_purchase_order_notes(getattr(po, "notes", None))
             item_dtos = []
             for item in items:
-                ingredient = await ingredient_repo.get_by_id(item.ingredient_id)
+                ingredient = await self.ingredient_repo.get_by_id(item.ingredient_id)
                 item_dtos.append({
                     "order_item_id": item.order_item_id,
                     "order_id": item.order_id,
@@ -96,6 +106,11 @@ class InventoryService:
                     "unit_price": float(item.unit_price),
                     "total_item_price": float(item.total_item_price),
                 })
+            expected_delivery_stale = bool(
+                po.expected_delivery_date
+                and po.status in {"cart", "pending"}
+                and po.expected_delivery_date < date.today()
+            )
             result.append({
                 "order_id": po.order_id,
                 "restaurant_id": po.restaurant_id,
@@ -107,7 +122,14 @@ class InventoryService:
                 "status": po.status,
                 "total_order_price": float(po.total_order_price),
                 "items": item_dtos,
-                "notes": getattr(po, "notes", None),
+                "notes": parsed_notes["user_note"],
+                "expected_delivery_stale": expected_delivery_stale,
+                "expected_delivery_status_message": (
+                    "Expected delivery date is in the past. Review before submitting or receiving this order."
+                    if expected_delivery_stale
+                    else None
+                ),
+                "review_context": parsed_notes["review_context"],
             })
         return result
 
@@ -115,22 +137,15 @@ class InventoryService:
         """
         Get a single purchase order with items.
         """
-        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
-        from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
-        from app.repositories.supplier_repo import SupplierRepository
-        from app.repositories.ingredients_repo import IngredientRepository
-        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
-        poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
-        supplier_repo = SupplierRepository(self.db, self.restaurant_id)
-        ingredient_repo = IngredientRepository(self.db, self.restaurant_id)
-        po = await po_repo.get_by_id(order_id)
+        po = await self.purchase_order_repo.get_by_id(order_id)
         if not po:
             return None
-        supplier = await supplier_repo.get_by_id(po.supplier_id)
-        items = await poi_repo.get_by_field("order_id", po.order_id)
+        supplier = await self.supplier_repo.get_by_id(po.supplier_id)
+        items = await self.purchase_order_item_repo.get_by_field("order_id", po.order_id)
+        parsed_notes = parse_purchase_order_notes(getattr(po, "notes", None))
         item_dtos = []
         for item in items:
-            ingredient = await ingredient_repo.get_by_id(item.ingredient_id)
+            ingredient = await self.ingredient_repo.get_by_id(item.ingredient_id)
             item_dtos.append({
                 "order_item_id": item.order_item_id,
                 "order_id": item.order_id,
@@ -142,6 +157,11 @@ class InventoryService:
                 "unit_price": float(item.unit_price),
                 "total_item_price": float(item.total_item_price),
             })
+        expected_delivery_stale = bool(
+            po.expected_delivery_date
+            and po.status in {"cart", "pending"}
+            and po.expected_delivery_date < date.today()
+        )
         return {
             "order_id": po.order_id,
             "restaurant_id": po.restaurant_id,
@@ -153,7 +173,14 @@ class InventoryService:
             "status": po.status,
             "total_order_price": float(po.total_order_price),
             "items": item_dtos,
-            "notes": getattr(po, "notes", None),
+            "notes": parsed_notes["user_note"],
+            "expected_delivery_stale": expected_delivery_stale,
+            "expected_delivery_status_message": (
+                "Expected delivery date is in the past. Review before submitting or receiving this order."
+                if expected_delivery_stale
+                else None
+            ),
+            "review_context": parsed_notes["review_context"],
         }
 
     async def update_purchase_order_status(self, order_id: int, status: str) -> dict:
@@ -163,8 +190,50 @@ class InventoryService:
         if status == "delivered":
             return await self.receive_purchase_order(order_id)
 
-        await self.purchase_order_repo.update(order_id, {"status": status})
-        return {"order_id": order_id, "status": status}
+        purchase_order = await self.purchase_order_repo.get_by_id(order_id)
+        if not purchase_order:
+            raise ValueError(f"Purchase order {order_id} not found.")
+
+        update_payload: Dict[str, Any] = {"status": status}
+        expected_delivery_refreshed = False
+
+        if status == "pending":
+            refreshed_expected_delivery = await self._calculate_expected_delivery_for_order(order_id)
+            if refreshed_expected_delivery and (
+                purchase_order.expected_delivery_date is None
+                or purchase_order.expected_delivery_date < date.today()
+            ):
+                update_payload["expected_delivery_date"] = refreshed_expected_delivery
+                expected_delivery_refreshed = True
+
+        await self.purchase_order_repo.update(order_id, update_payload)
+        return {
+            "order_id": order_id,
+            "status": status,
+            "expected_delivery_date": update_payload.get(
+                "expected_delivery_date",
+                purchase_order.expected_delivery_date,
+            ),
+            "expected_delivery_refreshed": expected_delivery_refreshed,
+        }
+
+    async def _calculate_expected_delivery_for_order(self, order_id: int) -> Optional[date]:
+        items = await self.purchase_order_item_repo.get_by_field("order_id", order_id)
+        if not items:
+            return None
+
+        max_lead_time = 0
+        for item in items:
+            if not getattr(item, "ingredient_supplier_id", None):
+                continue
+            ingredient_supplier = await self.ingredient_supplier_repo.get_by_id(
+                item.ingredient_supplier_id
+            )
+            if not ingredient_supplier:
+                continue
+            max_lead_time = max(max_lead_time, int(ingredient_supplier.lead_time_days or 0))
+
+        return date.today() + timedelta(days=max_lead_time)
 
     async def receive_purchase_order(
         self,
@@ -877,6 +946,11 @@ class InventoryService:
                     "unit": item.get("unit", "unit"),
                     "unit_price": item.get("unit_price", 0),
                 })
+
+            review_context = build_purchase_order_review_context(
+                source_type="suggestion",
+                explanation_items=[build_purchase_order_explanation_item(item) for item in items],
+            )
             
             # Create the PO
             result = await self.create_purchase_order(
@@ -884,6 +958,7 @@ class InventoryService:
                 expected_delivery_date=expected_delivery,
                 items=po_items,
                 notes=notes,
+                review_context=review_context,
             )
             
             created_orders.append(result)

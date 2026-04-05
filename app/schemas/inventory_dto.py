@@ -14,6 +14,27 @@ class PurchaseOrderItemDTO(BaseModel):
     unit_price: float
     total_item_price: float
 
+
+class PurchaseOrderReviewItemDTO(BaseModel):
+    ingredient_id: int
+    ingredient_name: str
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
+    quantity_to_order: Optional[float] = None
+    packs_to_order: Optional[int] = None
+    unit: Optional[str] = None
+    line_total: Optional[float] = None
+    lead_time_days: Optional[int] = None
+    lead_demand: Optional[float] = None
+    shelf_demand: Optional[float] = None
+    explanation: Optional["POReorderExplanationDTO"] = None
+
+
+class PurchaseOrderReviewContextDTO(BaseModel):
+    source_type: Literal["manual", "suggestion", "eod_auto"] = "manual"
+    source_run_date: Optional[date] = None
+    explanation_items: List[PurchaseOrderReviewItemDTO] = []
+
 class PurchaseOrderCreateItemDTO(BaseModel):
     ingredient_id: int
     ingredient_supplier_id: Optional[int]
@@ -71,6 +92,9 @@ class PurchaseOrderDTO(BaseModel):
     total_order_price: float
     items: List[PurchaseOrderItemDTO]
     notes: Optional[str] = None
+    expected_delivery_stale: bool = False
+    expected_delivery_status_message: Optional[str] = None
+    review_context: Optional[PurchaseOrderReviewContextDTO] = None
 
 
 class PurchaseOrderCreateResultDTO(BaseModel):
@@ -82,6 +106,8 @@ class PurchaseOrderCreateResultDTO(BaseModel):
 class PurchaseOrderStatusUpdateResultDTO(BaseModel):
     order_id: int
     status: str
+    expected_delivery_date: Optional[date] = None
+    expected_delivery_refreshed: bool = False
 
 
 class PurchaseOrderItemAddResultDTO(BaseModel):

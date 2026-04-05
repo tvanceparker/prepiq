@@ -68,6 +68,27 @@ export interface PurchaseOrderItem {
   total_item_price: number;
 }
 
+export interface PurchaseOrderReviewItem {
+  ingredient_id: number;
+  ingredient_name: string;
+  supplier_id?: number | null;
+  supplier_name?: string | null;
+  quantity_to_order?: number | null;
+  packs_to_order?: number | null;
+  unit?: string | null;
+  line_total?: number | null;
+  lead_time_days?: number | null;
+  lead_demand?: number | null;
+  shelf_demand?: number | null;
+  explanation?: POReorderExplanation | null;
+}
+
+export interface PurchaseOrderReviewContext {
+  source_type: 'manual' | 'suggestion' | 'eod_auto';
+  source_run_date?: string | null;
+  explanation_items: PurchaseOrderReviewItem[];
+}
+
 export interface PurchaseOrder {
   order_id: number;
   restaurant_id: number;
@@ -80,6 +101,9 @@ export interface PurchaseOrder {
   total_order_price: number;
   items: PurchaseOrderItem[];
   notes?: string | null;
+  expected_delivery_stale?: boolean;
+  expected_delivery_status_message?: string | null;
+  review_context?: PurchaseOrderReviewContext | null;
 }
 
 export interface PurchaseOrderReceiptItemSummary {
@@ -111,6 +135,8 @@ export interface PurchaseOrderCreateResult {
 export interface PurchaseOrderStatusUpdateResult {
   order_id: number;
   status: string;
+  expected_delivery_date?: string | null;
+  expected_delivery_refreshed?: boolean;
 }
 
 export interface PurchaseOrderItemAddResult {

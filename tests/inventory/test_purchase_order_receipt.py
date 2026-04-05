@@ -1,9 +1,11 @@
 from datetime import date
-from unittest.mock import AsyncMock, MagicMock
+from decimal import Decimal
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.services.inventory_service import InventoryService
+from app.services.utils.purchase_order_note_helper import serialize_purchase_order_notes
 
 
 @pytest.fixture
@@ -176,6 +178,181 @@ async def test_update_purchase_order_status_delivered_delegates_to_receipt(inven
 
     inventory_service.receive_purchase_order.assert_awaited_once_with(55)
     assert result == {'order_id': 55, 'status': 'delivered'}
+
+
+@pytest.mark.asyncio
+async def test_update_purchase_order_status_refreshes_stale_expected_delivery_on_submit(
+    inventory_service,
+):
+    inventory_service.purchase_order_repo.get_by_id.return_value = MagicMock(
+        expected_delivery_date=date(2026, 4, 4),
+    )
+    inventory_service.purchase_order_item_repo.get_by_field.return_value = [
+        MagicMock(ingredient_supplier_id=201),
+        MagicMock(ingredient_supplier_id=202),
+    ]
+    inventory_service.ingredient_supplier_repo.get_by_id = AsyncMock(
+        side_effect=[
+            MagicMock(lead_time_days=1),
+            MagicMock(lead_time_days=3),
+        ]
+    )
+
+    with patch('app.services.inventory_service.date') as mock_date:
+        mock_date.today.return_value = date(2026, 4, 5)
+        result = await inventory_service.update_purchase_order_status(55, 'pending')
+
+    inventory_service.purchase_order_repo.update.assert_awaited_once_with(
+        55,
+        {'status': 'pending', 'expected_delivery_date': date(2026, 4, 8)},
+    )
+    assert result == {
+        'order_id': 55,
+        'status': 'pending',
+        'expected_delivery_date': date(2026, 4, 8),
+        'expected_delivery_refreshed': True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_create_purchase_orders_from_suggestions_passes_review_context(
+    inventory_service,
+):
+    inventory_service.create_purchase_order = AsyncMock(
+        return_value={'order_id': 99, 'total_order_price': 42.0, 'status': 'cart'}
+    )
+
+    await inventory_service.create_purchase_orders_from_suggestions(
+        suggestions=[
+            {
+                'ingredient_id': 101,
+                'ingredient_name': 'Garlic',
+                'ingredient_supplier_id': 201,
+                'supplier_id': 301,
+                'supplier_name': 'Produce Co',
+                'quantity_to_order': 12.0,
+                'packs_to_order': 2,
+                'unit': 'lb',
+                'unit_price': 4.5,
+                'line_total': 54.0,
+                'lead_time_days': 2,
+                'lead_demand': 5.0,
+                'shelf_demand': 7.0,
+                'explanation': {
+                    'summary': 'Suggested because stock is below reorder point.',
+                    'why_reorder': {
+                        'current_stock': 1.0,
+                        'current_unit': 'lb',
+                        'reorder_point': 4.0,
+                        'lead_demand': 2.0,
+                        'shelf_demand': 3.0,
+                        'safety_stock': 1.0,
+                        'reorder_target': 6.0,
+                    },
+                    'quantity_factors': {
+                        'raw_order_quantity': 5.0,
+                        'buffered_quantity': 5.5,
+                        'final_quantity_before_pack_rounding': 5.5,
+                        'converted_quantity_needed': 5.5,
+                        'pack_size': 1,
+                        'quantity_per_pack_item': 6.0,
+                        'quantity_per_pack': 6.0,
+                        'packs_to_order': 2,
+                        'total_quantity_ordered': 12.0,
+                        'inventory_unit': 'lb',
+                        'supplier_unit': 'lb',
+                    },
+                    'policy_factors': {
+                        'service_level_z': 1.65,
+                        'abc_class': 'B',
+                        'abc_multiplier': 1.1,
+                        'moq': 4.0,
+                        'moq_floor': 4.0,
+                        'max_allowed': 100.0,
+                    },
+                    'supplier_factors': {
+                        'selected_supplier': 'Produce Co',
+                        'selection_rule': 'preferred_lowest_priority',
+                        'preferred_supplier_available': True,
+                        'selected_supplier_priority': 1,
+                        'selected_supplier_preferred': True,
+                        'pricing_available': True,
+                    },
+                    'assumption_flags': {
+                        'inventory_source': 'inventory_summary',
+                        'lead_time_source': 'supplier',
+                        'moq_source': 'supplier',
+                        'shelf_life_source': 'inventory',
+                        'unit_conversion_fallback': False,
+                        'pricing_missing': False,
+                        'abc_defaulted': False,
+                    },
+                },
+            }
+        ],
+        notes='Operator note',
+    )
+
+    _, kwargs = inventory_service.create_purchase_order.await_args
+    assert kwargs['notes'] == 'Operator note'
+    assert kwargs['review_context']['source_type'] == 'suggestion'
+    assert len(kwargs['review_context']['explanation_items']) == 1
+    assert kwargs['review_context']['explanation_items'][0]['ingredient_name'] == 'Garlic'
+
+
+@pytest.mark.asyncio
+async def test_get_purchase_order_detail_parses_review_context_and_stale_eta(inventory_service):
+    purchase_order = MagicMock(
+        order_id=55,
+        restaurant_id=1,
+        supplier_id=301,
+        order_date=date(2026, 4, 2),
+        expected_delivery_date=date(2026, 4, 4),
+        actual_delivery_date=None,
+        status='pending',
+        total_order_price=Decimal('42.00'),
+        notes=serialize_purchase_order_notes(
+            user_note='Operator note',
+            system_note='[EOD_AUTO run_date=2026-04-02 supplier_id=301]',
+            review_context={
+                'source_type': 'eod_auto',
+                'source_run_date': '2026-04-02',
+                'explanation_items': [
+                    {
+                        'ingredient_id': 101,
+                        'ingredient_name': 'Garlic',
+                        'quantity_to_order': 12.0,
+                        'unit': 'lb',
+                    }
+                ],
+            },
+        ),
+    )
+    inventory_service.purchase_order_repo.get_by_id.return_value = purchase_order
+    inventory_service.purchase_order_item_repo.get_by_field.return_value = [
+        MagicMock(
+            order_item_id=11,
+            order_id=55,
+            ingredient_id=101,
+            ingredient_supplier_id=201,
+            quantity_ordered=12,
+            unit='lb',
+            unit_price=3.5,
+            total_item_price=42.0,
+        )
+    ]
+    inventory_service.supplier_repo = AsyncMock()
+    inventory_service.supplier_repo.get_by_id.return_value = MagicMock(name='Produce Co')
+    inventory_service.ingredient_repo.get_by_id.return_value = MagicMock(name='Garlic')
+
+    with patch('app.services.inventory_service.date') as mock_date:
+        mock_date.today.return_value = date(2026, 4, 5)
+        result = await inventory_service.get_purchase_order_detail(55)
+
+    assert result['notes'] == 'Operator note'
+    assert result['expected_delivery_stale'] is True
+    assert result['review_context']['source_type'] == 'eod_auto'
+    assert result['review_context']['explanation_items'][0]['ingredient_name'] == 'Garlic'
 
 
 @pytest.mark.asyncio

@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch, ANY
 
 from app.db.models.inventory_lot_orm import LotStatus
 from app.services.eod_service import EODService
+from app.services.utils.purchase_order_note_helper import parse_purchase_order_notes
 
 
 class TestEODServiceUnit:
@@ -647,7 +648,11 @@ class TestEODServiceUnit:
         service.purchase_order_repo.create.assert_called_once()
         create_payload = service.purchase_order_repo.create.await_args.args[0]
         assert create_payload["order_date"] == date(2025, 11, 20)
-        assert create_payload["notes"].startswith("[EOD_AUTO run_date=2025-11-20 supplier_id=501]")
+        parsed_notes = parse_purchase_order_notes(create_payload["notes"])
+        assert parsed_notes["system_note"] is not None
+        assert "[EOD_AUTO run_date=2025-11-20 supplier_id=501]" in parsed_notes["system_note"]
+        assert parsed_notes["review_context"]["source_type"] == "eod_auto"
+        assert len(parsed_notes["review_context"]["explanation_items"]) == 2
         # Should create two items
         assert service.purchase_order_item_repo.create.call_count == 2
         # Should update order with total price

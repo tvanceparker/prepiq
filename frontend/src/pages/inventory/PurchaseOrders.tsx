@@ -80,6 +80,58 @@ const statusTabs: { label: string; value: PurchaseOrderStatus }[] = [
 const getForecastSourceLabel = (data: POSuggestionsResponse) =>
   data.forecast_source_type === 'eod' ? 'EOD' : 'On-demand';
 
+const formatExplanationValue = (value: number | null | undefined) => {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return 'n/a';
+  }
+  return Number.isInteger(value) ? String(value) : Number(value).toFixed(2);
+};
+
+const formatSelectionRule = (rule?: string | null) => {
+  if (rule === 'preferred_lowest_priority') {
+    return 'preferred supplier rule';
+  }
+  if (rule === 'fallback_lowest_priority') {
+    return 'fallback to lowest supplier priority';
+  }
+  return rule || 'supplier rule';
+};
+
+const getOrderSourceLabel = (sourceType?: 'manual' | 'suggestion' | 'eod_auto' | null) => {
+  if (sourceType === 'eod_auto') {
+    return 'EOD generated';
+  }
+  if (sourceType === 'suggestion') {
+    return 'Suggestion-based';
+  }
+  return 'Manual order';
+};
+
+const getReviewItemWarnings = (
+  explanation?: PurchaseOrder['review_context'] extends { explanation_items: infer T }
+    ? T extends Array<infer U>
+      ? U extends { explanation?: infer E | null }
+        ? E
+        : never
+      : never
+    : never
+) => {
+  const flags = explanation?.assumption_flags;
+  if (!flags) {
+    return [] as string[];
+  }
+
+  const warnings: string[] = [];
+  if (flags.lead_time_source !== 'supplier') warnings.push('lead time fallback');
+  if (flags.moq_source !== 'supplier') warnings.push('MOQ fallback');
+  if (flags.shelf_life_source === 'missing_assumed_zero') warnings.push('shelf life assumed 0');
+  if (flags.inventory_source !== 'inventory_summary') warnings.push('inventory fallback');
+  if (flags.unit_conversion_fallback) warnings.push('unit conversion fallback');
+  if (flags.pricing_missing) warnings.push('pricing missing');
+  if (flags.abc_defaulted) warnings.push('ABC defaulted to C');
+  return warnings;
+};
+
 type WizardStep = 0 | 1;
 
 export default function PurchaseOrders() {
@@ -237,6 +289,19 @@ export default function PurchaseOrders() {
       setSelectedOrder(null);
       if (data && typeof data === 'object' && 'receipt_mode' in data) {
         showToast(formatReceiptSummary(data as PurchaseOrderReceiptSummary), 'info');
+        return;
+      }
+      if (
+        data &&
+        typeof data === 'object' &&
+        'expected_delivery_refreshed' in data &&
+        data.expected_delivery_refreshed &&
+        data.expected_delivery_date
+      ) {
+        showToast(
+          `Order submitted. Expected delivery refreshed to ${dayjs(data.expected_delivery_date).format('MMM D, YYYY')}.`,
+          'info'
+        );
         return;
       }
       showToast('Order status updated.');
@@ -1021,16 +1086,80 @@ export default function PurchaseOrders() {
     };
 
     const total = (order.items || []).reduce((s, it) => s + (Number(it.total_item_price) || 0), 0);
+    const reviewItems = order.review_context?.explanation_items || [];
+    const sourceLabel = getOrderSourceLabel(order.review_context?.source_type);
 
     return (
-      <Box>
-        <Typography variant="h6" sx={{ mb: 1 }}>
-          Order #{order.order_id} • {order.supplier_name}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Expected Delivery: {order.expected_delivery_date || '-'}
-        </Typography>
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
+      <Stack spacing={2.5}>
+        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
+          <Box>
+            <Typography variant="h6">Order #{order.order_id}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {order.supplier_name}
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Chip label={order.status.toUpperCase()} color={order.status === 'pending' ? 'warning' : 'default'} />
+            <Chip label={sourceLabel} variant="outlined" color="primary" />
+            {order.review_context?.source_run_date && (
+              <Chip
+                label={`Run ${dayjs(order.review_context.source_run_date).format('MMM D')}`}
+                variant="outlined"
+              />
+            )}
+          </Stack>
+        </Stack>
+
+        {order.expected_delivery_stale && order.expected_delivery_status_message && (
+          <Alert severity="warning">{order.expected_delivery_status_message}</Alert>
+        )}
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+          <Paper variant="outlined" sx={{ p: 1.5, flex: 1, bgcolor: 'background.default' }}>
+            <Typography variant="caption" color="text.secondary">
+              Order Date
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={700}>
+              {dayjs(order.order_date).format('MMM D, YYYY')}
+            </Typography>
+          </Paper>
+          <Paper variant="outlined" sx={{ p: 1.5, flex: 1, bgcolor: 'background.default' }}>
+            <Typography variant="caption" color="text.secondary">
+              Expected Delivery
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={700}>
+              {order.expected_delivery_date ? dayjs(order.expected_delivery_date).format('MMM D, YYYY') : '-'}
+            </Typography>
+          </Paper>
+          <Paper variant="outlined" sx={{ p: 1.5, flex: 1, bgcolor: 'background.default' }}>
+            <Typography variant="caption" color="text.secondary">
+              Items
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={700}>
+              {order.items.length}
+            </Typography>
+          </Paper>
+          <Paper variant="outlined" sx={{ p: 1.5, flex: 1, bgcolor: 'background.default' }}>
+            <Typography variant="caption" color="text.secondary">
+              Total
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={700} color="primary.main">
+              ${total.toFixed(2)}
+            </Typography>
+          </Paper>
+        </Stack>
+
+        {order.notes && (
+          <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+              Notes
+            </Typography>
+            <Typography variant="body2">{order.notes}</Typography>
+          </Paper>
+        )}
+
+        {order.status === 'cart' && (
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap' }}>
           <Autocomplete
             options={ingredientNames}
             getOptionLabel={opt => opt.ingredient_name}
@@ -1063,7 +1192,89 @@ export default function PurchaseOrders() {
           <Button variant="contained" startIcon={<AddIcon />} onClick={addItem}>
             Add Item
           </Button>
-        </Stack>
+          </Stack>
+        )}
+
+        {reviewItems.length > 0 && (
+          <Box>
+            <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.25 }}>
+              Why This Order Exists
+            </Typography>
+            <Stack spacing={1.5}>
+              {reviewItems.map(item => {
+                const explanation = item.explanation;
+                const warnings = getReviewItemWarnings(explanation);
+                return (
+                  <Paper key={`${item.supplier_id}-${item.ingredient_id}`} variant="outlined" sx={{ p: 2 }}>
+                    <Stack spacing={0.75}>
+                      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1}>
+                        <Box>
+                          <Typography variant="body1" fontWeight={600}>
+                            {item.ingredient_name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {item.quantity_to_order ?? 0} {item.unit || ''}
+                            {item.packs_to_order ? ` • ${item.packs_to_order} packs` : ''}
+                          </Typography>
+                        </Box>
+                        {typeof item.line_total === 'number' && (
+                          <Typography variant="subtitle2" fontWeight={700} color="primary.main">
+                            ${item.line_total.toFixed(2)}
+                          </Typography>
+                        )}
+                      </Stack>
+                      {explanation?.summary && (
+                        <Typography variant="body2" color="text.secondary">
+                          {explanation.summary}
+                        </Typography>
+                      )}
+                      {explanation && (
+                        <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'background.default' }}>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Stock {formatExplanationValue(explanation.why_reorder.current_stock)}{' '}
+                            {explanation.why_reorder.current_unit} vs reorder point{' '}
+                            {formatExplanationValue(explanation.why_reorder.reorder_point)}.
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Lead {formatExplanationValue(explanation.why_reorder.lead_demand)} + shelf{' '}
+                            {formatExplanationValue(explanation.why_reorder.shelf_demand)} + safety{' '}
+                            {formatExplanationValue(explanation.why_reorder.safety_stock)} = target{' '}
+                            {formatExplanationValue(explanation.why_reorder.reorder_target)}.
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            ABC {explanation.policy_factors.abc_class} x{' '}
+                            {formatExplanationValue(explanation.policy_factors.abc_multiplier)}; MOQ floor{' '}
+                            {formatExplanationValue(explanation.policy_factors.moq_floor)}; final before packs{' '}
+                            {formatExplanationValue(
+                              explanation.quantity_factors.final_quantity_before_pack_rounding
+                            )}.
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {formatExplanationValue(explanation.quantity_factors.packs_to_order)} packs x{' '}
+                            {formatExplanationValue(explanation.quantity_factors.quantity_per_pack)}{' '}
+                            {explanation.quantity_factors.supplier_unit} ={' '}
+                            {formatExplanationValue(explanation.quantity_factors.total_quantity_ordered)}{' '}
+                            {explanation.quantity_factors.supplier_unit}.
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Supplier: {explanation.supplier_factors.selected_supplier} ({formatSelectionRule(
+                              explanation.supplier_factors.selection_rule
+                            )}).
+                          </Typography>
+                          {warnings.length > 0 && (
+                            <Typography variant="caption" color="warning.main" display="block" sx={{ mt: 0.5 }}>
+                              Assumptions: {warnings.join(', ')}.
+                            </Typography>
+                          )}
+                        </Box>
+                      )}
+                    </Stack>
+                  </Paper>
+                );
+              })}
+            </Stack>
+          </Box>
+        )}
 
         <Table size="small">
           <TableHead>
@@ -1188,8 +1399,13 @@ export default function PurchaseOrders() {
               Mark Delivered
             </Button>
           )}
+          {order.status !== 'delivered' && (
+            <Button variant="text" color="inherit" onClick={() => setSelectedOrder(null)}>
+              Close
+            </Button>
+          )}
         </Stack>
-      </Box>
+      </Stack>
     );
   };
 
@@ -1249,7 +1465,7 @@ export default function PurchaseOrders() {
         ))}
       </Tabs>
 
-      {/* Order List & Detail */}
+      {/* Order List */}
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
         <Paper
           sx={{
@@ -1308,28 +1524,58 @@ export default function PurchaseOrders() {
         </Paper>
 
         <Paper sx={{ p: 2, flex: 1, bgcolor: 'background.paper' }} elevation={0}>
-          {selectedOrder ? (
-            <ItemEditor order={selectedOrder} />
-          ) : (
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                py: 8,
-                color: 'text.secondary',
-              }}
-            >
-              <ShoppingCartIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
-              <Typography variant="body1">Select an order to view and edit items</Typography>
-              <Typography variant="body2" sx={{ mt: 1 }}>
-                Or click <strong>New Order</strong> to create one
-              </Typography>
-            </Box>
-          )}
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              py: 8,
+              color: 'text.secondary',
+            }}
+          >
+            <ShoppingCartIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
+            <Typography variant="body1">Select an order to open the review dialog</Typography>
+            <Typography variant="body2" sx={{ mt: 1, textAlign: 'center', maxWidth: 320 }}>
+              Drafts and pending orders now use a focused review surface instead of the old flat editor.
+            </Typography>
+          </Box>
         </Paper>
       </Stack>
+
+      <Dialog
+        open={!!selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { minHeight: 620 } }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+            <Stack direction="row" alignItems="center" spacing={2}>
+              <ShoppingCartIcon color="primary" />
+              <Box>
+                <Typography variant="h6">
+                  {selectedOrder ? `Purchase Order #${selectedOrder.order_id}` : 'Purchase Order'}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Review the order, its ETA, and the original reorder explanation in one place.
+                </Typography>
+              </Box>
+            </Stack>
+            {selectedOrder && (
+              <Chip
+                color={selectedOrder.status === 'pending' ? 'warning' : 'primary'}
+                variant="outlined"
+                label={selectedOrder.status === 'cart' ? 'Draft Review' : 'Order Review'}
+              />
+            )}
+          </Stack>
+        </DialogTitle>
+        <DialogContent dividers sx={{ minHeight: 460 }}>
+          {selectedOrder && <ItemEditor order={selectedOrder} />}
+        </DialogContent>
+      </Dialog>
 
       {/* Snackbar */}
       <Snackbar

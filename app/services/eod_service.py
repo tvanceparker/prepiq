@@ -31,6 +31,11 @@ from app.services.forecasting_engine_basic import ForecastingEngineBasic
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.utils.unit_conversion import convert_unit, normalize_unit
 from app.services.utils.inventory_deduction_helper import InventoryDeductionHelper
+from app.services.utils.purchase_order_note_helper import (
+    build_purchase_order_explanation_item,
+    build_purchase_order_review_context,
+    serialize_purchase_order_notes,
+)
 from typing import List, Dict, Optional, Any
 import math
 from decimal import Decimal
@@ -867,6 +872,11 @@ class EODService:
             order_date = effective_run_date
             expected_delivery_date = order_date + timedelta(days=lead_time)
             notes = self._build_eod_auto_po_note(effective_run_date, supplier_id)
+            review_context = build_purchase_order_review_context(
+                source_type="eod_auto",
+                source_run_date=effective_run_date,
+                explanation_items=[build_purchase_order_explanation_item(item) for item in items],
+            )
 
             total_order_price = Decimal("0.00")
 
@@ -879,7 +889,10 @@ class EODService:
                     "expected_delivery_date": expected_delivery_date,
                     "status": "pending",
                     "total_order_price": total_order_price,  # placeholder
-                    "notes": notes,
+                    "notes": serialize_purchase_order_notes(
+                        system_note=notes,
+                        review_context=review_context,
+                    ),
                 }
             )
 
