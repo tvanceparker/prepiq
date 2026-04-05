@@ -77,6 +77,14 @@ export function usePurchaseOrders(options: UsePurchaseOrdersOptions = {}) {
     },
   });
 
+  const removeItemMutation = useMutation({
+    mutationFn: ({ orderId, orderItemId }: { orderId: number; orderItemId: number }) =>
+      removeItemFromPurchaseOrder(orderId, orderItemId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
+    },
+  });
+
   // Group by status for tabs/filters
   const ordersByStatus = (ordersQuery.data ?? []).reduce(
     (acc, order) => {
@@ -113,6 +121,9 @@ export function usePurchaseOrders(options: UsePurchaseOrdersOptions = {}) {
 
     updateItem: updateItemMutation.mutateAsync,
     updatingItem: updateItemMutation.isPending,
+
+    removeItem: removeItemMutation.mutateAsync,
+    removingItem: removeItemMutation.isPending,
 
     updateStatus: updateStatusMutation.mutateAsync,
     updatingStatus: updateStatusMutation.isPending,

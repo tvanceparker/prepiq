@@ -484,9 +484,10 @@ class InventoryService:
 
         restaurant = await restaurant_repo.get_by_id(self.restaurant_id)
         last_eod_run_date = getattr(restaurant, 'last_eod_run_date', None)
+        resolved_cached_run_date = await self._resolve_cached_forecast_run_date(last_eod_run_date)
 
         ingredient_forecast: Dict[int, Dict[str, Any]] = {}
-        recent_eod_metadata = await self._get_forecast_batch_metadata(last_eod_run_date)
+        recent_eod_metadata = await self._get_forecast_batch_metadata(resolved_cached_run_date)
         forecast_state = self._build_forecast_state(
             forecast_source="cached" if use_cached_forecast else "fresh",
             forecast_source_type="eod" if use_cached_forecast else "on_demand",
@@ -498,24 +499,28 @@ class InventoryService:
             **(recent_eod_metadata if use_cached_forecast else {"forecast_confidence_score": None, "forecast_version": None}),
         )
 
-        async def load_recent_eod_forecast() -> tuple[Dict[int, Dict[str, Any]], Optional[Any]]:
-            ledger = await self._get_last_eod_ledger(last_eod_run_date)
+        async def load_recent_eod_forecast() -> tuple[Dict[int, Dict[str, Any]], Optional[Any], Optional[date]]:
+            effective_run_date = await self._resolve_cached_forecast_run_date(last_eod_run_date)
+            if effective_run_date is None:
+                return {}, None, None
+
+            ledger = await self._get_last_eod_ledger(effective_run_date)
             if not ledger or not getattr(ledger, "finalized", False):
-                return {}, ledger
+                return {}, ledger, effective_run_date
             cached_forecast = await self._load_cached_ingredient_forecast(
                 horizon_days=horizon_days,
                 ledger_finished_at=getattr(ledger, "finished_at", None),
             )
-            return cached_forecast, ledger
+            return cached_forecast, ledger, effective_run_date
 
         if use_cached_forecast:
-            cached_forecast, ledger = await load_recent_eod_forecast()
+            cached_forecast, ledger, effective_run_date = await load_recent_eod_forecast()
             ingredient_forecast = cached_forecast
             forecast_state["forecast_generated_at"] = self._serialize_forecast_timestamp(
-                getattr(ledger, "finished_at", None) or last_eod_run_date
+                getattr(ledger, "finished_at", None) or effective_run_date
             )
             forecast_state["forecast_stale"] = (
-                last_eod_run_date is None or last_eod_run_date < date.today()
+                effective_run_date is None or effective_run_date < date.today()
             )
 
             if ingredient_forecast:
@@ -527,7 +532,9 @@ class InventoryService:
             else:
                 forecast_state["forecast_status"] = "failed"
                 forecast_state["forecast_status_message"] = (
-                    "No finalized EOD forecast was available to reuse."
+                    "The latest finalized EOD forecast did not include reusable ingredient breakdowns."
+                    if effective_run_date is not None and ledger and getattr(ledger, "finalized", False)
+                    else "No finalized EOD forecast was available to reuse."
                 )
         else:
             forecasting_engine = ForecastingEngine(
@@ -546,7 +553,7 @@ class InventoryService:
                 forecast_state.update(await self._get_forecast_batch_metadata(date.today()))
 
                 if not ingredient_forecast:
-                    cached_forecast, ledger = await load_recent_eod_forecast()
+                    cached_forecast, ledger, effective_run_date = await load_recent_eod_forecast()
                     if cached_forecast:
                         ingredient_forecast = cached_forecast
                         forecast_state.update(
@@ -554,10 +561,10 @@ class InventoryService:
                                 forecast_source="cached",
                                 forecast_source_type="eod",
                                 forecast_generated_at=self._serialize_forecast_timestamp(
-                                    getattr(ledger, "finished_at", None) or last_eod_run_date
+                                    getattr(ledger, "finished_at", None) or effective_run_date
                                 ),
                                 forecast_reused=True,
-                                forecast_stale=last_eod_run_date is None or last_eod_run_date < date.today(),
+                                forecast_stale=effective_run_date is None or effective_run_date < date.today(),
                                 forecast_status="degraded",
                                 forecast_status_message="Fresh forecast returned no usable output. Using the most recent finalized EOD forecast instead.",
                                 **recent_eod_metadata,
@@ -570,7 +577,7 @@ class InventoryService:
                         )
             except Exception as exc:
                 logger.exception("[PO_SUGGEST] Fresh forecast failed: %s", exc)
-                cached_forecast, ledger = await load_recent_eod_forecast()
+                cached_forecast, ledger, effective_run_date = await load_recent_eod_forecast()
                 if cached_forecast:
                     ingredient_forecast = cached_forecast
                     forecast_state.update(
@@ -578,10 +585,10 @@ class InventoryService:
                             forecast_source="cached",
                             forecast_source_type="eod",
                             forecast_generated_at=self._serialize_forecast_timestamp(
-                                getattr(ledger, "finished_at", None) or last_eod_run_date
+                                getattr(ledger, "finished_at", None) or effective_run_date
                             ),
                             forecast_reused=True,
-                            forecast_stale=last_eod_run_date is None or last_eod_run_date < date.today(),
+                            forecast_stale=effective_run_date is None or effective_run_date < date.today(),
                             forecast_status="degraded",
                             forecast_status_message="Fresh forecast failed. Using the most recent finalized EOD forecast instead.",
                             **recent_eod_metadata,
@@ -597,7 +604,7 @@ class InventoryService:
             return {
                 "suggestions": [],
                 "all_items": [],
-                "last_eod_run_date": str(last_eod_run_date) if last_eod_run_date else None,
+                "last_eod_run_date": str(resolved_cached_run_date) if resolved_cached_run_date else None,
                 "horizon_days": horizon_days,
                 **forecast_state,
             }
@@ -788,7 +795,7 @@ class InventoryService:
         return {
             "suggestions": list(suggestions_by_supplier.values()),
             "all_items": all_suggestions,
-            "last_eod_run_date": str(last_eod_run_date) if last_eod_run_date else None,
+            "last_eod_run_date": str(resolved_cached_run_date) if resolved_cached_run_date else None,
             "horizon_days": horizon_days,
             **forecast_state,
         }
@@ -1061,6 +1068,18 @@ class InventoryService:
         if run_date is None:
             return None
         return await self.forecast_run_ledger_repo.get_one_by({"run_date": run_date})
+
+    async def _resolve_cached_forecast_run_date(self, preferred_run_date: Optional[date]) -> Optional[date]:
+        if preferred_run_date is not None:
+            ledger = await self._get_last_eod_ledger(preferred_run_date)
+            if ledger and getattr(ledger, "finalized", False):
+                return preferred_run_date
+
+        latest_finalized = await self.forecast_run_ledger_repo.get_latest_finalized()
+        if latest_finalized and getattr(latest_finalized, "finalized", False):
+            return getattr(latest_finalized, "run_date", None)
+
+        return preferred_run_date
 
     async def _load_cached_ingredient_forecast(
         self,

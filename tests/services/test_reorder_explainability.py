@@ -89,6 +89,7 @@ async def test_build_reorder_decision_returns_reusable_factor_breakdown():
 async def test_generate_purchase_order_suggestions_includes_explanation_payload():
     service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
     service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Primary Supplier"))
+    service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(return_value=None)
     service.forecast_repo.get_forecasts_created_between = AsyncMock(
         return_value=[MagicMock(confidence_score=0.81, forecast_version=4)]
     )
@@ -207,6 +208,7 @@ async def test_generate_purchase_order_suggestions_includes_explanation_payload(
 async def test_generate_purchase_order_suggestions_falls_back_to_supplier_shelf_life_when_inventory_missing_value():
     service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
     service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Primary Supplier"))
+    service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(return_value=None)
     service.forecast_repo.get_forecasts_created_between = AsyncMock(return_value=[])
 
     supplier = MagicMock(
@@ -401,3 +403,103 @@ async def test_generate_purchase_order_suggestions_uses_recent_eod_forecast_when
     assert result["forecast_version"] == 2
     assert "Fresh forecast failed" in (result["forecast_status_message"] or "")
     assert len(result["all_items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_generate_purchase_order_suggestions_uses_latest_finalized_forecast_when_restaurant_date_missing():
+    service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
+    service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Primary Supplier"))
+    service.forecast_repo.get_forecasts_created_between = AsyncMock(return_value=[])
+
+    supplier = MagicMock(
+        ingredient_supplier_id=3001,
+        supplier_id=501,
+        lead_time_days=3,
+        unit="lb",
+        min_order_quantity=12,
+        pack_size=2,
+        quantity_per_pack_item=6,
+        cost_per_unit=Decimal("4.50"),
+        preferred=True,
+        supplier_priority=1,
+        shelf_life_days=7,
+    )
+    inventory_row = MagicMock(quantity_on_hand=Decimal("5.00"), unit="lb", shelf_life_days=4)
+    reorder_decision = {
+        "current_stock": Decimal("5.00"),
+        "current_unit": "lb",
+        "lead_demand": Decimal("6.00"),
+        "shelf_demand": Decimal("8.00"),
+        "total_demand": Decimal("14.00"),
+        "safety_stock": Decimal("2.00"),
+        "reorder_point": Decimal("8.00"),
+        "reorder_target": Decimal("16.00"),
+        "raw_order_quantity": Decimal("11.00"),
+        "buffered_quantity": Decimal("12.10"),
+        "moq": Decimal("12.00"),
+        "moq_floor": Decimal("12.00"),
+        "max_allowed": Decimal("100.00"),
+        "final_quantity": Decimal("12.10"),
+        "should_reorder": True,
+        "service_level_z": Decimal("1.65"),
+        "abc_class": "B",
+        "abc_multiplier": Decimal("1.1"),
+        "abc_defaulted": False,
+    }
+    latest_ledger = MagicMock(
+        run_date=date.today(),
+        finished_at=datetime.utcnow(),
+        finalized=True,
+    )
+
+    service.ingredient_supplier_repo.get_all_by_ingredient_id = AsyncMock(return_value=[supplier])
+    service.ingredient_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Tomatoes"))
+    service.inventory_repo.get_inventory_by_ingredient = AsyncMock(return_value=inventory_row)
+    service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(return_value=latest_ledger)
+    service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=latest_ledger)
+    service._load_cached_ingredient_forecast = AsyncMock(
+        return_value={
+            1001: {
+                "unit": "lb",
+                "daily_breakdown": [
+                    (date.today() + timedelta(days=index), Decimal("2.00"))
+                    for index in range(7)
+                ],
+            }
+        }
+    )
+
+    with patch("app.repositories.restaurants_repo.RestaurantRepository") as restaurant_repo_cls, patch(
+        "app.services.reorder_forecast_engine.ReorderForecastEngine"
+    ) as reorder_engine_cls:
+        restaurant_repo = MagicMock()
+        restaurant_repo.get_by_id = AsyncMock(return_value=MagicMock(last_eod_run_date=None))
+        restaurant_repo_cls.return_value = restaurant_repo
+
+        reorder_engine = MagicMock()
+        reorder_engine.choose_supplier_option = AsyncMock(
+            return_value={
+                "supplier": supplier,
+                "reason_code": "preferred_lowest_priority",
+                "preferred_supplier_available": True,
+                "selected_supplier_priority": 1,
+                "selected_supplier_preferred": True,
+                "pricing_available": True,
+            }
+        )
+        reorder_engine.build_reorder_decision = AsyncMock(return_value=reorder_decision)
+        reorder_engine.build_explanation_payload = MagicMock(return_value={"summary": "cached ok"})
+        reorder_engine_cls.return_value = reorder_engine
+
+        result = await service.generate_purchase_order_suggestions(
+            horizon_days=7,
+            use_cached_forecast=True,
+        )
+
+    assert result["forecast_source"] == "cached"
+    assert result["forecast_source_type"] == "eod"
+    assert result["forecast_status"] == "ready"
+    assert result["forecast_reused"] is True
+    assert result["last_eod_run_date"] == str(date.today())
+    assert len(result["all_items"]) == 1
+    service.forecast_run_ledger_repo.get_latest_finalized.assert_awaited()

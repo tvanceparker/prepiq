@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any, List
 from datetime import date, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, desc
 from app.db.models.forecast_run_ledger_orm import ForecastRunLedger
 from app.repositories.base_repository import BaseRepository
 
@@ -105,3 +105,19 @@ class ForecastRunLedgerRepository(BaseRepository[ForecastRunLedger]):
         result = await self.db.execute(stmt)
         running = result.scalar_one_or_none()
         return bool(running)
+
+    async def get_latest_finalized(self) -> Optional[ForecastRunLedger]:
+        """Return the most recent finalized forecast ledger for this restaurant."""
+        stmt = (
+            select(ForecastRunLedger)
+            .where(
+                and_(
+                    ForecastRunLedger.restaurant_id == self.restaurant_id,
+                    ForecastRunLedger.finalized.is_(True),
+                )
+            )
+            .order_by(desc(ForecastRunLedger.run_date), desc(ForecastRunLedger.finished_at))
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()

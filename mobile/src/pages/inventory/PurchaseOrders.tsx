@@ -83,15 +83,17 @@ const getOrderSourceLabel = (sourceType?: 'manual' | 'suggestion' | 'eod_auto' |
   return 'Manual order';
 };
 
-const getReviewItemWarnings = (flags?: {
-  lead_time_source: string;
-  moq_source: string;
-  shelf_life_source: string;
-  inventory_source: string;
-  unit_conversion_fallback: boolean;
-  pricing_missing: boolean;
-  abc_defaulted: boolean;
-} | null): string[] => {
+const getReviewItemWarnings = (
+  flags?: {
+    lead_time_source: string;
+    moq_source: string;
+    shelf_life_source: string;
+    inventory_source: string;
+    unit_conversion_fallback: boolean;
+    pricing_missing: boolean;
+    abc_defaulted: boolean;
+  } | null
+): string[] => {
   if (!flags) {
     return [];
   }
@@ -153,6 +155,8 @@ export default function PurchaseOrders(): React.JSX.Element {
     createOrder,
     updateItem,
     updatingItem,
+    removeItem,
+    removingItem,
   } = usePurchaseOrders({
     status: statusFilter !== 'all' ? statusFilter : undefined,
   });
@@ -284,7 +288,7 @@ export default function PurchaseOrders(): React.JSX.Element {
       return;
     }
     try {
-      await updateItem({
+      const result = await updateItem({
         orderId: selectedPO.order_id,
         orderItemId: editingItem.order_item_id,
         updates: {
@@ -306,12 +310,78 @@ export default function PurchaseOrders(): React.JSX.Element {
                 }
               : it
           ),
+          total_order_price:
+            result && typeof result === 'object' && 'order_total_price' in result
+              ? result.order_total_price
+              : prev.total_order_price,
         };
       });
 
       closeItemEditor();
     } catch (err) {
       console.error('Failed to update item', err);
+    }
+  };
+
+  const handleNudgeDraftItemQty = async (item: PurchaseOrderItem, delta: number) => {
+    if (!selectedPO) return;
+    const nextQty = Math.max(1, Number(item.quantity_ordered) + delta);
+
+    try {
+      const result = await updateItem({
+        orderId: selectedPO.order_id,
+        orderItemId: item.order_item_id,
+        updates: {
+          quantity_ordered: nextQty,
+        },
+      });
+
+      setSelectedPO(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.map(it =>
+            it.order_item_id === item.order_item_id
+              ? {
+                  ...it,
+                  quantity_ordered: nextQty,
+                  total_item_price: nextQty * it.unit_price,
+                }
+              : it
+          ),
+          total_order_price:
+            result && typeof result === 'object' && 'order_total_price' in result
+              ? result.order_total_price
+              : prev.total_order_price,
+        };
+      });
+    } catch (err) {
+      console.error('Failed to update item quantity', err);
+    }
+  };
+
+  const handleRemoveDraftItem = async (item: PurchaseOrderItem) => {
+    if (!selectedPO) return;
+
+    try {
+      const result = await removeItem({
+        orderId: selectedPO.order_id,
+        orderItemId: item.order_item_id,
+      });
+
+      setSelectedPO(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.filter(it => it.order_item_id !== item.order_item_id),
+          total_order_price:
+            result && typeof result === 'object' && 'order_total_price' in result
+              ? result.order_total_price
+              : prev.total_order_price,
+        };
+      });
+    } catch (err) {
+      console.error('Failed to remove draft item', err);
     }
   };
 
@@ -340,6 +410,14 @@ export default function PurchaseOrders(): React.JSX.Element {
     setWizardStep(1);
     setWizardMode('supplier');
   }, []);
+
+  const openReorderPreviewWorkspace = useCallback(() => {
+    setUseCachedForecast(true);
+    resetSuggestions();
+    setSelectedItems(new Map());
+    setExpandedSuppliers(new Set());
+    openSupplierPreviewWizard();
+  }, [openSupplierPreviewWizard, resetSuggestions]);
 
   const handleRunFreshReorderPreview = useCallback(async () => {
     setUseCachedForecast(false);
@@ -872,15 +950,19 @@ export default function PurchaseOrders(): React.JSX.Element {
                 )}
               </View>
 
-              {selectedPO.expected_delivery_stale && selectedPO.expected_delivery_status_message && (
-                <Card style={styles.warningCard} mode="contained">
-                  <Card.Content>
-                    <Text variant="bodySmall" style={{ color: theme.colors.error, fontWeight: '600' }}>
-                      {selectedPO.expected_delivery_status_message}
-                    </Text>
-                  </Card.Content>
-                </Card>
-              )}
+              {selectedPO.expected_delivery_stale &&
+                selectedPO.expected_delivery_status_message && (
+                  <Card style={styles.warningCard} mode="contained">
+                    <Card.Content>
+                      <Text
+                        variant="bodySmall"
+                        style={{ color: theme.colors.error, fontWeight: '600' }}
+                      >
+                        {selectedPO.expected_delivery_status_message}
+                      </Text>
+                    </Card.Content>
+                  </Card>
+                )}
 
               <Divider style={{ marginVertical: 12 }} />
 
@@ -925,50 +1007,182 @@ export default function PurchaseOrders(): React.JSX.Element {
 
               <Divider style={{ marginVertical: 12 }} />
 
-              <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 8 }}>
-                Items ({selectedPO.items?.length || 0})
-              </Text>
+              {selectedPO.status === 'cart' ? (
+                <>
+                  <Card style={styles.draftWorkspaceCard} mode="outlined">
+                    <Card.Content>
+                      <Text variant="titleMedium" style={{ fontWeight: '600' }}>
+                        Draft Workspace
+                      </Text>
+                      <Text
+                        variant="bodySmall"
+                        style={{ color: theme.colors.onSurfaceVariant, marginTop: 6 }}
+                      >
+                        Adjust the live draft here, then submit it when you are ready to place the
+                        order.
+                      </Text>
+                    </Card.Content>
+                  </Card>
 
-              {selectedPO.items?.map((item, index) => (
-                <List.Item
-                  key={index}
-                  title={item.ingredient_name || `Item ${index + 1}`}
-                  description={`Qty: ${item.quantity_ordered} | Unit: $${item.unit_price?.toFixed(
-                    2
-                  )}`}
-                  onPress={selectedPO.status === 'cart' ? () => openItemEditor(item) : undefined}
-                  style={
-                    selectedPO.status === 'cart'
-                      ? {
-                          borderWidth: 1,
-                          borderColor:
-                            editingItem?.order_item_id === item.order_item_id
-                              ? theme.colors.primary
-                              : theme.colors.surfaceVariant,
-                          borderRadius: 8,
-                          marginBottom: 6,
-                        }
-                      : undefined
-                  }
-                  right={() => (
-                    <Text variant="bodyMedium" style={{ fontWeight: '600', alignSelf: 'center' }}>
-                      ${((item.quantity_ordered || 0) * (item.unit_price || 0)).toFixed(2)}
-                    </Text>
+                  <View style={styles.draftSummaryRow}>
+                    <Card style={styles.draftSummaryCard} mode="outlined">
+                      <Card.Content>
+                        <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                          Items
+                        </Text>
+                        <Text variant="titleLarge" style={{ fontWeight: '700', marginTop: 4 }}>
+                          {selectedPO.items?.length || 0}
+                        </Text>
+                      </Card.Content>
+                    </Card>
+                    <Card style={styles.draftSummaryCard} mode="outlined">
+                      <Card.Content>
+                        <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                          Total
+                        </Text>
+                        <Text
+                          variant="titleLarge"
+                          style={{ fontWeight: '700', marginTop: 4, color: theme.colors.primary }}
+                        >
+                          $
+                          {selectedPO.items
+                            ?.reduce(
+                              (sum, item) =>
+                                sum +
+                                Number(
+                                  item.total_item_price ||
+                                    item.quantity_ordered * item.unit_price ||
+                                    0
+                                ),
+                              0
+                            )
+                            .toFixed(2) || '0.00'}
+                        </Text>
+                      </Card.Content>
+                    </Card>
+                  </View>
+
+                  <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 8 }}>
+                    Current Draft
+                  </Text>
+
+                  {selectedPO.items?.length ? (
+                    selectedPO.items.map(item => (
+                      <Card key={item.order_item_id} style={styles.draftItemCard} mode="outlined">
+                        <Card.Content>
+                          <View style={styles.draftItemHeader}>
+                            <View style={{ flex: 1 }}>
+                              <Text variant="titleSmall" style={{ fontWeight: '600' }}>
+                                {item.ingredient_name}
+                              </Text>
+                              <Text
+                                variant="bodySmall"
+                                style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
+                              >
+                                ${Number(item.unit_price || 0).toFixed(2)} per {item.unit}
+                              </Text>
+                            </View>
+                            <Text
+                              variant="titleSmall"
+                              style={{ fontWeight: '700', color: theme.colors.primary }}
+                            >
+                              $
+                              {Number(
+                                item.total_item_price ||
+                                  item.quantity_ordered * item.unit_price ||
+                                  0
+                              ).toFixed(2)}
+                            </Text>
+                          </View>
+
+                          <View style={styles.draftItemControls}>
+                            <Button
+                              mode="outlined"
+                              compact
+                              onPress={() => handleNudgeDraftItemQty(item, -1)}
+                              disabled={updatingItem || removingItem}
+                            >
+                              -
+                            </Button>
+                            <Text variant="titleMedium" style={styles.draftQtyValue}>
+                              {item.quantity_ordered}
+                            </Text>
+                            <Button
+                              mode="outlined"
+                              compact
+                              onPress={() => handleNudgeDraftItemQty(item, 1)}
+                              disabled={updatingItem || removingItem}
+                            >
+                              +
+                            </Button>
+                            <Button
+                              mode="text"
+                              compact
+                              onPress={() => openItemEditor(item)}
+                              disabled={updatingItem || removingItem}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              mode="text"
+                              compact
+                              textColor={theme.colors.error}
+                              onPress={() => handleRemoveDraftItem(item)}
+                              disabled={updatingItem || removingItem}
+                            >
+                              Remove
+                            </Button>
+                          </View>
+                        </Card.Content>
+                      </Card>
+                    ))
+                  ) : (
+                    <Card style={styles.builderPlaceholderCard} mode="outlined">
+                      <Card.Content>
+                        <Text
+                          variant="titleSmall"
+                          style={{ fontWeight: '600', textAlign: 'center' }}
+                        >
+                          No lines in this draft yet
+                        </Text>
+                        <Text
+                          variant="bodySmall"
+                          style={{
+                            color: theme.colors.onSurfaceVariant,
+                            textAlign: 'center',
+                            marginTop: 6,
+                          }}
+                        >
+                          This draft is empty now. You can keep reviewing it here or close it and
+                          rebuild from the order workspace.
+                        </Text>
+                      </Card.Content>
+                    </Card>
                   )}
-                />
-              ))}
+                </>
+              ) : (
+                <>
+                  <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 8 }}>
+                    Items ({selectedPO.items?.length || 0})
+                  </Text>
 
-              <Divider style={{ marginVertical: 12 }} />
-
-              <View style={styles.modalActions}>
-                {selectedPO.status === 'pending' && (
-                  <Button
-                    mode="contained"
-                    onPress={() => handleStatusUpdate(selectedPO.order_id, 'delivered')}
-                    loading={updatingStatus}
-                  >
-                    Mark as Delivered
-                  </Button>
+                  {selectedPO.items?.map((item, index) => (
+                    <List.Item
+                      key={index}
+                      title={item.ingredient_name || `Item ${index + 1}`}
+                      description={`Qty: ${item.quantity_ordered} | Unit: $${item.unit_price?.toFixed(2)}`}
+                      right={() => (
+                        <Text
+                          variant="bodyMedium"
+                          style={{ fontWeight: '600', alignSelf: 'center' }}
+                        >
+                          ${((item.quantity_ordered || 0) * (item.unit_price || 0)).toFixed(2)}
+                        </Text>
+                      )}
+                    />
+                  ))}
+                </>
+              )}
 
               {selectedPO.notes ? (
                 <Card style={styles.notesCard} mode="outlined">
@@ -995,64 +1209,92 @@ export default function PurchaseOrders(): React.JSX.Element {
                     const explanation = item.explanation;
                     const warnings = getReviewItemWarnings(explanation?.assumption_flags);
                     return (
-                      <Card key={`${item.supplier_id}-${item.ingredient_id}`} style={styles.explanationCard} mode="outlined">
+                      <Card
+                        key={`${item.supplier_id}-${item.ingredient_id}`}
+                        style={styles.explanationCard}
+                        mode="outlined"
+                      >
                         <Card.Content>
                           <View style={styles.explanationHeader}>
                             <View style={{ flex: 1 }}>
                               <Text variant="titleSmall" style={{ fontWeight: '600' }}>
                                 {item.ingredient_name}
                               </Text>
-                              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                              <Text
+                                variant="bodySmall"
+                                style={{ color: theme.colors.onSurfaceVariant }}
+                              >
                                 {item.quantity_to_order ?? 0} {item.unit || ''}
                                 {item.packs_to_order ? ` • ${item.packs_to_order} packs` : ''}
                               </Text>
                             </View>
                             {typeof item.line_total === 'number' && (
-                              <Text variant="titleSmall" style={{ color: theme.colors.primary, fontWeight: '700' }}>
+                              <Text
+                                variant="titleSmall"
+                                style={{ color: theme.colors.primary, fontWeight: '700' }}
+                              >
                                 ${item.line_total.toFixed(2)}
                               </Text>
                             )}
                           </View>
                           {explanation?.summary ? (
-                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 6 }}>
+                            <Text
+                              variant="bodySmall"
+                              style={{ color: theme.colors.onSurfaceVariant, marginTop: 6 }}
+                            >
                               {explanation.summary}
                             </Text>
                           ) : null}
                           {explanation ? (
                             <View style={styles.explanationBody}>
                               <Text variant="bodySmall" style={styles.explanationLine}>
-                                Stock {formatExplanationValue(explanation.why_reorder.current_stock)}{' '}
+                                Stock{' '}
+                                {formatExplanationValue(explanation.why_reorder.current_stock)}{' '}
                                 {explanation.why_reorder.current_unit} vs reorder point{' '}
                                 {formatExplanationValue(explanation.why_reorder.reorder_point)}.
                               </Text>
                               <Text variant="bodySmall" style={styles.explanationLine}>
-                                Lead {formatExplanationValue(explanation.why_reorder.lead_demand)} + shelf{' '}
-                                {formatExplanationValue(explanation.why_reorder.shelf_demand)} + safety{' '}
-                                {formatExplanationValue(explanation.why_reorder.safety_stock)} = target{' '}
+                                Lead {formatExplanationValue(explanation.why_reorder.lead_demand)} +
+                                shelf {formatExplanationValue(explanation.why_reorder.shelf_demand)}{' '}
+                                + safety{' '}
+                                {formatExplanationValue(explanation.why_reorder.safety_stock)} =
+                                target{' '}
                                 {formatExplanationValue(explanation.why_reorder.reorder_target)}.
                               </Text>
                               <Text variant="bodySmall" style={styles.explanationLine}>
                                 ABC {explanation.policy_factors.abc_class} x{' '}
-                                {formatExplanationValue(explanation.policy_factors.abc_multiplier)}; MOQ floor{' '}
-                                {formatExplanationValue(explanation.policy_factors.moq_floor)}; final before packs{' '}
+                                {formatExplanationValue(explanation.policy_factors.abc_multiplier)};
+                                MOQ floor{' '}
+                                {formatExplanationValue(explanation.policy_factors.moq_floor)};
+                                final before packs{' '}
                                 {formatExplanationValue(
                                   explanation.quantity_factors.final_quantity_before_pack_rounding
-                                )}.
+                                )}
+                                .
                               </Text>
                               <Text variant="bodySmall" style={styles.explanationLine}>
-                                {formatExplanationValue(explanation.quantity_factors.packs_to_order)} packs x{' '}
-                                {formatExplanationValue(explanation.quantity_factors.quantity_per_pack)}{' '}
+                                {formatExplanationValue(
+                                  explanation.quantity_factors.packs_to_order
+                                )}{' '}
+                                packs x{' '}
+                                {formatExplanationValue(
+                                  explanation.quantity_factors.quantity_per_pack
+                                )}{' '}
                                 {explanation.quantity_factors.supplier_unit} ={' '}
-                                {formatExplanationValue(explanation.quantity_factors.total_quantity_ordered)}{' '}
+                                {formatExplanationValue(
+                                  explanation.quantity_factors.total_quantity_ordered
+                                )}{' '}
                                 {explanation.quantity_factors.supplier_unit}.
                               </Text>
                               <Text variant="bodySmall" style={styles.explanationLine}>
-                                Supplier: {explanation.supplier_factors.selected_supplier} ({formatSelectionRule(
-                                  explanation.supplier_factors.selection_rule
-                                )}).
+                                Supplier: {explanation.supplier_factors.selected_supplier} (
+                                {formatSelectionRule(explanation.supplier_factors.selection_rule)}).
                               </Text>
                               {warnings.length ? (
-                                <Text variant="bodySmall" style={[styles.explanationLine, { color: theme.colors.error }]}> 
+                                <Text
+                                  variant="bodySmall"
+                                  style={[styles.explanationLine, { color: theme.colors.error }]}
+                                >
                                   Assumptions: {warnings.join(', ')}.
                                 </Text>
                               ) : null}
@@ -1064,7 +1306,10 @@ export default function PurchaseOrders(): React.JSX.Element {
                   })}
                 </>
               ) : null}
-                )}
+
+              <Divider style={{ marginVertical: 12 }} />
+
+              <View style={styles.modalActions}>
                 {selectedPO.status === 'cart' && (
                   <Button
                     mode="contained"
@@ -1073,6 +1318,15 @@ export default function PurchaseOrders(): React.JSX.Element {
                     loading={updatingStatus}
                   >
                     Submit Draft
+                  </Button>
+                )}
+                {selectedPO.status === 'pending' && (
+                  <Button
+                    mode="contained"
+                    onPress={() => handleStatusUpdate(selectedPO.order_id, 'delivered')}
+                    loading={updatingStatus}
+                  >
+                    Mark as Delivered
                   </Button>
                 )}
                 {['cart', 'pending'].includes(selectedPO.status) && (
@@ -1155,7 +1409,7 @@ export default function PurchaseOrders(): React.JSX.Element {
               >
                 {wizardDescriptor}
               </Text>
-              <View style={[styles.modalMetaRow, { marginTop: 10 }]}> 
+              <View style={[styles.modalMetaRow, { marginTop: 10 }]}>
                 <Chip compact mode="outlined">{`Step ${wizardStep + 1} of 2`}</Chip>
                 {wizardMode && wizardStep === 1 ? (
                   <Chip compact mode="outlined">
@@ -1472,6 +1726,41 @@ const styles = StyleSheet.create({
   },
   modalActions: {
     marginTop: 8,
+  },
+  draftWorkspaceCard: {
+    marginBottom: 12,
+    borderRadius: 12,
+  },
+  draftSummaryRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  draftSummaryCard: {
+    flex: 1,
+    borderRadius: 12,
+  },
+  draftItemCard: {
+    marginBottom: 10,
+    borderRadius: 12,
+  },
+  draftItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  draftItemControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  draftQtyValue: {
+    minWidth: 32,
+    textAlign: 'center',
+    fontWeight: '700',
   },
   builderPlaceholderCard: {
     margin: 16,

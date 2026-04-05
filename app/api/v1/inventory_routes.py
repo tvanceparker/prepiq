@@ -274,9 +274,12 @@ async def get_last_eod_date(
     Useful for showing when cached forecast data was last generated.
     """
     from app.repositories.restaurants_repo import RestaurantRepository
+
     restaurant_repo = RestaurantRepository(inventory_service.db, inventory_service.restaurant_id)
     restaurant = await restaurant_repo.get_by_id(inventory_service.restaurant_id)
-    last_eod = getattr(restaurant, 'last_eod_run_date', None)
+    last_eod = await inventory_service._resolve_cached_forecast_run_date(
+        getattr(restaurant, 'last_eod_run_date', None)
+    )
     return {"last_eod_run_date": str(last_eod) if last_eod else None}
 
 # Ingredient names for autocomplete/search

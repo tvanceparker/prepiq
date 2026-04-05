@@ -388,6 +388,14 @@ export default function PurchaseOrders() {
     setWizardMode('supplier');
   }, []);
 
+  const openReorderPreviewWorkspace = useCallback(() => {
+    setUseCachedForecast(true);
+    setSuggestions(null);
+    setSelectedItems(new Map());
+    setExpandedSuppliers(new Set());
+    openSupplierPreviewWizard();
+  }, [openSupplierPreviewWizard]);
+
   const handleRunFreshReorderPreview = useCallback(() => {
     setUseCachedForecast(false);
     setSuggestions(null);
@@ -1095,6 +1103,219 @@ export default function PurchaseOrders() {
     const total = (order.items || []).reduce((s, it) => s + (Number(it.total_item_price) || 0), 0);
     const reviewItems = order.review_context?.explanation_items || [];
     const sourceLabel = getOrderSourceLabel(order.review_context?.source_type);
+    const nudgeDraftItemQuantity = (item: PurchaseOrderItem, delta: number) => {
+      const nextQty = Math.max(1, Number(item.quantity_ordered) + delta);
+      updateItemMut.mutate({
+        order_id: order.order_id,
+        order_item_id: item.order_item_id,
+        updates: {
+          quantity_ordered: nextQty,
+        },
+      });
+    };
+
+    const explanationSection =
+      reviewItems.length > 0 ? (
+        <Box>
+          <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.25 }}>
+            Why This Order Exists
+          </Typography>
+          <Stack spacing={1.5}>
+            {reviewItems.map(item => {
+              const explanation = item.explanation;
+              const warnings = getReviewItemWarnings(explanation);
+              return (
+                <Paper
+                  key={`${item.supplier_id}-${item.ingredient_id}`}
+                  variant="outlined"
+                  sx={{ p: 2 }}
+                >
+                  <Stack spacing={0.75}>
+                    <Stack
+                      direction={{ xs: 'column', md: 'row' }}
+                      justifyContent="space-between"
+                      spacing={1}
+                    >
+                      <Box>
+                        <Typography variant="body1" fontWeight={600}>
+                          {item.ingredient_name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {item.quantity_to_order ?? 0} {item.unit || ''}
+                          {item.packs_to_order ? ` • ${item.packs_to_order} packs` : ''}
+                        </Typography>
+                      </Box>
+                      {typeof item.line_total === 'number' && (
+                        <Typography variant="subtitle2" fontWeight={700} color="primary.main">
+                          ${item.line_total.toFixed(2)}
+                        </Typography>
+                      )}
+                    </Stack>
+                    {explanation?.summary && (
+                      <Typography variant="body2" color="text.secondary">
+                        {explanation.summary}
+                      </Typography>
+                    )}
+                    {explanation && (
+                      <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'background.default' }}>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Stock {formatExplanationValue(explanation.why_reorder.current_stock)}{' '}
+                          {explanation.why_reorder.current_unit} vs reorder point{' '}
+                          {formatExplanationValue(explanation.why_reorder.reorder_point)}.
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Lead {formatExplanationValue(explanation.why_reorder.lead_demand)} + shelf{' '}
+                          {formatExplanationValue(explanation.why_reorder.shelf_demand)} + safety{' '}
+                          {formatExplanationValue(explanation.why_reorder.safety_stock)} = target{' '}
+                          {formatExplanationValue(explanation.why_reorder.reorder_target)}.
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          ABC {explanation.policy_factors.abc_class} x{' '}
+                          {formatExplanationValue(explanation.policy_factors.abc_multiplier)}; MOQ
+                          floor {formatExplanationValue(explanation.policy_factors.moq_floor)};
+                          final before packs{' '}
+                          {formatExplanationValue(
+                            explanation.quantity_factors.final_quantity_before_pack_rounding
+                          )}
+                          .
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          {formatExplanationValue(explanation.quantity_factors.packs_to_order)}{' '}
+                          packs x{' '}
+                          {formatExplanationValue(explanation.quantity_factors.quantity_per_pack)}{' '}
+                          {explanation.quantity_factors.supplier_unit} ={' '}
+                          {formatExplanationValue(
+                            explanation.quantity_factors.total_quantity_ordered
+                          )}{' '}
+                          {explanation.quantity_factors.supplier_unit}.
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Supplier: {explanation.supplier_factors.selected_supplier} (
+                          {formatSelectionRule(explanation.supplier_factors.selection_rule)}).
+                        </Typography>
+                        {warnings.length > 0 && (
+                          <Typography
+                            variant="caption"
+                            color="warning.main"
+                            display="block"
+                            sx={{ mt: 0.5 }}
+                          >
+                            Assumptions: {warnings.join(', ')}.
+                          </Typography>
+                        )}
+                      </Box>
+                    )}
+                  </Stack>
+                </Paper>
+              );
+            })}
+          </Stack>
+        </Box>
+      ) : null;
+
+    const itemsTable = (
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>Ingredient</TableCell>
+            <TableCell align="right">Qty</TableCell>
+            <TableCell>Unit</TableCell>
+            <TableCell align="right">Unit Price</TableCell>
+            <TableCell align="right">Line Total</TableCell>
+            <TableCell align="center">Actions</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {(order.items || []).map(it => {
+            const isEditing = editingId === it.order_item_id;
+            const qtyVal = isEditing ? editQty : it.quantity_ordered.toString();
+            const lineTotal = Number(qtyVal || 0) * Number(it.unit_price || 0);
+
+            return (
+              <TableRow
+                key={it.order_item_id}
+                hover={order.status === 'cart'}
+                onClick={() => beginEdit(it)}
+                sx={{ cursor: order.status === 'cart' ? 'pointer' : 'default' }}
+                selected={isEditing}
+              >
+                <TableCell>{it.ingredient_name}</TableCell>
+                <TableCell align="right" sx={{ width: 120 }}>
+                  {isEditing ? (
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={qtyVal}
+                      onChange={e => setEditQty(e.target.value)}
+                      inputProps={{ min: 0, step: '0.01' }}
+                    />
+                  ) : (
+                    it.quantity_ordered
+                  )}
+                </TableCell>
+                <TableCell sx={{ width: 120 }}>{it.unit}</TableCell>
+                <TableCell align="right" sx={{ width: 140 }}>
+                  {`$${Number(it.unit_price).toFixed(2)}`}
+                </TableCell>
+                <TableCell align="right">${lineTotal.toFixed(2)}</TableCell>
+                <TableCell align="center">
+                  {isEditing ? (
+                    <Stack direction="row" spacing={0.5} justifyContent="center">
+                      <IconButton
+                        size="small"
+                        color="success"
+                        onClick={e => {
+                          e.stopPropagation();
+                          saveEdit();
+                        }}
+                        disabled={updateItemMut.isPending}
+                      >
+                        <CheckIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        color="inherit"
+                        onClick={e => {
+                          e.stopPropagation();
+                          cancelEdit();
+                        }}
+                        disabled={updateItemMut.isPending}
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  ) : (
+                    <IconButton
+                      color="error"
+                      size="small"
+                      onClick={e => {
+                        e.stopPropagation();
+                        removeItemMut.mutate({
+                          order_id: order.order_id,
+                          order_item_id: it.order_item_id,
+                        });
+                      }}
+                      disabled={order.status !== 'cart'}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+          <TableRow>
+            <TableCell colSpan={4} align="right" sx={{ fontWeight: 600, borderBottom: 'none' }}>
+              Total
+            </TableCell>
+            <TableCell align="right" sx={{ fontWeight: 600, borderBottom: 'none' }}>
+              ${total.toFixed(2)}
+            </TableCell>
+            <TableCell sx={{ borderBottom: 'none' }} />
+          </TableRow>
+        </TableBody>
+      </Table>
+    );
 
     return (
       <Stack spacing={2.5}>
@@ -1170,270 +1391,230 @@ export default function PurchaseOrders() {
           </Paper>
         )}
 
-        {order.status === 'cart' && (
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap' }}>
-            <Autocomplete
-              options={ingredientNames}
-              getOptionLabel={opt => opt.ingredient_name}
-              value={selIngredient}
-              onChange={(_, v) => setSelIngredient(v)}
-              renderInput={params => <TextField {...params} label="Ingredient" size="small" />}
-              sx={{ minWidth: 240 }}
-            />
-            <TextField
-              size="small"
-              label="Qty"
-              value={qty}
-              onChange={e => setQty(e.target.value)}
-              sx={{ width: 100 }}
-            />
-            <TextField
-              size="small"
-              label="Unit"
-              value={unit}
-              onChange={e => setUnit(e.target.value)}
-              sx={{ width: 120 }}
-            />
-            <TextField
-              size="small"
-              label="Unit Price"
-              value={price}
-              onChange={e => setPrice(e.target.value)}
-              sx={{ width: 140 }}
-            />
-            <Button variant="contained" startIcon={<AddIcon />} onClick={addItem}>
-              Add Item
-            </Button>
-          </Stack>
-        )}
+        {order.status === 'cart' ? (
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1.45fr) minmax(320px, 0.95fr)' },
+              gap: 2,
+              alignItems: 'start',
+            }}
+          >
+            <Stack spacing={2} sx={{ minWidth: 0 }}>
+              <Paper variant="outlined" sx={{ p: 2.5 }}>
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Edit Draft Lines
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Keep working in the same draft-style workspace before you submit the order.
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                    <Autocomplete
+                      options={ingredientNames}
+                      getOptionLabel={opt => opt.ingredient_name}
+                      value={selIngredient}
+                      onChange={(_, v) => setSelIngredient(v)}
+                      renderInput={params => (
+                        <TextField {...params} label="Ingredient" size="small" />
+                      )}
+                      sx={{ minWidth: 240 }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Qty"
+                      value={qty}
+                      onChange={e => setQty(e.target.value)}
+                      sx={{ width: 100 }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Unit"
+                      value={unit}
+                      onChange={e => setUnit(e.target.value)}
+                      sx={{ width: 120 }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Unit Price"
+                      value={price}
+                      onChange={e => setPrice(e.target.value)}
+                      sx={{ width: 140 }}
+                    />
+                    <Button variant="contained" startIcon={<AddIcon />} onClick={addItem}>
+                      Add Item
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Paper>
 
-        {reviewItems.length > 0 && (
-          <Box>
-            <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.25 }}>
-              Why This Order Exists
-            </Typography>
-            <Stack spacing={1.5}>
-              {reviewItems.map(item => {
-                const explanation = item.explanation;
-                const warnings = getReviewItemWarnings(explanation);
-                return (
+              {explanationSection}
+
+              <Paper variant="outlined" sx={{ p: 1.5, overflow: 'hidden' }}>
+                {itemsTable}
+              </Paper>
+            </Stack>
+
+            <Paper
+              variant="outlined"
+              sx={{
+                p: 2.5,
+                height: 'fit-content',
+                bgcolor: 'background.paper',
+              }}
+            >
+              <Stack spacing={1.5} sx={{ mb: 2 }}>
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={700}>
+                    Current Draft
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Adjust quantities here, then submit once the draft looks right.
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1}>
                   <Paper
-                    key={`${item.supplier_id}-${item.ingredient_id}`}
                     variant="outlined"
-                    sx={{ p: 2 }}
+                    sx={{ p: 1.25, flex: 1, bgcolor: 'background.default' }}
                   >
-                    <Stack spacing={0.75}>
-                      <Stack
-                        direction={{ xs: 'column', md: 'row' }}
-                        justifyContent="space-between"
-                        spacing={1}
-                      >
-                        <Box>
-                          <Typography variant="body1" fontWeight={600}>
+                    <Typography variant="caption" color="text.secondary">
+                      Items
+                    </Typography>
+                    <Typography variant="h6" fontWeight={700}>
+                      {order.items.length}
+                    </Typography>
+                  </Paper>
+                  <Paper
+                    variant="outlined"
+                    sx={{ p: 1.25, flex: 1, bgcolor: 'background.default' }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      Total
+                    </Typography>
+                    <Typography variant="h6" fontWeight={700} color="primary.main">
+                      ${total.toFixed(2)}
+                    </Typography>
+                  </Paper>
+                </Stack>
+              </Stack>
+
+              <Stack spacing={1.25}>
+                {order.items.length === 0 ? (
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      p: 2.5,
+                      textAlign: 'center',
+                      bgcolor: 'background.default',
+                      color: 'text.secondary',
+                    }}
+                  >
+                    <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.5 }}>
+                      No lines in this draft yet
+                    </Typography>
+                    <Typography variant="body2">
+                      Add ingredients on the left and they will stay anchored here while you build.
+                    </Typography>
+                  </Paper>
+                ) : (
+                  order.items.map(item => (
+                    <Paper
+                      key={item.order_item_id}
+                      variant="outlined"
+                      sx={{ p: 1.5, bgcolor: 'background.default' }}
+                    >
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body2" fontWeight={600}>
                             {item.ingredient_name}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {item.quantity_to_order ?? 0} {item.unit || ''}
-                            {item.packs_to_order ? ` • ${item.packs_to_order} packs` : ''}
+                            ${Number(item.unit_price).toFixed(2)} per {item.unit}
                           </Typography>
                         </Box>
-                        {typeof item.line_total === 'number' && (
-                          <Typography variant="subtitle2" fontWeight={700} color="primary.main">
-                            ${item.line_total.toFixed(2)}
+                        <Stack direction="row" spacing={0.25} alignItems="center">
+                          <IconButton
+                            size="small"
+                            onClick={() => nudgeDraftItemQuantity(item, -1)}
+                            disabled={updateItemMut.isPending}
+                          >
+                            <RemoveIcon fontSize="small" />
+                          </IconButton>
+                          <Typography sx={{ minWidth: 34, textAlign: 'center' }}>
+                            {item.quantity_ordered}
                           </Typography>
-                        )}
-                      </Stack>
-                      {explanation?.summary && (
-                        <Typography variant="body2" color="text.secondary">
-                          {explanation.summary}
+                          <IconButton
+                            size="small"
+                            onClick={() => nudgeDraftItemQuantity(item, 1)}
+                            disabled={updateItemMut.isPending}
+                          >
+                            <AddIcon fontSize="small" />
+                          </IconButton>
+                        </Stack>
+                        <Typography variant="body2" sx={{ minWidth: 82, textAlign: 'right' }}>
+                          ${Number(item.total_item_price || 0).toFixed(2)}
                         </Typography>
-                      )}
-                      {explanation && (
-                        <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'background.default' }}>
-                          <Typography variant="caption" color="text.secondary" display="block">
-                            Stock {formatExplanationValue(explanation.why_reorder.current_stock)}{' '}
-                            {explanation.why_reorder.current_unit} vs reorder point{' '}
-                            {formatExplanationValue(explanation.why_reorder.reorder_point)}.
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" display="block">
-                            Lead {formatExplanationValue(explanation.why_reorder.lead_demand)} +
-                            shelf {formatExplanationValue(explanation.why_reorder.shelf_demand)} +
-                            safety {formatExplanationValue(explanation.why_reorder.safety_stock)} =
-                            target {formatExplanationValue(explanation.why_reorder.reorder_target)}.
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" display="block">
-                            ABC {explanation.policy_factors.abc_class} x{' '}
-                            {formatExplanationValue(explanation.policy_factors.abc_multiplier)}; MOQ
-                            floor {formatExplanationValue(explanation.policy_factors.moq_floor)};
-                            final before packs{' '}
-                            {formatExplanationValue(
-                              explanation.quantity_factors.final_quantity_before_pack_rounding
-                            )}
-                            .
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" display="block">
-                            {formatExplanationValue(explanation.quantity_factors.packs_to_order)}{' '}
-                            packs x{' '}
-                            {formatExplanationValue(explanation.quantity_factors.quantity_per_pack)}{' '}
-                            {explanation.quantity_factors.supplier_unit} ={' '}
-                            {formatExplanationValue(
-                              explanation.quantity_factors.total_quantity_ordered
-                            )}{' '}
-                            {explanation.quantity_factors.supplier_unit}.
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" display="block">
-                            Supplier: {explanation.supplier_factors.selected_supplier} (
-                            {formatSelectionRule(explanation.supplier_factors.selection_rule)}).
-                          </Typography>
-                          {warnings.length > 0 && (
-                            <Typography
-                              variant="caption"
-                              color="warning.main"
-                              display="block"
-                              sx={{ mt: 0.5 }}
-                            >
-                              Assumptions: {warnings.join(', ')}.
-                            </Typography>
-                          )}
-                        </Box>
-                      )}
-                    </Stack>
-                  </Paper>
-                );
-              })}
-            </Stack>
-          </Box>
-        )}
-
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Ingredient</TableCell>
-              <TableCell align="right">Qty</TableCell>
-              <TableCell>Unit</TableCell>
-              <TableCell align="right">Unit Price</TableCell>
-              <TableCell align="right">Line Total</TableCell>
-              <TableCell align="center">Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {(order.items || []).map(it => {
-              const isEditing = editingId === it.order_item_id;
-              const qtyVal = isEditing ? editQty : it.quantity_ordered.toString();
-              const lineTotal = Number(qtyVal || 0) * Number(it.unit_price || 0);
-
-              return (
-                <TableRow
-                  key={it.order_item_id}
-                  hover={order.status === 'cart'}
-                  onClick={() => beginEdit(it)}
-                  sx={{ cursor: order.status === 'cart' ? 'pointer' : 'default' }}
-                  selected={isEditing}
-                >
-                  <TableCell>{it.ingredient_name}</TableCell>
-                  <TableCell align="right" sx={{ width: 120 }}>
-                    {isEditing ? (
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={qtyVal}
-                        onChange={e => setEditQty(e.target.value)}
-                        inputProps={{ min: 0, step: '0.01' }}
-                      />
-                    ) : (
-                      it.quantity_ordered
-                    )}
-                  </TableCell>
-                  <TableCell sx={{ width: 120 }}>{it.unit}</TableCell>
-                  <TableCell align="right" sx={{ width: 140 }}>
-                    {`$${Number(it.unit_price).toFixed(2)}`}
-                  </TableCell>
-                  <TableCell align="right">${lineTotal.toFixed(2)}</TableCell>
-                  <TableCell align="center">
-                    {isEditing ? (
-                      <Stack direction="row" spacing={0.5} justifyContent="center">
                         <IconButton
                           size="small"
-                          color="success"
-                          onClick={e => {
-                            e.stopPropagation();
-                            saveEdit();
-                          }}
-                          disabled={updateItemMut.isPending}
+                          color="error"
+                          onClick={() =>
+                            removeItemMut.mutate({
+                              order_id: order.order_id,
+                              order_item_id: item.order_item_id,
+                            })
+                          }
+                          disabled={removeItemMut.isPending}
                         >
-                          <CheckIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="inherit"
-                          onClick={e => {
-                            e.stopPropagation();
-                            cancelEdit();
-                          }}
-                          disabled={updateItemMut.isPending}
-                        >
-                          <CloseIcon fontSize="small" />
+                          <DeleteIcon fontSize="small" />
                         </IconButton>
                       </Stack>
-                    ) : (
-                      <IconButton
-                        color="error"
-                        size="small"
-                        onClick={e => {
-                          e.stopPropagation();
-                          removeItemMut.mutate({
-                            order_id: order.order_id,
-                            order_item_id: it.order_item_id,
-                          });
-                        }}
-                        disabled={order.status !== 'cart'}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-            <TableRow>
-              <TableCell colSpan={4} align="right" sx={{ fontWeight: 600, borderBottom: 'none' }}>
-                Total
-              </TableCell>
-              <TableCell align="right" sx={{ fontWeight: 600, borderBottom: 'none' }}>
-                ${total.toFixed(2)}
-              </TableCell>
-              <TableCell sx={{ borderBottom: 'none' }} />
-            </TableRow>
-          </TableBody>
-        </Table>
+                    </Paper>
+                  ))
+                )}
+              </Stack>
 
-        <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-          {order.status === 'cart' && (
-            <Button
-              variant="contained"
-              onClick={() =>
-                updateStatusMut.mutate({ order_id: order.order_id, status: 'pending' })
-              }
-            >
-              Submit Draft
-            </Button>
-          )}
-          {order.status === 'pending' && (
-            <Button
-              variant="outlined"
-              onClick={() =>
-                updateStatusMut.mutate({ order_id: order.order_id, status: 'delivered' })
-              }
-            >
-              Mark Delivered
-            </Button>
-          )}
-          {order.status !== 'delivered' && (
-            <Button variant="text" color="inherit" onClick={() => setSelectedOrder(null)}>
-              Close
-            </Button>
-          )}
-        </Stack>
+              <Stack direction="row" spacing={1} sx={{ mt: 2.5 }}>
+                <Button
+                  variant="contained"
+                  onClick={() =>
+                    updateStatusMut.mutate({ order_id: order.order_id, status: 'pending' })
+                  }
+                >
+                  Submit Draft
+                </Button>
+                <Button variant="text" color="inherit" onClick={() => setSelectedOrder(null)}>
+                  Close
+                </Button>
+              </Stack>
+            </Paper>
+          </Box>
+        ) : (
+          <>
+            {explanationSection}
+
+            {itemsTable}
+
+            <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+              {order.status === 'pending' && (
+                <Button
+                  variant="outlined"
+                  onClick={() =>
+                    updateStatusMut.mutate({ order_id: order.order_id, status: 'delivered' })
+                  }
+                >
+                  Mark Delivered
+                </Button>
+              )}
+              {order.status !== 'delivered' && (
+                <Button variant="text" color="inherit" onClick={() => setSelectedOrder(null)}>
+                  Close
+                </Button>
+              )}
+            </Stack>
+          </>
+        )}
       </Stack>
     );
   };
@@ -1453,11 +1634,11 @@ export default function PurchaseOrders() {
             variant="outlined"
             size="large"
             startIcon={<PlayArrowIcon />}
-            onClick={handleRunFreshReorderPreview}
+            onClick={openReorderPreviewWorkspace}
             disabled={generateMut.isPending}
             sx={{ px: 3, py: 1.5, borderRadius: 2 }}
           >
-            {generateMut.isPending ? 'Running Preview...' : 'Run Reorder Preview'}
+            {generateMut.isPending ? 'Opening Preview...' : 'Open Reorder Preview'}
           </Button>
           <Button
             variant="contained"
