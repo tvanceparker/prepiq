@@ -692,9 +692,13 @@ class EODService:
 
             logger.debug(f"[EOD] ForecastWindows ingredient={ingredient_id} unit={unit} lead_window={lead_window} shelf_window={shelf_window}")
 
-            lead_demand = sum(qty for day, qty in daily_forecast if day in lead_window)
+            lead_demand = sum(
+                (Decimal(str(qty)) for day, qty in daily_forecast if day in lead_window),
+                Decimal("0.00"),
+            )
             shelf_demand = sum(
-                qty for day, qty in daily_forecast if day in shelf_window
+                (Decimal(str(qty)) for day, qty in daily_forecast if day in shelf_window),
+                Decimal("0.00"),
             )
             total_demand = lead_demand + shelf_demand
 
