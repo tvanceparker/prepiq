@@ -8,6 +8,8 @@ import {
   CardContent,
   CircularProgress,
   Divider,
+  Alert,
+  Chip,
   useTheme,
   useMediaQuery,
 } from '@mui/material';
@@ -50,6 +52,22 @@ function formatDate(dateInput) {
   return '';
 }
 
+function getForecastSourceLabel(forecastState) {
+  return forecastState?.forecast_source_type === 'eod' ? 'EOD' : 'On-demand';
+}
+
+function formatForecastTimestamp(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleString();
+}
+
+function formatConfidence(value) {
+  if (value === null || value === undefined || Number.isNaN(value)) return null;
+  return `${Math.round(value * 100)}% confidence`;
+}
+
 export default function BasicUpcomingForecast() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -68,6 +86,7 @@ export default function BasicUpcomingForecast() {
     forecastTable,
     forecastTotals,
     topItems,
+    forecastState,
     loading,
     error,
   } = useUpcomingForecast(today, defaultEnd);
@@ -124,6 +143,49 @@ export default function BasicUpcomingForecast() {
       }}
     >
       <PageHeader title={`🔮 Forecast for Next ${dayRange} Day${dayRange > 1 ? 's' : ''}`} />
+
+      {forecastState && (
+        <Alert
+          severity={
+            forecastState.forecast_status === 'ready'
+              ? 'info'
+              : forecastState.forecast_status === 'failed'
+                ? 'error'
+                : 'warning'
+          }
+          variant="outlined"
+          sx={{ mb: 3 }}
+          action={
+            <Chip
+              size="small"
+              variant="outlined"
+              label={`${getForecastSourceLabel(forecastState)} · ${forecastState.forecast_status}`}
+            />
+          }
+        >
+          <Typography variant="body2" fontWeight={600}>
+            {forecastState.forecast_status_message}
+          </Typography>
+          {forecastState.forecast_generated_at && (
+            <Typography variant="caption" display="block">
+              {forecastState.forecast_reused ? 'Reused' : 'Generated'}{' '}
+              {getForecastSourceLabel(forecastState)} forecast on{' '}
+              {formatForecastTimestamp(forecastState.forecast_generated_at)}
+            </Typography>
+          )}
+          {(forecastState.forecast_version ||
+            forecastState.forecast_confidence_score !== undefined) && (
+            <Typography variant="caption" display="block">
+              {forecastState.forecast_version
+                ? `Version ${forecastState.forecast_version}`
+                : 'Version n/a'}
+              {formatConfidence(forecastState.forecast_confidence_score)
+                ? ` · ${formatConfidence(forecastState.forecast_confidence_score)}`
+                : ''}
+            </Typography>
+          )}
+        </Alert>
+      )}
 
       {/* Controls */}
       <Paper elevation={3} sx={{ py: 2, px: 4, mb: 5, borderRadius: 2 }}>

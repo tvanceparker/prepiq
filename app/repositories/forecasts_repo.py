@@ -1,10 +1,12 @@
 # app/repositories/forecast_repo.py
 
+from datetime import date, datetime
+from typing import List
+
+from sqlalchemy import desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from datetime import date
-from typing import List
-from sqlalchemy import func,desc
+
 from app.db.models.forecasts_orm import Forecast
 from app.repositories.base_repository import BaseRepository
 
@@ -98,3 +100,20 @@ class ForecastRepository(BaseRepository):
         )
         result = await self.db.execute(stmt)
         return result.scalars().first()
+
+    async def get_forecasts_created_between(
+        self,
+        start_datetime: datetime,
+        end_datetime: datetime,
+    ) -> List[Forecast]:
+        stmt = (
+            select(self.model)
+            .where(
+                self.model.restaurant_id == self.restaurant_id,
+                self.model.created_at >= start_datetime,
+                self.model.created_at <= end_datetime,
+            )
+            .order_by(desc(self.model.created_at))
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()

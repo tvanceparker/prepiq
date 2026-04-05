@@ -34,6 +34,22 @@ function daysAgo(n: number) {
   return d;
 }
 
+function getForecastSourceLabel(forecastState: any) {
+  return forecastState?.forecast_source_type === 'eod' ? 'EOD' : 'On-demand';
+}
+
+function formatForecastTimestamp(value: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleString();
+}
+
+function formatConfidence(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(value)) return null;
+  return `${Math.round(value * 100)}% confidence`;
+}
+
 export default function ForecastAccuracyBasicMobile() {
   const theme = useTheme();
   const [startDate, setStartDate] = useState(formatDate(daysAgo(7)));
@@ -44,6 +60,7 @@ export default function ForecastAccuracyBasicMobile() {
     chartData,
     tableData,
     computedData,
+    forecastState,
     selectedMenuItemIds,
     setSelectedMenuItemIds,
     loading,
@@ -89,6 +106,48 @@ export default function ForecastAccuracyBasicMobile() {
   return (
     <ScrollView contentContainerStyle={{ padding: 16 }}>
       <Text style={{ fontSize: 20, fontWeight: '600', marginBottom: 12 }}>Forecast Accuracy</Text>
+      {forecastState && (
+        <View
+          style={{
+            backgroundColor: theme.colors.surface,
+            borderWidth: 1,
+            borderColor:
+              forecastState.forecast_status === 'ready'
+                ? theme.colors.outline
+                : forecastState.forecast_status === 'failed'
+                  ? theme.colors.error
+                  : '#d97706',
+            padding: 12,
+            borderRadius: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ fontWeight: '700', marginBottom: 4 }}>
+            {forecastState.forecast_status_message}
+          </Text>
+          <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12 }}>
+            {getForecastSourceLabel(forecastState)} · {forecastState.forecast_status}
+          </Text>
+          {forecastState.forecast_generated_at && (
+            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginTop: 4 }}>
+              {forecastState.forecast_reused ? 'Reused' : 'Generated'}{' '}
+              {getForecastSourceLabel(forecastState)} forecast on{' '}
+              {formatForecastTimestamp(forecastState.forecast_generated_at)}
+            </Text>
+          )}
+          {(forecastState.forecast_version ||
+            forecastState.forecast_confidence_score !== undefined) && (
+            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginTop: 4 }}>
+              {forecastState.forecast_version
+                ? `Version ${forecastState.forecast_version}`
+                : 'Version n/a'}
+              {formatConfidence(forecastState.forecast_confidence_score)
+                ? ` · ${formatConfidence(forecastState.forecast_confidence_score)}`
+                : ''}
+            </Text>
+          )}
+        </View>
+      )}
       {/* Date selector */}
       <DateSelector
         label="Select Date Range"

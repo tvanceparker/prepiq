@@ -71,6 +71,158 @@ class PurchaseOrderDTO(BaseModel):
     total_order_price: float
     items: List[PurchaseOrderItemDTO]
     notes: Optional[str] = None
+
+
+class PurchaseOrderCreateResultDTO(BaseModel):
+    order_id: int
+    total_order_price: float
+    status: Literal["cart"]
+
+
+class PurchaseOrderStatusUpdateResultDTO(BaseModel):
+    order_id: int
+    status: str
+
+
+class PurchaseOrderItemAddResultDTO(BaseModel):
+    order_item_id: int
+    order_total_price: float
+
+
+class PurchaseOrderItemUpdateResultDTO(BaseModel):
+    order_item_id: int
+    order_id: int
+    ingredient_id: int
+    ingredient_supplier_id: Optional[int] = None
+    quantity_ordered: float
+    unit: str
+    unit_price: float
+    total_item_price: float
+    order_total_price: float
+
+
+class PurchaseOrderItemDeleteResultDTO(BaseModel):
+    order_item_id: int
+    removed: bool
+    order_total_price: float
+
+
+class LastEodDateDTO(BaseModel):
+    last_eod_run_date: Optional[date] = None
+
+
+class InventoryForecastStateDTO(BaseModel):
+    forecast_source: Literal["cached", "fresh"]
+    forecast_source_type: Literal["eod", "on_demand"]
+    forecast_generated_at: Optional[datetime] = None
+    forecast_reused: bool
+    forecast_stale: bool
+    forecast_status: Literal["ready", "stale", "degraded", "failed"]
+    forecast_status_message: Optional[str] = None
+    forecast_confidence_score: Optional[float] = None
+    forecast_version: Optional[int] = None
+
+
+class POWhyReorderDTO(BaseModel):
+    current_stock: Optional[float] = None
+    current_unit: str
+    reorder_point: Optional[float] = None
+    lead_demand: Optional[float] = None
+    shelf_demand: Optional[float] = None
+    safety_stock: Optional[float] = None
+    reorder_target: Optional[float] = None
+
+
+class POQuantityFactorsDTO(BaseModel):
+    raw_order_quantity: Optional[float] = None
+    buffered_quantity: Optional[float] = None
+    final_quantity_before_pack_rounding: Optional[float] = None
+    converted_quantity_needed: Optional[float] = None
+    pack_size: float
+    quantity_per_pack_item: Optional[float] = None
+    quantity_per_pack: Optional[float] = None
+    packs_to_order: int
+    total_quantity_ordered: Optional[float] = None
+    inventory_unit: Optional[str] = None
+    supplier_unit: str
+
+
+class POPolicyFactorsDTO(BaseModel):
+    service_level_z: Optional[float] = None
+    abc_class: str
+    abc_multiplier: Optional[float] = None
+    moq: Optional[float] = None
+    moq_floor: Optional[float] = None
+    max_allowed: Optional[float] = None
+
+
+class POSupplierFactorsDTO(BaseModel):
+    selected_supplier: str
+    selection_rule: str
+    preferred_supplier_available: bool
+    selected_supplier_priority: Optional[int] = None
+    selected_supplier_preferred: bool
+    pricing_available: bool
+
+
+class POAssumptionFlagsDTO(BaseModel):
+    inventory_source: str
+    lead_time_source: str
+    moq_source: str
+    shelf_life_source: str
+    unit_conversion_fallback: bool
+    pricing_missing: bool
+    abc_defaulted: bool
+
+
+class POReorderExplanationDTO(BaseModel):
+    summary: str
+    why_reorder: POWhyReorderDTO
+    quantity_factors: POQuantityFactorsDTO
+    policy_factors: POPolicyFactorsDTO
+    supplier_factors: POSupplierFactorsDTO
+    assumption_flags: POAssumptionFlagsDTO
+
+
+class POSuggestionItemDTO(BaseModel):
+    ingredient_id: int
+    ingredient_name: str
+    ingredient_supplier_id: int
+    supplier_id: int
+    supplier_name: str
+    current_stock: float
+    raw_quantity_needed: float
+    quantity_to_order: float
+    packs_to_order: int
+    pack_size: float
+    quantity_per_pack_item: float
+    unit: str
+    unit_price: float
+    line_total: float
+    lead_time_days: int
+    min_order_quantity: float
+    lead_demand: float
+    shelf_demand: float
+    explanation: Optional[POReorderExplanationDTO] = None
+
+
+class POSuggestionGroupDTO(BaseModel):
+    supplier_id: int
+    supplier_name: str
+    items: List[POSuggestionItemDTO]
+    total_cost: float
+
+
+class POSuggestionsResponseDTO(InventoryForecastStateDTO):
+    suggestions: List[POSuggestionGroupDTO]
+    all_items: List[POSuggestionItemDTO]
+    last_eod_run_date: Optional[date] = None
+    horizon_days: int
+
+
+class CreatePOsFromSuggestionsRequestDTO(BaseModel):
+    suggestions: List[POSuggestionItemDTO]
+    notes: Optional[str] = None
 # app/schemas/inventory_dto.py
 
 

@@ -172,6 +172,44 @@ export interface PurchaseOrderReceiptSummary {
   received_items: PurchaseOrderReceiptItemSummary[];
 }
 
+export interface PurchaseOrderCreateResult {
+  order_id: number;
+  total_order_price: number;
+  status: 'cart';
+}
+
+export interface PurchaseOrderStatusUpdateResult {
+  order_id: number;
+  status: string;
+}
+
+export interface PurchaseOrderItemAddResult {
+  order_item_id: number;
+  order_total_price: number;
+}
+
+export interface PurchaseOrderItemUpdateResult {
+  order_item_id: number;
+  order_id: number;
+  ingredient_id: number;
+  ingredient_supplier_id?: number | null;
+  quantity_ordered: number;
+  unit: string;
+  unit_price: number;
+  total_item_price: number;
+  order_total_price: number;
+}
+
+export interface PurchaseOrderItemDeleteResult {
+  order_item_id: number;
+  removed: boolean;
+  order_total_price: number;
+}
+
+export interface LastEodDateResponse {
+  last_eod_run_date: string | null;
+}
+
 export interface PurchaseOrderCreateItem {
   ingredient_id: number;
   ingredient_supplier_id?: number | null;
@@ -354,6 +392,14 @@ export interface POSuggestionsResponse {
   all_items: POSuggestionItem[];
   last_eod_run_date: string | null;
   forecast_source: 'cached' | 'fresh';
+  forecast_source_type: 'eod' | 'on_demand';
+  forecast_generated_at: string | null;
+  forecast_reused: boolean;
+  forecast_stale: boolean;
+  forecast_status: 'ready' | 'stale' | 'degraded' | 'failed';
+  forecast_status_message: string | null;
+  forecast_confidence_score?: number | null;
+  forecast_version?: number | null;
   horizon_days: number;
 }
 

@@ -76,6 +76,18 @@ export interface SalesDateRange {
   max_date?: string | null;
 }
 
+export interface ForecastState {
+  forecast_source: 'cached' | 'fresh';
+  forecast_source_type: 'eod' | 'on_demand';
+  forecast_generated_at: string | null;
+  forecast_reused: boolean;
+  forecast_stale: boolean;
+  forecast_status: 'ready' | 'stale' | 'degraded' | 'failed';
+  forecast_status_message: string | null;
+  forecast_confidence_score?: number | null;
+  forecast_version?: number | null;
+}
+
 // ============================================================================
 // MASTER TIER (Future)
 // ============================================================================

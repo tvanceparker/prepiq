@@ -53,6 +53,9 @@ interface POSection {
 type WizardStep = 0 | 1;
 const WIZARD_STEPS = ['Method', 'Build'];
 
+const getForecastSourceLabel = (forecastSourceType: 'eod' | 'on_demand') =>
+  forecastSourceType === 'eod' ? 'EOD' : 'On-demand';
+
 export default function PurchaseOrders(): React.JSX.Element {
   const theme = useTheme();
   const { tier } = useContext(AuthContext) || {};
@@ -293,6 +296,10 @@ export default function PurchaseOrders(): React.JSX.Element {
       setSelectedItems(allItems);
       const supplierIds = new Set(result.suggestions.map(s => s.supplier_id));
       setExpandedSuppliers(supplierIds);
+      showToast(
+        result.forecast_status_message ||
+          `Generated ${result.all_items.length} suggestion${result.all_items.length === 1 ? '' : 's'} using the ${getForecastSourceLabel(result.forecast_source_type)} forecast.`
+      );
     } catch (error) {
       console.error('Failed to generate fresh preview suggestions:', error);
     }
@@ -309,6 +316,10 @@ export default function PurchaseOrders(): React.JSX.Element {
       setSelectedItems(allItems);
       const supplierIds = new Set(result.suggestions.map(s => s.supplier_id));
       setExpandedSuppliers(supplierIds);
+      showToast(
+        result.forecast_status_message ||
+          `Generated ${result.all_items.length} suggestion${result.all_items.length === 1 ? '' : 's'} using the ${getForecastSourceLabel(result.forecast_source_type)} forecast.`
+      );
     } catch (error) {
       console.error('Failed to generate suggestions:', error);
     }

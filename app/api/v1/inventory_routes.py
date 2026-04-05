@@ -18,17 +18,25 @@ from app.schemas.inventory_dto import (
     StockMovementItem,
     PurchaseOrderDTO,
     PurchaseOrderCreateDTO,
+    PurchaseOrderCreateResultDTO,
+    PurchaseOrderStatusUpdateResultDTO,
+    PurchaseOrderItemAddResultDTO,
+    PurchaseOrderItemUpdateResultDTO,
+    PurchaseOrderItemDeleteResultDTO,
     InventoryDeductionDiscrepancyDTO,
     InventoryDiscrepancyHistoryItemDTO,
     PurchaseOrderItemUpdateDTO,
     PurchaseOrderReceiptDTO,
     PurchaseOrderReceiptSummaryDTO,
+    POSuggestionsResponseDTO,
+    CreatePOsFromSuggestionsRequestDTO,
+    LastEodDateDTO,
 )
-from typing import Dict, List
+from typing import Dict, List, Union
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 # --- Purchase Orders ---
-@router.post("/purchase_orders", response_model=dict)
+@router.post("/purchase_orders", response_model=PurchaseOrderCreateResultDTO)
 async def create_purchase_order(
     po: PurchaseOrderCreateDTO,
     inventory_service: InventoryService = Depends(get_inventory_service),
@@ -67,7 +75,7 @@ async def get_purchase_order_detail(
         raise HTTPException(status_code=404, detail="Purchase order not found")
     return result
 
-@router.patch("/purchase_orders/{order_id}/status", response_model=dict)
+@router.patch("/purchase_orders/{order_id}/status", response_model=Union[PurchaseOrderStatusUpdateResultDTO, PurchaseOrderReceiptSummaryDTO])
 async def update_purchase_order_status(
     order_id: int,
     status: str,
@@ -99,7 +107,7 @@ async def receive_purchase_order(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-@router.post("/purchase_orders/{order_id}/items", response_model=dict)
+@router.post("/purchase_orders/{order_id}/items", response_model=PurchaseOrderItemAddResultDTO)
 async def add_item_to_purchase_order(
     order_id: int,
     item: dict,
@@ -111,7 +119,7 @@ async def add_item_to_purchase_order(
     return await inventory_service.add_item_to_purchase_order(order_id, item)
 
 
-@router.patch("/purchase_orders/{order_id}/items/{order_item_id}", response_model=dict)
+@router.patch("/purchase_orders/{order_id}/items/{order_item_id}", response_model=PurchaseOrderItemUpdateResultDTO)
 async def update_purchase_order_item(
     order_id: int,
     order_item_id: int,
@@ -128,7 +136,7 @@ async def update_purchase_order_item(
         raise HTTPException(status_code=404, detail="Purchase order item not found")
     return result
 
-@router.delete("/purchase_orders/{order_id}/items/{order_item_id}", response_model=dict)
+@router.delete("/purchase_orders/{order_id}/items/{order_item_id}", response_model=PurchaseOrderItemDeleteResultDTO)
 async def remove_item_from_purchase_order(
     order_id: int,
     order_item_id: int,
@@ -139,7 +147,7 @@ async def remove_item_from_purchase_order(
     """
     return await inventory_service.remove_item_from_purchase_order(order_id, order_item_id)
 
-@router.post("/purchase_orders/generate-suggestions")
+@router.post("/purchase_orders/generate-suggestions", response_model=POSuggestionsResponseDTO)
 async def generate_po_suggestions(
     horizon_days: int = Query(7, ge=1, le=90, description="Number of days to forecast"),
     use_cached_forecast: bool = Query(True, description="Use cached forecast from last EOD or run fresh"),
@@ -160,9 +168,9 @@ async def generate_po_suggestions(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating suggestions: {str(e)}")
 
-@router.post("/purchase_orders/create-from-suggestions")
+@router.post("/purchase_orders/create-from-suggestions", response_model=List[PurchaseOrderCreateResultDTO])
 async def create_pos_from_suggestions(
-    payload: dict,
+    payload: CreatePOsFromSuggestionsRequestDTO,
     inventory_service: InventoryService = Depends(get_inventory_service),
 ):
     """
@@ -175,8 +183,8 @@ async def create_pos_from_suggestions(
         "notes": "Optional notes"
     }
     """
-    suggestions = payload.get("suggestions", [])
-    notes = payload.get("notes")
+    suggestions = [item.model_dump() for item in payload.suggestions]
+    notes = payload.notes
     
     if not suggestions:
         raise HTTPException(status_code=400, detail="No suggestions provided")
@@ -257,7 +265,7 @@ async def get_inventory_discrepancy_history(
             raise HTTPException(status_code=403, detail=str(e))
         raise HTTPException(status_code=500, detail=f"Error fetching discrepancy history: {str(e)}")
 
-@router.get("/last-eod-date")
+@router.get("/last-eod-date", response_model=LastEodDateDTO)
 async def get_last_eod_date(
     inventory_service: InventoryService = Depends(get_inventory_service),
 ):

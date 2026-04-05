@@ -44,6 +44,27 @@ const formatSelectionRule = (rule?: string) => {
   return rule || 'supplier rule';
 };
 
+const getForecastSourceLabel = (suggestions: POSuggestionsResponse) =>
+  suggestions.forecast_source_type === 'eod' ? 'EOD' : 'On-demand';
+
+const formatForecastGeneratedAt = (value: string | null) => {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toLocaleString();
+};
+
+const formatConfidence = (value?: number | null) => {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return null;
+  }
+  return `${Math.round(value * 100)}% confidence`;
+};
+
 const getAssumptionWarnings = (item: POSuggestionsResponse['all_items'][number]) => {
   const flags = item.explanation?.assumption_flags;
   if (!flags) {
@@ -182,15 +203,54 @@ export default function POSupplierReview({
     <Fade in timeout={300}>
       <Box>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-          <Typography variant="subtitle1" fontWeight={600}>
-            {title}
-          </Typography>
-          <Chip
-            label={`${suggestions.forecast_source} forecast`}
-            color="primary"
-            variant="outlined"
-            size="small"
-          />
+          <Stack spacing={0.75}>
+            <Typography variant="subtitle1" fontWeight={600}>
+              {title}
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Chip
+                label={`${getForecastSourceLabel(suggestions)} forecast`}
+                color={suggestions.forecast_status === 'ready' ? 'primary' : 'warning'}
+                variant="outlined"
+                size="small"
+              />
+              {suggestions.forecast_status !== 'ready' && (
+                <Chip
+                  label={suggestions.forecast_status}
+                  color={suggestions.forecast_status === 'failed' ? 'error' : 'warning'}
+                  variant="filled"
+                  size="small"
+                />
+              )}
+            </Stack>
+            {(suggestions.forecast_generated_at || suggestions.forecast_status_message) && (
+              <Box>
+                {suggestions.forecast_generated_at && (
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    {suggestions.forecast_reused ? 'Reused' : 'Generated'}{' '}
+                    {getForecastSourceLabel(suggestions)} forecast on{' '}
+                    {formatForecastGeneratedAt(suggestions.forecast_generated_at)}
+                  </Typography>
+                )}
+                {(suggestions.forecast_version ||
+                  suggestions.forecast_confidence_score !== undefined) && (
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    {suggestions.forecast_version
+                      ? `Version ${suggestions.forecast_version}`
+                      : 'Version n/a'}
+                    {formatConfidence(suggestions.forecast_confidence_score)
+                      ? ` · ${formatConfidence(suggestions.forecast_confidence_score)}`
+                      : ''}
+                  </Typography>
+                )}
+                {suggestions.forecast_status_message && (
+                  <Typography variant="caption" color="warning.main" display="block">
+                    {suggestions.forecast_status_message}
+                  </Typography>
+                )}
+              </Box>
+            )}
+          </Stack>
         </Stack>
 
         {showSummary && (

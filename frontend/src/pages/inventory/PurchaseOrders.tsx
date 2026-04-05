@@ -77,6 +77,9 @@ const statusTabs: { label: string; value: PurchaseOrderStatus }[] = [
   { label: 'Delivered', value: 'delivered' },
 ];
 
+const getForecastSourceLabel = (data: POSuggestionsResponse) =>
+  data.forecast_source_type === 'eod' ? 'EOD' : 'On-demand';
+
 type WizardStep = 0 | 1;
 
 export default function PurchaseOrders() {
@@ -256,13 +259,15 @@ export default function PurchaseOrders() {
       setExpandedSuppliers(new Set(data.suggestions.map(s => s.supplier_id)));
       if (data.all_items.length === 0) {
         showToast(
-          `No reorder suggestions were generated from the ${data.forecast_source} forecast.`,
-          'info'
+          data.forecast_status_message ||
+            `No reorder suggestions were generated from the ${getForecastSourceLabel(data)} forecast.`,
+          data.forecast_status === 'failed' ? 'warning' : 'info'
         );
         return;
       }
       showToast(
-        `Generated ${data.all_items.length} suggestion${data.all_items.length === 1 ? '' : 's'} across ${data.suggestions.length} supplier${data.suggestions.length === 1 ? '' : 's'} using the ${data.forecast_source} forecast.`
+        `${data.forecast_status_message ? `${data.forecast_status_message} ` : ''}Generated ${data.all_items.length} suggestion${data.all_items.length === 1 ? '' : 's'} across ${data.suggestions.length} supplier${data.suggestions.length === 1 ? '' : 's'} using the ${getForecastSourceLabel(data)} forecast.`,
+        data.forecast_status === 'ready' ? 'success' : 'warning'
       );
     },
     onError: (err: any) => {
@@ -632,6 +637,11 @@ export default function PurchaseOrders() {
                   That usually means current stock stayed above reorder points for this horizon, or
                   the forecast did not produce enough projected demand to trigger an order.
                 </Typography>
+                {suggestions.forecast_status_message && (
+                  <Typography variant="body2" color="warning.main" sx={{ mt: 1.5 }}>
+                    {suggestions.forecast_status_message}
+                  </Typography>
+                )}
               </Paper>
             )
           ) : (
@@ -706,12 +716,19 @@ export default function PurchaseOrders() {
               </Typography>
             </Box>
             {isSupplier && suggestions && (
-              <Chip
-                size="small"
-                label={`${suggestions.forecast_source} · ${suggestions.horizon_days}d`}
-                variant="outlined"
-                color="primary"
-              />
+              <Stack alignItems="flex-end" spacing={0.5}>
+                <Chip
+                  size="small"
+                  label={`${getForecastSourceLabel(suggestions)} · ${suggestions.horizon_days}d`}
+                  variant="outlined"
+                  color={suggestions.forecast_status === 'ready' ? 'primary' : 'warning'}
+                />
+                {suggestions.forecast_status_message && (
+                  <Typography variant="caption" color="warning.main" sx={{ maxWidth: 240 }}>
+                    {suggestions.forecast_status_message}
+                  </Typography>
+                )}
+              </Stack>
             )}
           </Stack>
 

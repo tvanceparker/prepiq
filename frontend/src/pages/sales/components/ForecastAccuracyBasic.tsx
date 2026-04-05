@@ -1,18 +1,33 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { useForecastAccuracy } from "../hooks/useForecastAccuracy";
-import AccuracyChart from "./AccuracyChart";
-import AccuracyTable from "./AccuracyTable";
-import ComputedAccuracy from "./ComputedAccuracy";
-import FilterButtons from "../../../components/FilterButtons"; // Keep your existing component
-import DateSelector from "../../../components/DateSelector";
-import { PageHeader } from "../../../components/PageHeader";
-import { Box, Typography, CircularProgress, Alert, Paper } from "@mui/material";
+import React, { useState, useEffect, useMemo } from 'react';
+import { useForecastAccuracy } from '../hooks/useForecastAccuracy';
+import AccuracyChart from './AccuracyChart';
+import AccuracyTable from './AccuracyTable';
+import ComputedAccuracy from './ComputedAccuracy';
+import FilterButtons from '../../../components/FilterButtons'; // Keep your existing component
+import DateSelector from '../../../components/DateSelector';
+import { PageHeader } from '../../../components/PageHeader';
+import { Box, Typography, CircularProgress, Alert, Paper, Chip } from '@mui/material';
 
-const formatDate = (date) => date.toISOString().split("T")[0];
-const getDateNDaysAgo = (n) => {
+const formatDate = date => date.toISOString().split('T')[0];
+const getDateNDaysAgo = n => {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return d;
+};
+
+const getForecastSourceLabel = forecastState =>
+  forecastState?.forecast_source_type === 'eod' ? 'EOD' : 'On-demand';
+
+const formatForecastTimestamp = value => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleString();
+};
+
+const formatConfidence = value => {
+  if (value === null || value === undefined || Number.isNaN(value)) return null;
+  return `${Math.round(value * 100)}% confidence`;
 };
 
 const ForecastAccuracyBasic = () => {
@@ -26,6 +41,7 @@ const ForecastAccuracyBasic = () => {
     chartData,
     tableData,
     computedData,
+    forecastState,
     selectedMenuItemIds,
     setSelectedMenuItemIds,
     loading,
@@ -35,12 +51,7 @@ const ForecastAccuracyBasic = () => {
   const allMenuItems = useMemo(() => {
     const combined = [...chartData, ...tableData, ...computedData];
     return Array.from(
-      new Map(
-        combined.map(({ menu_item_id, menu_item_name }) => [
-          menu_item_id,
-          menu_item_name,
-        ])
-      )
+      new Map(combined.map(({ menu_item_id, menu_item_name }) => [menu_item_id, menu_item_name]))
     );
   }, [chartData, tableData, computedData]);
 
@@ -52,16 +63,59 @@ const ForecastAccuracyBasic = () => {
 
   return (
     <Paper
-        sx={{
-          maxWidth: 1200,
-          mt: 4,
-          mx: "auto",
-          px: { xs: 2, md: 4 },
-          py: { xs: 4, md: 8 },
-        }}
-      >
+      sx={{
+        maxWidth: 1200,
+        mt: 4,
+        mx: 'auto',
+        px: { xs: 2, md: 4 },
+        py: { xs: 4, md: 8 },
+      }}
+    >
       {/* Heading */}
-        <PageHeader title="📈 Forecast Accuracy"/>
+      <PageHeader title="📈 Forecast Accuracy" />
+
+      {forecastState && (
+        <Alert
+          severity={
+            forecastState.forecast_status === 'ready'
+              ? 'info'
+              : forecastState.forecast_status === 'failed'
+                ? 'error'
+                : 'warning'
+          }
+          variant="outlined"
+          sx={{ mb: 3 }}
+          action={
+            <Chip
+              size="small"
+              variant="outlined"
+              label={`${getForecastSourceLabel(forecastState)} · ${forecastState.forecast_status}`}
+            />
+          }
+        >
+          <Typography variant="body2" fontWeight={600}>
+            {forecastState.forecast_status_message}
+          </Typography>
+          {forecastState.forecast_generated_at && (
+            <Typography variant="caption" display="block">
+              {forecastState.forecast_reused ? 'Reused' : 'Generated'}{' '}
+              {getForecastSourceLabel(forecastState)} forecast on{' '}
+              {formatForecastTimestamp(forecastState.forecast_generated_at)}
+            </Typography>
+          )}
+          {(forecastState.forecast_version ||
+            forecastState.forecast_confidence_score !== undefined) && (
+            <Typography variant="caption" display="block">
+              {forecastState.forecast_version
+                ? `Version ${forecastState.forecast_version}`
+                : 'Version n/a'}
+              {formatConfidence(forecastState.forecast_confidence_score)
+                ? ` · ${formatConfidence(forecastState.forecast_confidence_score)}`
+                : ''}
+            </Typography>
+          )}
+        </Alert>
+      )}
 
       {/* Date Selector */}
       <Box maxWidth={480} mx="auto" mb={4}>
@@ -69,8 +123,8 @@ const ForecastAccuracyBasic = () => {
           label="Select Date Range"
           startDate={new Date(startDate)}
           endDate={new Date(endDate)}
-          onStartDateChange={(date) => setStartDate(formatDate(date))}
-          onEndDateChange={(date) => setEndDate(formatDate(date))}
+          onStartDateChange={date => setStartDate(formatDate(date))}
+          onEndDateChange={date => setEndDate(formatDate(date))}
           mode="range"
           direction="backward"
         />
@@ -109,9 +163,9 @@ const ForecastAccuracyBasic = () => {
         elevation={1}
         sx={{
           borderRadius: 2,
-          bgcolor: "background.paper",
-          borderColor: "divider",
-          borderStyle: "solid",
+          bgcolor: 'background.paper',
+          borderColor: 'divider',
+          borderStyle: 'solid',
           borderWidth: 1,
         }}
       >
@@ -125,9 +179,9 @@ const ForecastAccuracyBasic = () => {
         elevation={1}
         sx={{
           borderRadius: 2,
-          bgcolor: "background.paper",
-          borderColor: "divider",
-          borderStyle: "solid",
+          bgcolor: 'background.paper',
+          borderColor: 'divider',
+          borderStyle: 'solid',
           borderWidth: 1,
         }}
       >

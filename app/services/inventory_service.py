@@ -1,6 +1,6 @@
 # core/services/inventory_service.py
 
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from decimal import Decimal
 from datetime import date, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,9 @@ from app.repositories.purchase_orders_repo import PurchaseOrderRepository
 from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
 from app.repositories.alerts_repo import AlertRepository
 from app.repositories.inventory_deduction_discrepancies_repo import InventoryDeductionDiscrepancyRepository
+from app.repositories.ingredient_forecast_breakdown_repo import IngredientForecastBreakdownRepository
+from app.repositories.forecast_run_ledger_repo import ForecastRunLedgerRepository
+from app.repositories.forecasts_repo import ForecastRepository
 from app.services.utils.unit_conversion import convert_unit, round_decimal
 
 class InventoryService:
@@ -401,76 +404,141 @@ class InventoryService:
             dict with 'suggestions' grouped by supplier, 'last_eod_run_date', and 'forecast_source'
         """
         import math
-        from datetime import date, timedelta
         from decimal import Decimal
         from app.repositories.restaurants_repo import RestaurantRepository
-        from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
-        from app.repositories.ingredients_repo import IngredientRepository
-        from app.repositories.inventory_repo import InventoryRepository
         from app.services.reorder_forecast_engine import ReorderForecastEngine
         from app.services.forecasting_engine import ForecastingEngine
-        from app.repositories.forecast_breakdown_repo import ForecastBreakdownRepository
         from app.core.logging import logger
-        
+
         restaurant_repo = RestaurantRepository(self.db, self.restaurant_id)
-        ingredient_supplier_repo = IngredientSupplierRepository(self.db, self.restaurant_id)
-        ingredient_repo = IngredientRepository(self.db, self.restaurant_id)
-        inventory_repo = InventoryRepository(self.db, self.restaurant_id)
         reorder_engine = ReorderForecastEngine(self.db, self.restaurant_id, self.subscription_tier)
-        
-        # Get last EOD run date from restaurant
+
         restaurant = await restaurant_repo.get_by_id(self.restaurant_id)
         last_eod_run_date = getattr(restaurant, 'last_eod_run_date', None)
-        
-        ingredient_forecast = {}
-        forecast_source = "cached" if use_cached_forecast else "fresh"
-        
-        if use_cached_forecast and last_eod_run_date:
-            # Use cached forecast from ingredient_forecast_breakdown table
-            forecast_breakdown_repo = ForecastBreakdownRepository(self.db, self.restaurant_id)
-            
-            # Get all ingredients with their forecasts
-            ingredients = await ingredient_repo.get_all()
-            today = date.today()
-            end_date = today + timedelta(days=horizon_days)
-            
-            for ingredient in ingredients:
-                # Get forecast breakdowns for this period
-                breakdowns = await forecast_breakdown_repo.get_forecasts_for_date_range(
-                    today, end_date
+
+        ingredient_forecast: Dict[int, Dict[str, Any]] = {}
+        recent_eod_metadata = await self._get_forecast_batch_metadata(last_eod_run_date)
+        forecast_state = self._build_forecast_state(
+            forecast_source="cached" if use_cached_forecast else "fresh",
+            forecast_source_type="eod" if use_cached_forecast else "on_demand",
+            forecast_generated_at=None,
+            forecast_reused=use_cached_forecast,
+            forecast_stale=False,
+            forecast_status="ready",
+            forecast_status_message=None,
+            **(recent_eod_metadata if use_cached_forecast else {"forecast_confidence_score": None, "forecast_version": None}),
+        )
+
+        async def load_recent_eod_forecast() -> tuple[Dict[int, Dict[str, Any]], Optional[Any]]:
+            ledger = await self._get_last_eod_ledger(last_eod_run_date)
+            if not ledger or not getattr(ledger, "finalized", False):
+                return {}, ledger
+            cached_forecast = await self._load_cached_ingredient_forecast(
+                horizon_days=horizon_days,
+                ledger_finished_at=getattr(ledger, "finished_at", None),
+            )
+            return cached_forecast, ledger
+
+        if use_cached_forecast:
+            cached_forecast, ledger = await load_recent_eod_forecast()
+            ingredient_forecast = cached_forecast
+            forecast_state["forecast_generated_at"] = self._serialize_forecast_timestamp(
+                getattr(ledger, "finished_at", None) or last_eod_run_date
+            )
+            forecast_state["forecast_stale"] = (
+                last_eod_run_date is None or last_eod_run_date < date.today()
+            )
+
+            if ingredient_forecast:
+                if forecast_state["forecast_stale"]:
+                    forecast_state["forecast_status"] = "stale"
+                    forecast_state["forecast_status_message"] = (
+                        "Using the most recent finalized EOD forecast, but it is older than today's cycle."
+                    )
+            else:
+                forecast_state["forecast_status"] = "failed"
+                forecast_state["forecast_status_message"] = (
+                    "No finalized EOD forecast was available to reuse."
                 )
-                
-                # Build daily breakdown for this ingredient
-                daily_breakdown = []
-                for b in breakdowns:
-                    if hasattr(b, 'ingredient_id') and b.ingredient_id == ingredient.ingredient_id:
-                        daily_breakdown.append((b.forecast_date, float(b.forecasted_quantity or 0)))
-                
-                if daily_breakdown:
-                    inventory = await inventory_repo.get_inventory_by_ingredient(ingredient.ingredient_id)
-                    unit = inventory.unit if inventory else "unit"
-                    ingredient_forecast[ingredient.ingredient_id] = {
-                        "daily_breakdown": daily_breakdown,
-                        "unit": unit
-                    }
         else:
-            # Run fresh forecast
             forecasting_engine = ForecastingEngine(
                 self.db, self.restaurant_id, self.subscription_tier
             )
-            await forecasting_engine.initialize()
-            ingredient_forecast = await forecasting_engine.run_forecasting_pipeline(
-                horizon_days=horizon_days,
-                reorder_horizon_days=horizon_days,
-            )
-            forecast_source = "fresh"
+            try:
+                await forecasting_engine.initialize()
+                ingredient_forecast = await forecasting_engine.run_forecasting_pipeline(
+                    horizon_days=horizon_days,
+                    reorder_horizon_days=horizon_days,
+                )
+                forecast_state["forecast_generated_at"] = self._serialize_forecast_timestamp(
+                    datetime.utcnow()
+                )
+                forecast_state["forecast_reused"] = False
+                forecast_state.update(await self._get_forecast_batch_metadata(date.today()))
+
+                if not ingredient_forecast:
+                    cached_forecast, ledger = await load_recent_eod_forecast()
+                    if cached_forecast:
+                        ingredient_forecast = cached_forecast
+                        forecast_state.update(
+                            self._build_forecast_state(
+                                forecast_source="cached",
+                                forecast_source_type="eod",
+                                forecast_generated_at=self._serialize_forecast_timestamp(
+                                    getattr(ledger, "finished_at", None) or last_eod_run_date
+                                ),
+                                forecast_reused=True,
+                                forecast_stale=last_eod_run_date is None or last_eod_run_date < date.today(),
+                                forecast_status="degraded",
+                                forecast_status_message="Fresh forecast returned no usable output. Using the most recent finalized EOD forecast instead.",
+                                **recent_eod_metadata,
+                            )
+                        )
+                    else:
+                        forecast_state["forecast_status"] = "failed"
+                        forecast_state["forecast_status_message"] = (
+                            "Fresh forecast produced no usable output and no finalized EOD forecast was available."
+                        )
+            except Exception as exc:
+                logger.exception("[PO_SUGGEST] Fresh forecast failed: %s", exc)
+                cached_forecast, ledger = await load_recent_eod_forecast()
+                if cached_forecast:
+                    ingredient_forecast = cached_forecast
+                    forecast_state.update(
+                        self._build_forecast_state(
+                            forecast_source="cached",
+                            forecast_source_type="eod",
+                            forecast_generated_at=self._serialize_forecast_timestamp(
+                                getattr(ledger, "finished_at", None) or last_eod_run_date
+                            ),
+                            forecast_reused=True,
+                            forecast_stale=last_eod_run_date is None or last_eod_run_date < date.today(),
+                            forecast_status="degraded",
+                            forecast_status_message="Fresh forecast failed. Using the most recent finalized EOD forecast instead.",
+                            **recent_eod_metadata,
+                        )
+                    )
+                else:
+                    forecast_state["forecast_status"] = "failed"
+                    forecast_state["forecast_status_message"] = (
+                        "Fresh forecast failed and no finalized EOD forecast was available."
+                    )
+
+        if not ingredient_forecast:
+            return {
+                "suggestions": [],
+                "all_items": [],
+                "last_eod_run_date": str(last_eod_run_date) if last_eod_run_date else None,
+                "horizon_days": horizon_days,
+                **forecast_state,
+            }
         
         # Generate suggestions from forecast
         suggestions_by_supplier = {}
         all_suggestions = []
         
         for ingredient_id in ingredient_forecast.keys():
-            suppliers = await ingredient_supplier_repo.get_all_by_ingredient_id(ingredient_id)
+            suppliers = await self.ingredient_supplier_repo.get_all_by_ingredient_id(ingredient_id)
             if not suppliers:
                 logger.warning(f"[PO_SUGGEST] No suppliers found ingredient={ingredient_id}")
                 continue
@@ -492,7 +560,7 @@ class InventoryService:
                 Decimal("0.01")
             )
 
-            inventory = await inventory_repo.get_inventory_by_ingredient(ingredient_id)
+            inventory = await self.inventory_repo.get_inventory_by_ingredient(ingredient_id)
             if inventory:
                 if inventory.shelf_life_days is not None:
                     shelf_life = inventory.shelf_life_days
@@ -580,7 +648,7 @@ class InventoryService:
             )
 
             # Get ingredient and supplier names
-            ingredient = await ingredient_repo.get_by_id(ingredient_id)
+            ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
             ingredient_name = ingredient.name if ingredient else f"Ingredient {ingredient_id}"
 
             supplier_obj = await self.supplier_repo.get_by_id(supplier_id)
@@ -652,8 +720,8 @@ class InventoryService:
             "suggestions": list(suggestions_by_supplier.values()),
             "all_items": all_suggestions,
             "last_eod_run_date": str(last_eod_run_date) if last_eod_run_date else None,
-            "forecast_source": forecast_source,
             "horizon_days": horizon_days,
+            **forecast_state,
         }
 
     async def get_ingredient_suppliers(self, ingredient_id: int) -> list:
@@ -841,8 +909,131 @@ class InventoryService:
         self.purchase_order_item_repo = PurchaseOrderItemRepository(db, restaurant_id)
         self.alert_repo = AlertRepository(db, restaurant_id)
         self.discrepancy_repo = InventoryDeductionDiscrepancyRepository(db, restaurant_id)
+        self.ingredient_forecast_breakdown_repo = IngredientForecastBreakdownRepository(db, restaurant_id)
+        self.forecast_run_ledger_repo = ForecastRunLedgerRepository(db, restaurant_id)
+        self.forecast_repo = ForecastRepository(db, restaurant_id)
 
         print(f"Inventory Service: restaurant {self.restaurant_id}")
+
+    @staticmethod
+    def _serialize_forecast_timestamp(value: Optional[Union[datetime, date]]) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return datetime.combine(value, datetime.min.time()).isoformat()
+
+    @staticmethod
+    def _build_forecast_state(
+        *,
+        forecast_source: str,
+        forecast_source_type: str,
+        forecast_generated_at: Optional[str],
+        forecast_reused: bool,
+        forecast_stale: bool,
+        forecast_status: str,
+        forecast_status_message: Optional[str],
+        forecast_confidence_score: Optional[float] = None,
+        forecast_version: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        return {
+            "forecast_source": forecast_source,
+            "forecast_source_type": forecast_source_type,
+            "forecast_generated_at": forecast_generated_at,
+            "forecast_reused": forecast_reused,
+            "forecast_stale": forecast_stale,
+            "forecast_status": forecast_status,
+            "forecast_status_message": forecast_status_message,
+            "forecast_confidence_score": forecast_confidence_score,
+            "forecast_version": forecast_version,
+        }
+
+    async def _get_forecast_batch_metadata(self, run_date: Optional[date]) -> Dict[str, Optional[float | int]]:
+        if run_date is None:
+            return {
+                "forecast_confidence_score": None,
+                "forecast_version": None,
+            }
+
+        start_dt = datetime.combine(run_date, datetime.min.time())
+        end_dt = datetime.combine(run_date, datetime.max.time())
+        forecasts = await self.forecast_repo.get_forecasts_created_between(start_dt, end_dt)
+        if not forecasts:
+            return {
+                "forecast_confidence_score": None,
+                "forecast_version": None,
+            }
+
+        confidence_scores = [
+            float(forecast.confidence_score)
+            for forecast in forecasts
+            if getattr(forecast, "confidence_score", None) is not None
+        ]
+        version_candidates = [
+            int(forecast.forecast_version)
+            for forecast in forecasts
+            if getattr(forecast, "forecast_version", None) is not None
+        ]
+
+        return {
+            "forecast_confidence_score": round(sum(confidence_scores) / len(confidence_scores), 2)
+            if confidence_scores
+            else None,
+            "forecast_version": max(version_candidates) if version_candidates else None,
+        }
+
+    async def _get_last_eod_ledger(self, run_date: Optional[date]):
+        if run_date is None:
+            return None
+        return await self.forecast_run_ledger_repo.get_one_by({"run_date": run_date})
+
+    async def _load_cached_ingredient_forecast(
+        self,
+        *,
+        horizon_days: int,
+        ledger_finished_at: Optional[datetime],
+    ) -> Dict[int, Dict[str, Any]]:
+        today = date.today()
+        end_date = today + timedelta(days=horizon_days)
+        breakdowns = await self.ingredient_forecast_breakdown_repo.get_latest_by_date_range_before(
+            today,
+            end_date,
+            created_at_cutoff=ledger_finished_at,
+        )
+
+        if not breakdowns:
+            return {}
+
+        ingredient_forecast: Dict[int, Dict[str, Any]] = {}
+        inventory_units: Dict[int, str] = {}
+        ingredient_units: Dict[int, str] = {}
+
+        for breakdown in breakdowns:
+            ingredient_id = breakdown.ingredient_id
+            if ingredient_id not in inventory_units and ingredient_id not in ingredient_units:
+                inventory = await self.inventory_repo.get_inventory_by_ingredient(ingredient_id)
+                if inventory and getattr(inventory, "unit", None):
+                    inventory_units[ingredient_id] = inventory.unit
+                else:
+                    ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+                    ingredient_units[ingredient_id] = getattr(ingredient, "unit", "unit")
+
+            unit = inventory_units.get(ingredient_id) or ingredient_units.get(ingredient_id) or "unit"
+            ingredient_forecast.setdefault(
+                ingredient_id,
+                {
+                    "daily_breakdown": [],
+                    "unit": unit,
+                },
+            )
+            ingredient_forecast[ingredient_id]["daily_breakdown"].append(
+                (breakdown.forecast_date, float(breakdown.quantity or 0))
+            )
+
+        for forecast in ingredient_forecast.values():
+            forecast["daily_breakdown"].sort(key=lambda item: item[0])
+
+        return ingredient_forecast
 
     @staticmethod
     def _coerce_optional_int(value) -> Optional[int]:

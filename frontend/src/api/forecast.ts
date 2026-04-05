@@ -14,6 +14,7 @@ import {
   SalesOverTimeProItem,
   TopBottomProItem,
   SalesDateRange,
+  ForecastState,
 } from '../interfaces/forecast';
 
 // ============================================================================
@@ -36,6 +37,8 @@ export const getTopForecastedItems = (startDate: string, endDate: string, limit:
   get(
     `/sales_forecast/upcoming_forecast/top_items?start_date=${startDate}&end_date=${endDate}&limit=${limit}`
   );
+
+export const getForecastState = (): Promise<ForecastState> => get(`/sales_forecast/forecast_state`);
 
 // ============================================================================
 // FORECAST ACCURACY

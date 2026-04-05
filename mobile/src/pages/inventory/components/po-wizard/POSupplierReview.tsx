@@ -30,6 +30,27 @@ const formatSelectionRule = (rule?: string): string => {
   return rule || 'supplier rule';
 };
 
+const getForecastSourceLabel = (suggestions: POSuggestionsResponse): string =>
+  suggestions.forecast_source_type === 'eod' ? 'EOD' : 'On-demand';
+
+const formatForecastGeneratedAt = (value: string | null): string | null => {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toLocaleString();
+};
+
+const formatConfidence = (value?: number | null): string | null => {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return null;
+  }
+  return `${Math.round(value * 100)}% confidence`;
+};
+
 const getAssumptionWarnings = (item: POSuggestionsResponse['all_items'][number]): string[] => {
   const flags = item.explanation?.assumption_flags;
   if (!flags) {
@@ -161,12 +182,44 @@ export default function POSupplierReview({
   return (
     <View style={styles.container}>
       <View style={styles.reviewHeader}>
-        <Text variant="titleMedium" style={styles.title}>
-          Review Orders
-        </Text>
-        <Chip compact mode="outlined">
-          {suggestions.forecast_source} forecast
-        </Chip>
+        <View>
+          <Text variant="titleMedium" style={styles.title}>
+            Review Orders
+          </Text>
+          <View style={styles.forecastMetaRow}>
+            <Chip compact mode="outlined">
+              {getForecastSourceLabel(suggestions)} forecast
+            </Chip>
+            {suggestions.forecast_status !== 'ready' && (
+              <Chip compact style={styles.forecastStatusChip}>
+                {suggestions.forecast_status}
+              </Chip>
+            )}
+          </View>
+          {suggestions.forecast_generated_at && (
+            <Text variant="bodySmall" style={styles.forecastMetaText}>
+              {suggestions.forecast_reused ? 'Reused' : 'Generated'}{' '}
+              {getForecastSourceLabel(suggestions)} forecast on{' '}
+              {formatForecastGeneratedAt(suggestions.forecast_generated_at)}
+            </Text>
+          )}
+          {(suggestions.forecast_version ||
+            suggestions.forecast_confidence_score !== undefined) && (
+            <Text variant="bodySmall" style={styles.forecastMetaText}>
+              {suggestions.forecast_version
+                ? `Version ${suggestions.forecast_version}`
+                : 'Version n/a'}
+              {formatConfidence(suggestions.forecast_confidence_score)
+                ? ` · ${formatConfidence(suggestions.forecast_confidence_score)}`
+                : ''}
+            </Text>
+          )}
+          {suggestions.forecast_status_message && (
+            <Text variant="bodySmall" style={[styles.forecastMetaText, styles.forecastWarningText]}>
+              {suggestions.forecast_status_message}
+            </Text>
+          )}
+        </View>
       </View>
 
       <Card style={styles.summaryCard} mode="contained">
@@ -398,11 +451,26 @@ const styles = StyleSheet.create({
   reviewHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
   title: {
     fontWeight: '600',
+  },
+  forecastMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  forecastStatusChip: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    marginLeft: 8,
+  },
+  forecastMetaText: {
+    marginTop: 6,
+  },
+  forecastWarningText: {
+    color: '#b45309',
   },
   summaryCard: {
     borderRadius: 12,

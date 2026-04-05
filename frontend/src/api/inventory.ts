@@ -3,20 +3,29 @@ import {
   StockMovement,
   PurchaseOrder,
   PurchaseOrderCreate,
+  PurchaseOrderCreateResult,
   PurchaseOrderItem,
+  PurchaseOrderItemAddResult,
+  PurchaseOrderItemDeleteResult,
+  PurchaseOrderItemUpdateResult,
   PurchaseOrderReceiptSummary,
+  PurchaseOrderStatusUpdateResult,
   IngredientName,
   PurchaseOrderStatus,
   POSuggestionsResponse,
+  POSuggestionItem,
   IngredientStockLevel,
   InventoryDeductionDiscrepancy,
   InventoryDiscrepancyHistoryItem,
   InventoryAdjustmentResult,
   InventorySetCurrentStockRequest,
   IngredientSupplierOption,
+  LastEodDateResponse,
 } from '../interfaces/inventory';
 import { get, patch, post, del } from './index';
-export async function createPurchaseOrder(data: PurchaseOrderCreate): Promise<any> {
+export async function createPurchaseOrder(
+  data: PurchaseOrderCreate
+): Promise<PurchaseOrderCreateResult> {
   return post('/inventory/purchase_orders', data);
 }
 
@@ -37,7 +46,7 @@ export async function getPurchaseOrderDetail(order_id: number): Promise<Purchase
 export async function updatePurchaseOrderStatus(
   order_id: number,
   status: PurchaseOrderStatus
-): Promise<any> {
+): Promise<PurchaseOrderStatusUpdateResult | PurchaseOrderReceiptSummary> {
   return patch(
     `/inventory/purchase_orders/${order_id}/status?status=${encodeURIComponent(status)}`,
     {}
@@ -56,14 +65,14 @@ export async function receivePurchaseOrder(
 export async function addItemToPurchaseOrder(
   order_id: number,
   item: Partial<PurchaseOrderItem>
-): Promise<any> {
+): Promise<PurchaseOrderItemAddResult> {
   return post(`/inventory/purchase_orders/${order_id}/items`, item);
 }
 
 export async function removeItemFromPurchaseOrder(
   order_id: number,
   order_item_id: number
-): Promise<any> {
+): Promise<PurchaseOrderItemDeleteResult> {
   return del(`/inventory/purchase_orders/${order_id}/items/${order_item_id}`);
 }
 
@@ -71,7 +80,7 @@ export async function updatePurchaseOrderItem(
   order_id: number,
   order_item_id: number,
   updates: Partial<PurchaseOrderItem>
-): Promise<any> {
+): Promise<PurchaseOrderItemUpdateResult> {
   return patch(`/inventory/purchase_orders/${order_id}/items/${order_item_id}`, updates);
 }
 
@@ -87,7 +96,10 @@ export async function generatePOSuggestions(
   return post(`/inventory/purchase_orders/generate-suggestions?${params.toString()}`, {});
 }
 
-export async function createPOsFromSuggestions(suggestions: any[], notes?: string): Promise<any[]> {
+export async function createPOsFromSuggestions(
+  suggestions: POSuggestionItem[],
+  notes?: string
+): Promise<PurchaseOrderCreateResult[]> {
   return post('/inventory/purchase_orders/create-from-suggestions', {
     suggestions,
     notes,
@@ -124,7 +136,7 @@ export async function getIngredientSuppliers(
   return get(`/inventory/ingredients/${ingredientId}/suppliers`);
 }
 
-export async function getLastEodDate(): Promise<{ last_eod_run_date: string | null }> {
+export async function getLastEodDate(): Promise<LastEodDateResponse> {
   return get('/inventory/last-eod-date');
 }
 

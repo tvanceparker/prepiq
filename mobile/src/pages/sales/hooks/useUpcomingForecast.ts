@@ -4,6 +4,7 @@ import {
   getUpcomingForecastTable,
   getUpcomingForecastTotals,
   getTopForecastedItems,
+  getForecastState,
 } from '../../../api/forecast';
 
 function fmt(d: Date) {
@@ -49,8 +50,17 @@ export function useUpcomingForecast(
     enabled: !!startDate && !!endDate,
   });
 
-  const loading = tableLoading || totalsLoading || topLoading;
-  const error = tableError || totalsError || topError || null;
+  const {
+    data: forecastState = null,
+    isLoading: stateLoading,
+    error: stateError,
+  } = useQuery({
+    queryKey: ['forecastState'],
+    queryFn: () => getForecastState(),
+  });
+
+  const loading = tableLoading || totalsLoading || topLoading || stateLoading;
+  const error = tableError || totalsError || topError || stateError || null;
 
   return {
     startDate,
@@ -62,6 +72,7 @@ export function useUpcomingForecast(
     forecastTable: forecastTable || [],
     forecastTotals: forecastTotals || null,
     topItems: topItems || [],
+    forecastState,
     loading,
     error,
   };
