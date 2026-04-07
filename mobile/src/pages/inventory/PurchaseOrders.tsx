@@ -56,6 +56,21 @@ const WIZARD_STEPS = ['Method', 'Build'];
 const getForecastSourceLabel = (forecastSourceType: 'eod' | 'on_demand') =>
   forecastSourceType === 'eod' ? 'EOD' : 'On-demand';
 
+const getForecastStatusTone = (status: 'ready' | 'stale' | 'degraded' | 'failed') => {
+  switch (status) {
+    case 'ready':
+      return '#2e7d32';
+    case 'stale':
+      return '#ed6c02';
+    case 'degraded':
+      return '#d9822b';
+    case 'failed':
+      return '#d32f2f';
+    default:
+      return '#6b7280';
+  }
+};
+
 const formatExplanationValue = (value: number | null | undefined): string => {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return 'n/a';
@@ -1496,6 +1511,44 @@ export default function PurchaseOrders(): React.JSX.Element {
               Save drafts first, then submit them when you are actually ready to place the order.
             </Text>
           </View>
+          {wizardMode === 'supplier' && suggestions && (
+            <View
+              style={{
+                marginHorizontal: 16,
+                marginBottom: 8,
+                padding: 12,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: theme.colors.outlineVariant,
+                backgroundColor: theme.colors.surface,
+              }}
+            >
+              <Text
+                variant="labelMedium"
+                style={{
+                  color: getForecastStatusTone(suggestions.forecast_status),
+                  fontWeight: '700',
+                }}
+              >
+                {suggestions.forecast_status.toUpperCase()} ·{' '}
+                {getForecastSourceLabel(suggestions.forecast_source_type)} forecast
+              </Text>
+              <Text
+                variant="bodySmall"
+                style={{ marginTop: 4, color: theme.colors.onSurfaceVariant }}
+              >
+                {suggestions.forecast_status_message || 'Forecast status available for this draft.'}
+              </Text>
+              {suggestions.forecast_generated_at && (
+                <Text
+                  variant="bodySmall"
+                  style={{ marginTop: 4, color: theme.colors.onSurfaceVariant }}
+                >
+                  Generated {new Date(suggestions.forecast_generated_at).toLocaleString()}
+                </Text>
+              )}
+            </View>
+          )}
           <ScrollView style={{ flex: 1 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {renderWizardContent()}
           </ScrollView>

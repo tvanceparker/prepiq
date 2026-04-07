@@ -4,6 +4,7 @@ import AppLayout from '../components/AppLayout';
 // Dashboard
 import DailyOverview from '../pages/dashboard/DailyOverview';
 import AlertsFeed from '../pages/dashboard/AlertsFeed';
+import EodSummary from '../pages/dashboard/EodSummary';
 import MenuItemQuickEntry from '../pages/dashboard/MenuItemQuickEntry';
 import QuickAnalytics from '../pages/dashboard/QuickAnalytics';
 // Sales
@@ -44,6 +45,7 @@ const routeComponents: Record<string, React.ComponentType<any>> = {
   // Dashboard
   'dashboard_daily-overview': DailyOverview,
   dashboard_alerts: AlertsFeed,
+  'dashboard_eod-summary': EodSummary,
   'dashboard_menu-item-entry': MenuItemQuickEntry,
   'dashboard_quick-analytics': QuickAnalytics,
   // Sales pages

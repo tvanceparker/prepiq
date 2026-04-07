@@ -1,6 +1,7 @@
 // src/pages/inventory/InventoryList.tsx
-import React, { useState, useCallback, useContext } from 'react';
+import React, { useState, useCallback, useContext, useEffect } from 'react';
 import { View, StyleSheet, SectionList, RefreshControl, Pressable, ScrollView } from 'react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   Surface,
   Text,
@@ -36,6 +37,8 @@ interface InventorySection {
 
 export default function InventoryList(): React.JSX.Element {
   const theme = useTheme();
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const { tier } = useContext(AuthContext) || {};
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -171,6 +174,36 @@ export default function InventoryList(): React.JSX.Element {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([title, data]) => ({ title, data }));
   }, [filteredInventory]);
+
+  useEffect(() => {
+    const target = route.params?.focusReview;
+    if (!target || isLoading) {
+      return;
+    }
+
+    setTypeFilter('review');
+
+    const matchedItem = inventory.find(item => {
+      if (target.ingredientId != null && item.ingredient_id === target.ingredientId) {
+        return true;
+      }
+      if (target.batchRecipeId != null && item.batch_recipe_id === target.batchRecipeId) {
+        return true;
+      }
+      return false;
+    });
+
+    if (matchedItem) {
+      setSelectedItem(matchedItem);
+      setCountedQuantity('');
+      setReviewReason('count_correction');
+      setReviewNotes('');
+      setReviewError(null);
+      setShowLotModal(true);
+    }
+
+    navigation.setParams({ focusReview: undefined });
+  }, [inventory, isLoading, navigation, route.params]);
 
   // Open lot breakdown modal
   const handleViewLots = (item: InventoryItem) => {

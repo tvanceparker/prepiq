@@ -95,6 +95,30 @@ class InventoryDeductionDiscrepancyRepository(BaseRepository):
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
+    async def get_open_by_reference(
+        self,
+        *,
+        reference_type: Optional[str],
+        reference_id: Optional[int],
+        limit: int = 200,
+    ) -> List[InventoryDeductionDiscrepancy]:
+        stmt = (
+            select(InventoryDeductionDiscrepancy)
+            .where(
+                InventoryDeductionDiscrepancy.restaurant_id == self.restaurant_id,
+                InventoryDeductionDiscrepancy.status.in_(OPEN_DISCREPANCY_STATUSES),
+                InventoryDeductionDiscrepancy.reference_type == reference_type,
+                InventoryDeductionDiscrepancy.reference_id == reference_id,
+            )
+            .order_by(
+                InventoryDeductionDiscrepancy.date_created.desc(),
+                InventoryDeductionDiscrepancy.discrepancy_id.desc(),
+            )
+            .limit(limit)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
     async def get_by_alert_id(self, alert_id: int) -> Optional[InventoryDeductionDiscrepancy]:
         stmt = select(InventoryDeductionDiscrepancy).where(
             InventoryDeductionDiscrepancy.restaurant_id == self.restaurant_id,

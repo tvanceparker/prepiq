@@ -4,9 +4,20 @@ from app.services.eod_service import EODService
 from app.api.dependencies import get_eod_service
 from datetime import date
 from app.core.logging import logger
-from app.schemas.eod_dto import EODLaunchSummaryDTO
+from app.schemas.eod_dto import EODLaunchSummaryDTO, EODRunSummaryDTO
 
 router = APIRouter(prefix="/eod", tags=["End of Day"])
+
+
+@router.get("/summary", response_model=EODRunSummaryDTO)
+async def get_eod_summary(
+    run_date: date | None = Query(None),
+    eod_service: EODService = Depends(get_eod_service),
+):
+    summary = await eod_service.get_eod_run_summary(run_date=run_date)
+    if not summary:
+        raise HTTPException(status_code=404, detail="No EOD run summary found.")
+    return summary
 
 
 @router.get("/finalize", response_model=EODLaunchSummaryDTO)

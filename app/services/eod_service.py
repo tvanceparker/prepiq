@@ -24,6 +24,8 @@ from app.repositories.eod_purchase_order_suggestion_repo import (
     EODPurchaseOrderSuggestionRepository,
 )
 from app.repositories.ingredients_repo import IngredientRepository
+from app.repositories.inventory_deduction_discrepancies_repo import InventoryDeductionDiscrepancyRepository
+from app.repositories.forecast_run_ledger_repo import ForecastRunLedgerRepository
 from app.services.forecasting_engine import ForecastingEngine, convert_forecast_dict_to_list
 from app.services.inventory_stats_service import InventoryStatsService
 from app.services.reorder_forecast_engine import ReorderForecastEngine
@@ -73,6 +75,7 @@ class EODService:
         self.ingredient_repo = IngredientRepository(db, restaurant_id)
         self.inventory_repo = InventoryRepository(db, restaurant_id)
         self.alert_repo = AlertRepository(db, restaurant_id)
+        self.discrepancy_repo = InventoryDeductionDiscrepancyRepository(db, restaurant_id)
         self.inventory_usage_log_repo = InventoryUsageLogRepository(db, restaurant_id)
         self.order_repo = OrdersRepository(db, restaurant_id)
         self.inventory_helper = InventoryDeductionHelper(
@@ -93,9 +96,149 @@ class EODService:
         logger.debug('[EOD] init service restaurant=%s tier=%s', self.restaurant_id, self.subscription_tier)
         from app.repositories.eod_run_ledger_repo import EODRunLedgerRepository
         self.ledger_repo = EODRunLedgerRepository(db, restaurant_id)
+        self.forecast_run_ledger_repo = ForecastRunLedgerRepository(db, restaurant_id)
         self.po_suggestion_repo = EODPurchaseOrderSuggestionRepository(db, restaurant_id)
         self._purchase_order_suggestions = []
         self.purchase_order_suggestions = []
+
+    def _build_run_status(self, ledger) -> tuple[str, str]:
+        errors = getattr(ledger, "errors", None) or []
+
+        if getattr(ledger, "running", False) and not getattr(ledger, "finalized", False):
+            return "processing", "EOD is currently running."
+        if getattr(ledger, "finalized", False) and errors:
+            return "partial", "EOD finalized with warnings and requires manual review."
+        if getattr(ledger, "finalized", False):
+            return "success", "EOD finalized successfully."
+        return "failed", "EOD did not finalize successfully."
+
+    def _build_forecast_summary(self, run_date: date, forecast_ledger) -> Dict[str, Any]:
+        forecast_generated_at = getattr(forecast_ledger, "finished_at", None) if forecast_ledger else None
+        forecast_stale = run_date < date.today()
+
+        if not forecast_ledger or not getattr(forecast_ledger, "finalized", False):
+            return {
+                "forecast_generated_at": forecast_generated_at,
+                "forecast_stale": forecast_stale,
+                "forecast_status": "failed",
+                "forecast_status_message": "No finalized forecast is available for this EOD run.",
+            }
+
+        errors = getattr(forecast_ledger, "errors", None) or []
+        if errors:
+            return {
+                "forecast_generated_at": forecast_generated_at,
+                "forecast_stale": forecast_stale,
+                "forecast_status": "degraded",
+                "forecast_status_message": "The forecast finalized with warnings for this EOD run.",
+            }
+
+        if forecast_stale:
+            return {
+                "forecast_generated_at": forecast_generated_at,
+                "forecast_stale": True,
+                "forecast_status": "stale",
+                "forecast_status_message": "The finalized forecast is older than today's cycle.",
+            }
+
+        return {
+            "forecast_generated_at": forecast_generated_at,
+            "forecast_stale": False,
+            "forecast_status": "ready",
+            "forecast_status_message": "Using the finalized forecast for this EOD run.",
+        }
+
+    async def get_eod_run_summary(self, run_date: Optional[date] = None) -> Optional[Dict[str, Any]]:
+        ledger = await self.ledger_repo.get_by_date(run_date) if run_date else await self.ledger_repo.get_latest()
+        if not ledger:
+            return None
+
+        effective_run_date = ledger.run_date
+        reference_id = int(effective_run_date.strftime("%Y%m%d"))
+        forecast_ledger = await self.forecast_run_ledger_repo.get_one_by({"run_date": effective_run_date})
+        po_suggestions = await self.po_suggestion_repo.list_by_run_date(effective_run_date)
+        discrepancies = await self.discrepancy_repo.get_open_by_reference(
+            reference_type="eod_sales",
+            reference_id=reference_id,
+        )
+        run_status, status_message = self._build_run_status(ledger)
+
+        durations = getattr(ledger, "durations", None) or {}
+        errors = getattr(ledger, "errors", None) or []
+
+        stages = [
+            {
+                "stage": "sales_deducted",
+                "completed": bool(getattr(ledger, "sales_deducted", False)),
+                "duration_ms": durations.get("sales_deducted"),
+            },
+            {
+                "stage": "forecast_completed",
+                "completed": bool(getattr(ledger, "forecast_completed", False)),
+                "duration_ms": durations.get("forecast_completed"),
+            },
+            {
+                "stage": "reorder_completed",
+                "completed": bool(getattr(ledger, "reorder_completed", False)),
+                "duration_ms": durations.get("reorder_completed"),
+            },
+            {
+                "stage": "po_written",
+                "completed": bool(getattr(ledger, "po_written", False)),
+                "duration_ms": durations.get("po_written"),
+            },
+            {
+                "stage": "finalized",
+                "completed": bool(getattr(ledger, "finalized", False)),
+                "duration_ms": None,
+            },
+        ]
+
+        return {
+            "run_date": effective_run_date,
+            "status": run_status,
+            "status_message": status_message,
+            "finalized": bool(getattr(ledger, "finalized", False)),
+            "running": bool(getattr(ledger, "running", False)),
+            "started_at": getattr(ledger, "started_at", None),
+            "finished_at": getattr(ledger, "finished_at", None),
+            "stages": stages,
+            "errors": [
+                {
+                    "stage": str(error.get("stage") or "unknown"),
+                    "message": str(error.get("message") or "Unknown error"),
+                    "ts": error.get("ts") or error.get("timestamp"),
+                }
+                for error in errors
+            ],
+            "forecast": self._build_forecast_summary(effective_run_date, forecast_ledger),
+            "counts": {
+                "sales_usage_log_count": await self.inventory_usage_log_repo.count_for_reference(
+                    "eod_sales",
+                    reference_id,
+                ),
+                "forecast_menu_items_processed": int(
+                    getattr(forecast_ledger, "menu_items_processed", 0) or 0
+                ),
+                "purchase_order_suggestion_count": len(po_suggestions),
+                "purchase_orders_created": await self.purchase_order_repo.count_eod_auto_orders_for_run_date(
+                    effective_run_date
+                ),
+                "open_discrepancy_count": len(discrepancies),
+            },
+            "repair_targets": [
+                {
+                    "alert_id": discrepancy.alert_id,
+                    "ingredient_id": discrepancy.ingredient_id,
+                    "batch_recipe_id": discrepancy.batch_recipe_id,
+                    "item_name": discrepancy.item_name,
+                    "message": discrepancy.message,
+                    "shortfall_quantity": float(discrepancy.shortfall_quantity or 0),
+                    "unit": discrepancy.unit,
+                }
+                for discrepancy in discrepancies
+            ],
+        }
 
     def _set_purchase_order_suggestions(self, suggestions: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         synced_suggestions = list(suggestions or [])

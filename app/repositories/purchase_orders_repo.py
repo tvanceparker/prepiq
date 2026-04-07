@@ -1,6 +1,7 @@
 # app/repositories/purchase_orders_repo.py
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func
 from sqlalchemy.future import select
 from app.db.models.purchase_orders_orm import PurchaseOrder
 from app.repositories.base_repository import BaseRepository
@@ -47,3 +48,14 @@ class PurchaseOrderRepository(BaseRepository):
 
         result = await self.db.execute(query)
         return result.scalars().first()
+
+    async def count_eod_auto_orders_for_run_date(self, run_date: date) -> int:
+        marker = f"[EOD_AUTO run_date={run_date.isoformat()}"
+        query = select(func.count(PurchaseOrder.order_id)).filter(
+            PurchaseOrder.restaurant_id == self.restaurant_id,
+            PurchaseOrder.notes.isnot(None),
+            PurchaseOrder.notes.contains(marker),
+        )
+
+        result = await self.db.execute(query)
+        return int(result.scalar_one() or 0)

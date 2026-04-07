@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Button from '../../../components/Button';
 import useAlertsFeed from '../hooks/useAlertsFeed';
 import useMediaQuery from '../hooks/useMediaQuery';
 import AlertsFeedTableBasic from './AlertsFeedTableBasic';
 import { PageHeader } from '../../../components/PageHeader';
+import { fetchLatestEodSummary } from '../../../api/eod';
+import type { EodRunSummary } from '../../../interfaces/eod';
 
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
+import Chip from '@mui/material/Chip';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -17,20 +21,21 @@ const severityColors: Record<string, string> = {
   urgent: 'red',
 };
 
+const formatStageLabel = (stage: string) => stage.replace(/_/g, ' ');
+
 export default function AlertsFeedBasic(): JSX.Element {
   const isMobile = useMediaQuery('(max-width: 768px)');
+  const navigate = useNavigate();
 
   const [viewAll, setViewAll] = useState(false);
   const [useCardView, setUseCardView] = useState(false);
-  const [fixingAlert, setFixingAlert] = useState<any | null>(null);
-  const [fixInput, setFixInput] = useState('');
-  const [fixLoading, setFixLoading] = useState(false);
 
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
     severity: 'success' | 'info' | 'warning' | 'error';
   }>({ open: false, message: '', severity: 'info' });
+  const [eodSummary, setEodSummary] = useState<EodRunSummary | null>(null);
 
   const {
     alerts,
@@ -53,6 +58,26 @@ export default function AlertsFeedBasic(): JSX.Element {
   useEffect(() => {
     if (isMobile) setUseCardView(true);
   }, [isMobile]);
+
+  useEffect(() => {
+    let active = true;
+
+    fetchLatestEodSummary()
+      .then(summary => {
+        if (active) {
+          setEodSummary(summary);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setEodSummary(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const showSnackbar = (
     message: string,
@@ -85,33 +110,17 @@ export default function AlertsFeedBasic(): JSX.Element {
     }
   };
 
-  const openFixModal = (alert: any) => {
-    setFixingAlert(alert);
-    if (alert?.alert_type === 'Inventory:DeductionFailed') {
-      const required = Number(alert?.meta?.required_quantity ?? '');
-      setFixInput(Number.isFinite(required) ? String(required) : '');
-      return;
-    }
-    setFixInput('');
-  };
-
-  const closeFixModal = () => {
-    setFixingAlert(null);
-    setFixInput('');
-    setFixLoading(false);
-  };
-
-  const handleFixSubmit = async () => {
-    if (!fixInput.trim()) {
+  const handleFixSubmit = async (alert: any, rawValue: string) => {
+    if (!rawValue.trim()) {
       showSnackbar('Please enter a valid value', 'error');
       return;
     }
 
     let fixData: any = {};
-    switch (fixingAlert?.alert_type) {
+    switch (alert?.alert_type) {
       case 'DataQuality:NullOrZeroQuantity':
       case 'DataQuality:QuantityOutlier': {
-        const quantity = Number(fixInput);
+        const quantity = Number(rawValue);
         if (isNaN(quantity) || quantity < 0) {
           showSnackbar('Please enter a valid non-negative number for quantity', 'error');
           return;
@@ -120,10 +129,10 @@ export default function AlertsFeedBasic(): JSX.Element {
         break;
       }
       case 'DataQuality:MissingChannel':
-        fixData = { sales_channel: fixInput.trim() };
+        fixData = { sales_channel: rawValue.trim() };
         break;
       case 'Inventory:DeductionFailed': {
-        const targetQuantity = Number(fixInput);
+        const targetQuantity = Number(rawValue);
         if (isNaN(targetQuantity) || targetQuantity < 0) {
           showSnackbar('Please enter a valid non-negative inventory quantity', 'error');
           return;
@@ -136,22 +145,167 @@ export default function AlertsFeedBasic(): JSX.Element {
         return;
     }
 
-    setFixLoading(true);
     try {
-      await fix(fixingAlert.alert_id, fixData);
+      await fix(alert.alert_id, fixData);
       showSnackbar('Alert fixed successfully', 'success');
-      if (!viewAll) remove(fixingAlert.alert_id);
-      closeFixModal();
+      if (!viewAll) remove(alert.alert_id);
     } catch {
       showSnackbar('Failed to fix alert', 'error');
-      setFixLoading(false);
     }
   };
+
+  const handleReviewInInventory = (target: {
+    alertId?: number | null;
+    ingredientId?: number | null;
+    batchRecipeId?: number | null;
+  }) => {
+    navigate('/inventory/table', {
+      state: {
+        focusReview: {
+          alertId: target.alertId ?? null,
+          ingredientId: target.ingredientId ?? null,
+          batchRecipeId: target.batchRecipeId ?? null,
+        },
+      },
+    });
+  };
+
+  const handleAlertReviewInInventory = (alert: any) => {
+    handleReviewInInventory({
+      alertId: alert.alert_id,
+      ingredientId: alert?.meta?.ingredient_id ?? null,
+      batchRecipeId: alert?.meta?.batch_recipe_id ?? null,
+    });
+  };
+
+  const runStatusColor =
+    eodSummary?.status === 'success'
+      ? 'success'
+      : eodSummary?.status === 'partial'
+        ? 'warning'
+        : eodSummary?.status === 'failed'
+          ? 'error'
+          : 'info';
 
   return (
     <>
       <Paper sx={{ maxWidth: 1200, mt: 4, mx: 'auto', px: { xs: 2, md: 4 }, py: { xs: 4, md: 8 } }}>
-        <PageHeader title="⚠️ Alerts & Issues" />
+        <PageHeader title="Alerts & Issues" />
+
+        {eodSummary && (
+          <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={2}
+              alignItems={{ md: 'center' }}
+            >
+              <Stack spacing={0.5} sx={{ flex: 1 }}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Latest EOD Run
+                </Typography>
+                <Typography variant="h6">{eodSummary.status_message}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Run date {eodSummary.run_date}
+                  {eodSummary.finished_at
+                    ? ` · Finished ${new Date(eodSummary.finished_at).toLocaleString()}`
+                    : ''}
+                </Typography>
+              </Stack>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Chip color={runStatusColor} label={eodSummary.status.toUpperCase()} />
+                <Chip
+                  variant="outlined"
+                  label={`Forecast ${eodSummary.forecast.forecast_status.toUpperCase()}`}
+                />
+                <Chip
+                  variant="outlined"
+                  label={`${eodSummary.counts.open_discrepancy_count} open review`}
+                />
+                <Chip
+                  variant="outlined"
+                  label={`${eodSummary.counts.purchase_order_suggestion_count} suggestions`}
+                />
+              </Stack>
+            </Stack>
+
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+              {eodSummary.forecast.forecast_status_message}
+            </Typography>
+
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
+              {eodSummary.stages.map(stage => (
+                <Chip
+                  key={stage.stage}
+                  size="small"
+                  color={stage.completed ? 'success' : 'default'}
+                  variant={stage.completed ? 'filled' : 'outlined'}
+                  label={
+                    stage.duration_ms != null
+                      ? `${formatStageLabel(stage.stage)} ${Math.round(stage.duration_ms / 1000)}s`
+                      : formatStageLabel(stage.stage)
+                  }
+                />
+              ))}
+            </Stack>
+
+            {eodSummary.errors.length > 0 && (
+              <Stack spacing={0.75} sx={{ mt: 2 }}>
+                <Typography variant="subtitle2">Needs review</Typography>
+                {eodSummary.errors.slice(0, 3).map(errorItem => (
+                  <Typography
+                    key={`${errorItem.stage}-${errorItem.ts ?? errorItem.message}`}
+                    variant="body2"
+                    color="error.main"
+                  >
+                    {formatStageLabel(errorItem.stage)}: {errorItem.message}
+                  </Typography>
+                ))}
+              </Stack>
+            )}
+
+            {eodSummary.repair_targets.length > 0 && (
+              <Stack spacing={1} sx={{ mt: 2 }}>
+                <Typography variant="subtitle2">Open inventory review</Typography>
+                {eodSummary.repair_targets.slice(0, 3).map(target => (
+                  <Stack
+                    key={`${target.alert_id ?? 'no-alert'}-${target.ingredient_id ?? target.batch_recipe_id ?? target.item_name}`}
+                    direction={{ xs: 'column', md: 'row' }}
+                    spacing={1}
+                    justifyContent="space-between"
+                    alignItems={{ md: 'center' }}
+                  >
+                    <Typography variant="body2" color="text.secondary">
+                      {target.item_name || 'Inventory item'}: {target.message}
+                    </Typography>
+                    <Button
+                      variant="default"
+                      onClick={() =>
+                        handleReviewInInventory({
+                          alertId: target.alert_id,
+                          ingredientId: target.ingredient_id,
+                          batchRecipeId: target.batch_recipe_id,
+                        })
+                      }
+                      showIcon={false}
+                    >
+                      Review In Inventory
+                    </Button>
+                  </Stack>
+                ))}
+              </Stack>
+            )}
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 2 }}>
+              <Button
+                variant="default"
+                onClick={() => navigate('/dashboard/eod-summary')}
+                showIcon={false}
+              >
+                Open Full EOD Detail
+              </Button>
+            </Stack>
+          </Paper>
+        )}
 
         {error && (
           <Typography
@@ -197,10 +351,8 @@ export default function AlertsFeedBasic(): JSX.Element {
           loading={loading}
           isCardView={useCardView}
           isFixable={isFixable}
-          onFixSubmit={(alert: any, value: string) => {
-            openFixModal(alert);
-            setFixInput(value);
-          }}
+          onFixSubmit={handleFixSubmit}
+          onReviewInInventory={handleAlertReviewInInventory}
           onResolve={handleResolve}
           onAcknowledge={handleAcknowledge}
           severityColors={severityColors}
