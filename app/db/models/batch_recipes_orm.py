@@ -1,6 +1,6 @@
 # app/db/models/batch_recipes_orm.py
 
-from sqlalchemy import Column, Integer, String, DECIMAL, Text, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, DECIMAL, Text, ForeignKey
 from sqlalchemy.orm import relationship, foreign
 from app.db.session import Base
 
@@ -18,6 +18,7 @@ class BatchRecipe(Base):
     yield_unit = Column(String(20))
     estimated_prep_time_minutes = Column(Integer)
     shelf_life_days = Column(Integer)
+    is_active = Column(Boolean, default=True, nullable=False)
 
     restaurant = relationship("Restaurant", back_populates="batch_recipes")
     batch_recipe_ingredients = relationship(
