@@ -158,6 +158,20 @@ export default function InventoryList(): React.JSX.Element {
 
   const primaryDiscrepancy = selectedItemDiscrepancies[0] || null;
 
+  const inventorySummary = React.useMemo(() => {
+    const reviewCount = discrepancies.length;
+    const ingredientCount = inventory.filter(item => item.batch_recipe_id === null).length;
+    const batchCount = inventory.filter(item => item.batch_recipe_id !== null).length;
+    const lowStockCount = inventory.filter(item => item.quantity_on_hand <= 10).length;
+
+    return {
+      reviewCount,
+      ingredientCount,
+      batchCount,
+      lowStockCount,
+    };
+  }, [discrepancies.length, inventory]);
+
   // Group by category for SectionList
   const sections: InventorySection[] = React.useMemo(() => {
     const grouped: Record<string, InventoryItem[]> = {};
@@ -537,18 +551,47 @@ export default function InventoryList(): React.JSX.Element {
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header */}
       <Surface style={styles.headerSurface} elevation={1}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerLeft}>
-            <MaterialCommunityIcons name="warehouse" size={28} color={theme.colors.primary} />
-            <Text variant="titleLarge" style={{ marginLeft: 8, fontWeight: '600' }}>
-              Inventory
-            </Text>
+        <View style={styles.heroCard}>
+          <View style={styles.headerRow}>
+            <View style={styles.headerLeft}>
+              <View style={[styles.heroIconWrap, { backgroundColor: `${theme.colors.primary}14` }]}>
+                <MaterialCommunityIcons name="warehouse" size={28} color={theme.colors.primary} />
+              </View>
+              <View style={{ marginLeft: 12, flex: 1 }}>
+                <Text variant="titleLarge" style={styles.heroTitle}>
+                  Ingredient catalog and stock
+                </Text>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  Search quickly, spot low stock, and jump into lot or review detail without losing
+                  context.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.headerItemCount}>
+              <MaterialCommunityIcons
+                name="package-variant"
+                size={16}
+                color={theme.colors.primary}
+              />
+              <Text style={{ marginLeft: 4, color: theme.colors.primary }}>
+                {filteredInventory.length} items
+              </Text>
+            </View>
           </View>
-          <View style={styles.headerItemCount}>
-            <MaterialCommunityIcons name="package-variant" size={16} color={theme.colors.primary} />
-            <Text style={{ marginLeft: 4, color: theme.colors.primary }}>
-              {filteredInventory.length} items
-            </Text>
+
+          <View style={styles.heroBadgeRow}>
+            <Chip compact style={styles.heroBadge}>
+              {inventorySummary.ingredientCount} ingredients
+            </Chip>
+            <Chip compact style={styles.heroBadge}>
+              {inventorySummary.batchCount} batch recipes
+            </Chip>
+            <Chip compact style={styles.heroBadge}>
+              {inventorySummary.reviewCount} review items
+            </Chip>
+            <Chip compact style={styles.heroBadge}>
+              {inventorySummary.lowStockCount} low stock
+            </Chip>
           </View>
         </View>
 
@@ -1016,8 +1059,11 @@ const styles = StyleSheet.create({
   },
   headerSurface: {
     padding: 16,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  heroCard: {
+    marginBottom: 14,
   },
   headerRow: {
     flexDirection: 'row',
@@ -1028,7 +1074,7 @@ const styles = StyleSheet.create({
   headerItemCount: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0f0f0',
+    backgroundColor: 'rgba(255,255,255,0.88)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 16,
@@ -1036,6 +1082,25 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+  },
+  heroIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heroTitle: {
+    fontWeight: '700',
+  },
+  heroBadgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  heroBadge: {
+    backgroundColor: 'rgba(255,255,255,0.82)',
   },
   searchbar: {
     marginBottom: 12,
@@ -1067,7 +1132,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   itemCard: {
-    marginBottom: 10,
+    marginBottom: 12,
+    borderRadius: 22,
+    overflow: 'hidden',
   },
   itemHeader: {
     flexDirection: 'row',
@@ -1083,7 +1150,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   itemName: {
-    fontWeight: '600',
+    fontWeight: '700',
   },
   quantitySection: {
     alignItems: 'flex-end',
@@ -1122,6 +1189,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 24,
   },
   modal: {
     margin: 16,

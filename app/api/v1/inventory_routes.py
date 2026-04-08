@@ -103,6 +103,7 @@ async def receive_purchase_order(
         return await inventory_service.receive_purchase_order(
             order_id=order_id,
             actual_delivery_date=payload.actual_delivery_date,
+            received_items=[item.model_dump() for item in payload.received_items],
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

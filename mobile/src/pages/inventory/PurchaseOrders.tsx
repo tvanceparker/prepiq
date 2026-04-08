@@ -52,9 +52,33 @@ interface POSection {
 
 type WizardStep = 0 | 1;
 const WIZARD_STEPS = ['Method', 'Build'];
+type ReceiptDraft = {
+  orderId: number;
+  deliveryDate: string;
+  items: Array<{
+    order_item_id: number;
+    ingredient_name: string;
+    quantity_ordered: number;
+    quantity_received: string;
+    unit: string;
+  }>;
+};
 
 const getForecastSourceLabel = (forecastSourceType: 'eod' | 'on_demand') =>
   forecastSourceType === 'eod' ? 'EOD' : 'On-demand';
+
+const getSupplierGroupKey = (supplierId?: number | null) =>
+  supplierId === null || supplierId === undefined ? 'unspecified' : String(supplierId);
+
+const getSupplierLabel = (supplierName?: string | null, supplierId?: number | null): string => {
+  if (supplierName) {
+    return supplierName;
+  }
+  if (supplierId === null || supplierId === undefined) {
+    return 'Unspecified supplier';
+  }
+  return `Supplier ${supplierId}`;
+};
 
 const getForecastStatusTone = (status: 'ready' | 'stale' | 'degraded' | 'failed') => {
   switch (status) {
@@ -98,6 +122,19 @@ const getOrderSourceLabel = (sourceType?: 'manual' | 'suggestion' | 'eod_auto' |
   return 'Manual order';
 };
 
+const getExplanationEmptyState = (sourceType?: 'manual' | 'suggestion' | 'eod_auto' | null) => {
+  if (sourceType === 'manual') {
+    return 'This order was built manually, so no reorder explanation was captured.';
+  }
+  if (sourceType === 'eod_auto') {
+    return 'No persisted reorder explanation is available for this EOD-created draft.';
+  }
+  if (sourceType === 'suggestion') {
+    return 'No persisted reorder explanation is available for this reorder draft.';
+  }
+  return 'No explanation available for this order yet.';
+};
+
 const getReviewItemWarnings = (
   flags?: {
     lead_time_source: string;
@@ -131,6 +168,7 @@ export default function PurchaseOrders(): React.JSX.Element {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<PurchaseOrderStatus | 'all'>('all');
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [receiptDraft, setReceiptDraft] = useState<ReceiptDraft | null>(null);
 
   // Unified Wizard State
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -141,7 +179,7 @@ export default function PurchaseOrders(): React.JSX.Element {
   const [useCachedForecast, setUseCachedForecast] = useState(true);
   const [horizonDays, setHorizonDays] = useState(7);
   const [selectedItems, setSelectedItems] = useState<Map<string, number>>(new Map());
-  const [expandedSuppliers, setExpandedSuppliers] = useState<Set<number>>(new Set());
+  const [expandedSuppliers, setExpandedSuppliers] = useState<Set<string>>(new Set());
 
   // Ingredient mode state
   const [selectedIngredient, setSelectedIngredient] = useState<IngredientStockLevel | null>(null);
@@ -166,6 +204,8 @@ export default function PurchaseOrders(): React.JSX.Element {
     refresh,
     updateStatus,
     updatingStatus,
+    receiveOrder,
+    receivingOrder,
     formatReceiptSummary,
     createOrder,
     updateItem,
@@ -283,6 +323,88 @@ export default function PurchaseOrders(): React.JSX.Element {
       showToast('Order status updated.');
     }
     setSelectedPO(null);
+  };
+
+  const openReceiptModal = (order: PurchaseOrder) => {
+    setReceiptDraft({
+      orderId: order.order_id,
+      deliveryDate: order.expected_delivery_date
+        ? new Date(order.expected_delivery_date).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0],
+      items: order.items.map(item => ({
+        order_item_id: item.order_item_id,
+        ingredient_name: item.ingredient_name,
+        quantity_ordered: item.quantity_ordered,
+        quantity_received:
+          item.quantity_received !== null && item.quantity_received !== undefined
+            ? String(item.quantity_received)
+            : String(item.quantity_ordered),
+        unit: item.unit,
+      })),
+    });
+  };
+
+  const closeReceiptModal = () => {
+    setReceiptDraft(null);
+  };
+
+  const updateReceiptDraftItem = (orderItemId: number, value: string) => {
+    setReceiptDraft(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.map(item =>
+          item.order_item_id === orderItemId ? { ...item, quantity_received: value } : item
+        ),
+      };
+    });
+  };
+
+  const resetReceiptDraftToOrdered = () => {
+    setReceiptDraft(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.map(item => ({
+          ...item,
+          quantity_received: String(item.quantity_ordered),
+        })),
+      };
+    });
+  };
+
+  const handleReceiveOrder = async () => {
+    if (!receiptDraft) return;
+
+    const received_items = receiptDraft.items.map(item => ({
+      order_item_id: item.order_item_id,
+      quantity_received: Number(item.quantity_received),
+    }));
+
+    if (
+      received_items.some(
+        item => Number.isNaN(item.quantity_received) || item.quantity_received <= 0
+      )
+    ) {
+      showToast('Enter a valid received quantity for every line.');
+      return;
+    }
+
+    try {
+      const result = await receiveOrder({
+        orderId: receiptDraft.orderId,
+        payload: {
+          actual_delivery_date: receiptDraft.deliveryDate || undefined,
+          received_items,
+        },
+      });
+      showToast(formatReceiptSummary(result));
+      setSelectedPO(null);
+      closeReceiptModal();
+    } catch (error) {
+      console.error('Failed to receive order', error);
+      showToast('Failed to receive order.');
+    }
   };
 
   const openItemEditor = (item: PurchaseOrderItem) => {
@@ -445,10 +567,13 @@ export default function PurchaseOrders(): React.JSX.Element {
       const result = await generateSuggestions({ horizonDays, useCachedForecast: false });
       const allItems = new Map<string, number>();
       result.all_items.forEach(item => {
-        allItems.set(`${item.supplier_id}-${item.ingredient_id}`, item.quantity_to_order);
+        allItems.set(
+          `${getSupplierGroupKey(item.supplier_id)}-${item.ingredient_id}`,
+          item.quantity_to_order
+        );
       });
       setSelectedItems(allItems);
-      const supplierIds = new Set(result.suggestions.map(s => s.supplier_id));
+      const supplierIds = new Set(result.suggestions.map(s => getSupplierGroupKey(s.supplier_id)));
       setExpandedSuppliers(supplierIds);
       showToast(
         result.forecast_status_message ||
@@ -465,10 +590,13 @@ export default function PurchaseOrders(): React.JSX.Element {
       const result = await generateSuggestions({ horizonDays, useCachedForecast });
       const allItems = new Map<string, number>();
       result.all_items.forEach(item => {
-        allItems.set(`${item.supplier_id}-${item.ingredient_id}`, item.quantity_to_order);
+        allItems.set(
+          `${getSupplierGroupKey(item.supplier_id)}-${item.ingredient_id}`,
+          item.quantity_to_order
+        );
       });
       setSelectedItems(allItems);
-      const supplierIds = new Set(result.suggestions.map(s => s.supplier_id));
+      const supplierIds = new Set(result.suggestions.map(s => getSupplierGroupKey(s.supplier_id)));
       setExpandedSuppliers(supplierIds);
       showToast(
         result.forecast_status_message ||
@@ -484,7 +612,7 @@ export default function PurchaseOrders(): React.JSX.Element {
     if (!suggestions) return;
     const selectedItemsList: any[] = [];
     suggestions.all_items.forEach(item => {
-      const key = `${item.supplier_id}-${item.ingredient_id}`;
+      const key = `${getSupplierGroupKey(item.supplier_id)}-${item.ingredient_id}`;
       if (selectedItems.has(key)) {
         selectedItemsList.push({
           ...item,
@@ -591,15 +719,15 @@ export default function PurchaseOrders(): React.JSX.Element {
     if (!suggestions) return { itemCount: 0, total: 0, supplierCount: 0 };
     let total = 0;
     let itemCount = 0;
-    const supplierSet = new Set<number>();
+    const supplierSet = new Set<string>();
 
     suggestions.all_items.forEach(item => {
-      const key = `${item.supplier_id}-${item.ingredient_id}`;
+      const key = `${getSupplierGroupKey(item.supplier_id)}-${item.ingredient_id}`;
       if (selectedItems.has(key)) {
         const qty = selectedItems.get(key) || item.quantity_to_order;
         total += qty * item.unit_price;
         itemCount++;
-        supplierSet.add(item.supplier_id);
+        supplierSet.add(getSupplierGroupKey(item.supplier_id));
       }
     });
 
@@ -684,7 +812,7 @@ export default function PurchaseOrders(): React.JSX.Element {
               {`PO #${item.order_id}`}
             </Text>
             <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-              {item.supplier_name || 'Unknown Supplier'}
+              {getSupplierLabel(item.supplier_name, item.supplier_id)}
             </Text>
           </View>
           <Chip
@@ -983,7 +1111,7 @@ export default function PurchaseOrders(): React.JSX.Element {
 
               <List.Item
                 title="Supplier"
-                description={selectedPO.supplier_name || 'Unknown'}
+                description={getSupplierLabel(selectedPO.supplier_name, selectedPO.supplier_id)}
                 left={() => (
                   <MaterialCommunityIcons
                     name="truck"
@@ -1185,7 +1313,7 @@ export default function PurchaseOrders(): React.JSX.Element {
                     <List.Item
                       key={index}
                       title={item.ingredient_name || `Item ${index + 1}`}
-                      description={`Qty: ${item.quantity_ordered} | Unit: $${item.unit_price?.toFixed(2)}`}
+                      description={`Qty: ${item.quantity_ordered}${item.quantity_received !== null && item.quantity_received !== undefined ? ` | Received: ${item.quantity_received}` : ''} | Unit: $${item.unit_price?.toFixed(2)}`}
                       right={() => (
                         <Text
                           variant="bodyMedium"
@@ -1212,115 +1340,117 @@ export default function PurchaseOrders(): React.JSX.Element {
                 </Card>
               ) : null}
 
+              <Divider style={{ marginVertical: 12 }} />
+
+              <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 8 }}>
+                Why This Order Exists
+              </Text>
+
               {selectedPO.review_context?.explanation_items?.length ? (
-                <>
-                  <Divider style={{ marginVertical: 12 }} />
-
-                  <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 8 }}>
-                    Why This Order Exists
-                  </Text>
-
-                  {selectedPO.review_context.explanation_items.map(item => {
-                    const explanation = item.explanation;
-                    const warnings = getReviewItemWarnings(explanation?.assumption_flags);
-                    return (
-                      <Card
-                        key={`${item.supplier_id}-${item.ingredient_id}`}
-                        style={styles.explanationCard}
-                        mode="outlined"
-                      >
-                        <Card.Content>
-                          <View style={styles.explanationHeader}>
-                            <View style={{ flex: 1 }}>
-                              <Text variant="titleSmall" style={{ fontWeight: '600' }}>
-                                {item.ingredient_name}
-                              </Text>
-                              <Text
-                                variant="bodySmall"
-                                style={{ color: theme.colors.onSurfaceVariant }}
-                              >
-                                {item.quantity_to_order ?? 0} {item.unit || ''}
-                                {item.packs_to_order ? ` • ${item.packs_to_order} packs` : ''}
-                              </Text>
-                            </View>
-                            {typeof item.line_total === 'number' && (
-                              <Text
-                                variant="titleSmall"
-                                style={{ color: theme.colors.primary, fontWeight: '700' }}
-                              >
-                                ${item.line_total.toFixed(2)}
-                              </Text>
-                            )}
-                          </View>
-                          {explanation?.summary ? (
+                selectedPO.review_context.explanation_items.map(item => {
+                  const explanation = item.explanation;
+                  const warnings = getReviewItemWarnings(explanation?.assumption_flags);
+                  return (
+                    <Card
+                      key={`${item.supplier_id}-${item.ingredient_id}`}
+                      style={styles.explanationCard}
+                      mode="outlined"
+                    >
+                      <Card.Content>
+                        <View style={styles.explanationHeader}>
+                          <View style={{ flex: 1 }}>
+                            <Text variant="titleSmall" style={{ fontWeight: '600' }}>
+                              {item.ingredient_name}
+                            </Text>
                             <Text
                               variant="bodySmall"
-                              style={{ color: theme.colors.onSurfaceVariant, marginTop: 6 }}
+                              style={{ color: theme.colors.onSurfaceVariant }}
                             >
-                              {explanation.summary}
+                              {item.quantity_to_order ?? 0} {item.unit || ''}
+                              {item.packs_to_order ? ` • ${item.packs_to_order} packs` : ''}
                             </Text>
-                          ) : null}
-                          {explanation ? (
-                            <View style={styles.explanationBody}>
-                              <Text variant="bodySmall" style={styles.explanationLine}>
-                                Stock{' '}
-                                {formatExplanationValue(explanation.why_reorder.current_stock)}{' '}
-                                {explanation.why_reorder.current_unit} vs reorder point{' '}
-                                {formatExplanationValue(explanation.why_reorder.reorder_point)}.
+                          </View>
+                          {typeof item.line_total === 'number' && (
+                            <Text
+                              variant="titleSmall"
+                              style={{ color: theme.colors.primary, fontWeight: '700' }}
+                            >
+                              ${item.line_total.toFixed(2)}
+                            </Text>
+                          )}
+                        </View>
+                        {explanation?.summary ? (
+                          <Text
+                            variant="bodySmall"
+                            style={{ color: theme.colors.onSurfaceVariant, marginTop: 6 }}
+                          >
+                            {explanation.summary}
+                          </Text>
+                        ) : null}
+                        {explanation ? (
+                          <View style={styles.explanationBody}>
+                            <Text variant="bodySmall" style={styles.explanationLine}>
+                              Stock {formatExplanationValue(explanation.why_reorder.current_stock)}{' '}
+                              {explanation.why_reorder.current_unit} vs reorder point{' '}
+                              {formatExplanationValue(explanation.why_reorder.reorder_point)}.
+                            </Text>
+                            <Text variant="bodySmall" style={styles.explanationLine}>
+                              Lead {formatExplanationValue(explanation.why_reorder.lead_demand)} +
+                              shelf {formatExplanationValue(explanation.why_reorder.shelf_demand)} +
+                              safety {formatExplanationValue(explanation.why_reorder.safety_stock)}{' '}
+                              = target{' '}
+                              {formatExplanationValue(explanation.why_reorder.reorder_target)}.
+                            </Text>
+                            <Text variant="bodySmall" style={styles.explanationLine}>
+                              ABC {explanation.policy_factors.abc_class} x{' '}
+                              {formatExplanationValue(explanation.policy_factors.abc_multiplier)};
+                              MOQ floor{' '}
+                              {formatExplanationValue(explanation.policy_factors.moq_floor)}; final
+                              before packs{' '}
+                              {formatExplanationValue(
+                                explanation.quantity_factors.final_quantity_before_pack_rounding
+                              )}
+                              .
+                            </Text>
+                            <Text variant="bodySmall" style={styles.explanationLine}>
+                              {formatExplanationValue(explanation.quantity_factors.packs_to_order)}{' '}
+                              packs x{' '}
+                              {formatExplanationValue(
+                                explanation.quantity_factors.quantity_per_pack
+                              )}{' '}
+                              {explanation.quantity_factors.supplier_unit} ={' '}
+                              {formatExplanationValue(
+                                explanation.quantity_factors.total_quantity_ordered
+                              )}{' '}
+                              {explanation.quantity_factors.supplier_unit}.
+                            </Text>
+                            <Text variant="bodySmall" style={styles.explanationLine}>
+                              Supplier: {explanation.supplier_factors.selected_supplier} (
+                              {formatSelectionRule(explanation.supplier_factors.selection_rule)}).
+                            </Text>
+                            {warnings.length ? (
+                              <Text
+                                variant="bodySmall"
+                                style={[styles.explanationLine, { color: theme.colors.error }]}
+                              >
+                                Assumptions: {warnings.join(', ')}.
                               </Text>
-                              <Text variant="bodySmall" style={styles.explanationLine}>
-                                Lead {formatExplanationValue(explanation.why_reorder.lead_demand)} +
-                                shelf {formatExplanationValue(explanation.why_reorder.shelf_demand)}{' '}
-                                + safety{' '}
-                                {formatExplanationValue(explanation.why_reorder.safety_stock)} =
-                                target{' '}
-                                {formatExplanationValue(explanation.why_reorder.reorder_target)}.
-                              </Text>
-                              <Text variant="bodySmall" style={styles.explanationLine}>
-                                ABC {explanation.policy_factors.abc_class} x{' '}
-                                {formatExplanationValue(explanation.policy_factors.abc_multiplier)};
-                                MOQ floor{' '}
-                                {formatExplanationValue(explanation.policy_factors.moq_floor)};
-                                final before packs{' '}
-                                {formatExplanationValue(
-                                  explanation.quantity_factors.final_quantity_before_pack_rounding
-                                )}
-                                .
-                              </Text>
-                              <Text variant="bodySmall" style={styles.explanationLine}>
-                                {formatExplanationValue(
-                                  explanation.quantity_factors.packs_to_order
-                                )}{' '}
-                                packs x{' '}
-                                {formatExplanationValue(
-                                  explanation.quantity_factors.quantity_per_pack
-                                )}{' '}
-                                {explanation.quantity_factors.supplier_unit} ={' '}
-                                {formatExplanationValue(
-                                  explanation.quantity_factors.total_quantity_ordered
-                                )}{' '}
-                                {explanation.quantity_factors.supplier_unit}.
-                              </Text>
-                              <Text variant="bodySmall" style={styles.explanationLine}>
-                                Supplier: {explanation.supplier_factors.selected_supplier} (
-                                {formatSelectionRule(explanation.supplier_factors.selection_rule)}).
-                              </Text>
-                              {warnings.length ? (
-                                <Text
-                                  variant="bodySmall"
-                                  style={[styles.explanationLine, { color: theme.colors.error }]}
-                                >
-                                  Assumptions: {warnings.join(', ')}.
-                                </Text>
-                              ) : null}
-                            </View>
-                          ) : null}
-                        </Card.Content>
-                      </Card>
-                    );
-                  })}
-                </>
-              ) : null}
+                            ) : null}
+                          </View>
+                        ) : null}
+                      </Card.Content>
+                    </Card>
+                  );
+                })
+              ) : (
+                <Card style={styles.explanationCard} mode="outlined">
+                  <Card.Content>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      {getExplanationEmptyState(selectedPO.review_context?.source_type)}
+                    </Text>
+                  </Card.Content>
+                </Card>
+              )}
 
               <Divider style={{ marginVertical: 12 }} />
 
@@ -1336,12 +1466,8 @@ export default function PurchaseOrders(): React.JSX.Element {
                   </Button>
                 )}
                 {selectedPO.status === 'pending' && (
-                  <Button
-                    mode="contained"
-                    onPress={() => handleStatusUpdate(selectedPO.order_id, 'delivered')}
-                    loading={updatingStatus}
-                  >
-                    Mark as Delivered
+                  <Button mode="contained" onPress={() => openReceiptModal(selectedPO)}>
+                    Receive Order
                   </Button>
                 )}
                 {['cart', 'pending'].includes(selectedPO.status) && (
@@ -1358,6 +1484,97 @@ export default function PurchaseOrders(): React.JSX.Element {
               </View>
             </ScrollView>
           )}
+        </Modal>
+
+        <Modal
+          visible={!!receiptDraft}
+          onDismiss={closeReceiptModal}
+          contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}
+        >
+          <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 12 }}>
+            Receive Order
+          </Text>
+          {receiptDraft && (
+            <ScrollView style={{ maxHeight: 420 }}>
+              <TextInput
+                label="Actual delivery date"
+                value={receiptDraft.deliveryDate}
+                onChangeText={value =>
+                  setReceiptDraft(prev => (prev ? { ...prev, deliveryDate: value } : prev))
+                }
+                mode="outlined"
+                style={{ marginBottom: 12 }}
+              />
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                <Chip compact mode="outlined" style={{ marginRight: 8 }}>
+                  {receiptDraft.items.length} lines
+                </Chip>
+                <Button mode="text" compact onPress={resetReceiptDraftToOrdered}>
+                  Match All
+                </Button>
+              </View>
+              {receiptDraft.items.map(item => {
+                const receivedQty = Number(item.quantity_received || 0);
+                const variance = receivedQty - item.quantity_ordered;
+                return (
+                  <Card key={item.order_item_id} style={styles.explanationCard} mode="outlined">
+                    <Card.Content>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={{ flex: 1, paddingRight: 12 }}>
+                          <Text variant="titleSmall" style={{ fontWeight: '600' }}>
+                            {item.ingredient_name}
+                          </Text>
+                          <Text
+                            variant="bodySmall"
+                            style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
+                          >
+                            Ordered {item.quantity_ordered} {item.unit}
+                          </Text>
+                        </View>
+                        <View style={{ width: 128 }}>
+                          <TextInput
+                            label="Received"
+                            value={item.quantity_received}
+                            onChangeText={value =>
+                              updateReceiptDraftItem(item.order_item_id, value)
+                            }
+                            keyboardType="numeric"
+                            mode="outlined"
+                            dense
+                          />
+                        </View>
+                      </View>
+                      <Chip
+                        compact
+                        mode="outlined"
+                        style={{ alignSelf: 'flex-start', marginTop: 8 }}
+                      >
+                        {variance === 0
+                          ? 'match'
+                          : variance < 0
+                            ? `${Math.abs(variance)} short`
+                            : `${variance} over`}
+                      </Chip>
+                    </Card.Content>
+                  </Card>
+                );
+              })}
+            </ScrollView>
+          )}
+
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+            <Button mode="text" onPress={closeReceiptModal} disabled={receivingOrder}>
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              onPress={handleReceiveOrder}
+              loading={receivingOrder}
+              disabled={receivingOrder}
+            >
+              Confirm Receipt
+            </Button>
+          </View>
         </Modal>
 
         {/* Edit Item Modal */}

@@ -20,7 +20,9 @@ import {
   ListItemText,
   ListItemIcon,
   Fade,
+  Divider,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import AddIcon from '@mui/icons-material/Add';
@@ -46,6 +48,19 @@ const formatSelectionRule = (rule?: string) => {
 
 const getForecastSourceLabel = (suggestions: POSuggestionsResponse) =>
   suggestions.forecast_source_type === 'eod' ? 'EOD' : 'On-demand';
+
+const getSupplierGroupKey = (supplierId?: number | null) =>
+  supplierId === null || supplierId === undefined ? 'unspecified' : String(supplierId);
+
+const getSupplierLabel = (supplierName?: string | null, supplierId?: number | null) => {
+  if (supplierName) {
+    return supplierName;
+  }
+  if (supplierId === null || supplierId === undefined) {
+    return 'Unspecified supplier';
+  }
+  return `Supplier ${supplierId}`;
+};
 
 const formatForecastGeneratedAt = (value: string | null) => {
   if (!value) {
@@ -100,8 +115,8 @@ interface POSupplierReviewProps {
   suggestions: POSuggestionsResponse;
   selectedItems: Map<string, number>;
   setSelectedItems: React.Dispatch<React.SetStateAction<Map<string, number>>>;
-  expandedSuppliers: Set<number>;
-  setExpandedSuppliers: React.Dispatch<React.SetStateAction<Set<number>>>;
+  expandedSuppliers: Set<string>;
+  setExpandedSuppliers: React.Dispatch<React.SetStateAction<Set<string>>>;
   orderNotes: string;
   setOrderNotes: (notes: string) => void;
   showSummary?: boolean;
@@ -135,8 +150,12 @@ export default function POSupplierReview({
   };
 
   // Toggle item selection
-  const toggleItemSelection = (supplierId: number, ingredientId: number, suggestedQty: number) => {
-    const key = `${supplierId}-${ingredientId}`;
+  const toggleItemSelection = (
+    supplierId: number | null | undefined,
+    ingredientId: number,
+    suggestedQty: number
+  ) => {
+    const key = `${getSupplierGroupKey(supplierId)}-${ingredientId}`;
     setSelectedItems(prev => {
       const next = new Map(prev);
       if (next.has(key)) {
@@ -149,13 +168,14 @@ export default function POSupplierReview({
   };
 
   // Toggle supplier expansion
-  const toggleSupplierExpand = (supplierId: number) => {
+  const toggleSupplierExpand = (supplierId: number | null | undefined) => {
+    const groupKey = getSupplierGroupKey(supplierId);
     setExpandedSuppliers(prev => {
       const next = new Set(prev);
-      if (next.has(supplierId)) {
-        next.delete(supplierId);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
       } else {
-        next.add(supplierId);
+        next.add(groupKey);
       }
       return next;
     });
@@ -164,7 +184,7 @@ export default function POSupplierReview({
   // Toggle all supplier items
   const toggleSupplierItems = (supplier: POSuggestionGroup) => {
     const supplierKeys = supplier.items.map(i => ({
-      key: `${supplier.supplier_id}-${i.ingredient_id}`,
+      key: `${getSupplierGroupKey(supplier.supplier_id)}-${i.ingredient_id}`,
       qty: i.quantity_to_order,
     }));
     const allSelected = supplierKeys.every(k => selectedItems.has(k.key));
@@ -184,28 +204,62 @@ export default function POSupplierReview({
   const reviewTotals = useMemo(() => {
     let total = 0;
     let itemCount = 0;
-    const supplierSet = new Set<number>();
+    const supplierSet = new Set<string>();
 
     suggestions.all_items.forEach(item => {
-      const key = `${item.supplier_id}-${item.ingredient_id}`;
+      const key = `${getSupplierGroupKey(item.supplier_id)}-${item.ingredient_id}`;
       if (selectedItems.has(key)) {
         const qty = selectedItems.get(key) || item.quantity_to_order;
         total += qty * item.unit_price;
         itemCount++;
-        supplierSet.add(item.supplier_id);
+        supplierSet.add(getSupplierGroupKey(item.supplier_id));
       }
     });
 
     return { itemCount, total, supplierCount: supplierSet.size };
   }, [suggestions, selectedItems]);
 
+  const supplierBuckets = useMemo(
+    () =>
+      suggestions.suggestions.map(supplier => {
+        const supplierGroupKey = getSupplierGroupKey(supplier.supplier_id);
+        const selectedCount = supplier.items.filter(item =>
+          selectedItems.has(`${supplierGroupKey}-${item.ingredient_id}`)
+        ).length;
+
+        return {
+          key: supplierGroupKey,
+          label: getSupplierLabel(supplier.supplier_name, supplier.supplier_id),
+          selectedCount,
+          totalCount: supplier.items.length,
+          unspecified: supplier.supplier_id === null || supplier.supplier_id === undefined,
+        };
+      }),
+    [selectedItems, suggestions.suggestions]
+  );
+
   return (
     <Fade in timeout={300}>
       <Box>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-          <Stack spacing={0.75}>
-            <Typography variant="subtitle1" fontWeight={600}>
+        <Paper
+          variant="outlined"
+          sx={theme => ({
+            p: 2.5,
+            mb: 2,
+            borderRadius: 3,
+            background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.08)} 0%, ${alpha(
+              theme.palette.background.paper,
+              0.98
+            )} 75%)`,
+          })}
+        >
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" fontWeight={700}>
               {title}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Review one grouped purchasing session, then create a separate draft order for each
+              supplier bucket.
             </Typography>
             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
               <Chip
@@ -250,8 +304,21 @@ export default function POSupplierReview({
                 )}
               </Box>
             )}
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {supplierBuckets.map(bucket => (
+                <Chip
+                  key={bucket.key}
+                  label={`${bucket.label}: ${bucket.selectedCount}/${bucket.totalCount}`}
+                  size="small"
+                  color={
+                    bucket.unspecified ? 'warning' : bucket.selectedCount ? 'primary' : 'default'
+                  }
+                  variant={bucket.selectedCount ? 'filled' : 'outlined'}
+                />
+              ))}
+            </Stack>
           </Stack>
-        </Stack>
+        </Paper>
 
         {showSummary && (
           <Paper sx={{ p: 2, mb: 3, bgcolor: 'primary.50' }} variant="outlined">
@@ -287,14 +354,15 @@ export default function POSupplierReview({
         <Box sx={{ maxHeight, overflow: 'auto' }}>
           <List disablePadding>
             {suggestions.suggestions.map(supplier => {
+              const supplierGroupKey = getSupplierGroupKey(supplier.supplier_id);
               const supplierKeys = supplier.items.map(i => ({
-                key: `${supplier.supplier_id}-${i.ingredient_id}`,
+                key: `${supplierGroupKey}-${i.ingredient_id}`,
                 qty: i.quantity_to_order,
               }));
               const allSelected = supplierKeys.every(k => selectedItems.has(k.key));
               const someSelected = supplierKeys.some(k => selectedItems.has(k.key));
               const supplierTotal = supplier.items.reduce((sum, item) => {
-                const key = `${supplier.supplier_id}-${item.ingredient_id}`;
+                const key = `${supplierGroupKey}-${item.ingredient_id}`;
                 if (selectedItems.has(key)) {
                   return sum + (selectedItems.get(key) || item.quantity_to_order) * item.unit_price;
                 }
@@ -302,10 +370,14 @@ export default function POSupplierReview({
               }, 0);
 
               return (
-                <Box key={supplier.supplier_id} sx={{ mb: 1 }}>
+                <Paper
+                  key={supplierGroupKey}
+                  variant="outlined"
+                  sx={{ mb: 1.5, borderRadius: 3, overflow: 'hidden' }}
+                >
                   <ListItemButton
                     onClick={() => toggleSupplierExpand(supplier.supplier_id)}
-                    sx={{ bgcolor: 'background.paper', borderRadius: 1 }}
+                    sx={{ bgcolor: 'background.paper', px: 2, py: 1.25 }}
                   >
                     <ListItemIcon>
                       <Checkbox
@@ -318,9 +390,22 @@ export default function POSupplierReview({
                       />
                     </ListItemIcon>
                     <ListItemText
-                      primary={<Typography fontWeight={500}>{supplier.supplier_name}</Typography>}
-                      secondary={`${supplier.items.filter(i => selectedItems.has(`${supplier.supplier_id}-${i.ingredient_id}`)).length} items`}
+                      primary={
+                        <Typography fontWeight={700}>
+                          {getSupplierLabel(supplier.supplier_name, supplier.supplier_id)}
+                        </Typography>
+                      }
+                      secondary={`${supplier.items.filter(i => selectedItems.has(`${supplierGroupKey}-${i.ingredient_id}`)).length} of ${supplier.items.length} items selected`}
                     />
+                    {(supplier.supplier_id === null || supplier.supplier_id === undefined) && (
+                      <Chip
+                        label="Draft without supplier"
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                        sx={{ mr: 1 }}
+                      />
+                    )}
                     <Typography
                       variant="subtitle1"
                       fontWeight={600}
@@ -329,14 +414,15 @@ export default function POSupplierReview({
                     >
                       ${supplierTotal.toFixed(2)}
                     </Typography>
-                    {expandedSuppliers.has(supplier.supplier_id) ? <ExpandLess /> : <ExpandMore />}
+                    {expandedSuppliers.has(supplierGroupKey) ? <ExpandLess /> : <ExpandMore />}
                   </ListItemButton>
 
                   <Collapse
-                    in={expandedSuppliers.has(supplier.supplier_id)}
+                    in={expandedSuppliers.has(supplierGroupKey)}
                     timeout="auto"
                     unmountOnExit
                   >
+                    <Divider />
                     <Table size="small" sx={{ ml: 4, width: 'calc(100% - 32px)', mb: 1 }}>
                       <TableHead>
                         <TableRow>
@@ -349,7 +435,7 @@ export default function POSupplierReview({
                       </TableHead>
                       <TableBody>
                         {supplier.items.map(item => {
-                          const key = `${supplier.supplier_id}-${item.ingredient_id}`;
+                          const key = `${supplierGroupKey}-${item.ingredient_id}`;
                           const isSelected = selectedItems.has(key);
                           const qty = selectedItems.get(key) || item.quantity_to_order;
                           const explanation = item.explanation;
@@ -509,22 +595,31 @@ export default function POSupplierReview({
                       </TableBody>
                     </Table>
                   </Collapse>
-                </Box>
+                </Paper>
               );
             })}
           </List>
         </Box>
 
         {showNotes && (
-          <TextField
-            fullWidth
-            label="Order Notes (optional)"
-            value={orderNotes}
-            onChange={e => setOrderNotes(e.target.value)}
-            multiline
-            rows={2}
-            sx={{ mt: 2 }}
-          />
+          <Paper variant="outlined" sx={{ mt: 2, p: 2, borderRadius: 3 }}>
+            <Stack spacing={1}>
+              <Typography variant="subtitle2" fontWeight={700}>
+                Draft notes
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                These notes are copied to each draft order created from this grouped review.
+              </Typography>
+              <TextField
+                fullWidth
+                label="Order Notes (optional)"
+                value={orderNotes}
+                onChange={e => setOrderNotes(e.target.value)}
+                multiline
+                rows={2}
+              />
+            </Stack>
+          </Paper>
         )}
       </Box>
     </Fade>

@@ -10,7 +10,7 @@ class PurchaseOrder(Base):
 
     order_id = Column(Integer, primary_key=True, index=True)
     restaurant_id = Column(Integer, ForeignKey("restaurants.restaurant_id"), nullable=False)
-    supplier_id = Column(Integer, ForeignKey("supplier.supplier_id"), nullable=False)
+    supplier_id = Column(Integer, ForeignKey("supplier.supplier_id"), nullable=True)
     order_date = Column(Date, nullable=False)
     expected_delivery_date = Column(Date)
     actual_delivery_date = Column(Date)

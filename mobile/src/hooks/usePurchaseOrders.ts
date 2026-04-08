@@ -18,6 +18,7 @@ import {
 import type {
   PurchaseOrder,
   PurchaseOrderCreate,
+  PurchaseOrderReceiptRequest,
   PurchaseOrderReceiptSummary,
   PurchaseOrderStatus,
   PurchaseOrderItem,
@@ -57,6 +58,14 @@ export function usePurchaseOrders(options: UsePurchaseOrdersOptions = {}) {
       }
       return updatePurchaseOrderStatus(orderId, status);
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
+    },
+  });
+
+  const receiveOrderMutation = useMutation({
+    mutationFn: ({ orderId, payload }: { orderId: number; payload: PurchaseOrderReceiptRequest }) =>
+      receivePurchaseOrder(orderId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
     },
@@ -127,6 +136,8 @@ export function usePurchaseOrders(options: UsePurchaseOrdersOptions = {}) {
 
     updateStatus: updateStatusMutation.mutateAsync,
     updatingStatus: updateStatusMutation.isPending,
+    receiveOrder: receiveOrderMutation.mutateAsync,
+    receivingOrder: receiveOrderMutation.isPending,
     formatReceiptSummary,
 
     refresh,

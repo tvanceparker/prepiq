@@ -33,6 +33,19 @@ const formatSelectionRule = (rule?: string): string => {
 const getForecastSourceLabel = (suggestions: POSuggestionsResponse): string =>
   suggestions.forecast_source_type === 'eod' ? 'EOD' : 'On-demand';
 
+const getSupplierGroupKey = (supplierId?: number | null) =>
+  supplierId === null || supplierId === undefined ? 'unspecified' : String(supplierId);
+
+const getSupplierLabel = (supplierName?: string | null, supplierId?: number | null): string => {
+  if (supplierName) {
+    return supplierName;
+  }
+  if (supplierId === null || supplierId === undefined) {
+    return 'Unspecified supplier';
+  }
+  return `Supplier ${supplierId}`;
+};
+
 const formatForecastGeneratedAt = (value: string | null): string | null => {
   if (!value) {
     return null;
@@ -86,8 +99,8 @@ interface POSupplierReviewProps {
   suggestions: POSuggestionsResponse;
   selectedItems: Map<string, number>;
   setSelectedItems: React.Dispatch<React.SetStateAction<Map<string, number>>>;
-  expandedSuppliers: Set<number>;
-  setExpandedSuppliers: React.Dispatch<React.SetStateAction<Set<number>>>;
+  expandedSuppliers: Set<string>;
+  setExpandedSuppliers: React.Dispatch<React.SetStateAction<Set<string>>>;
   orderNotes: string;
   setOrderNotes: (notes: string) => void;
 }
@@ -107,37 +120,61 @@ export default function POSupplierReview({
   const reviewTotals = React.useMemo(() => {
     let total = 0;
     let itemCount = 0;
-    const supplierSet = new Set<number>();
+    const supplierSet = new Set<string>();
 
     suggestions.all_items.forEach(item => {
-      const key = `${item.supplier_id}-${item.ingredient_id}`;
+      const key = `${getSupplierGroupKey(item.supplier_id)}-${item.ingredient_id}`;
       if (selectedItems.has(key)) {
         const qty = selectedItems.get(key) || item.quantity_to_order;
         total += qty * item.unit_price;
         itemCount++;
-        supplierSet.add(item.supplier_id);
+        supplierSet.add(getSupplierGroupKey(item.supplier_id));
       }
     });
 
     return { itemCount, total, supplierCount: supplierSet.size };
   }, [suggestions, selectedItems]);
 
+  const supplierBuckets = React.useMemo(
+    () =>
+      suggestions.suggestions.map(supplier => {
+        const supplierGroupKey = getSupplierGroupKey(supplier.supplier_id);
+        const selectedCount = supplier.items.filter(item =>
+          selectedItems.has(`${supplierGroupKey}-${item.ingredient_id}`)
+        ).length;
+
+        return {
+          key: supplierGroupKey,
+          label: getSupplierLabel(supplier.supplier_name, supplier.supplier_id),
+          selectedCount,
+          totalCount: supplier.items.length,
+          unspecified: supplier.supplier_id === null || supplier.supplier_id === undefined,
+        };
+      }),
+    [selectedItems, suggestions.suggestions]
+  );
+
   // Toggle supplier expansion
-  const toggleSupplierExpand = (supplierId: number) => {
+  const toggleSupplierExpand = (supplierId: number | null | undefined) => {
+    const groupKey = getSupplierGroupKey(supplierId);
     setExpandedSuppliers(prev => {
       const next = new Set(prev);
-      if (next.has(supplierId)) {
-        next.delete(supplierId);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
       } else {
-        next.add(supplierId);
+        next.add(groupKey);
       }
       return next;
     });
   };
 
   // Toggle item selection
-  const toggleItemSelection = (supplierId: number, ingredientId: number, suggestedQty: number) => {
-    const key = `${supplierId}-${ingredientId}`;
+  const toggleItemSelection = (
+    supplierId: number | null | undefined,
+    ingredientId: number,
+    suggestedQty: number
+  ) => {
+    const key = `${getSupplierGroupKey(supplierId)}-${ingredientId}`;
     setSelectedItems(prev => {
       const next = new Map(prev);
       if (next.has(key)) {
@@ -152,7 +189,7 @@ export default function POSupplierReview({
   // Toggle all supplier items
   const toggleSupplierItems = (supplier: POSuggestionGroup) => {
     const supplierKeys = supplier.items.map(i => ({
-      key: `${supplier.supplier_id}-${i.ingredient_id}`,
+      key: `${getSupplierGroupKey(supplier.supplier_id)}-${i.ingredient_id}`,
       qty: i.quantity_to_order,
     }));
     const allSelected = supplierKeys.every(k => selectedItems.has(k.key));
@@ -185,6 +222,12 @@ export default function POSupplierReview({
         <View>
           <Text variant="titleMedium" style={styles.title}>
             Review Orders
+          </Text>
+          <Text
+            variant="bodySmall"
+            style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}
+          >
+            Review one grouped session, then create separate draft orders for each supplier bucket.
           </Text>
           <View style={styles.forecastMetaRow}>
             <Chip compact mode="outlined">
@@ -222,6 +265,23 @@ export default function POSupplierReview({
         </View>
       </View>
 
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.bucketRow}
+      >
+        {supplierBuckets.map(bucket => (
+          <Chip
+            key={bucket.key}
+            compact
+            mode={bucket.selectedCount ? 'flat' : 'outlined'}
+            style={[styles.bucketChip, bucket.unspecified ? styles.unspecifiedBucketChip : null]}
+          >
+            {bucket.label}: {bucket.selectedCount}/{bucket.totalCount}
+          </Chip>
+        ))}
+      </ScrollView>
+
       <Card style={styles.summaryCard} mode="contained">
         <Card.Content style={styles.summaryRow}>
           <View style={styles.summaryItem}>
@@ -256,14 +316,15 @@ export default function POSupplierReview({
 
       <ScrollView style={styles.scrollArea}>
         {suggestions.suggestions.map(supplier => {
+          const supplierGroupKey = getSupplierGroupKey(supplier.supplier_id);
           const supplierKeys = supplier.items.map(i => ({
-            key: `${supplier.supplier_id}-${i.ingredient_id}`,
+            key: `${supplierGroupKey}-${i.ingredient_id}`,
             qty: i.quantity_to_order,
           }));
           const allSelected = supplierKeys.every(k => selectedItems.has(k.key));
           const someSelected = supplierKeys.some(k => selectedItems.has(k.key));
           const supplierTotal = supplier.items.reduce((sum, item) => {
-            const key = `${supplier.supplier_id}-${item.ingredient_id}`;
+            const key = `${supplierGroupKey}-${item.ingredient_id}`;
             if (selectedItems.has(key)) {
               return sum + (selectedItems.get(key) || item.quantity_to_order) * item.unit_price;
             }
@@ -271,11 +332,11 @@ export default function POSupplierReview({
           }, 0);
 
           return (
-            <Card key={supplier.supplier_id} style={styles.supplierCard} mode="outlined">
+            <Card key={supplierGroupKey} style={styles.supplierCard} mode="outlined">
               <List.Accordion
-                title={supplier.supplier_name}
-                description={`$${supplierTotal.toFixed(2)}`}
-                expanded={expandedSuppliers.has(supplier.supplier_id)}
+                title={getSupplierLabel(supplier.supplier_name, supplier.supplier_id)}
+                description={`${supplier.items.filter(i => selectedItems.has(`${supplierGroupKey}-${i.ingredient_id}`)).length}/${supplier.items.length} selected · $${supplierTotal.toFixed(2)}`}
+                expanded={expandedSuppliers.has(supplierGroupKey)}
                 onPress={() => toggleSupplierExpand(supplier.supplier_id)}
                 left={props => (
                   <Checkbox
@@ -284,8 +345,15 @@ export default function POSupplierReview({
                   />
                 )}
               >
+                {(supplier.supplier_id === null || supplier.supplier_id === undefined) && (
+                  <View style={styles.unspecifiedNoteWrap}>
+                    <Chip compact mode="outlined" style={styles.unspecifiedNoteChip}>
+                      Draft without supplier
+                    </Chip>
+                  </View>
+                )}
                 {supplier.items.map(item => {
-                  const key = `${supplier.supplier_id}-${item.ingredient_id}`;
+                  const key = `${supplierGroupKey}-${item.ingredient_id}`;
                   const isSelected = selectedItems.has(key);
                   const qty = selectedItems.get(key) || item.quantity_to_order;
                   const explanation = item.explanation;
@@ -440,6 +508,12 @@ export default function POSupplierReview({
         numberOfLines={2}
         style={styles.notesInput}
       />
+      <Text
+        variant="bodySmall"
+        style={[styles.notesHelper, { color: theme.colors.onSurfaceVariant }]}
+      >
+        Notes are copied to each draft order created from this review.
+      </Text>
     </View>
   );
 }
@@ -457,6 +531,10 @@ const styles = StyleSheet.create({
   title: {
     fontWeight: '600',
   },
+  subtitle: {
+    marginTop: 4,
+    maxWidth: 320,
+  },
   forecastMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -471,6 +549,15 @@ const styles = StyleSheet.create({
   },
   forecastWarningText: {
     color: '#b45309',
+  },
+  bucketRow: {
+    paddingBottom: 12,
+  },
+  bucketChip: {
+    marginRight: 8,
+  },
+  unspecifiedBucketChip: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
   },
   summaryCard: {
     borderRadius: 12,
@@ -492,6 +579,14 @@ const styles = StyleSheet.create({
   supplierCard: {
     marginBottom: 8,
     borderRadius: 12,
+  },
+  unspecifiedNoteWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+  },
+  unspecifiedNoteChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
   },
   reviewItem: {
     flexDirection: 'row',
@@ -539,5 +634,8 @@ const styles = StyleSheet.create({
   },
   notesInput: {
     marginTop: 12,
+  },
+  notesHelper: {
+    marginTop: 8,
   },
 });

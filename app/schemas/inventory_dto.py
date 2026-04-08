@@ -10,6 +10,9 @@ class PurchaseOrderItemDTO(BaseModel):
     ingredient_name: str
     ingredient_supplier_id: Optional[int]
     quantity_ordered: float
+    quantity_received: Optional[float] = None
+    variance_quantity: Optional[float] = None
+    variance_status: Optional[Literal["matched", "short", "over"]] = None
     unit: str
     unit_price: float
     total_item_price: float
@@ -44,7 +47,7 @@ class PurchaseOrderCreateItemDTO(BaseModel):
     notes: Optional[str] = None
 
 class PurchaseOrderCreateDTO(BaseModel):
-    supplier_id: int
+    supplier_id: Optional[int] = None
     expected_delivery_date: Optional[date]
     items: List[PurchaseOrderCreateItemDTO]
     notes: Optional[str] = None
@@ -59,13 +62,22 @@ class PurchaseOrderItemUpdateDTO(BaseModel):
 
 class PurchaseOrderReceiptDTO(BaseModel):
     actual_delivery_date: Optional[date] = None
+    received_items: List["PurchaseOrderReceiptItemInDTO"] = []
+
+
+class PurchaseOrderReceiptItemInDTO(BaseModel):
+    order_item_id: int
+    quantity_received: float
 
 
 class PurchaseOrderReceiptItemSummaryDTO(BaseModel):
     order_item_id: int
     ingredient_id: int
     lot_id: int
+    quantity_ordered: float
     quantity_received: float
+    variance_quantity: float
+    variance_status: Literal["matched", "short", "over"]
     unit: str
     receipt_status: Literal["received", "already_received"]
 
@@ -83,8 +95,8 @@ class PurchaseOrderReceiptSummaryDTO(BaseModel):
 class PurchaseOrderDTO(BaseModel):
     order_id: int
     restaurant_id: int
-    supplier_id: int
-    supplier_name: str
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
     order_date: date
     expected_delivery_date: Optional[date]
     actual_delivery_date: Optional[date]
@@ -213,9 +225,9 @@ class POReorderExplanationDTO(BaseModel):
 class POSuggestionItemDTO(BaseModel):
     ingredient_id: int
     ingredient_name: str
-    ingredient_supplier_id: int
-    supplier_id: int
-    supplier_name: str
+    ingredient_supplier_id: Optional[int] = None
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
     current_stock: float
     raw_quantity_needed: float
     quantity_to_order: float
@@ -233,8 +245,8 @@ class POSuggestionItemDTO(BaseModel):
 
 
 class POSuggestionGroupDTO(BaseModel):
-    supplier_id: int
-    supplier_name: str
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
     items: List[POSuggestionItemDTO]
     total_cost: float
 
