@@ -55,6 +55,7 @@ import type {
   PurchaseOrder,
   PurchaseOrderItem,
   PurchaseOrderCreate,
+  PurchaseOrderReceiptRequest,
   PurchaseOrderReceiptSummary,
   PurchaseOrderStatus,
   IngredientName,
@@ -146,11 +147,23 @@ const getReviewItemWarnings = (
 };
 
 type WizardStep = 0 | 1;
+type ReceiptDraft = {
+  orderId: number;
+  deliveryDate: string;
+  items: Array<{
+    order_item_id: number;
+    ingredient_name: string;
+    quantity_ordered: number;
+    quantity_received: string;
+    unit: string;
+  }>;
+};
 
 export default function PurchaseOrders() {
   const qc = useQueryClient();
   const [status, setStatus] = useState<PurchaseOrderStatus>('cart');
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
+  const [receiptDraft, setReceiptDraft] = useState<ReceiptDraft | null>(null);
 
   // Wizard State
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -321,6 +334,20 @@ export default function PurchaseOrders() {
     },
   });
 
+  const receiveOrderMut = useMutation({
+    mutationFn: (args: { order_id: number; payload: PurchaseOrderReceiptRequest }) =>
+      receivePurchaseOrder(args.order_id, args.payload),
+    onSuccess: async data => {
+      await qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      setSelectedOrder(null);
+      setReceiptDraft(null);
+      showToast(formatReceiptSummary(data), 'info');
+    },
+    onError: (err: any) => {
+      showToast(err?.response?.data?.detail || err?.message || 'Failed to receive order', 'error');
+    },
+  });
+
   const generateMut = useMutation({
     mutationFn: (options?: { horizonDaysOverride?: number; useCachedForecastOverride?: boolean }) =>
       generatePOSuggestions(
@@ -397,6 +424,80 @@ export default function PurchaseOrders() {
     setIngredientCart([]);
     setOrderNotes('');
   }, []);
+
+  const openReceiptDialog = useCallback((order: PurchaseOrder) => {
+    setReceiptDraft({
+      orderId: order.order_id,
+      deliveryDate: order.expected_delivery_date
+        ? dayjs(order.expected_delivery_date).format('YYYY-MM-DD')
+        : dayjs().format('YYYY-MM-DD'),
+      items: order.items.map(item => ({
+        order_item_id: item.order_item_id,
+        ingredient_name: item.ingredient_name,
+        quantity_ordered: item.quantity_ordered,
+        quantity_received:
+          item.quantity_received !== null && item.quantity_received !== undefined
+            ? String(item.quantity_received)
+            : String(item.quantity_ordered),
+        unit: item.unit,
+      })),
+    });
+  }, []);
+
+  const closeReceiptDialog = useCallback(() => {
+    setReceiptDraft(null);
+  }, []);
+
+  const updateReceiptDraftItem = useCallback((orderItemId: number, value: string) => {
+    setReceiptDraft(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.map(item =>
+          item.order_item_id === orderItemId ? { ...item, quantity_received: value } : item
+        ),
+      };
+    });
+  }, []);
+
+  const resetReceiptDraftToOrdered = useCallback(() => {
+    setReceiptDraft(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.map(item => ({
+          ...item,
+          quantity_received: String(item.quantity_ordered),
+        })),
+      };
+    });
+  }, []);
+
+  const submitReceipt = useCallback(() => {
+    if (!receiptDraft) return;
+
+    const receivedItems = receiptDraft.items.map(item => ({
+      order_item_id: item.order_item_id,
+      quantity_received: Number(item.quantity_received),
+    }));
+
+    if (
+      receivedItems.some(
+        item => Number.isNaN(item.quantity_received) || item.quantity_received <= 0
+      )
+    ) {
+      showToast('Enter a valid received quantity for every line.', 'warning');
+      return;
+    }
+
+    receiveOrderMut.mutate({
+      order_id: receiptDraft.orderId,
+      payload: {
+        actual_delivery_date: receiptDraft.deliveryDate || undefined,
+        received_items: receivedItems,
+      },
+    });
+  }, [receiptDraft, receiveOrderMut]);
 
   const openSupplierPreviewWizard = useCallback(() => {
     setWizardOpen(true);
@@ -1237,6 +1338,7 @@ export default function PurchaseOrders() {
           <TableRow>
             <TableCell>Ingredient</TableCell>
             <TableCell align="right">Qty</TableCell>
+            <TableCell align="right">Received</TableCell>
             <TableCell>Unit</TableCell>
             <TableCell align="right">Unit Price</TableCell>
             <TableCell align="right">Line Total</TableCell>
@@ -1269,6 +1371,26 @@ export default function PurchaseOrders() {
                     />
                   ) : (
                     it.quantity_ordered
+                  )}
+                </TableCell>
+                <TableCell align="right" sx={{ width: 120 }}>
+                  {it.quantity_received !== null && it.quantity_received !== undefined ? (
+                    <Typography
+                      color={
+                        it.variance_status === 'short'
+                          ? 'warning.main'
+                          : it.variance_status === 'over'
+                            ? 'info.main'
+                            : 'text.primary'
+                      }
+                      fontWeight={
+                        it.variance_status && it.variance_status !== 'matched' ? 700 : 400
+                      }
+                    >
+                      {it.quantity_received}
+                    </Typography>
+                  ) : (
+                    '—'
                   )}
                 </TableCell>
                 <TableCell sx={{ width: 120 }}>{it.unit}</TableCell>
@@ -1323,7 +1445,7 @@ export default function PurchaseOrders() {
             );
           })}
           <TableRow>
-            <TableCell colSpan={4} align="right" sx={{ fontWeight: 600, borderBottom: 'none' }}>
+            <TableCell colSpan={5} align="right" sx={{ fontWeight: 600, borderBottom: 'none' }}>
               Total
             </TableCell>
             <TableCell align="right" sx={{ fontWeight: 600, borderBottom: 'none' }}>
@@ -1616,13 +1738,8 @@ export default function PurchaseOrders() {
 
             <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
               {order.status === 'pending' && (
-                <Button
-                  variant="outlined"
-                  onClick={() =>
-                    updateStatusMut.mutate({ order_id: order.order_id, status: 'delivered' })
-                  }
-                >
-                  Mark Delivered
+                <Button variant="outlined" onClick={() => openReceiptDialog(order)}>
+                  Receive Order
                 </Button>
               )}
               {order.status !== 'delivered' && (
@@ -1804,6 +1921,109 @@ export default function PurchaseOrders() {
         <DialogContent dividers sx={{ minHeight: 460 }}>
           {selectedOrder && <ItemEditor order={selectedOrder} />}
         </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!receiptDraft} onClose={closeReceiptDialog} fullWidth maxWidth="md">
+        <DialogTitle>Receive Order</DialogTitle>
+        <DialogContent dividers>
+          {receiptDraft && (
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={1.5}
+                justifyContent="space-between"
+                alignItems={{ md: 'center' }}
+              >
+                <TextField
+                  label="Actual delivery date"
+                  type="date"
+                  value={receiptDraft.deliveryDate}
+                  onChange={e =>
+                    setReceiptDraft(prev =>
+                      prev ? { ...prev, deliveryDate: e.target.value } : prev
+                    )
+                  }
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ minWidth: { xs: '100%', md: 220 } }}
+                />
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Chip
+                    label={`${receiptDraft.items.length} lines`}
+                    size="small"
+                    variant="outlined"
+                  />
+                  <Button variant="text" onClick={resetReceiptDraftToOrdered}>
+                    Match All To Ordered
+                  </Button>
+                </Stack>
+              </Stack>
+
+              <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Ingredient</TableCell>
+                      <TableCell align="right">Ordered</TableCell>
+                      <TableCell align="right">Received</TableCell>
+                      <TableCell align="right">Variance</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {receiptDraft.items.map(item => {
+                      const receivedQty = Number(item.quantity_received || 0);
+                      const variance = receivedQty - item.quantity_ordered;
+
+                      return (
+                        <TableRow key={item.order_item_id}>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight={600}>
+                              {item.ingredient_name}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {item.unit}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">{item.quantity_ordered}</TableCell>
+                          <TableCell align="right" sx={{ width: 180 }}>
+                            <TextField
+                              size="small"
+                              type="number"
+                              value={item.quantity_received}
+                              onChange={e =>
+                                updateReceiptDraftItem(item.order_item_id, e.target.value)
+                              }
+                              inputProps={{ min: 0, step: '0.01' }}
+                            />
+                          </TableCell>
+                          <TableCell align="right">
+                            <Chip
+                              size="small"
+                              label={
+                                variance === 0
+                                  ? 'match'
+                                  : variance < 0
+                                    ? `${Math.abs(variance)} short`
+                                    : `${variance} over`
+                              }
+                              color={variance === 0 ? 'default' : variance < 0 ? 'warning' : 'info'}
+                              variant="outlined"
+                            />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </Paper>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeReceiptDialog}>Cancel</Button>
+          <Button variant="contained" onClick={submitReceipt} disabled={receiveOrderMut.isPending}>
+            {receiveOrderMut.isPending ? 'Receiving...' : 'Confirm Receipt'}
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {/* Snackbar */}

@@ -52,6 +52,17 @@ interface POSection {
 
 type WizardStep = 0 | 1;
 const WIZARD_STEPS = ['Method', 'Build'];
+type ReceiptDraft = {
+  orderId: number;
+  deliveryDate: string;
+  items: Array<{
+    order_item_id: number;
+    ingredient_name: string;
+    quantity_ordered: number;
+    quantity_received: string;
+    unit: string;
+  }>;
+};
 
 const getForecastSourceLabel = (forecastSourceType: 'eod' | 'on_demand') =>
   forecastSourceType === 'eod' ? 'EOD' : 'On-demand';
@@ -144,6 +155,7 @@ export default function PurchaseOrders(): React.JSX.Element {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<PurchaseOrderStatus | 'all'>('all');
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [receiptDraft, setReceiptDraft] = useState<ReceiptDraft | null>(null);
 
   // Unified Wizard State
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -179,6 +191,8 @@ export default function PurchaseOrders(): React.JSX.Element {
     refresh,
     updateStatus,
     updatingStatus,
+    receiveOrder,
+    receivingOrder,
     formatReceiptSummary,
     createOrder,
     updateItem,
@@ -296,6 +310,88 @@ export default function PurchaseOrders(): React.JSX.Element {
       showToast('Order status updated.');
     }
     setSelectedPO(null);
+  };
+
+  const openReceiptModal = (order: PurchaseOrder) => {
+    setReceiptDraft({
+      orderId: order.order_id,
+      deliveryDate: order.expected_delivery_date
+        ? new Date(order.expected_delivery_date).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0],
+      items: order.items.map(item => ({
+        order_item_id: item.order_item_id,
+        ingredient_name: item.ingredient_name,
+        quantity_ordered: item.quantity_ordered,
+        quantity_received:
+          item.quantity_received !== null && item.quantity_received !== undefined
+            ? String(item.quantity_received)
+            : String(item.quantity_ordered),
+        unit: item.unit,
+      })),
+    });
+  };
+
+  const closeReceiptModal = () => {
+    setReceiptDraft(null);
+  };
+
+  const updateReceiptDraftItem = (orderItemId: number, value: string) => {
+    setReceiptDraft(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.map(item =>
+          item.order_item_id === orderItemId ? { ...item, quantity_received: value } : item
+        ),
+      };
+    });
+  };
+
+  const resetReceiptDraftToOrdered = () => {
+    setReceiptDraft(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.map(item => ({
+          ...item,
+          quantity_received: String(item.quantity_ordered),
+        })),
+      };
+    });
+  };
+
+  const handleReceiveOrder = async () => {
+    if (!receiptDraft) return;
+
+    const received_items = receiptDraft.items.map(item => ({
+      order_item_id: item.order_item_id,
+      quantity_received: Number(item.quantity_received),
+    }));
+
+    if (
+      received_items.some(
+        item => Number.isNaN(item.quantity_received) || item.quantity_received <= 0
+      )
+    ) {
+      showToast('Enter a valid received quantity for every line.');
+      return;
+    }
+
+    try {
+      const result = await receiveOrder({
+        orderId: receiptDraft.orderId,
+        payload: {
+          actual_delivery_date: receiptDraft.deliveryDate || undefined,
+          received_items,
+        },
+      });
+      showToast(formatReceiptSummary(result));
+      setSelectedPO(null);
+      closeReceiptModal();
+    } catch (error) {
+      console.error('Failed to receive order', error);
+      showToast('Failed to receive order.');
+    }
   };
 
   const openItemEditor = (item: PurchaseOrderItem) => {
@@ -1204,7 +1300,7 @@ export default function PurchaseOrders(): React.JSX.Element {
                     <List.Item
                       key={index}
                       title={item.ingredient_name || `Item ${index + 1}`}
-                      description={`Qty: ${item.quantity_ordered} | Unit: $${item.unit_price?.toFixed(2)}`}
+                      description={`Qty: ${item.quantity_ordered}${item.quantity_received !== null && item.quantity_received !== undefined ? ` | Received: ${item.quantity_received}` : ''} | Unit: $${item.unit_price?.toFixed(2)}`}
                       right={() => (
                         <Text
                           variant="bodyMedium"
@@ -1355,12 +1451,8 @@ export default function PurchaseOrders(): React.JSX.Element {
                   </Button>
                 )}
                 {selectedPO.status === 'pending' && (
-                  <Button
-                    mode="contained"
-                    onPress={() => handleStatusUpdate(selectedPO.order_id, 'delivered')}
-                    loading={updatingStatus}
-                  >
-                    Mark as Delivered
+                  <Button mode="contained" onPress={() => openReceiptModal(selectedPO)}>
+                    Receive Order
                   </Button>
                 )}
                 {['cart', 'pending'].includes(selectedPO.status) && (
@@ -1377,6 +1469,97 @@ export default function PurchaseOrders(): React.JSX.Element {
               </View>
             </ScrollView>
           )}
+        </Modal>
+
+        <Modal
+          visible={!!receiptDraft}
+          onDismiss={closeReceiptModal}
+          contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}
+        >
+          <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 12 }}>
+            Receive Order
+          </Text>
+          {receiptDraft && (
+            <ScrollView style={{ maxHeight: 420 }}>
+              <TextInput
+                label="Actual delivery date"
+                value={receiptDraft.deliveryDate}
+                onChangeText={value =>
+                  setReceiptDraft(prev => (prev ? { ...prev, deliveryDate: value } : prev))
+                }
+                mode="outlined"
+                style={{ marginBottom: 12 }}
+              />
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                <Chip compact mode="outlined" style={{ marginRight: 8 }}>
+                  {receiptDraft.items.length} lines
+                </Chip>
+                <Button mode="text" compact onPress={resetReceiptDraftToOrdered}>
+                  Match All
+                </Button>
+              </View>
+              {receiptDraft.items.map(item => {
+                const receivedQty = Number(item.quantity_received || 0);
+                const variance = receivedQty - item.quantity_ordered;
+                return (
+                  <Card key={item.order_item_id} style={styles.explanationCard} mode="outlined">
+                    <Card.Content>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={{ flex: 1, paddingRight: 12 }}>
+                          <Text variant="titleSmall" style={{ fontWeight: '600' }}>
+                            {item.ingredient_name}
+                          </Text>
+                          <Text
+                            variant="bodySmall"
+                            style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
+                          >
+                            Ordered {item.quantity_ordered} {item.unit}
+                          </Text>
+                        </View>
+                        <View style={{ width: 128 }}>
+                          <TextInput
+                            label="Received"
+                            value={item.quantity_received}
+                            onChangeText={value =>
+                              updateReceiptDraftItem(item.order_item_id, value)
+                            }
+                            keyboardType="numeric"
+                            mode="outlined"
+                            dense
+                          />
+                        </View>
+                      </View>
+                      <Chip
+                        compact
+                        mode="outlined"
+                        style={{ alignSelf: 'flex-start', marginTop: 8 }}
+                      >
+                        {variance === 0
+                          ? 'match'
+                          : variance < 0
+                            ? `${Math.abs(variance)} short`
+                            : `${variance} over`}
+                      </Chip>
+                    </Card.Content>
+                  </Card>
+                );
+              })}
+            </ScrollView>
+          )}
+
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+            <Button mode="text" onPress={closeReceiptModal} disabled={receivingOrder}>
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              onPress={handleReceiveOrder}
+              loading={receivingOrder}
+              disabled={receivingOrder}
+            >
+              Confirm Receipt
+            </Button>
+          </View>
         </Modal>
 
         {/* Edit Item Modal */}

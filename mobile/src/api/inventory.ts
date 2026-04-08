@@ -8,6 +8,7 @@ import type {
   PurchaseOrderItem,
   PurchaseOrderItemAddResult,
   PurchaseOrderItemDeleteResult,
+  PurchaseOrderReceiptRequest,
   PurchaseOrderItemUpdateResult,
   PurchaseOrderReceiptSummary,
   PurchaseOrderStatus,
@@ -158,10 +159,11 @@ export const updatePurchaseOrderStatus = async (
 
 export const receivePurchaseOrder = async (
   order_id: number,
-  actual_delivery_date?: string
+  payload?: PurchaseOrderReceiptRequest
 ): Promise<PurchaseOrderReceiptSummary> => {
   return post(`/inventory/purchase_orders/${order_id}/receive`, {
-    actual_delivery_date,
+    actual_delivery_date: payload?.actual_delivery_date,
+    received_items: payload?.received_items ?? [],
   });
 };
 

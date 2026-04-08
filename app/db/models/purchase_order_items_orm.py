@@ -15,6 +15,7 @@ class PurchaseOrderItem(Base):
     ingredient_supplier_id = Column(Integer, ForeignKey("ingredient_supplier.ingredient_supplier_id"))
     
     quantity_ordered = Column(DECIMAL(10, 2))
+    quantity_received = Column(DECIMAL(10, 2), nullable=True)
     unit = Column(String(20))
     unit_price = Column(DECIMAL(10, 2))
     total_item_price = Column(DECIMAL(10, 2), default=0.00)

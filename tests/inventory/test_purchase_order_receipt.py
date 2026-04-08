@@ -36,6 +36,8 @@ async def test_receive_purchase_order_creates_lots_updates_inventory_and_marks_d
         ingredient_id=101,
         ingredient_supplier_id=201,
         quantity_ordered=3,
+        quantity_received=None,
+        unit='lb',
     )
     ingredient_supplier = MagicMock(
         ingredient_id=101,
@@ -95,7 +97,10 @@ async def test_receive_purchase_order_creates_lots_updates_inventory_and_marks_d
                 'order_item_id': 11,
                 'ingredient_id': 101,
                 'lot_id': 401,
-                'quantity_received': 30.0,
+                'quantity_ordered': 3.0,
+                'quantity_received': 3.0,
+                'variance_quantity': 0.0,
+                'variance_status': 'matched',
                 'unit': 'lb',
                 'receipt_status': 'received',
             }
@@ -114,10 +119,13 @@ async def test_receive_purchase_order_returns_existing_receipt_on_replay(invento
         ingredient_id=101,
         ingredient_supplier_id=201,
         quantity_ordered=3,
+        quantity_received=None,
+        unit='lb',
     )
     existing_lot = MagicMock(
         lot_id=401,
         quantity=30,
+        total_received=3,
         unit='lb',
     )
 
@@ -142,7 +150,10 @@ async def test_receive_purchase_order_returns_existing_receipt_on_replay(invento
                 'order_item_id': 11,
                 'ingredient_id': 101,
                 'lot_id': 401,
-                'quantity_received': 30.0,
+                'quantity_ordered': 3.0,
+                'quantity_received': 3.0,
+                'variance_quantity': 0.0,
+                'variance_status': 'matched',
                 'unit': 'lb',
                 'receipt_status': 'already_received',
             }
@@ -467,6 +478,54 @@ async def test_receive_purchase_order_reuses_existing_transaction(inventory_serv
 
 
 @pytest.mark.asyncio
+async def test_receive_purchase_order_uses_item_level_received_quantities(inventory_service):
+    purchase_order = MagicMock(status='pending', actual_delivery_date=None)
+    purchase_order_item = MagicMock(
+        order_item_id=11,
+        ingredient_id=101,
+        ingredient_supplier_id=201,
+        quantity_ordered=3,
+        quantity_received=None,
+        unit='lb',
+    )
+    ingredient_supplier = MagicMock(
+        ingredient_id=101,
+        unit='lb',
+        pack_size=2,
+        quantity_per_pack_item=5,
+        shelf_life_days=7,
+    )
+    inventory = MagicMock(inventory_id=301, quantity_on_hand=10, unit='lb')
+    ingredient = MagicMock(unit='lb', average_weight_per_unit=None)
+    lot = MagicMock(lot_id=401)
+
+    inventory_service.purchase_order_repo.get_by_id.return_value = purchase_order
+    inventory_service.purchase_order_item_repo.get_by_field.return_value = [purchase_order_item]
+    inventory_service.inventory_lot_repo.get_by_purchase_order_item_id.return_value = None
+    inventory_service.ingredient_supplier_repo.get_by_id.return_value = ingredient_supplier
+    inventory_service.inventory_repo.get_inventory_by_ingredient.return_value = inventory
+    inventory_service.ingredient_repo.get_by_id.return_value = ingredient
+    inventory_service.inventory_lot_repo.create.return_value = lot
+
+    result = await inventory_service.receive_purchase_order(
+        order_id=55,
+        actual_delivery_date=date(2026, 3, 28),
+        received_items=[{'order_item_id': 11, 'quantity_received': 2}],
+    )
+
+    lot_payload = inventory_service.inventory_lot_repo.create.await_args.args[0]
+    assert float(lot_payload['total_received']) == 2.0
+    inventory_service.purchase_order_item_repo.update.assert_any_await(
+        11,
+        {'quantity_received': Decimal('2.0')},
+    )
+    assert result['received_items'][0]['quantity_ordered'] == 3.0
+    assert result['received_items'][0]['quantity_received'] == 2
+    assert result['received_items'][0]['variance_quantity'] == -1.0
+    assert result['received_items'][0]['variance_status'] == 'short'
+
+
+@pytest.mark.asyncio
 async def test_receive_purchase_order_resumes_partial_receipt_without_replaying_existing_lots(
     inventory_service,
 ):
@@ -476,14 +535,18 @@ async def test_receive_purchase_order_resumes_partial_receipt_without_replaying_
         ingredient_id=101,
         ingredient_supplier_id=201,
         quantity_ordered=3,
+        quantity_received=3,
+        unit='lb',
     )
     missing_item = MagicMock(
         order_item_id=12,
         ingredient_id=102,
         ingredient_supplier_id=202,
         quantity_ordered=4,
+        quantity_received=None,
+        unit='lb',
     )
-    existing_lot = MagicMock(lot_id=401, quantity=30, unit='lb')
+    existing_lot = MagicMock(lot_id=401, quantity=30, total_received=3, unit='lb')
     ingredient_supplier = MagicMock(
         ingredient_id=102,
         unit='lb',
@@ -523,7 +586,10 @@ async def test_receive_purchase_order_resumes_partial_receipt_without_replaying_
             'order_item_id': 11,
             'ingredient_id': 101,
             'lot_id': 401,
-            'quantity_received': 30.0,
+            'quantity_ordered': 3.0,
+            'quantity_received': 3.0,
+            'variance_quantity': 0.0,
+            'variance_status': 'matched',
             'unit': 'lb',
             'receipt_status': 'already_received',
         },
@@ -531,7 +597,10 @@ async def test_receive_purchase_order_resumes_partial_receipt_without_replaying_
             'order_item_id': 12,
             'ingredient_id': 102,
             'lot_id': 402,
-            'quantity_received': 8.0,
+            'quantity_ordered': 4.0,
+            'quantity_received': 4.0,
+            'variance_quantity': 0.0,
+            'variance_status': 'matched',
             'unit': 'lb',
             'receipt_status': 'received',
         },

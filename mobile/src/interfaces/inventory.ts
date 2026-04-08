@@ -133,6 +133,9 @@ export interface PurchaseOrderItem {
   ingredient_name: string;
   ingredient_supplier_id?: number | null;
   quantity_ordered: number;
+  quantity_received?: number | null;
+  variance_quantity?: number | null;
+  variance_status?: 'matched' | 'short' | 'over' | null;
   unit: string;
   unit_price: number;
   total_item_price: number;
@@ -180,9 +183,22 @@ export interface PurchaseOrderReceiptItemSummary {
   order_item_id: number;
   ingredient_id: number;
   lot_id: number;
+  quantity_ordered: number;
   quantity_received: number;
+  variance_quantity: number;
+  variance_status: 'matched' | 'short' | 'over';
   unit: string;
   receipt_status: 'received' | 'already_received';
+}
+
+export interface PurchaseOrderReceiptItemInput {
+  order_item_id: number;
+  quantity_received: number;
+}
+
+export interface PurchaseOrderReceiptRequest {
+  actual_delivery_date?: string | null;
+  received_items?: PurchaseOrderReceiptItemInput[];
 }
 
 export interface PurchaseOrderReceiptSummary {

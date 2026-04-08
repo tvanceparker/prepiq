@@ -10,6 +10,9 @@ class PurchaseOrderItemDTO(BaseModel):
     ingredient_name: str
     ingredient_supplier_id: Optional[int]
     quantity_ordered: float
+    quantity_received: Optional[float] = None
+    variance_quantity: Optional[float] = None
+    variance_status: Optional[Literal["matched", "short", "over"]] = None
     unit: str
     unit_price: float
     total_item_price: float
@@ -59,13 +62,22 @@ class PurchaseOrderItemUpdateDTO(BaseModel):
 
 class PurchaseOrderReceiptDTO(BaseModel):
     actual_delivery_date: Optional[date] = None
+    received_items: List["PurchaseOrderReceiptItemInDTO"] = []
+
+
+class PurchaseOrderReceiptItemInDTO(BaseModel):
+    order_item_id: int
+    quantity_received: float
 
 
 class PurchaseOrderReceiptItemSummaryDTO(BaseModel):
     order_item_id: int
     ingredient_id: int
     lot_id: int
+    quantity_ordered: float
     quantity_received: float
+    variance_quantity: float
+    variance_status: Literal["matched", "short", "over"]
     unit: str
     receipt_status: Literal["received", "already_received"]
 
