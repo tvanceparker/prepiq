@@ -26,6 +26,7 @@ class Ingredient(Base):
     recipe_ingredients = relationship(
         "RecipeIngredient",
         back_populates="ingredient",
+        primaryjoin="and_(Ingredient.ingredient_id == foreign(RecipeIngredient.reference_id), RecipeIngredient.ingredient_type == 'ingredient')",
         overlaps="recipe_ingredients",
     )
 

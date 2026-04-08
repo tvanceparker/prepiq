@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence
@@ -14,6 +15,7 @@ from app.repositories.inventory_deduction_discrepancies_repo import InventoryDed
 from app.repositories.inventory_usage_log_repo import InventoryUsageLogRepository
 from app.repositories.menu_item_recipes_repo import MenuItemRecipeRepository
 from app.repositories.recipe_ingredients_repo import RecipeIngredientRepository
+from app.repositories.recipes_repo import RecipeRepository
 from app.repositories.restaurants_repo import RestaurantRepository
 from app.repositories.sales_repo import SalesRepository
 from app.repositories.alerts_repo import AlertRepository
@@ -46,6 +48,7 @@ class InventoryDeductionHelper:
         self.sales_repo = SalesRepository(db, restaurant_id)
         self.alert_repo = AlertRepository(db, restaurant_id)
         self.alerts_service = AlertsService(db, restaurant_id, subscription_tier, employee_id)
+        self.recipe_repo = RecipeRepository(db, restaurant_id)
 
     async def _reference_context(self, reference_type: str, reference_id: int) -> Dict[str, Any]:
         context: Dict[str, Any] = {
@@ -144,23 +147,18 @@ class InventoryDeductionHelper:
                 continue
 
             for mir in menu_item_recipes:
-                recipe_ingredients = await self.recipe_ingredient_repo.get_by_recipe_id(
-                    mir.recipe_id
+                ingredient_leafs, batch_leafs = await self._expand_recipe_usage(
+                    mir.recipe_id,
+                    quantity,
                 )
-                for ri in recipe_ingredients:
-                    used_qty = Decimal(str(ri.quantity_used or 0)) * quantity
-                    reference_id = ri.reference_id
-                    if ri.ingredient_type == "ingredient" and reference_id:
-                        ingredient = await self.ingredient_repo.get_by_id(reference_id)
-                        if not ingredient:
-                            continue
-                        unit = ingredient.unit or "count"
-                        ingredient_totals.setdefault(reference_id, Decimal("0"))
-                        ingredient_totals[reference_id] += used_qty
-                        ingredient_units[reference_id] = unit
-                    elif ri.ingredient_type == "batch" and reference_id:
-                        batch_totals.setdefault(reference_id, Decimal("0"))
-                        batch_totals[reference_id] += used_qty
+                for ingredient_id, payload in ingredient_leafs.items():
+                    ingredient_totals.setdefault(ingredient_id, Decimal("0"))
+                    ingredient_totals[ingredient_id] += payload["quantity"]
+                    ingredient_units[ingredient_id] = payload["unit"]
+
+                for batch_recipe_id, total_qty in batch_leafs.items():
+                    batch_totals.setdefault(batch_recipe_id, Decimal("0"))
+                    batch_totals[batch_recipe_id] += total_qty
 
         for ingredient_id, qty in ingredient_totals.items():
             usage_summary.append(
@@ -185,6 +183,54 @@ class InventoryDeductionHelper:
             )
 
         return usage_summary
+
+    async def _expand_recipe_usage(
+        self,
+        recipe_id: int,
+        multiplier: Decimal,
+        visited: Optional[set[int]] = None,
+    ) -> tuple[Dict[int, Dict[str, Any]], Dict[int, Decimal]]:
+        visited = visited or set()
+        if recipe_id in visited:
+            raise ValueError(f"Recipe graph cycle detected while expanding recipe {recipe_id}")
+
+        visited.add(recipe_id)
+        recipe_ingredients = await self.recipe_ingredient_repo.get_by_recipe_id(recipe_id)
+        ingredient_leafs: Dict[int, Dict[str, Any]] = {}
+        batch_leafs: Dict[int, Decimal] = defaultdict(Decimal)
+
+        for component in recipe_ingredients:
+            component_type = getattr(component, "ingredient_type", "ingredient")
+            component_multiplier = Decimal(str(component.quantity_used or 0)) * multiplier
+            reference_id = getattr(component, "reference_id", None)
+
+            if component_type == "ingredient" and reference_id:
+                ingredient = await self.ingredient_repo.get_by_id(reference_id)
+                if not ingredient:
+                    continue
+                current = ingredient_leafs.setdefault(
+                    int(reference_id),
+                    {"quantity": Decimal("0"), "unit": ingredient.unit or "count"},
+                )
+                current["quantity"] += component_multiplier
+            elif component_type == "batch" and reference_id:
+                batch_leafs[int(reference_id)] += component_multiplier
+            elif component_type == "recipe" and reference_id:
+                nested_ingredients, nested_batches = await self._expand_recipe_usage(
+                    int(reference_id),
+                    component_multiplier,
+                    visited.copy(),
+                )
+                for ingredient_id, payload in nested_ingredients.items():
+                    current = ingredient_leafs.setdefault(
+                        ingredient_id,
+                        {"quantity": Decimal("0"), "unit": payload["unit"]},
+                    )
+                    current["quantity"] += payload["quantity"]
+                for batch_recipe_id, qty in nested_batches.items():
+                    batch_leafs[batch_recipe_id] += qty
+
+        return ingredient_leafs, batch_leafs
 
     async def _apply_usage_summary(
         self,

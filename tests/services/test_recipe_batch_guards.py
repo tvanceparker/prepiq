@@ -74,6 +74,45 @@ async def test_delete_recipe_rejects_when_recipe_is_still_linked(menu_service):
 
 
 @pytest.mark.asyncio
+async def test_update_recipe_with_ingredients_rejects_nested_recipe_cycles(menu_service):
+    menu_service.recipe_repo.get_by_id.side_effect = [
+        MagicMock(recipe_id=10),
+        MagicMock(recipe_id=20),
+    ]
+    menu_service.recipe_ingredient_repo.get_by_recipe_id.return_value = [
+        MagicMock(ingredient_type="recipe", reference_id=10)
+    ]
+
+    with pytest.raises(ValueError, match="create a cycle"):
+        await menu_service.update_recipe_with_ingredients(
+            {
+                "recipe_id": 10,
+                "name": "Burger Combo",
+                "description": "Test",
+                "ingredients": [
+                    {
+                        "reference_id": 20,
+                        "type": "recipe",
+                        "quantity": Decimal("1.0"),
+                        "unit": "portion",
+                    }
+                ],
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_delete_recipe_rejects_when_recipe_is_nested_in_other_recipe(menu_service):
+    menu_service.menu_recipe_repo.get_by_recipe.return_value = []
+    menu_service.recipe_ingredient_repo.get_all_by_reference_id_and_type.return_value = [MagicMock()]
+
+    with pytest.raises(ValueError, match="nested recipe"):
+        await menu_service.delete_recipe(55)
+
+    menu_service.recipe_repo.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_create_batch_recipe_rejects_missing_batch_reference(prep_service):
     prep_service.batch_recipe_repo.get_by_id.return_value = None
 

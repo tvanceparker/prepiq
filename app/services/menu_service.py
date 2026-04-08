@@ -66,12 +66,50 @@ class MenuService:
                 raise ValueError(f"Ingredient reference {reference_id} not found.")
             return getattr(ingredient, "unit", None)
 
-        batch_recipe = await self.batch_recipe_repo.get_by_id(reference_id)
-        if not batch_recipe:
-            raise ValueError(f"Batch recipe reference {reference_id} not found.")
-        return getattr(batch_recipe, "yield_unit", None)
+        if ingredient_type == "batch":
+            batch_recipe = await self.batch_recipe_repo.get_by_id(reference_id)
+            if not batch_recipe:
+                raise ValueError(f"Batch recipe reference {reference_id} not found.")
+            return getattr(batch_recipe, "yield_unit", None)
 
-    async def _validate_recipe_ingredients(self, ingredients_data: List[dict]) -> None:
+        recipe = await self.recipe_repo.get_by_id(reference_id)
+        if not recipe:
+            raise ValueError(f"Recipe reference {reference_id} not found.")
+        return None
+
+    async def _recipe_reference_creates_cycle(
+        self,
+        current_recipe_id: int,
+        referenced_recipe_id: int,
+        visited: Optional[set[int]] = None,
+    ) -> bool:
+        if referenced_recipe_id == current_recipe_id:
+            return True
+
+        visited = visited or set()
+        if referenced_recipe_id in visited:
+            return False
+
+        visited.add(referenced_recipe_id)
+        nested_components = await self.recipe_ingredient_repo.get_by_recipe_id(referenced_recipe_id)
+        for component in nested_components:
+            component_type = normalize_component_type(getattr(component, "ingredient_type", None))
+            if component_type != "recipe":
+                continue
+            if await self._recipe_reference_creates_cycle(
+                current_recipe_id,
+                int(component.reference_id),
+                visited,
+            ):
+                return True
+
+        return False
+
+    async def _validate_recipe_ingredients(
+        self,
+        ingredients_data: List[dict],
+        current_recipe_id: Optional[int] = None,
+    ) -> None:
         for ingredient_data in ingredients_data:
             reference_id = ingredient_data.get("reference_id") or ingredient_data.get("ingredient_id")
             if reference_id is None:
@@ -80,6 +118,13 @@ class MenuService:
             ingredient_type = normalize_component_type(
                 ingredient_data.get("type") or ingredient_data.get("ingredient_type")
             )
+
+            if ingredient_type == "recipe" and current_recipe_id is not None:
+                if await self._recipe_reference_creates_cycle(current_recipe_id, int(reference_id)):
+                    raise ValueError(
+                        f"Recipe reference {reference_id} would create a cycle."
+                    )
+
             reference_unit = await self._get_component_reference_unit(reference_id, ingredient_type)
             requested_unit = ingredient_data.get("unit")
 
@@ -305,9 +350,12 @@ class MenuService:
                 if ri.ingredient_type == "ingredient":
                     ingredient = await self.ingredient_repo.get_by_id(ri.reference_id)
                     name = ingredient.name if ingredient else "Unknown Ingredient"
-                else:
+                elif ri.ingredient_type == "batch":
                     batch = await self.batch_recipe_repo.get_by_id(ri.reference_id)
                     name = batch.name if batch else "Unknown Batch"
+                else:
+                    nested_recipe = await self.recipe_repo.get_by_id(ri.reference_id)
+                    name = nested_recipe.name if nested_recipe else "Unknown Recipe"
 
                 ingredient_details.append(
                     {
@@ -338,7 +386,7 @@ class MenuService:
         ingredients_data = recipe_dict["ingredients"]
 
         if ingredients_data:
-            await self._validate_recipe_ingredients(ingredients_data)
+            await self._validate_recipe_ingredients(ingredients_data, current_recipe_id=recipe_id)
 
         async with self.db.begin():  # Wrap the whole operation in a single transaction
             if recipe_id:
@@ -380,10 +428,10 @@ class MenuService:
                     ingredient = await self.recipe_ingredient_repo.create(
                         {
                             "recipe_id": recipe_id,
-                            "quantity_used": ing["quantity"],
+                            "quantity_used": ing.get("quantity", ing.get("quantity_used")),
                             "unit": ing["unit"],
                             "ingredient_type": ingredient_type,
-                            "reference_id": ing.get("reference_id"),
+                            "reference_id": ing.get("reference_id") or ing.get("ingredient_id"),
                         }
                     )
                     print(f'added ingredient: {ingredient}')
@@ -407,6 +455,14 @@ class MenuService:
         if menu_item_links:
             raise ValueError(
                 f"Recipe is still linked to {len(menu_item_links)} menu item(s). Remove those links before deleting it."
+            )
+
+        nested_recipe_links = await self.recipe_ingredient_repo.get_all_by_reference_id_and_type(
+            "recipe", recipe_id
+        )
+        if nested_recipe_links:
+            raise ValueError(
+                f"Recipe is still used as a nested recipe in {len(nested_recipe_links)} recipe reference(s). Remove those links before deleting it."
             )
 
         async with self.db.begin():  # Ensure the transaction is handled correctly
@@ -573,6 +629,12 @@ class MenuService:
                             )
                             ingredient_name = batch_data.name
                             ingredient_id = batch_data.batch_recipe_id
+                        elif ingredient.ingredient_type == "recipe":
+                            recipe_data_ref = await self.recipe_repo.get_by_id(
+                                ingredient.reference_id
+                            )
+                            ingredient_name = recipe_data_ref.name if recipe_data_ref else "Unknown Recipe"
+                            ingredient_id = ingredient.reference_id
                         else:
                             ingredient_name = "Unknown"
                             ingredient_id = ingredient.reference_id

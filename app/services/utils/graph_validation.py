@@ -1,14 +1,14 @@
 from app.services.utils.unit_conversion import convert_unit, normalize_unit
 
 
-VALID_COMPONENT_TYPES = {"ingredient", "batch"}
+VALID_COMPONENT_TYPES = {"ingredient", "batch", "recipe"}
 
 
 def normalize_component_type(component_type: str | None) -> str:
     normalized = (component_type or "ingredient").strip().lower()
     if normalized not in VALID_COMPONENT_TYPES:
         raise ValueError(
-            f"Unsupported ingredient_type '{component_type}'. Expected one of: ingredient, batch."
+            f"Unsupported ingredient_type '{component_type}'. Expected one of: ingredient, batch, recipe."
         )
     return normalized
 
