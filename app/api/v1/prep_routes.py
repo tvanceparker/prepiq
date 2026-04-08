@@ -191,3 +191,18 @@ async def update_batch_recipe(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
 
+
+@router.delete("/batch_recipes/{batch_recipe_id}")
+async def delete_batch_recipe(
+    batch_recipe_id: int,
+    prep_service: PrepService = Depends(get_prep_service),
+):
+    try:
+        return await prep_service.delete_batch_recipe(batch_recipe_id)
+    except ValueError as error:
+        detail = str(error)
+        status_code = 404 if "not found" in detail.lower() else 400
+        raise HTTPException(status_code=status_code, detail=detail)
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {error}")
+

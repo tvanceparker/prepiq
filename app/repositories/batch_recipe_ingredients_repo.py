@@ -80,3 +80,23 @@ class BatchRecipeIngredientRepository(BaseRepository):
         )
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+    async def get_all_by_reference_id_and_type(
+        self, ingredient_type: str, reference_id: int
+    ) -> List[BatchRecipeIngredient]:
+        result = await self.db.execute(
+            select(BatchRecipeIngredient).where(
+                BatchRecipeIngredient.restaurant_id == self.restaurant_id,
+                BatchRecipeIngredient.ingredient_type == ingredient_type,
+                BatchRecipeIngredient.reference_id == reference_id,
+            )
+        )
+        return result.scalars().all()
+
+    async def delete_all_by_batch_recipe_id(self, batch_recipe_id: int) -> int:
+        stmt = delete(BatchRecipeIngredient).where(
+            BatchRecipeIngredient.batch_recipe_id == batch_recipe_id,
+            BatchRecipeIngredient.restaurant_id == self.restaurant_id,
+        )
+        result = await self.db.execute(stmt)
+        return result.rowcount

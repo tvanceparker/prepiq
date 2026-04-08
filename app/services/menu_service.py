@@ -32,6 +32,7 @@ from app.schemas.admin_dto import ErrorLogCreate
 from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
 import traceback
+from app.services.utils.graph_validation import normalize_component_type, units_are_compatible
 
 
 class MenuService:
@@ -53,6 +54,39 @@ class MenuService:
         self.activity_log_repo = ActivityLogRepository(db, restaurant_id, employee_id)
         self.error_log_repo = ErrorLogRepository(db, restaurant_id)
         self.supplier_repo = SupplierRepository(db, restaurant_id)
+
+    async def _get_component_reference_unit(
+        self,
+        reference_id: int,
+        ingredient_type: str,
+    ) -> str | None:
+        if ingredient_type == "ingredient":
+            ingredient = await self.ingredient_repo.get_by_id(reference_id)
+            if not ingredient:
+                raise ValueError(f"Ingredient reference {reference_id} not found.")
+            return getattr(ingredient, "unit", None)
+
+        batch_recipe = await self.batch_recipe_repo.get_by_id(reference_id)
+        if not batch_recipe:
+            raise ValueError(f"Batch recipe reference {reference_id} not found.")
+        return getattr(batch_recipe, "yield_unit", None)
+
+    async def _validate_recipe_ingredients(self, ingredients_data: List[dict]) -> None:
+        for ingredient_data in ingredients_data:
+            reference_id = ingredient_data.get("reference_id") or ingredient_data.get("ingredient_id")
+            if reference_id is None:
+                raise ValueError("Ingredient must include reference_id or ingredient_id")
+
+            ingredient_type = normalize_component_type(
+                ingredient_data.get("type") or ingredient_data.get("ingredient_type")
+            )
+            reference_unit = await self._get_component_reference_unit(reference_id, ingredient_type)
+            requested_unit = ingredient_data.get("unit")
+
+            if not units_are_compatible(requested_unit, reference_unit):
+                raise ValueError(
+                    f"Unit '{requested_unit}' is incompatible with {ingredient_type} unit '{reference_unit}' for reference {reference_id}."
+                )
 
     async def get_all_categories(self) -> list[str]:
         """Get all unique categories from menu items for this restaurant."""
@@ -303,6 +337,9 @@ class MenuService:
         description = recipe_dict["description"]
         ingredients_data = recipe_dict["ingredients"]
 
+        if ingredients_data:
+            await self._validate_recipe_ingredients(ingredients_data)
+
         async with self.db.begin():  # Wrap the whole operation in a single transaction
             if recipe_id:
                 # Update existing recipe
@@ -337,12 +374,15 @@ class MenuService:
                 print(f'adding new ingredients: {ingredients_data}')
                 for ing in ingredients_data:
                     print(f'adding ingredient: {ing}')
+                    ingredient_type = normalize_component_type(
+                        ing.get("type") or ing.get("ingredient_type")
+                    )
                     ingredient = await self.recipe_ingredient_repo.create(
                         {
                             "recipe_id": recipe_id,
                             "quantity_used": ing["quantity"],
                             "unit": ing["unit"],
-                            "ingredient_type": ing["type"],
+                            "ingredient_type": ingredient_type,
                             "reference_id": ing.get("reference_id"),
                         }
                     )
@@ -363,6 +403,12 @@ class MenuService:
         return {**recipe_dict, "ingredients": ingredients}
 
     async def delete_recipe(self, recipe_id: int):
+        menu_item_links = await self.menu_recipe_repo.get_by_recipe(recipe_id)
+        if menu_item_links:
+            raise ValueError(
+                f"Recipe is still linked to {len(menu_item_links)} menu item(s). Remove those links before deleting it."
+            )
+
         async with self.db.begin():  # Ensure the transaction is handled correctly
             # Step 1: Delete all recipe ingredients
             deleted_ingredients_count = await self.recipe_ingredient_repo.delete_by_recipe_id(recipe_id)
