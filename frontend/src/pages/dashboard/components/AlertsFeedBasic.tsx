@@ -461,6 +461,19 @@ export default function AlertsFeedBasic(): JSX.Element {
               {eodSummary.forecast.forecast_status_message}
             </Typography>
 
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                {eodSummary.guidance.headline}
+              </Typography>
+              <Stack spacing={0.5}>
+                {eodSummary.guidance.steps.slice(0, 3).map(step => (
+                  <Typography key={step} variant="body2" color="text.secondary">
+                    • {step}
+                  </Typography>
+                ))}
+              </Stack>
+            </Box>
+
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
               {eodSummary.stages.map(stage => (
                 <Chip

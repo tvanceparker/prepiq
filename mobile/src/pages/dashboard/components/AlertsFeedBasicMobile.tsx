@@ -390,6 +390,20 @@ export default function AlertsFeedBasicMobile() {
             {eodSummary.forecast.forecast_status_message}
           </Text>
 
+          <View style={{ marginTop: 8 }}>
+            <Text style={{ fontWeight: '600', marginBottom: 4 }}>
+              {eodSummary.guidance.headline}
+            </Text>
+            {eodSummary.guidance.steps.slice(0, 3).map(step => (
+              <Text
+                key={step}
+                style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginBottom: 4 }}
+              >
+                • {step}
+              </Text>
+            ))}
+          </View>
+
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
             {eodSummary.stages.map(stage => (
               <View

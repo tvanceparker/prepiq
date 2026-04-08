@@ -150,6 +150,22 @@ export default function EodSummary(): JSX.Element {
 
           <Paper sx={{ p: 3, borderRadius: 3 }}>
             <Typography variant="h6" sx={{ mb: 1 }}>
+              What To Do Next
+            </Typography>
+            <Typography variant="body1" sx={{ mb: 1.5 }}>
+              {data.guidance.headline}
+            </Typography>
+            <Stack spacing={1}>
+              {data.guidance.steps.map(step => (
+                <Typography key={step} variant="body2" color="text.secondary">
+                  • {step}
+                </Typography>
+              ))}
+            </Stack>
+          </Paper>
+
+          <Paper sx={{ p: 3, borderRadius: 3 }}>
+            <Typography variant="h6" sx={{ mb: 1 }}>
               Forecast Trust
             </Typography>
             <Typography variant="body1">{data.forecast.forecast_status_message}</Typography>

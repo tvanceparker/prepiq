@@ -38,6 +38,11 @@ export interface EodRepairTarget {
   unit: string | null;
 }
 
+export interface EodOperatorGuidance {
+  headline: string;
+  steps: string[];
+}
+
 export interface EodRunSummary {
   run_date: string;
   status: EodRunStatus;
@@ -51,4 +56,5 @@ export interface EodRunSummary {
   forecast: EodForecastState;
   counts: EodRunCounts;
   repair_targets: EodRepairTarget[];
+  guidance: EodOperatorGuidance;
 }

@@ -135,6 +135,27 @@ export default function EodSummary() {
               marginBottom: 12,
             }}
           >
+            <Text style={{ fontWeight: '700', marginBottom: 8 }}>What To Do Next</Text>
+            <Text style={{ color: theme.colors.onSurface, marginBottom: 8 }}>
+              {summary.guidance.headline}
+            </Text>
+            {summary.guidance.steps.map(step => (
+              <Text key={step} style={{ color: theme.colors.onSurfaceVariant, marginBottom: 6 }}>
+                • {step}
+              </Text>
+            ))}
+          </View>
+
+          <View
+            style={{
+              padding: 14,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: theme.colors.outlineVariant,
+              backgroundColor: theme.colors.surface,
+              marginBottom: 12,
+            }}
+          >
             <Text style={{ fontWeight: '700', marginBottom: 8 }}>Stage Status</Text>
             {summary.stages.map(stage => (
               <Text

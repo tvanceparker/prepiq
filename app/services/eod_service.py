@@ -148,6 +148,95 @@ class EODService:
             "forecast_status_message": "Using the finalized forecast for this EOD run.",
         }
 
+    def _build_operator_guidance(
+        self,
+        *,
+        run_status: str,
+        forecast_summary: Dict[str, Any],
+        errors: List[Dict[str, Any]],
+        discrepancy_count: int,
+        purchase_order_suggestion_count: int,
+        purchase_orders_created: int,
+    ) -> Dict[str, Any]:
+        steps: List[str] = []
+        seen_steps = set()
+
+        def add_step(step: str) -> None:
+            if step not in seen_steps:
+                steps.append(step)
+                seen_steps.add(step)
+
+        error_stages = {
+            str(error.get("stage") or "").strip().lower()
+            for error in errors
+            if isinstance(error, dict)
+        }
+        error_messages = " ".join(
+            str(error.get("message") or "")
+            for error in errors
+            if isinstance(error, dict)
+        ).lower()
+
+        if run_status == "processing":
+            headline = "EOD is still running."
+            add_step("Wait for the current run to finish before trusting new EOD, reorder, or purchasing outputs.")
+            return {"headline": headline, "steps": steps}
+
+        if run_status == "partial":
+            headline = "Manual review is required before trusting every downstream output."
+        elif run_status == "failed":
+            headline = "This EOD run did not complete successfully."
+        elif discrepancy_count > 0 or purchase_orders_created > 0 or purchase_order_suggestion_count > 0:
+            headline = "The run finished, but there is follow-up work before you close the loop."
+        else:
+            headline = "This EOD run is ready to use."
+
+        if discrepancy_count > 0:
+            if discrepancy_count == 1:
+                add_step("Open Inventory Review and resolve the remaining inventory shortfall from this run.")
+            else:
+                add_step(
+                    f"Open Inventory Review and resolve the {discrepancy_count} remaining inventory shortfalls from this run."
+                )
+
+        if {"validation", "sales_deducted", "sales_ingest", "sales"} & error_stages or "no sales data" in error_messages:
+            add_step("Upload or correct sales data before rerunning EOD or trusting forecast-driven outputs.")
+
+        if {"po_write", "po_written"} & error_stages:
+            add_step("Review supplier setup and purchase-order creation errors before rerunning the PO stage.")
+
+        forecast_status = str(forecast_summary.get("forecast_status") or "")
+        if forecast_status in {"failed", "degraded"}:
+            add_step("Treat forecast-driven reorder and purchasing outputs as provisional until forecast review is complete.")
+        elif forecast_status == "stale":
+            add_step("Review forecast freshness before using reorder and purchasing outputs for a new trading day.")
+
+        if purchase_orders_created > 0:
+            if purchase_orders_created == 1:
+                add_step("Review the draft purchase order before submission.")
+            else:
+                add_step(f"Review the {purchase_orders_created} draft purchase orders before submission.")
+        elif purchase_order_suggestion_count > 0:
+            if purchase_order_suggestion_count == 1:
+                add_step("Review the reorder suggestion and decide whether to create a draft purchase order.")
+            else:
+                add_step(
+                    f"Review the {purchase_order_suggestion_count} reorder suggestions and decide which draft purchase orders to create."
+                )
+
+        if not steps:
+            if run_status == "success":
+                add_step("No immediate repair work is required. You can use this EOD output as the current source of truth.")
+            elif run_status == "failed":
+                add_step("Review the recorded errors, correct the blocking issue, and rerun EOD when the inputs are ready.")
+            else:
+                add_step("Review the recorded warnings before treating the run as complete.")
+
+        return {
+            "headline": headline,
+            "steps": steps,
+        }
+
     async def get_eod_run_summary(self, run_date: Optional[date] = None) -> Optional[Dict[str, Any]]:
         ledger = await self.ledger_repo.get_by_date(run_date) if run_date else await self.ledger_repo.get_latest()
         if not ledger:
@@ -194,6 +283,11 @@ class EODService:
             },
         ]
 
+        forecast_summary = self._build_forecast_summary(effective_run_date, forecast_ledger)
+        purchase_orders_created = await self.purchase_order_repo.count_eod_auto_orders_for_run_date(
+            effective_run_date
+        )
+
         return {
             "run_date": effective_run_date,
             "status": run_status,
@@ -211,7 +305,7 @@ class EODService:
                 }
                 for error in errors
             ],
-            "forecast": self._build_forecast_summary(effective_run_date, forecast_ledger),
+            "forecast": forecast_summary,
             "counts": {
                 "sales_usage_log_count": await self.inventory_usage_log_repo.count_for_reference(
                     "eod_sales",
@@ -221,9 +315,7 @@ class EODService:
                     getattr(forecast_ledger, "menu_items_processed", 0) or 0
                 ),
                 "purchase_order_suggestion_count": len(po_suggestions),
-                "purchase_orders_created": await self.purchase_order_repo.count_eod_auto_orders_for_run_date(
-                    effective_run_date
-                ),
+                "purchase_orders_created": purchase_orders_created,
                 "open_discrepancy_count": len(discrepancies),
             },
             "repair_targets": [
@@ -238,6 +330,14 @@ class EODService:
                 }
                 for discrepancy in discrepancies
             ],
+            "guidance": self._build_operator_guidance(
+                run_status=run_status,
+                forecast_summary=forecast_summary,
+                errors=errors,
+                discrepancy_count=len(discrepancies),
+                purchase_order_suggestion_count=len(po_suggestions),
+                purchase_orders_created=purchase_orders_created,
+            ),
         }
 
     def _set_purchase_order_suggestions(self, suggestions: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:

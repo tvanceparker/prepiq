@@ -69,6 +69,9 @@ class TestEODRunSummary:
         assert summary["counts"]["purchase_orders_created"] == 2
         assert summary["counts"]["open_discrepancy_count"] == 1
         assert summary["repair_targets"][0]["ingredient_id"] == 401
+        assert summary["guidance"]["headline"] == "The run finished, but there is follow-up work before you close the loop."
+        assert any("Inventory Review" in step for step in summary["guidance"]["steps"])
+        assert any("draft purchase orders" in step for step in summary["guidance"]["steps"])
 
     @pytest.mark.asyncio
     async def test_get_eod_run_summary_marks_partial_and_degraded_forecast(
@@ -113,3 +116,6 @@ class TestEODRunSummary:
         assert summary["forecast"]["forecast_status"] == "degraded"
         assert summary["errors"][0]["stage"] == "po_write"
         assert summary["counts"]["open_discrepancy_count"] == 0
+        assert summary["guidance"]["headline"] == "Manual review is required before trusting every downstream output."
+        assert any("provisional" in step for step in summary["guidance"]["steps"])
+        assert any("purchase-order creation errors" in step for step in summary["guidance"]["steps"])

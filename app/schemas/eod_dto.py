@@ -50,6 +50,11 @@ class EODRepairTargetDTO(BaseModel):
     unit: Optional[str] = None
 
 
+class EODOperatorGuidanceDTO(BaseModel):
+    headline: str
+    steps: List[str]
+
+
 class EODRunSummaryDTO(BaseModel):
     run_date: date
     status: Literal["processing", "success", "partial", "failed"]
@@ -63,3 +68,4 @@ class EODRunSummaryDTO(BaseModel):
     forecast: EODForecastStateDTO
     counts: EODRunCountsDTO
     repair_targets: List[EODRepairTargetDTO]
+    guidance: EODOperatorGuidanceDTO
