@@ -265,12 +265,41 @@ class TestReorderForecastEngineUnit:
                     unit="lb",
                     lead_time=3,
                 )
-        
-        # Alert should be created
+
         engine.alert_repo.create.assert_called_once()
         call_args = engine.alert_repo.create.call_args[0][0]
         assert call_args["alert_type"] == "LowStock"
         assert "Ground Beef" in call_args["message"]
+
+    @pytest.mark.asyncio
+    async def test_build_reorder_decision_normalizes_integer_inputs(
+        self, mock_db_session, restaurant_id, sample_ingredients
+    ):
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine.alert_repo = AsyncMock()
+        engine.ingredient_repo.get_by_id = AsyncMock(return_value=sample_ingredients[0])
+
+        with patch.object(engine, "calculate_safety_stock", return_value=Decimal("3.00")):
+            with patch.object(engine, "calculate_max_order", return_value=Decimal("95.00")):
+                decision = await engine.build_reorder_decision(
+                    ingredient_id=1001,
+                    lead_demand=0,
+                    shelf_demand=0,
+                    total_demand=0,
+                    unit="lb",
+                    lead_time=3,
+                    current_stock=5,
+                    current_unit="lb",
+                    moq=10,
+                    manage_alerts=False,
+                )
+
+        assert decision["lead_demand"] == Decimal("0.00")
+        assert decision["shelf_demand"] == Decimal("0.00")
+        assert decision["total_demand"] == Decimal("0.00")
+        assert decision["current_stock"] == Decimal("5.00")
+        assert decision["moq"] == Decimal("10.00")
+        assert decision["reorder_point"] == Decimal("3.00")
 
     @pytest.mark.asyncio
     async def test_classify_abc_item_cached(

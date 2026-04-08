@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch, ANY
 
 from app.db.models.inventory_lot_orm import LotStatus
 from app.services.eod_service import EODService
+from app.services.utils.purchase_order_note_helper import parse_purchase_order_notes
 
 
 class TestEODServiceUnit:
@@ -455,6 +456,78 @@ class TestEODServiceUnit:
         assert len(result) == 0
 
     @pytest.mark.asyncio
+    async def test_generate_suggested_purchase_orders_passes_decimal_zero_demands(
+        self, mock_db_session, restaurant_id, sample_suppliers
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        service.po_suggestion_repo.replace_for_run_date = AsyncMock()
+
+        ingredient_forecast = {
+            1001: {
+                "total_quantity": Decimal("5.00"),
+                "unit": "lb",
+                "daily_breakdown": [],
+            }
+        }
+
+        service.ingredient_supplier_repo.get_all_by_ingredient_id = AsyncMock(
+            return_value=[sample_suppliers[0]]
+        )
+        service.inventory_repo.get_inventory_by_ingredient = AsyncMock(
+            return_value=MagicMock(quantity_on_hand=Decimal("5.00"), shelf_life_days=7, unit="lb")
+        )
+        service.reorder_engine.choose_supplier_option = AsyncMock(
+            return_value={
+                "supplier": sample_suppliers[0],
+                "reason_code": "preferred_lowest_priority",
+                "preferred_supplier_available": True,
+                "selected_supplier_priority": 1,
+                "selected_supplier_preferred": True,
+                "pricing_available": True,
+            }
+        )
+
+        captured_call = {}
+
+        async def capture_build_reorder_decision(**kwargs):
+            captured_call.update(kwargs)
+            return {
+                "current_stock": Decimal("5.00"),
+                "current_unit": "lb",
+                "lead_demand": kwargs["lead_demand"],
+                "shelf_demand": kwargs["shelf_demand"],
+                "total_demand": kwargs["total_demand"],
+                "safety_stock": Decimal("0.00"),
+                "reorder_point": Decimal("0.00"),
+                "reorder_target": Decimal("0.00"),
+                "raw_order_quantity": Decimal("0.00"),
+                "buffered_quantity": Decimal("0.00"),
+                "moq": Decimal("0.00"),
+                "moq_floor": Decimal("0.00"),
+                "max_allowed": Decimal("100.00"),
+                "final_quantity": Decimal("0.00"),
+                "should_reorder": False,
+                "service_level_z": Decimal("1.65"),
+                "abc_class": "B",
+                "abc_multiplier": Decimal("1.1"),
+                "abc_defaulted": False,
+            }
+
+        service.reorder_engine.build_reorder_decision = AsyncMock(
+            side_effect=capture_build_reorder_decision
+        )
+
+        result = await service.generate_suggested_purchase_orders(ingredient_forecast)
+
+        assert result == []
+        assert captured_call["lead_demand"] == Decimal("0.00")
+        assert captured_call["shelf_demand"] == Decimal("0.00")
+        assert captured_call["total_demand"] == Decimal("0.00")
+        assert isinstance(captured_call["lead_demand"], Decimal)
+        assert isinstance(captured_call["shelf_demand"], Decimal)
+        assert isinstance(captured_call["total_demand"], Decimal)
+
+    @pytest.mark.asyncio
     async def test_generate_suggested_purchase_orders_falls_back_to_supplier_shelf_life(
         self, mock_db_session, restaurant_id, sample_suppliers
     ):
@@ -575,7 +648,12 @@ class TestEODServiceUnit:
         service.purchase_order_repo.create.assert_called_once()
         create_payload = service.purchase_order_repo.create.await_args.args[0]
         assert create_payload["order_date"] == date(2025, 11, 20)
-        assert create_payload["notes"].startswith("[EOD_AUTO run_date=2025-11-20 supplier_id=501]")
+        assert create_payload["status"] == "cart"
+        parsed_notes = parse_purchase_order_notes(create_payload["notes"])
+        assert parsed_notes["system_note"] is not None
+        assert "[EOD_AUTO run_date=2025-11-20 supplier_id=501]" in parsed_notes["system_note"]
+        assert parsed_notes["review_context"]["source_type"] == "eod_auto"
+        assert len(parsed_notes["review_context"]["explanation_items"]) == 2
         # Should create two items
         assert service.purchase_order_item_repo.create.call_count == 2
         # Should update order with total price

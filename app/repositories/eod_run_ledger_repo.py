@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.eod_run_ledger_orm import EODRunLedger
 
@@ -16,6 +16,16 @@ class EODRunLedgerRepository:
         stmt = select(EODRunLedger).filter(
             EODRunLedger.restaurant_id == self.restaurant_id,
             EODRunLedger.run_date == run_date,
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    async def get_latest(self) -> Optional[EODRunLedger]:
+        stmt = (
+            select(EODRunLedger)
+            .filter(EODRunLedger.restaurant_id == self.restaurant_id)
+            .order_by(desc(EODRunLedger.run_date), desc(EODRunLedger.finished_at), desc(EODRunLedger.started_at))
+            .limit(1)
         )
         result = await self.db.execute(stmt)
         return result.scalars().first()

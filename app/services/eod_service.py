@@ -24,6 +24,8 @@ from app.repositories.eod_purchase_order_suggestion_repo import (
     EODPurchaseOrderSuggestionRepository,
 )
 from app.repositories.ingredients_repo import IngredientRepository
+from app.repositories.inventory_deduction_discrepancies_repo import InventoryDeductionDiscrepancyRepository
+from app.repositories.forecast_run_ledger_repo import ForecastRunLedgerRepository
 from app.services.forecasting_engine import ForecastingEngine, convert_forecast_dict_to_list
 from app.services.inventory_stats_service import InventoryStatsService
 from app.services.reorder_forecast_engine import ReorderForecastEngine
@@ -31,6 +33,11 @@ from app.services.forecasting_engine_basic import ForecastingEngineBasic
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.utils.unit_conversion import convert_unit, normalize_unit
 from app.services.utils.inventory_deduction_helper import InventoryDeductionHelper
+from app.services.utils.purchase_order_note_helper import (
+    build_purchase_order_explanation_item,
+    build_purchase_order_review_context,
+    serialize_purchase_order_notes,
+)
 from typing import List, Dict, Optional, Any
 import math
 from decimal import Decimal
@@ -68,6 +75,7 @@ class EODService:
         self.ingredient_repo = IngredientRepository(db, restaurant_id)
         self.inventory_repo = InventoryRepository(db, restaurant_id)
         self.alert_repo = AlertRepository(db, restaurant_id)
+        self.discrepancy_repo = InventoryDeductionDiscrepancyRepository(db, restaurant_id)
         self.inventory_usage_log_repo = InventoryUsageLogRepository(db, restaurant_id)
         self.order_repo = OrdersRepository(db, restaurant_id)
         self.inventory_helper = InventoryDeductionHelper(
@@ -88,9 +96,249 @@ class EODService:
         logger.debug('[EOD] init service restaurant=%s tier=%s', self.restaurant_id, self.subscription_tier)
         from app.repositories.eod_run_ledger_repo import EODRunLedgerRepository
         self.ledger_repo = EODRunLedgerRepository(db, restaurant_id)
+        self.forecast_run_ledger_repo = ForecastRunLedgerRepository(db, restaurant_id)
         self.po_suggestion_repo = EODPurchaseOrderSuggestionRepository(db, restaurant_id)
         self._purchase_order_suggestions = []
         self.purchase_order_suggestions = []
+
+    def _build_run_status(self, ledger) -> tuple[str, str]:
+        errors = getattr(ledger, "errors", None) or []
+
+        if getattr(ledger, "running", False) and not getattr(ledger, "finalized", False):
+            return "processing", "EOD is currently running."
+        if getattr(ledger, "finalized", False) and errors:
+            return "partial", "EOD finalized with warnings and requires manual review."
+        if getattr(ledger, "finalized", False):
+            return "success", "EOD finalized successfully."
+        return "failed", "EOD did not finalize successfully."
+
+    def _build_forecast_summary(self, run_date: date, forecast_ledger) -> Dict[str, Any]:
+        forecast_generated_at = getattr(forecast_ledger, "finished_at", None) if forecast_ledger else None
+        forecast_stale = run_date < date.today()
+
+        if not forecast_ledger or not getattr(forecast_ledger, "finalized", False):
+            return {
+                "forecast_generated_at": forecast_generated_at,
+                "forecast_stale": forecast_stale,
+                "forecast_status": "failed",
+                "forecast_status_message": "No finalized forecast is available for this EOD run.",
+            }
+
+        errors = getattr(forecast_ledger, "errors", None) or []
+        if errors:
+            return {
+                "forecast_generated_at": forecast_generated_at,
+                "forecast_stale": forecast_stale,
+                "forecast_status": "degraded",
+                "forecast_status_message": "The forecast finalized with warnings for this EOD run.",
+            }
+
+        if forecast_stale:
+            return {
+                "forecast_generated_at": forecast_generated_at,
+                "forecast_stale": True,
+                "forecast_status": "stale",
+                "forecast_status_message": "The finalized forecast is older than today's cycle.",
+            }
+
+        return {
+            "forecast_generated_at": forecast_generated_at,
+            "forecast_stale": False,
+            "forecast_status": "ready",
+            "forecast_status_message": "Using the finalized forecast for this EOD run.",
+        }
+
+    def _build_operator_guidance(
+        self,
+        *,
+        run_status: str,
+        forecast_summary: Dict[str, Any],
+        errors: List[Dict[str, Any]],
+        discrepancy_count: int,
+        purchase_order_suggestion_count: int,
+        purchase_orders_created: int,
+    ) -> Dict[str, Any]:
+        steps: List[str] = []
+        seen_steps = set()
+
+        def add_step(step: str) -> None:
+            if step not in seen_steps:
+                steps.append(step)
+                seen_steps.add(step)
+
+        error_stages = {
+            str(error.get("stage") or "").strip().lower()
+            for error in errors
+            if isinstance(error, dict)
+        }
+        error_messages = " ".join(
+            str(error.get("message") or "")
+            for error in errors
+            if isinstance(error, dict)
+        ).lower()
+
+        if run_status == "processing":
+            headline = "EOD is still running."
+            add_step("Wait for the current run to finish before trusting new EOD, reorder, or purchasing outputs.")
+            return {"headline": headline, "steps": steps}
+
+        if run_status == "partial":
+            headline = "Manual review is required before trusting every downstream output."
+        elif run_status == "failed":
+            headline = "This EOD run did not complete successfully."
+        elif discrepancy_count > 0 or purchase_orders_created > 0 or purchase_order_suggestion_count > 0:
+            headline = "The run finished, but there is follow-up work before you close the loop."
+        else:
+            headline = "This EOD run is ready to use."
+
+        if discrepancy_count > 0:
+            if discrepancy_count == 1:
+                add_step("Open Inventory Review and resolve the remaining inventory shortfall from this run.")
+            else:
+                add_step(
+                    f"Open Inventory Review and resolve the {discrepancy_count} remaining inventory shortfalls from this run."
+                )
+
+        if {"validation", "sales_deducted", "sales_ingest", "sales"} & error_stages or "no sales data" in error_messages:
+            add_step("Upload or correct sales data before rerunning EOD or trusting forecast-driven outputs.")
+
+        if {"po_write", "po_written"} & error_stages:
+            add_step("Review supplier setup and purchase-order creation errors before rerunning the PO stage.")
+
+        forecast_status = str(forecast_summary.get("forecast_status") or "")
+        if forecast_status in {"failed", "degraded"}:
+            add_step("Treat forecast-driven reorder and purchasing outputs as provisional until forecast review is complete.")
+        elif forecast_status == "stale":
+            add_step("Review forecast freshness before using reorder and purchasing outputs for a new trading day.")
+
+        if purchase_orders_created > 0:
+            if purchase_orders_created == 1:
+                add_step("Review the draft purchase order before submission.")
+            else:
+                add_step(f"Review the {purchase_orders_created} draft purchase orders before submission.")
+        elif purchase_order_suggestion_count > 0:
+            if purchase_order_suggestion_count == 1:
+                add_step("Review the reorder suggestion and decide whether to create a draft purchase order.")
+            else:
+                add_step(
+                    f"Review the {purchase_order_suggestion_count} reorder suggestions and decide which draft purchase orders to create."
+                )
+
+        if not steps:
+            if run_status == "success":
+                add_step("No immediate repair work is required. You can use this EOD output as the current source of truth.")
+            elif run_status == "failed":
+                add_step("Review the recorded errors, correct the blocking issue, and rerun EOD when the inputs are ready.")
+            else:
+                add_step("Review the recorded warnings before treating the run as complete.")
+
+        return {
+            "headline": headline,
+            "steps": steps,
+        }
+
+    async def get_eod_run_summary(self, run_date: Optional[date] = None) -> Optional[Dict[str, Any]]:
+        ledger = await self.ledger_repo.get_by_date(run_date) if run_date else await self.ledger_repo.get_latest()
+        if not ledger:
+            return None
+
+        effective_run_date = ledger.run_date
+        reference_id = int(effective_run_date.strftime("%Y%m%d"))
+        forecast_ledger = await self.forecast_run_ledger_repo.get_one_by({"run_date": effective_run_date})
+        po_suggestions = await self.po_suggestion_repo.list_by_run_date(effective_run_date)
+        discrepancies = await self.discrepancy_repo.get_open_by_reference(
+            reference_type="eod_sales",
+            reference_id=reference_id,
+        )
+        run_status, status_message = self._build_run_status(ledger)
+
+        durations = getattr(ledger, "durations", None) or {}
+        errors = getattr(ledger, "errors", None) or []
+
+        stages = [
+            {
+                "stage": "sales_deducted",
+                "completed": bool(getattr(ledger, "sales_deducted", False)),
+                "duration_ms": durations.get("sales_deducted"),
+            },
+            {
+                "stage": "forecast_completed",
+                "completed": bool(getattr(ledger, "forecast_completed", False)),
+                "duration_ms": durations.get("forecast_completed"),
+            },
+            {
+                "stage": "reorder_completed",
+                "completed": bool(getattr(ledger, "reorder_completed", False)),
+                "duration_ms": durations.get("reorder_completed"),
+            },
+            {
+                "stage": "po_written",
+                "completed": bool(getattr(ledger, "po_written", False)),
+                "duration_ms": durations.get("po_written"),
+            },
+            {
+                "stage": "finalized",
+                "completed": bool(getattr(ledger, "finalized", False)),
+                "duration_ms": None,
+            },
+        ]
+
+        forecast_summary = self._build_forecast_summary(effective_run_date, forecast_ledger)
+        purchase_orders_created = await self.purchase_order_repo.count_eod_auto_orders_for_run_date(
+            effective_run_date
+        )
+
+        return {
+            "run_date": effective_run_date,
+            "status": run_status,
+            "status_message": status_message,
+            "finalized": bool(getattr(ledger, "finalized", False)),
+            "running": bool(getattr(ledger, "running", False)),
+            "started_at": getattr(ledger, "started_at", None),
+            "finished_at": getattr(ledger, "finished_at", None),
+            "stages": stages,
+            "errors": [
+                {
+                    "stage": str(error.get("stage") or "unknown"),
+                    "message": str(error.get("message") or "Unknown error"),
+                    "ts": error.get("ts") or error.get("timestamp"),
+                }
+                for error in errors
+            ],
+            "forecast": forecast_summary,
+            "counts": {
+                "sales_usage_log_count": await self.inventory_usage_log_repo.count_for_reference(
+                    "eod_sales",
+                    reference_id,
+                ),
+                "forecast_menu_items_processed": int(
+                    getattr(forecast_ledger, "menu_items_processed", 0) or 0
+                ),
+                "purchase_order_suggestion_count": len(po_suggestions),
+                "purchase_orders_created": purchase_orders_created,
+                "open_discrepancy_count": len(discrepancies),
+            },
+            "repair_targets": [
+                {
+                    "alert_id": discrepancy.alert_id,
+                    "ingredient_id": discrepancy.ingredient_id,
+                    "batch_recipe_id": discrepancy.batch_recipe_id,
+                    "item_name": discrepancy.item_name,
+                    "message": discrepancy.message,
+                    "shortfall_quantity": float(discrepancy.shortfall_quantity or 0),
+                    "unit": discrepancy.unit,
+                }
+                for discrepancy in discrepancies
+            ],
+            "guidance": self._build_operator_guidance(
+                run_status=run_status,
+                forecast_summary=forecast_summary,
+                errors=errors,
+                discrepancy_count=len(discrepancies),
+                purchase_order_suggestion_count=len(po_suggestions),
+                purchase_orders_created=purchase_orders_created,
+            ),
+        }
 
     def _set_purchase_order_suggestions(self, suggestions: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         synced_suggestions = list(suggestions or [])
@@ -692,9 +940,13 @@ class EODService:
 
             logger.debug(f"[EOD] ForecastWindows ingredient={ingredient_id} unit={unit} lead_window={lead_window} shelf_window={shelf_window}")
 
-            lead_demand = sum(qty for day, qty in daily_forecast if day in lead_window)
+            lead_demand = sum(
+                (Decimal(str(qty)) for day, qty in daily_forecast if day in lead_window),
+                Decimal("0.00"),
+            )
             shelf_demand = sum(
-                qty for day, qty in daily_forecast if day in shelf_window
+                (Decimal(str(qty)) for day, qty in daily_forecast if day in shelf_window),
+                Decimal("0.00"),
             )
             total_demand = lead_demand + shelf_demand
 
@@ -863,6 +1115,11 @@ class EODService:
             order_date = effective_run_date
             expected_delivery_date = order_date + timedelta(days=lead_time)
             notes = self._build_eod_auto_po_note(effective_run_date, supplier_id)
+            review_context = build_purchase_order_review_context(
+                source_type="eod_auto",
+                source_run_date=effective_run_date,
+                explanation_items=[build_purchase_order_explanation_item(item) for item in items],
+            )
 
             total_order_price = Decimal("0.00")
 
@@ -873,9 +1130,12 @@ class EODService:
                     "supplier_id": supplier_id,
                     "order_date": order_date,
                     "expected_delivery_date": expected_delivery_date,
-                    "status": "pending",
+                    "status": "cart",
                     "total_order_price": total_order_price,  # placeholder
-                    "notes": notes,
+                    "notes": serialize_purchase_order_notes(
+                        system_note=notes,
+                        review_context=review_context,
+                    ),
                 }
             )
 

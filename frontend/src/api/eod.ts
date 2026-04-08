@@ -1,4 +1,9 @@
-import { api } from './index';
+import { api, get } from './index';
+import type { EodRunSummary } from '../interfaces/eod';
+
+export const fetchLatestEodSummary = async (): Promise<EodRunSummary> => {
+  return get<EodRunSummary>('/eod/summary');
+};
 
 export interface FinalizeEodResponse {
   status: string;

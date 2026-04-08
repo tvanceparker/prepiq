@@ -1,6 +1,6 @@
 # core/services/inventory_service.py
 
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from decimal import Decimal
 from datetime import date, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,20 +17,33 @@ from app.repositories.purchase_orders_repo import PurchaseOrderRepository
 from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
 from app.repositories.alerts_repo import AlertRepository
 from app.repositories.inventory_deduction_discrepancies_repo import InventoryDeductionDiscrepancyRepository
+from app.repositories.ingredient_forecast_breakdown_repo import IngredientForecastBreakdownRepository
+from app.repositories.forecast_run_ledger_repo import ForecastRunLedgerRepository
+from app.repositories.forecasts_repo import ForecastRepository
 from app.services.utils.unit_conversion import convert_unit, round_decimal
+from app.services.utils.purchase_order_note_helper import (
+    build_purchase_order_explanation_item,
+    build_purchase_order_review_context,
+    parse_purchase_order_notes,
+    serialize_purchase_order_notes,
+)
 
 class InventoryService:
     # --- Purchase Orders ---
-    async def create_purchase_order(self, supplier_id: int, expected_delivery_date, items: list, notes: str = None) -> dict:
+    async def create_purchase_order(
+        self,
+        supplier_id: int,
+        expected_delivery_date,
+        items: list,
+        notes: str = None,
+        *,
+        review_context: Optional[dict] = None,
+        system_note: Optional[str] = None,
+    ) -> dict:
         """
         Create a new purchase order with items.
         """
-        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
-        from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
-        from sqlalchemy import func
         import datetime
-        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
-        poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
         async with self.db.begin():
             order_date = datetime.date.today()
             po_data = {
@@ -40,9 +53,13 @@ class InventoryService:
                 "expected_delivery_date": expected_delivery_date,
                 "status": "cart",
                 "total_order_price": 0.0,
-                "notes": notes,
+                "notes": serialize_purchase_order_notes(
+                    user_note=notes,
+                    system_note=system_note,
+                    review_context=review_context,
+                ),
             }
-            po = await po_repo.create(po_data)
+            po = await self.purchase_order_repo.create(po_data)
             total = 0.0
             item_objs = []
             for item in items:
@@ -57,31 +74,27 @@ class InventoryService:
                     "total_item_price": float(item["quantity_ordered"]) * float(item["unit_price"]),
                 }
                 total += item_data["total_item_price"]
-                item_obj = await poi_repo.create(item_data)
+                item_obj = await self.purchase_order_item_repo.create(item_data)
                 item_objs.append(item_obj)
-            await po_repo.update(po.order_id, {"total_order_price": total})
+            await self.purchase_order_repo.update(po.order_id, {"total_order_price": total})
         return {"order_id": po.order_id, "total_order_price": total, "status": "cart"}
 
     async def get_purchase_orders(self, status: str = None, supplier_id: int = None) -> list:
         """
         List purchase orders, optionally filter by status or supplier.
         """
-        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
-        from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
-        from app.repositories.supplier_repo import SupplierRepository
-        from app.repositories.ingredients_repo import IngredientRepository
-        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
-        poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
-        supplier_repo = SupplierRepository(self.db, self.restaurant_id)
-        ingredient_repo = IngredientRepository(self.db, self.restaurant_id)
-        pos = await po_repo.list_purchase_orders(status=status, supplier_id=supplier_id)
+        pos = await self.purchase_order_repo.list_purchase_orders(
+            status=status,
+            supplier_id=supplier_id,
+        )
         result = []
         for po in pos:
-            supplier = await supplier_repo.get_by_id(po.supplier_id)
-            items = await poi_repo.get_by_field("order_id", po.order_id)
+            supplier = await self.supplier_repo.get_by_id(po.supplier_id)
+            items = await self.purchase_order_item_repo.get_by_field("order_id", po.order_id)
+            parsed_notes = parse_purchase_order_notes(getattr(po, "notes", None))
             item_dtos = []
             for item in items:
-                ingredient = await ingredient_repo.get_by_id(item.ingredient_id)
+                ingredient = await self.ingredient_repo.get_by_id(item.ingredient_id)
                 item_dtos.append({
                     "order_item_id": item.order_item_id,
                     "order_id": item.order_id,
@@ -93,6 +106,11 @@ class InventoryService:
                     "unit_price": float(item.unit_price),
                     "total_item_price": float(item.total_item_price),
                 })
+            expected_delivery_stale = bool(
+                po.expected_delivery_date
+                and po.status in {"cart", "pending"}
+                and po.expected_delivery_date < date.today()
+            )
             result.append({
                 "order_id": po.order_id,
                 "restaurant_id": po.restaurant_id,
@@ -104,7 +122,14 @@ class InventoryService:
                 "status": po.status,
                 "total_order_price": float(po.total_order_price),
                 "items": item_dtos,
-                "notes": getattr(po, "notes", None),
+                "notes": parsed_notes["user_note"],
+                "expected_delivery_stale": expected_delivery_stale,
+                "expected_delivery_status_message": (
+                    "Expected delivery date is in the past. Review before submitting or receiving this order."
+                    if expected_delivery_stale
+                    else None
+                ),
+                "review_context": parsed_notes["review_context"],
             })
         return result
 
@@ -112,22 +137,15 @@ class InventoryService:
         """
         Get a single purchase order with items.
         """
-        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
-        from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
-        from app.repositories.supplier_repo import SupplierRepository
-        from app.repositories.ingredients_repo import IngredientRepository
-        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
-        poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
-        supplier_repo = SupplierRepository(self.db, self.restaurant_id)
-        ingredient_repo = IngredientRepository(self.db, self.restaurant_id)
-        po = await po_repo.get_by_id(order_id)
+        po = await self.purchase_order_repo.get_by_id(order_id)
         if not po:
             return None
-        supplier = await supplier_repo.get_by_id(po.supplier_id)
-        items = await poi_repo.get_by_field("order_id", po.order_id)
+        supplier = await self.supplier_repo.get_by_id(po.supplier_id)
+        items = await self.purchase_order_item_repo.get_by_field("order_id", po.order_id)
+        parsed_notes = parse_purchase_order_notes(getattr(po, "notes", None))
         item_dtos = []
         for item in items:
-            ingredient = await ingredient_repo.get_by_id(item.ingredient_id)
+            ingredient = await self.ingredient_repo.get_by_id(item.ingredient_id)
             item_dtos.append({
                 "order_item_id": item.order_item_id,
                 "order_id": item.order_id,
@@ -139,6 +157,11 @@ class InventoryService:
                 "unit_price": float(item.unit_price),
                 "total_item_price": float(item.total_item_price),
             })
+        expected_delivery_stale = bool(
+            po.expected_delivery_date
+            and po.status in {"cart", "pending"}
+            and po.expected_delivery_date < date.today()
+        )
         return {
             "order_id": po.order_id,
             "restaurant_id": po.restaurant_id,
@@ -150,7 +173,14 @@ class InventoryService:
             "status": po.status,
             "total_order_price": float(po.total_order_price),
             "items": item_dtos,
-            "notes": getattr(po, "notes", None),
+            "notes": parsed_notes["user_note"],
+            "expected_delivery_stale": expected_delivery_stale,
+            "expected_delivery_status_message": (
+                "Expected delivery date is in the past. Review before submitting or receiving this order."
+                if expected_delivery_stale
+                else None
+            ),
+            "review_context": parsed_notes["review_context"],
         }
 
     async def update_purchase_order_status(self, order_id: int, status: str) -> dict:
@@ -160,8 +190,50 @@ class InventoryService:
         if status == "delivered":
             return await self.receive_purchase_order(order_id)
 
-        await self.purchase_order_repo.update(order_id, {"status": status})
-        return {"order_id": order_id, "status": status}
+        purchase_order = await self.purchase_order_repo.get_by_id(order_id)
+        if not purchase_order:
+            raise ValueError(f"Purchase order {order_id} not found.")
+
+        update_payload: Dict[str, Any] = {"status": status}
+        expected_delivery_refreshed = False
+
+        if status == "pending":
+            refreshed_expected_delivery = await self._calculate_expected_delivery_for_order(order_id)
+            if refreshed_expected_delivery and (
+                purchase_order.expected_delivery_date is None
+                or purchase_order.expected_delivery_date < date.today()
+            ):
+                update_payload["expected_delivery_date"] = refreshed_expected_delivery
+                expected_delivery_refreshed = True
+
+        await self.purchase_order_repo.update(order_id, update_payload)
+        return {
+            "order_id": order_id,
+            "status": status,
+            "expected_delivery_date": update_payload.get(
+                "expected_delivery_date",
+                purchase_order.expected_delivery_date,
+            ),
+            "expected_delivery_refreshed": expected_delivery_refreshed,
+        }
+
+    async def _calculate_expected_delivery_for_order(self, order_id: int) -> Optional[date]:
+        items = await self.purchase_order_item_repo.get_by_field("order_id", order_id)
+        if not items:
+            return None
+
+        max_lead_time = 0
+        for item in items:
+            if not getattr(item, "ingredient_supplier_id", None):
+                continue
+            ingredient_supplier = await self.ingredient_supplier_repo.get_by_id(
+                item.ingredient_supplier_id
+            )
+            if not ingredient_supplier:
+                continue
+            max_lead_time = max(max_lead_time, int(ingredient_supplier.lead_time_days or 0))
+
+        return date.today() + timedelta(days=max_lead_time)
 
     async def receive_purchase_order(
         self,
@@ -401,76 +473,148 @@ class InventoryService:
             dict with 'suggestions' grouped by supplier, 'last_eod_run_date', and 'forecast_source'
         """
         import math
-        from datetime import date, timedelta
         from decimal import Decimal
         from app.repositories.restaurants_repo import RestaurantRepository
-        from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
-        from app.repositories.ingredients_repo import IngredientRepository
-        from app.repositories.inventory_repo import InventoryRepository
         from app.services.reorder_forecast_engine import ReorderForecastEngine
         from app.services.forecasting_engine import ForecastingEngine
-        from app.repositories.forecast_breakdown_repo import ForecastBreakdownRepository
         from app.core.logging import logger
-        
+
         restaurant_repo = RestaurantRepository(self.db, self.restaurant_id)
-        ingredient_supplier_repo = IngredientSupplierRepository(self.db, self.restaurant_id)
-        ingredient_repo = IngredientRepository(self.db, self.restaurant_id)
-        inventory_repo = InventoryRepository(self.db, self.restaurant_id)
         reorder_engine = ReorderForecastEngine(self.db, self.restaurant_id, self.subscription_tier)
-        
-        # Get last EOD run date from restaurant
+
         restaurant = await restaurant_repo.get_by_id(self.restaurant_id)
         last_eod_run_date = getattr(restaurant, 'last_eod_run_date', None)
-        
-        ingredient_forecast = {}
-        forecast_source = "cached" if use_cached_forecast else "fresh"
-        
-        if use_cached_forecast and last_eod_run_date:
-            # Use cached forecast from ingredient_forecast_breakdown table
-            forecast_breakdown_repo = ForecastBreakdownRepository(self.db, self.restaurant_id)
-            
-            # Get all ingredients with their forecasts
-            ingredients = await ingredient_repo.get_all()
-            today = date.today()
-            end_date = today + timedelta(days=horizon_days)
-            
-            for ingredient in ingredients:
-                # Get forecast breakdowns for this period
-                breakdowns = await forecast_breakdown_repo.get_forecasts_for_date_range(
-                    today, end_date
+        resolved_cached_run_date = await self._resolve_cached_forecast_run_date(last_eod_run_date)
+
+        ingredient_forecast: Dict[int, Dict[str, Any]] = {}
+        recent_eod_metadata = await self._get_forecast_batch_metadata(resolved_cached_run_date)
+        forecast_state = self._build_forecast_state(
+            forecast_source="cached" if use_cached_forecast else "fresh",
+            forecast_source_type="eod" if use_cached_forecast else "on_demand",
+            forecast_generated_at=None,
+            forecast_reused=use_cached_forecast,
+            forecast_stale=False,
+            forecast_status="ready",
+            forecast_status_message=None,
+            **(recent_eod_metadata if use_cached_forecast else {"forecast_confidence_score": None, "forecast_version": None}),
+        )
+
+        async def load_recent_eod_forecast() -> tuple[Dict[int, Dict[str, Any]], Optional[Any], Optional[date]]:
+            effective_run_date = await self._resolve_cached_forecast_run_date(last_eod_run_date)
+            if effective_run_date is None:
+                return {}, None, None
+
+            ledger = await self._get_last_eod_ledger(effective_run_date)
+            if not ledger or not getattr(ledger, "finalized", False):
+                return {}, ledger, effective_run_date
+            cached_forecast = await self._load_cached_ingredient_forecast(
+                horizon_days=horizon_days,
+                ledger_finished_at=getattr(ledger, "finished_at", None),
+            )
+            return cached_forecast, ledger, effective_run_date
+
+        if use_cached_forecast:
+            cached_forecast, ledger, effective_run_date = await load_recent_eod_forecast()
+            ingredient_forecast = cached_forecast
+            forecast_state["forecast_generated_at"] = self._serialize_forecast_timestamp(
+                getattr(ledger, "finished_at", None) or effective_run_date
+            )
+            forecast_state["forecast_stale"] = (
+                effective_run_date is None or effective_run_date < date.today()
+            )
+
+            if ingredient_forecast:
+                if forecast_state["forecast_stale"]:
+                    forecast_state["forecast_status"] = "stale"
+                    forecast_state["forecast_status_message"] = (
+                        "Using the most recent finalized EOD forecast, but it is older than today's cycle."
+                    )
+            else:
+                forecast_state["forecast_status"] = "failed"
+                forecast_state["forecast_status_message"] = (
+                    "The latest finalized EOD forecast did not include reusable ingredient breakdowns."
+                    if effective_run_date is not None and ledger and getattr(ledger, "finalized", False)
+                    else "No finalized EOD forecast was available to reuse."
                 )
-                
-                # Build daily breakdown for this ingredient
-                daily_breakdown = []
-                for b in breakdowns:
-                    if hasattr(b, 'ingredient_id') and b.ingredient_id == ingredient.ingredient_id:
-                        daily_breakdown.append((b.forecast_date, float(b.forecasted_quantity or 0)))
-                
-                if daily_breakdown:
-                    inventory = await inventory_repo.get_inventory_by_ingredient(ingredient.ingredient_id)
-                    unit = inventory.unit if inventory else "unit"
-                    ingredient_forecast[ingredient.ingredient_id] = {
-                        "daily_breakdown": daily_breakdown,
-                        "unit": unit
-                    }
         else:
-            # Run fresh forecast
             forecasting_engine = ForecastingEngine(
                 self.db, self.restaurant_id, self.subscription_tier
             )
-            await forecasting_engine.initialize()
-            ingredient_forecast = await forecasting_engine.run_forecasting_pipeline(
-                horizon_days=horizon_days,
-                reorder_horizon_days=horizon_days,
-            )
-            forecast_source = "fresh"
+            try:
+                await forecasting_engine.initialize()
+                ingredient_forecast = await forecasting_engine.run_forecasting_pipeline(
+                    horizon_days=horizon_days,
+                    reorder_horizon_days=horizon_days,
+                )
+                forecast_state["forecast_generated_at"] = self._serialize_forecast_timestamp(
+                    datetime.utcnow()
+                )
+                forecast_state["forecast_reused"] = False
+                forecast_state.update(await self._get_forecast_batch_metadata(date.today()))
+
+                if not ingredient_forecast:
+                    cached_forecast, ledger, effective_run_date = await load_recent_eod_forecast()
+                    if cached_forecast:
+                        ingredient_forecast = cached_forecast
+                        forecast_state.update(
+                            self._build_forecast_state(
+                                forecast_source="cached",
+                                forecast_source_type="eod",
+                                forecast_generated_at=self._serialize_forecast_timestamp(
+                                    getattr(ledger, "finished_at", None) or effective_run_date
+                                ),
+                                forecast_reused=True,
+                                forecast_stale=effective_run_date is None or effective_run_date < date.today(),
+                                forecast_status="degraded",
+                                forecast_status_message="Fresh forecast returned no usable output. Using the most recent finalized EOD forecast instead.",
+                                **recent_eod_metadata,
+                            )
+                        )
+                    else:
+                        forecast_state["forecast_status"] = "failed"
+                        forecast_state["forecast_status_message"] = (
+                            "Fresh forecast produced no usable output and no finalized EOD forecast was available."
+                        )
+            except Exception as exc:
+                logger.exception("[PO_SUGGEST] Fresh forecast failed: %s", exc)
+                cached_forecast, ledger, effective_run_date = await load_recent_eod_forecast()
+                if cached_forecast:
+                    ingredient_forecast = cached_forecast
+                    forecast_state.update(
+                        self._build_forecast_state(
+                            forecast_source="cached",
+                            forecast_source_type="eod",
+                            forecast_generated_at=self._serialize_forecast_timestamp(
+                                getattr(ledger, "finished_at", None) or effective_run_date
+                            ),
+                            forecast_reused=True,
+                            forecast_stale=effective_run_date is None or effective_run_date < date.today(),
+                            forecast_status="degraded",
+                            forecast_status_message="Fresh forecast failed. Using the most recent finalized EOD forecast instead.",
+                            **recent_eod_metadata,
+                        )
+                    )
+                else:
+                    forecast_state["forecast_status"] = "failed"
+                    forecast_state["forecast_status_message"] = (
+                        "Fresh forecast failed and no finalized EOD forecast was available."
+                    )
+
+        if not ingredient_forecast:
+            return {
+                "suggestions": [],
+                "all_items": [],
+                "last_eod_run_date": str(resolved_cached_run_date) if resolved_cached_run_date else None,
+                "horizon_days": horizon_days,
+                **forecast_state,
+            }
         
         # Generate suggestions from forecast
         suggestions_by_supplier = {}
         all_suggestions = []
         
         for ingredient_id in ingredient_forecast.keys():
-            suppliers = await ingredient_supplier_repo.get_all_by_ingredient_id(ingredient_id)
+            suppliers = await self.ingredient_supplier_repo.get_all_by_ingredient_id(ingredient_id)
             if not suppliers:
                 logger.warning(f"[PO_SUGGEST] No suppliers found ingredient={ingredient_id}")
                 continue
@@ -492,7 +636,7 @@ class InventoryService:
                 Decimal("0.01")
             )
 
-            inventory = await inventory_repo.get_inventory_by_ingredient(ingredient_id)
+            inventory = await self.inventory_repo.get_inventory_by_ingredient(ingredient_id)
             if inventory:
                 if inventory.shelf_life_days is not None:
                     shelf_life = inventory.shelf_life_days
@@ -580,7 +724,7 @@ class InventoryService:
             )
 
             # Get ingredient and supplier names
-            ingredient = await ingredient_repo.get_by_id(ingredient_id)
+            ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
             ingredient_name = ingredient.name if ingredient else f"Ingredient {ingredient_id}"
 
             supplier_obj = await self.supplier_repo.get_by_id(supplier_id)
@@ -651,9 +795,9 @@ class InventoryService:
         return {
             "suggestions": list(suggestions_by_supplier.values()),
             "all_items": all_suggestions,
-            "last_eod_run_date": str(last_eod_run_date) if last_eod_run_date else None,
-            "forecast_source": forecast_source,
+            "last_eod_run_date": str(resolved_cached_run_date) if resolved_cached_run_date else None,
             "horizon_days": horizon_days,
+            **forecast_state,
         }
 
     async def get_ingredient_suppliers(self, ingredient_id: int) -> list:
@@ -809,6 +953,11 @@ class InventoryService:
                     "unit": item.get("unit", "unit"),
                     "unit_price": item.get("unit_price", 0),
                 })
+
+            review_context = build_purchase_order_review_context(
+                source_type="suggestion",
+                explanation_items=[build_purchase_order_explanation_item(item) for item in items],
+            )
             
             # Create the PO
             result = await self.create_purchase_order(
@@ -816,6 +965,7 @@ class InventoryService:
                 expected_delivery_date=expected_delivery,
                 items=po_items,
                 notes=notes,
+                review_context=review_context,
             )
             
             created_orders.append(result)
@@ -841,8 +991,143 @@ class InventoryService:
         self.purchase_order_item_repo = PurchaseOrderItemRepository(db, restaurant_id)
         self.alert_repo = AlertRepository(db, restaurant_id)
         self.discrepancy_repo = InventoryDeductionDiscrepancyRepository(db, restaurant_id)
+        self.ingredient_forecast_breakdown_repo = IngredientForecastBreakdownRepository(db, restaurant_id)
+        self.forecast_run_ledger_repo = ForecastRunLedgerRepository(db, restaurant_id)
+        self.forecast_repo = ForecastRepository(db, restaurant_id)
 
         print(f"Inventory Service: restaurant {self.restaurant_id}")
+
+    @staticmethod
+    def _serialize_forecast_timestamp(value: Optional[Union[datetime, date]]) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return datetime.combine(value, datetime.min.time()).isoformat()
+
+    @staticmethod
+    def _build_forecast_state(
+        *,
+        forecast_source: str,
+        forecast_source_type: str,
+        forecast_generated_at: Optional[str],
+        forecast_reused: bool,
+        forecast_stale: bool,
+        forecast_status: str,
+        forecast_status_message: Optional[str],
+        forecast_confidence_score: Optional[float] = None,
+        forecast_version: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        return {
+            "forecast_source": forecast_source,
+            "forecast_source_type": forecast_source_type,
+            "forecast_generated_at": forecast_generated_at,
+            "forecast_reused": forecast_reused,
+            "forecast_stale": forecast_stale,
+            "forecast_status": forecast_status,
+            "forecast_status_message": forecast_status_message,
+            "forecast_confidence_score": forecast_confidence_score,
+            "forecast_version": forecast_version,
+        }
+
+    async def _get_forecast_batch_metadata(self, run_date: Optional[date]) -> Dict[str, Optional[float | int]]:
+        if run_date is None:
+            return {
+                "forecast_confidence_score": None,
+                "forecast_version": None,
+            }
+
+        start_dt = datetime.combine(run_date, datetime.min.time())
+        end_dt = datetime.combine(run_date, datetime.max.time())
+        forecasts = await self.forecast_repo.get_forecasts_created_between(start_dt, end_dt)
+        if not forecasts:
+            return {
+                "forecast_confidence_score": None,
+                "forecast_version": None,
+            }
+
+        confidence_scores = [
+            float(forecast.confidence_score)
+            for forecast in forecasts
+            if getattr(forecast, "confidence_score", None) is not None
+        ]
+        version_candidates = [
+            int(forecast.forecast_version)
+            for forecast in forecasts
+            if getattr(forecast, "forecast_version", None) is not None
+        ]
+
+        return {
+            "forecast_confidence_score": round(sum(confidence_scores) / len(confidence_scores), 2)
+            if confidence_scores
+            else None,
+            "forecast_version": max(version_candidates) if version_candidates else None,
+        }
+
+    async def _get_last_eod_ledger(self, run_date: Optional[date]):
+        if run_date is None:
+            return None
+        return await self.forecast_run_ledger_repo.get_one_by({"run_date": run_date})
+
+    async def _resolve_cached_forecast_run_date(self, preferred_run_date: Optional[date]) -> Optional[date]:
+        if preferred_run_date is not None:
+            ledger = await self._get_last_eod_ledger(preferred_run_date)
+            if ledger and getattr(ledger, "finalized", False):
+                return preferred_run_date
+
+        latest_finalized = await self.forecast_run_ledger_repo.get_latest_finalized()
+        if latest_finalized and getattr(latest_finalized, "finalized", False):
+            return getattr(latest_finalized, "run_date", None)
+
+        return preferred_run_date
+
+    async def _load_cached_ingredient_forecast(
+        self,
+        *,
+        horizon_days: int,
+        ledger_finished_at: Optional[datetime],
+    ) -> Dict[int, Dict[str, Any]]:
+        today = date.today()
+        end_date = today + timedelta(days=horizon_days)
+        breakdowns = await self.ingredient_forecast_breakdown_repo.get_latest_by_date_range_before(
+            today,
+            end_date,
+            created_at_cutoff=ledger_finished_at,
+        )
+
+        if not breakdowns:
+            return {}
+
+        ingredient_forecast: Dict[int, Dict[str, Any]] = {}
+        inventory_units: Dict[int, str] = {}
+        ingredient_units: Dict[int, str] = {}
+
+        for breakdown in breakdowns:
+            ingredient_id = breakdown.ingredient_id
+            if ingredient_id not in inventory_units and ingredient_id not in ingredient_units:
+                inventory = await self.inventory_repo.get_inventory_by_ingredient(ingredient_id)
+                if inventory and getattr(inventory, "unit", None):
+                    inventory_units[ingredient_id] = inventory.unit
+                else:
+                    ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+                    ingredient_units[ingredient_id] = getattr(ingredient, "unit", "unit")
+
+            unit = inventory_units.get(ingredient_id) or ingredient_units.get(ingredient_id) or "unit"
+            ingredient_forecast.setdefault(
+                ingredient_id,
+                {
+                    "daily_breakdown": [],
+                    "unit": unit,
+                },
+            )
+            ingredient_forecast[ingredient_id]["daily_breakdown"].append(
+                (breakdown.forecast_date, float(breakdown.quantity or 0))
+            )
+
+        for forecast in ingredient_forecast.values():
+            forecast["daily_breakdown"].sort(key=lambda item: item[0])
+
+        return ingredient_forecast
 
     @staticmethod
     def _coerce_optional_int(value) -> Optional[int]:

@@ -77,6 +77,61 @@ const statusTabs: { label: string; value: PurchaseOrderStatus }[] = [
   { label: 'Delivered', value: 'delivered' },
 ];
 
+const getForecastSourceLabel = (data: POSuggestionsResponse) =>
+  data.forecast_source_type === 'eod' ? 'EOD' : 'On-demand';
+
+const formatExplanationValue = (value: number | null | undefined) => {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return 'n/a';
+  }
+  return Number.isInteger(value) ? String(value) : Number(value).toFixed(2);
+};
+
+const formatSelectionRule = (rule?: string | null) => {
+  if (rule === 'preferred_lowest_priority') {
+    return 'preferred supplier rule';
+  }
+  if (rule === 'fallback_lowest_priority') {
+    return 'fallback to lowest supplier priority';
+  }
+  return rule || 'supplier rule';
+};
+
+const getOrderSourceLabel = (sourceType?: 'manual' | 'suggestion' | 'eod_auto' | null) => {
+  if (sourceType === 'eod_auto') {
+    return 'EOD draft';
+  }
+  if (sourceType === 'suggestion') {
+    return 'Reorder draft';
+  }
+  return 'Manual order';
+};
+
+const getReviewItemWarnings = (
+  explanation?: PurchaseOrder['review_context'] extends { explanation_items: infer T }
+    ? T extends Array<infer U>
+      ? U extends { explanation?: infer E | null }
+        ? E
+        : never
+      : never
+    : never
+) => {
+  const flags = explanation?.assumption_flags;
+  if (!flags) {
+    return [] as string[];
+  }
+
+  const warnings: string[] = [];
+  if (flags.lead_time_source !== 'supplier') warnings.push('lead time fallback');
+  if (flags.moq_source !== 'supplier') warnings.push('MOQ fallback');
+  if (flags.shelf_life_source === 'missing_assumed_zero') warnings.push('shelf life assumed 0');
+  if (flags.inventory_source !== 'inventory_summary') warnings.push('inventory fallback');
+  if (flags.unit_conversion_fallback) warnings.push('unit conversion fallback');
+  if (flags.pricing_missing) warnings.push('pricing missing');
+  if (flags.abc_defaulted) warnings.push('ABC defaulted to C');
+  return warnings;
+};
+
 type WizardStep = 0 | 1;
 
 export default function PurchaseOrders() {
@@ -236,6 +291,19 @@ export default function PurchaseOrders() {
         showToast(formatReceiptSummary(data as PurchaseOrderReceiptSummary), 'info');
         return;
       }
+      if (
+        data &&
+        typeof data === 'object' &&
+        'expected_delivery_refreshed' in data &&
+        data.expected_delivery_refreshed &&
+        data.expected_delivery_date
+      ) {
+        showToast(
+          `Order submitted. Expected delivery refreshed to ${dayjs(data.expected_delivery_date).format('MMM D, YYYY')}.`,
+          'info'
+        );
+        return;
+      }
       showToast('Order status updated.');
     },
   });
@@ -256,13 +324,15 @@ export default function PurchaseOrders() {
       setExpandedSuppliers(new Set(data.suggestions.map(s => s.supplier_id)));
       if (data.all_items.length === 0) {
         showToast(
-          `No reorder suggestions were generated from the ${data.forecast_source} forecast.`,
-          'info'
+          data.forecast_status_message ||
+            `No reorder suggestions were generated from the ${getForecastSourceLabel(data)} forecast.`,
+          data.forecast_status === 'failed' ? 'warning' : 'info'
         );
         return;
       }
       showToast(
-        `Generated ${data.all_items.length} suggestion${data.all_items.length === 1 ? '' : 's'} across ${data.suggestions.length} supplier${data.suggestions.length === 1 ? '' : 's'} using the ${data.forecast_source} forecast.`
+        `${data.forecast_status_message ? `${data.forecast_status_message} ` : ''}Generated ${data.all_items.length} suggestion${data.all_items.length === 1 ? '' : 's'} across ${data.suggestions.length} supplier${data.suggestions.length === 1 ? '' : 's'} using the ${getForecastSourceLabel(data)} forecast.`,
+        data.forecast_status === 'ready' ? 'success' : 'warning'
       );
     },
     onError: (err: any) => {
@@ -317,6 +387,14 @@ export default function PurchaseOrders() {
     setWizardStep(1);
     setWizardMode('supplier');
   }, []);
+
+  const openReorderPreviewWorkspace = useCallback(() => {
+    setUseCachedForecast(true);
+    setSuggestions(null);
+    setSelectedItems(new Map());
+    setExpandedSuppliers(new Set());
+    openSupplierPreviewWizard();
+  }, [openSupplierPreviewWizard]);
 
   const handleRunFreshReorderPreview = useCallback(() => {
     setUseCachedForecast(false);
@@ -568,6 +646,13 @@ export default function PurchaseOrders() {
     else handleCreateIngredientOrdersFromCart();
   };
 
+  const wizardDescriptor =
+    wizardStep === 0
+      ? 'Choose a draft-building method, then move into a focused order workspace.'
+      : wizardMode === 'supplier'
+        ? 'Review forecast-driven lines on the left while the live draft and totals stay anchored on the right.'
+        : 'Assemble a supplier-grouped draft with ingredient-level control before you save it.';
+
   const updateSuggestedItemQty = useCallback(
     (supplierId: number, ingredientId: number, quantity: number) => {
       setSelectedItems(prev => {
@@ -632,6 +717,11 @@ export default function PurchaseOrders() {
                   That usually means current stock stayed above reorder points for this horizon, or
                   the forecast did not produce enough projected demand to trigger an order.
                 </Typography>
+                {suggestions.forecast_status_message && (
+                  <Typography variant="body2" color="warning.main" sx={{ mt: 1.5 }}>
+                    {suggestions.forecast_status_message}
+                  </Typography>
+                )}
               </Paper>
             )
           ) : (
@@ -706,12 +796,19 @@ export default function PurchaseOrders() {
               </Typography>
             </Box>
             {isSupplier && suggestions && (
-              <Chip
-                size="small"
-                label={`${suggestions.forecast_source} · ${suggestions.horizon_days}d`}
-                variant="outlined"
-                color="primary"
-              />
+              <Stack alignItems="flex-end" spacing={0.5}>
+                <Chip
+                  size="small"
+                  label={`${getForecastSourceLabel(suggestions)} · ${suggestions.horizon_days}d`}
+                  variant="outlined"
+                  color={suggestions.forecast_status === 'ready' ? 'primary' : 'warning'}
+                />
+                {suggestions.forecast_status_message && (
+                  <Typography variant="caption" color="warning.main" sx={{ maxWidth: 240 }}>
+                    {suggestions.forecast_status_message}
+                  </Typography>
+                )}
+              </Stack>
             )}
           </Stack>
 
@@ -1004,175 +1101,521 @@ export default function PurchaseOrders() {
     };
 
     const total = (order.items || []).reduce((s, it) => s + (Number(it.total_item_price) || 0), 0);
+    const reviewItems = order.review_context?.explanation_items || [];
+    const sourceLabel = getOrderSourceLabel(order.review_context?.source_type);
+    const nudgeDraftItemQuantity = (item: PurchaseOrderItem, delta: number) => {
+      const nextQty = Math.max(1, Number(item.quantity_ordered) + delta);
+      updateItemMut.mutate({
+        order_id: order.order_id,
+        order_item_id: item.order_item_id,
+        updates: {
+          quantity_ordered: nextQty,
+        },
+      });
+    };
 
-    return (
-      <Box>
-        <Typography variant="h6" sx={{ mb: 1 }}>
-          Order #{order.order_id} • {order.supplier_name}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Expected Delivery: {order.expected_delivery_date || '-'}
-        </Typography>
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
-          <Autocomplete
-            options={ingredientNames}
-            getOptionLabel={opt => opt.ingredient_name}
-            value={selIngredient}
-            onChange={(_, v) => setSelIngredient(v)}
-            renderInput={params => <TextField {...params} label="Ingredient" size="small" />}
-            sx={{ minWidth: 240 }}
-          />
-          <TextField
-            size="small"
-            label="Qty"
-            value={qty}
-            onChange={e => setQty(e.target.value)}
-            sx={{ width: 100 }}
-          />
-          <TextField
-            size="small"
-            label="Unit"
-            value={unit}
-            onChange={e => setUnit(e.target.value)}
-            sx={{ width: 120 }}
-          />
-          <TextField
-            size="small"
-            label="Unit Price"
-            value={price}
-            onChange={e => setPrice(e.target.value)}
-            sx={{ width: 140 }}
-          />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={addItem}>
-            Add Item
-          </Button>
-        </Stack>
-
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Ingredient</TableCell>
-              <TableCell align="right">Qty</TableCell>
-              <TableCell>Unit</TableCell>
-              <TableCell align="right">Unit Price</TableCell>
-              <TableCell align="right">Line Total</TableCell>
-              <TableCell align="center">Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {(order.items || []).map(it => {
-              const isEditing = editingId === it.order_item_id;
-              const qtyVal = isEditing ? editQty : it.quantity_ordered.toString();
-              const lineTotal = Number(qtyVal || 0) * Number(it.unit_price || 0);
-
+    const explanationSection =
+      reviewItems.length > 0 ? (
+        <Box>
+          <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.25 }}>
+            Why This Order Exists
+          </Typography>
+          <Stack spacing={1.5}>
+            {reviewItems.map(item => {
+              const explanation = item.explanation;
+              const warnings = getReviewItemWarnings(explanation);
               return (
-                <TableRow
-                  key={it.order_item_id}
-                  hover={order.status === 'cart'}
-                  onClick={() => beginEdit(it)}
-                  sx={{ cursor: order.status === 'cart' ? 'pointer' : 'default' }}
-                  selected={isEditing}
+                <Paper
+                  key={`${item.supplier_id}-${item.ingredient_id}`}
+                  variant="outlined"
+                  sx={{ p: 2 }}
                 >
-                  <TableCell>{it.ingredient_name}</TableCell>
-                  <TableCell align="right" sx={{ width: 120 }}>
-                    {isEditing ? (
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={qtyVal}
-                        onChange={e => setEditQty(e.target.value)}
-                        inputProps={{ min: 0, step: '0.01' }}
-                      />
-                    ) : (
-                      it.quantity_ordered
+                  <Stack spacing={0.75}>
+                    <Stack
+                      direction={{ xs: 'column', md: 'row' }}
+                      justifyContent="space-between"
+                      spacing={1}
+                    >
+                      <Box>
+                        <Typography variant="body1" fontWeight={600}>
+                          {item.ingredient_name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {item.quantity_to_order ?? 0} {item.unit || ''}
+                          {item.packs_to_order ? ` • ${item.packs_to_order} packs` : ''}
+                        </Typography>
+                      </Box>
+                      {typeof item.line_total === 'number' && (
+                        <Typography variant="subtitle2" fontWeight={700} color="primary.main">
+                          ${item.line_total.toFixed(2)}
+                        </Typography>
+                      )}
+                    </Stack>
+                    {explanation?.summary && (
+                      <Typography variant="body2" color="text.secondary">
+                        {explanation.summary}
+                      </Typography>
                     )}
-                  </TableCell>
-                  <TableCell sx={{ width: 120 }}>{it.unit}</TableCell>
-                  <TableCell align="right" sx={{ width: 140 }}>
-                    {`$${Number(it.unit_price).toFixed(2)}`}
-                  </TableCell>
-                  <TableCell align="right">${lineTotal.toFixed(2)}</TableCell>
-                  <TableCell align="center">
-                    {isEditing ? (
-                      <Stack direction="row" spacing={0.5} justifyContent="center">
-                        <IconButton
-                          size="small"
-                          color="success"
-                          onClick={e => {
-                            e.stopPropagation();
-                            saveEdit();
-                          }}
-                          disabled={updateItemMut.isPending}
-                        >
-                          <CheckIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          size="small"
-                          color="inherit"
-                          onClick={e => {
-                            e.stopPropagation();
-                            cancelEdit();
-                          }}
-                          disabled={updateItemMut.isPending}
-                        >
-                          <CloseIcon fontSize="small" />
-                        </IconButton>
-                      </Stack>
-                    ) : (
-                      <IconButton
-                        color="error"
-                        size="small"
-                        onClick={e => {
-                          e.stopPropagation();
-                          removeItemMut.mutate({
-                            order_id: order.order_id,
-                            order_item_id: it.order_item_id,
-                          });
-                        }}
-                        disabled={order.status !== 'cart'}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
+                    {explanation && (
+                      <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'background.default' }}>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Stock {formatExplanationValue(explanation.why_reorder.current_stock)}{' '}
+                          {explanation.why_reorder.current_unit} vs reorder point{' '}
+                          {formatExplanationValue(explanation.why_reorder.reorder_point)}.
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Lead {formatExplanationValue(explanation.why_reorder.lead_demand)} + shelf{' '}
+                          {formatExplanationValue(explanation.why_reorder.shelf_demand)} + safety{' '}
+                          {formatExplanationValue(explanation.why_reorder.safety_stock)} = target{' '}
+                          {formatExplanationValue(explanation.why_reorder.reorder_target)}.
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          ABC {explanation.policy_factors.abc_class} x{' '}
+                          {formatExplanationValue(explanation.policy_factors.abc_multiplier)}; MOQ
+                          floor {formatExplanationValue(explanation.policy_factors.moq_floor)};
+                          final before packs{' '}
+                          {formatExplanationValue(
+                            explanation.quantity_factors.final_quantity_before_pack_rounding
+                          )}
+                          .
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          {formatExplanationValue(explanation.quantity_factors.packs_to_order)}{' '}
+                          packs x{' '}
+                          {formatExplanationValue(explanation.quantity_factors.quantity_per_pack)}{' '}
+                          {explanation.quantity_factors.supplier_unit} ={' '}
+                          {formatExplanationValue(
+                            explanation.quantity_factors.total_quantity_ordered
+                          )}{' '}
+                          {explanation.quantity_factors.supplier_unit}.
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Supplier: {explanation.supplier_factors.selected_supplier} (
+                          {formatSelectionRule(explanation.supplier_factors.selection_rule)}).
+                        </Typography>
+                        {warnings.length > 0 && (
+                          <Typography
+                            variant="caption"
+                            color="warning.main"
+                            display="block"
+                            sx={{ mt: 0.5 }}
+                          >
+                            Assumptions: {warnings.join(', ')}.
+                          </Typography>
+                        )}
+                      </Box>
                     )}
-                  </TableCell>
-                </TableRow>
+                  </Stack>
+                </Paper>
               );
             })}
-            <TableRow>
-              <TableCell colSpan={4} align="right" sx={{ fontWeight: 600, borderBottom: 'none' }}>
-                Total
-              </TableCell>
-              <TableCell align="right" sx={{ fontWeight: 600, borderBottom: 'none' }}>
-                ${total.toFixed(2)}
-              </TableCell>
-              <TableCell sx={{ borderBottom: 'none' }} />
-            </TableRow>
-          </TableBody>
-        </Table>
+          </Stack>
+        </Box>
+      ) : null;
 
-        <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-          {order.status === 'cart' && (
-            <Button
-              variant="contained"
-              onClick={() =>
-                updateStatusMut.mutate({ order_id: order.order_id, status: 'pending' })
-              }
-            >
-              Submit Order
-            </Button>
-          )}
-          {order.status === 'pending' && (
-            <Button
-              variant="outlined"
-              onClick={() =>
-                updateStatusMut.mutate({ order_id: order.order_id, status: 'delivered' })
-              }
-            >
-              Mark Delivered
-            </Button>
-          )}
+    const itemsTable = (
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>Ingredient</TableCell>
+            <TableCell align="right">Qty</TableCell>
+            <TableCell>Unit</TableCell>
+            <TableCell align="right">Unit Price</TableCell>
+            <TableCell align="right">Line Total</TableCell>
+            <TableCell align="center">Actions</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {(order.items || []).map(it => {
+            const isEditing = editingId === it.order_item_id;
+            const qtyVal = isEditing ? editQty : it.quantity_ordered.toString();
+            const lineTotal = Number(qtyVal || 0) * Number(it.unit_price || 0);
+
+            return (
+              <TableRow
+                key={it.order_item_id}
+                hover={order.status === 'cart'}
+                onClick={() => beginEdit(it)}
+                sx={{ cursor: order.status === 'cart' ? 'pointer' : 'default' }}
+                selected={isEditing}
+              >
+                <TableCell>{it.ingredient_name}</TableCell>
+                <TableCell align="right" sx={{ width: 120 }}>
+                  {isEditing ? (
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={qtyVal}
+                      onChange={e => setEditQty(e.target.value)}
+                      inputProps={{ min: 0, step: '0.01' }}
+                    />
+                  ) : (
+                    it.quantity_ordered
+                  )}
+                </TableCell>
+                <TableCell sx={{ width: 120 }}>{it.unit}</TableCell>
+                <TableCell align="right" sx={{ width: 140 }}>
+                  {`$${Number(it.unit_price).toFixed(2)}`}
+                </TableCell>
+                <TableCell align="right">${lineTotal.toFixed(2)}</TableCell>
+                <TableCell align="center">
+                  {isEditing ? (
+                    <Stack direction="row" spacing={0.5} justifyContent="center">
+                      <IconButton
+                        size="small"
+                        color="success"
+                        onClick={e => {
+                          e.stopPropagation();
+                          saveEdit();
+                        }}
+                        disabled={updateItemMut.isPending}
+                      >
+                        <CheckIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        color="inherit"
+                        onClick={e => {
+                          e.stopPropagation();
+                          cancelEdit();
+                        }}
+                        disabled={updateItemMut.isPending}
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  ) : (
+                    <IconButton
+                      color="error"
+                      size="small"
+                      onClick={e => {
+                        e.stopPropagation();
+                        removeItemMut.mutate({
+                          order_id: order.order_id,
+                          order_item_id: it.order_item_id,
+                        });
+                      }}
+                      disabled={order.status !== 'cart'}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+          <TableRow>
+            <TableCell colSpan={4} align="right" sx={{ fontWeight: 600, borderBottom: 'none' }}>
+              Total
+            </TableCell>
+            <TableCell align="right" sx={{ fontWeight: 600, borderBottom: 'none' }}>
+              ${total.toFixed(2)}
+            </TableCell>
+            <TableCell sx={{ borderBottom: 'none' }} />
+          </TableRow>
+        </TableBody>
+      </Table>
+    );
+
+    return (
+      <Stack spacing={2.5}>
+        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
+          <Box>
+            <Typography variant="h6">Order #{order.order_id}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {order.supplier_name}
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Chip
+              label={order.status.toUpperCase()}
+              color={order.status === 'pending' ? 'warning' : 'default'}
+            />
+            <Chip label={sourceLabel} variant="outlined" color="primary" />
+            {order.review_context?.source_run_date && (
+              <Chip
+                label={`Run ${dayjs(order.review_context.source_run_date).format('MMM D')}`}
+                variant="outlined"
+              />
+            )}
+          </Stack>
         </Stack>
-      </Box>
+
+        {order.expected_delivery_stale && order.expected_delivery_status_message && (
+          <Alert severity="warning">{order.expected_delivery_status_message}</Alert>
+        )}
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+          <Paper variant="outlined" sx={{ p: 1.5, flex: 1, bgcolor: 'background.default' }}>
+            <Typography variant="caption" color="text.secondary">
+              Order Date
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={700}>
+              {dayjs(order.order_date).format('MMM D, YYYY')}
+            </Typography>
+          </Paper>
+          <Paper variant="outlined" sx={{ p: 1.5, flex: 1, bgcolor: 'background.default' }}>
+            <Typography variant="caption" color="text.secondary">
+              Expected Delivery
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={700}>
+              {order.expected_delivery_date
+                ? dayjs(order.expected_delivery_date).format('MMM D, YYYY')
+                : '-'}
+            </Typography>
+          </Paper>
+          <Paper variant="outlined" sx={{ p: 1.5, flex: 1, bgcolor: 'background.default' }}>
+            <Typography variant="caption" color="text.secondary">
+              Items
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={700}>
+              {order.items.length}
+            </Typography>
+          </Paper>
+          <Paper variant="outlined" sx={{ p: 1.5, flex: 1, bgcolor: 'background.default' }}>
+            <Typography variant="caption" color="text.secondary">
+              Total
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={700} color="primary.main">
+              ${total.toFixed(2)}
+            </Typography>
+          </Paper>
+        </Stack>
+
+        {order.notes && (
+          <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+              Notes
+            </Typography>
+            <Typography variant="body2">{order.notes}</Typography>
+          </Paper>
+        )}
+
+        {order.status === 'cart' ? (
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1.45fr) minmax(320px, 0.95fr)' },
+              gap: 2,
+              alignItems: 'start',
+            }}
+          >
+            <Stack spacing={2} sx={{ minWidth: 0 }}>
+              <Paper variant="outlined" sx={{ p: 2.5 }}>
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Edit Draft Lines
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Keep working in the same draft-style workspace before you submit the order.
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                    <Autocomplete
+                      options={ingredientNames}
+                      getOptionLabel={opt => opt.ingredient_name}
+                      value={selIngredient}
+                      onChange={(_, v) => setSelIngredient(v)}
+                      renderInput={params => (
+                        <TextField {...params} label="Ingredient" size="small" />
+                      )}
+                      sx={{ minWidth: 240 }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Qty"
+                      value={qty}
+                      onChange={e => setQty(e.target.value)}
+                      sx={{ width: 100 }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Unit"
+                      value={unit}
+                      onChange={e => setUnit(e.target.value)}
+                      sx={{ width: 120 }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Unit Price"
+                      value={price}
+                      onChange={e => setPrice(e.target.value)}
+                      sx={{ width: 140 }}
+                    />
+                    <Button variant="contained" startIcon={<AddIcon />} onClick={addItem}>
+                      Add Item
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Paper>
+
+              {explanationSection}
+
+              <Paper variant="outlined" sx={{ p: 1.5, overflow: 'hidden' }}>
+                {itemsTable}
+              </Paper>
+            </Stack>
+
+            <Paper
+              variant="outlined"
+              sx={{
+                p: 2.5,
+                height: 'fit-content',
+                bgcolor: 'background.paper',
+              }}
+            >
+              <Stack spacing={1.5} sx={{ mb: 2 }}>
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={700}>
+                    Current Draft
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Adjust quantities here, then submit once the draft looks right.
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1}>
+                  <Paper
+                    variant="outlined"
+                    sx={{ p: 1.25, flex: 1, bgcolor: 'background.default' }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      Items
+                    </Typography>
+                    <Typography variant="h6" fontWeight={700}>
+                      {order.items.length}
+                    </Typography>
+                  </Paper>
+                  <Paper
+                    variant="outlined"
+                    sx={{ p: 1.25, flex: 1, bgcolor: 'background.default' }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      Total
+                    </Typography>
+                    <Typography variant="h6" fontWeight={700} color="primary.main">
+                      ${total.toFixed(2)}
+                    </Typography>
+                  </Paper>
+                </Stack>
+              </Stack>
+
+              <Stack spacing={1.25}>
+                {order.items.length === 0 ? (
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      p: 2.5,
+                      textAlign: 'center',
+                      bgcolor: 'background.default',
+                      color: 'text.secondary',
+                    }}
+                  >
+                    <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.5 }}>
+                      No lines in this draft yet
+                    </Typography>
+                    <Typography variant="body2">
+                      Add ingredients on the left and they will stay anchored here while you build.
+                    </Typography>
+                  </Paper>
+                ) : (
+                  order.items.map(item => (
+                    <Paper
+                      key={item.order_item_id}
+                      variant="outlined"
+                      sx={{ p: 1.5, bgcolor: 'background.default' }}
+                    >
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body2" fontWeight={600}>
+                            {item.ingredient_name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            ${Number(item.unit_price).toFixed(2)} per {item.unit}
+                          </Typography>
+                        </Box>
+                        <Stack direction="row" spacing={0.25} alignItems="center">
+                          <IconButton
+                            size="small"
+                            onClick={() => nudgeDraftItemQuantity(item, -1)}
+                            disabled={updateItemMut.isPending}
+                          >
+                            <RemoveIcon fontSize="small" />
+                          </IconButton>
+                          <Typography sx={{ minWidth: 34, textAlign: 'center' }}>
+                            {item.quantity_ordered}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() => nudgeDraftItemQuantity(item, 1)}
+                            disabled={updateItemMut.isPending}
+                          >
+                            <AddIcon fontSize="small" />
+                          </IconButton>
+                        </Stack>
+                        <Typography variant="body2" sx={{ minWidth: 82, textAlign: 'right' }}>
+                          ${Number(item.total_item_price || 0).toFixed(2)}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() =>
+                            removeItemMut.mutate({
+                              order_id: order.order_id,
+                              order_item_id: item.order_item_id,
+                            })
+                          }
+                          disabled={removeItemMut.isPending}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    </Paper>
+                  ))
+                )}
+              </Stack>
+
+              <Stack direction="row" spacing={1} sx={{ mt: 2.5 }}>
+                <Button
+                  variant="contained"
+                  onClick={() =>
+                    updateStatusMut.mutate({ order_id: order.order_id, status: 'pending' })
+                  }
+                >
+                  Submit Draft
+                </Button>
+                <Button variant="text" color="inherit" onClick={() => setSelectedOrder(null)}>
+                  Close
+                </Button>
+              </Stack>
+            </Paper>
+          </Box>
+        ) : (
+          <>
+            {explanationSection}
+
+            {itemsTable}
+
+            <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+              {order.status === 'pending' && (
+                <Button
+                  variant="outlined"
+                  onClick={() =>
+                    updateStatusMut.mutate({ order_id: order.order_id, status: 'delivered' })
+                  }
+                >
+                  Mark Delivered
+                </Button>
+              )}
+              {order.status !== 'delivered' && (
+                <Button variant="text" color="inherit" onClick={() => setSelectedOrder(null)}>
+                  Close
+                </Button>
+              )}
+            </Stack>
+          </>
+        )}
+      </Stack>
     );
   };
 
@@ -1191,11 +1634,11 @@ export default function PurchaseOrders() {
             variant="outlined"
             size="large"
             startIcon={<PlayArrowIcon />}
-            onClick={handleRunFreshReorderPreview}
+            onClick={openReorderPreviewWorkspace}
             disabled={generateMut.isPending}
             sx={{ px: 3, py: 1.5, borderRadius: 2 }}
           >
-            {generateMut.isPending ? 'Running Preview...' : 'Run Reorder Preview'}
+            {generateMut.isPending ? 'Opening Preview...' : 'Open Reorder Preview'}
           </Button>
           <Button
             variant="contained"
@@ -1232,7 +1675,7 @@ export default function PurchaseOrders() {
         ))}
       </Tabs>
 
-      {/* Order List & Detail */}
+      {/* Order List */}
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
         <Paper
           sx={{
@@ -1291,28 +1734,59 @@ export default function PurchaseOrders() {
         </Paper>
 
         <Paper sx={{ p: 2, flex: 1, bgcolor: 'background.paper' }} elevation={0}>
-          {selectedOrder ? (
-            <ItemEditor order={selectedOrder} />
-          ) : (
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                py: 8,
-                color: 'text.secondary',
-              }}
-            >
-              <ShoppingCartIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
-              <Typography variant="body1">Select an order to view and edit items</Typography>
-              <Typography variant="body2" sx={{ mt: 1 }}>
-                Or click <strong>New Order</strong> to create one
-              </Typography>
-            </Box>
-          )}
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              py: 8,
+              color: 'text.secondary',
+            }}
+          >
+            <ShoppingCartIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
+            <Typography variant="body1">Select an order to open the review dialog</Typography>
+            <Typography variant="body2" sx={{ mt: 1, textAlign: 'center', maxWidth: 320 }}>
+              Drafts and pending orders now use a focused review surface instead of the old flat
+              editor.
+            </Typography>
+          </Box>
         </Paper>
       </Stack>
+
+      <Dialog
+        open={!!selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { minHeight: 620 } }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+            <Stack direction="row" alignItems="center" spacing={2}>
+              <ShoppingCartIcon color="primary" />
+              <Box>
+                <Typography variant="h6">
+                  {selectedOrder ? `Purchase Order #${selectedOrder.order_id}` : 'Purchase Order'}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Review the order, its ETA, and the original reorder explanation in one place.
+                </Typography>
+              </Box>
+            </Stack>
+            {selectedOrder && (
+              <Chip
+                color={selectedOrder.status === 'pending' ? 'warning' : 'primary'}
+                variant="outlined"
+                label={selectedOrder.status === 'cart' ? 'Draft Review' : 'Order Review'}
+              />
+            )}
+          </Stack>
+        </DialogTitle>
+        <DialogContent dividers sx={{ minHeight: 460 }}>
+          {selectedOrder && <ItemEditor order={selectedOrder} />}
+        </DialogContent>
+      </Dialog>
 
       {/* Snackbar */}
       <Snackbar
@@ -1338,24 +1812,27 @@ export default function PurchaseOrders() {
         fullWidth
         PaperProps={{ sx: { minHeight: 620 } }}
       >
-        <DialogTitle sx={{ pb: 1 }}>
+        <DialogTitle sx={{ pb: 1.5 }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
             <Stack direction="row" alignItems="center" spacing={2}>
               <ShoppingCartIcon color="primary" />
               <Box>
-                <Typography variant="h6">New Purchase Order</Typography>
+                <Typography variant="h6">Build Draft Purchase Order</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Build the order on the left and keep the live draft anchored on the right.
+                  {wizardDescriptor}
                 </Typography>
               </Box>
             </Stack>
-            {wizardMode && wizardStep === 1 && (
-              <Chip
-                color={wizardMode === 'supplier' ? 'primary' : 'secondary'}
-                variant="outlined"
-                label={wizardMode === 'supplier' ? 'Supplier Builder' : 'Ingredient Builder'}
-              />
-            )}
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Chip label={`Step ${wizardStep + 1} of 2`} variant="outlined" />
+              {wizardMode && wizardStep === 1 && (
+                <Chip
+                  color={wizardMode === 'supplier' ? 'primary' : 'secondary'}
+                  variant="outlined"
+                  label={wizardMode === 'supplier' ? 'Supplier Builder' : 'Ingredient Builder'}
+                />
+              )}
+            </Stack>
           </Stack>
         </DialogTitle>
 
@@ -1367,6 +1844,29 @@ export default function PurchaseOrders() {
             flexDirection: 'column',
           }}
         >
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 1.5,
+              mb: 2,
+              borderRadius: 2,
+              bgcolor: 'background.default',
+            }}
+          >
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={1.5}
+              justifyContent="space-between"
+            >
+              <Typography variant="body2" color="text.secondary">
+                Save drafts first, then submit them when you are actually ready to place the order.
+              </Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Chip size="small" label="Draft-first flow" color="primary" variant="outlined" />
+                <Chip size="small" label="Review before submit" variant="outlined" />
+              </Stack>
+            </Stack>
+          </Paper>
           {wizardStep === 0 ? (
             renderWizardMainContent()
           ) : (
@@ -1386,7 +1886,7 @@ export default function PurchaseOrders() {
         </DialogContent>
 
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={closeWizard}>Cancel</Button>
+          <Button onClick={closeWizard}>Close</Button>
           <Box sx={{ flex: 1 }} />
           {wizardStep > 0 && (
             <Button startIcon={<ArrowBackIcon />} onClick={handleBack}>
@@ -1416,8 +1916,8 @@ export default function PurchaseOrders() {
               {wizardMode === 'supplier'
                 ? createFromSuggestionsMut.isPending
                   ? 'Creating...'
-                  : `Create ${reviewTotals.supplierCount} Draft(s)`
-                : `Create ${ingredientCartTotals.supplierCount || 1} Draft${ingredientCartTotals.supplierCount === 1 ? '' : 's'}`}
+                  : `Save ${reviewTotals.supplierCount} Draft(s)`
+                : `Save ${ingredientCartTotals.supplierCount || 1} Draft${ingredientCartTotals.supplierCount === 1 ? '' : 's'}`}
             </Button>
           )}
         </DialogActions>

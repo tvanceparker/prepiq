@@ -26,6 +26,18 @@ class TopForecastedItem(BaseModel):
     name: str
     forecasted_quantity: int
 
+
+class ForecastStateDTO(BaseModel):
+    forecast_source: Literal["cached", "fresh"]
+    forecast_source_type: Literal["eod", "on_demand"]
+    forecast_generated_at: Optional[datetime]
+    forecast_reused: bool
+    forecast_stale: bool
+    forecast_status: Literal["ready", "stale", "degraded", "failed"]
+    forecast_status_message: Optional[str]
+    forecast_confidence_score: Optional[float] = None
+    forecast_version: Optional[int] = None
+
 class SalesBreakdownItem(BaseModel):
     menu_item_id: int
     menu_item_name: str

@@ -68,6 +68,27 @@ export interface PurchaseOrderItem {
   total_item_price: number;
 }
 
+export interface PurchaseOrderReviewItem {
+  ingredient_id: number;
+  ingredient_name: string;
+  supplier_id?: number | null;
+  supplier_name?: string | null;
+  quantity_to_order?: number | null;
+  packs_to_order?: number | null;
+  unit?: string | null;
+  line_total?: number | null;
+  lead_time_days?: number | null;
+  lead_demand?: number | null;
+  shelf_demand?: number | null;
+  explanation?: POReorderExplanation | null;
+}
+
+export interface PurchaseOrderReviewContext {
+  source_type: 'manual' | 'suggestion' | 'eod_auto';
+  source_run_date?: string | null;
+  explanation_items: PurchaseOrderReviewItem[];
+}
+
 export interface PurchaseOrder {
   order_id: number;
   restaurant_id: number;
@@ -80,6 +101,9 @@ export interface PurchaseOrder {
   total_order_price: number;
   items: PurchaseOrderItem[];
   notes?: string | null;
+  expected_delivery_stale?: boolean;
+  expected_delivery_status_message?: string | null;
+  review_context?: PurchaseOrderReviewContext | null;
 }
 
 export interface PurchaseOrderReceiptItemSummary {
@@ -100,6 +124,46 @@ export interface PurchaseOrderReceiptSummary {
   newly_received_item_count: number;
   already_received_item_count: number;
   received_items: PurchaseOrderReceiptItemSummary[];
+}
+
+export interface PurchaseOrderCreateResult {
+  order_id: number;
+  total_order_price: number;
+  status: 'cart';
+}
+
+export interface PurchaseOrderStatusUpdateResult {
+  order_id: number;
+  status: string;
+  expected_delivery_date?: string | null;
+  expected_delivery_refreshed?: boolean;
+}
+
+export interface PurchaseOrderItemAddResult {
+  order_item_id: number;
+  order_total_price: number;
+}
+
+export interface PurchaseOrderItemUpdateResult {
+  order_item_id: number;
+  order_id: number;
+  ingredient_id: number;
+  ingredient_supplier_id?: number | null;
+  quantity_ordered: number;
+  unit: string;
+  unit_price: number;
+  total_item_price: number;
+  order_total_price: number;
+}
+
+export interface PurchaseOrderItemDeleteResult {
+  order_item_id: number;
+  removed: boolean;
+  order_total_price: number;
+}
+
+export interface LastEodDateResponse {
+  last_eod_run_date: string | null;
 }
 
 export interface PurchaseOrderCreateItem {
@@ -338,6 +402,14 @@ export interface POSuggestionsResponse {
   all_items: POSuggestionItem[];
   last_eod_run_date: string | null;
   forecast_source: 'cached' | 'fresh';
+  forecast_source_type: 'eod' | 'on_demand';
+  forecast_generated_at: string | null;
+  forecast_reused: boolean;
+  forecast_stale: boolean;
+  forecast_status: 'ready' | 'stale' | 'degraded' | 'failed';
+  forecast_status_message: string | null;
+  forecast_confidence_score?: number | null;
+  forecast_version?: number | null;
   horizon_days: number;
 }
 

@@ -6,6 +6,7 @@ from app.schemas.sales_forecast_dto import (
     ForecastTotalPerDay,
     ForecastTotalAggregate,
     TopForecastedItem,
+    ForecastStateDTO,
     SalesBreakdownItem,
     SalesOverTimeItem,
     TopBottomItem,
@@ -65,6 +66,14 @@ async def get_top_items(
     service: SalesForecastService = Depends(get_sales_forecast_service),
 ):
     return await service.get_top_forecasted_items_basic(start_date, end_date, limit)
+
+
+@router.get("/forecast_state", response_model=ForecastStateDTO)
+@log_route("Get Forecast State")
+async def get_forecast_state(
+    service: SalesForecastService = Depends(get_sales_forecast_service),
+):
+    return await service.get_forecast_state()
 
 #FOR MENU MIX INSIGHTS
 @router.get("/sales_breakdown", response_model=List[SalesBreakdownItem])

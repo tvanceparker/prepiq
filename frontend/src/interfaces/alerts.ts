@@ -12,6 +12,8 @@ export interface AlertDto {
   status?: string;
   severity?: string | number;
   title?: string;
+  action_label?: string;
+  description?: string;
   message?: string;
   created_at?: string;
   date_created?: string;

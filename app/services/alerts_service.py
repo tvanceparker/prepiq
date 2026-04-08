@@ -17,7 +17,6 @@ from app.core.logging import logger
 from datetime import timedelta
 from app.utils.logger_helpers import log_method
 from typing import Any
-from datetime import datetime
 import json
 
 
@@ -58,7 +57,126 @@ class AlertsService:
         if not alert:
             return alert
         alert["severity"] = self._normalize_severity(alert.get("severity"))
+        operator_copy = self._build_operator_copy(alert)
+        alert.update(operator_copy)
+        if operator_copy.get("description"):
+            alert["message"] = operator_copy["description"]
         return alert
+
+    def _humanize_alert_type(self, alert_type: str) -> str:
+        cleaned = alert_type.replace(':', ' ').replace('_', ' ')
+        return ' '.join(part for part in cleaned.split() if part).title()
+
+    def _format_quantity(self, value: object) -> Optional[str]:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return None
+        if numeric.is_integer():
+            return str(int(numeric))
+        return f"{numeric:.2f}".rstrip("0").rstrip(".")
+
+    def _build_operator_copy(self, alert: Dict[str, object]) -> Dict[str, str]:
+        alert_type = str(alert.get("alert_type") or "")
+        meta = alert.get("meta") or {}
+        meta = meta if isinstance(meta, dict) else {}
+        raw_message = str(alert.get("message") or "").strip()
+
+        if alert_type == "Inventory:DeductionFailed":
+            item_name = (
+                meta.get("ingredient_name")
+                or meta.get("item_name")
+                or meta.get("batch_recipe_name")
+                or "inventory item"
+            )
+            required_quantity = self._format_quantity(meta.get("required_quantity"))
+            available_quantity = self._format_quantity(
+                meta.get("current_quantity_on_hand", meta.get("available_quantity"))
+            )
+            unit = str(meta.get("unit") or "").strip()
+            quantity_suffix = f" {unit}" if unit else ""
+
+            if required_quantity is not None and available_quantity is not None:
+                description = (
+                    f"{item_name} needed {required_quantity}{quantity_suffix}, but only "
+                    f"{available_quantity}{quantity_suffix} was available. Review inventory and confirm the counted stock."
+                )
+            else:
+                description = (
+                    f"{item_name} could not be deducted from inventory. Review the item and confirm the counted stock."
+                )
+
+            return {
+                "title": f"Inventory shortfall: {item_name}",
+                "action_label": "Review inventory",
+                "description": description,
+            }
+
+        if alert_type == "DataQuality:MissingChannel":
+            return {
+                "title": "Missing sales channel",
+                "action_label": "Set channel",
+                "description": "A sale is missing its sales channel. Set the channel so reporting and forecasting stay accurate.",
+            }
+
+        if alert_type == "DataQuality:NullOrZeroQuantity":
+            item_name = meta.get("menu_item_name") or "sale"
+            return {
+                "title": "Zero or missing quantity",
+                "action_label": "Correct quantity",
+                "description": f"A recorded {item_name} sale has a zero or missing quantity. Correct it before trusting today\'s totals.",
+            }
+
+        if alert_type == "DataQuality:QuantityOutlier":
+            item_name = meta.get("menu_item_name") or "sale"
+            return {
+                "title": "Quantity looks unusual",
+                "action_label": "Review quantity",
+                "description": f"A recorded {item_name} sale looks unusual compared with recent activity. Review the quantity before using it for decisions.",
+            }
+
+        if alert_type == "LowStock":
+            item_name = meta.get("ingredient_name") or "An inventory item"
+            current_stock = self._format_quantity(meta.get("current_stock"))
+            reorder_point = self._format_quantity(meta.get("reorder_point"))
+            if current_stock is not None and reorder_point is not None:
+                description = (
+                    f"{item_name} is at {current_stock}, below the reorder point of {reorder_point}. Review reorder suggestions soon."
+                )
+            else:
+                description = f"{item_name} is below its reorder point. Review reorder suggestions soon."
+            return {
+                "title": "Low stock warning",
+                "action_label": "Review reorder",
+                "description": description,
+            }
+
+        if alert_type == "MissingSalesData":
+            return {
+                "title": "Missing sales data",
+                "action_label": "Upload sales",
+                "description": "No sales data was found for this run. Upload or sync sales before rerunning forecast and EOD workflows.",
+            }
+
+        if alert_type == "prep_incomplete":
+            batch_recipe_id = meta.get("batch_recipe_id")
+            if batch_recipe_id is not None:
+                description = (
+                    f"A scheduled prep task for batch recipe {batch_recipe_id} was not marked complete. Review prep status before closing the day."
+                )
+            else:
+                description = "A scheduled prep task was not marked complete. Review prep status before closing the day."
+            return {
+                "title": "Prep not completed",
+                "action_label": "Review prep",
+                "description": description,
+            }
+
+        return {
+            "title": self._humanize_alert_type(alert_type),
+            "action_label": "Review details",
+            "description": raw_message or "Review this alert for more details.",
+        }
 
     async def log_activity(self, action: str, details: Any = None):
         """

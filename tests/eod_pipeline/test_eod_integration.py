@@ -210,6 +210,8 @@ class TestEODPipelineIntegration:
         
         # Verify integration
         service.purchase_order_repo.create.assert_called_once()
+        create_payload = service.purchase_order_repo.create.await_args.args[0]
+        assert create_payload["status"] == "cart"
         service.purchase_order_item_repo.create.assert_called_once()
         service.purchase_order_repo.update.assert_called_once()
 

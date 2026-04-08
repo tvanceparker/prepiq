@@ -10,6 +10,7 @@ import Login from '../pages/auth/Login';
 // Dashboard
 import DailyOverview from '../pages/dashboard/DailyOverview';
 import AlertsFeed from '../pages/dashboard/AlertsFeed';
+import EodSummary from '../pages/dashboard/EodSummary';
 import QuickAnalytics from '../pages/dashboard/QuickAnalytics';
 import MenuItemQuickEntry from '../pages/dashboard/MenuItemQuickEntry';
 
@@ -67,6 +68,7 @@ export default function AppRoutes(): JSX.Element {
         {/* Dashboard */}
         <Route path="/dashboard/daily-overview" element={<DailyOverview />} />
         <Route path="/dashboard/alerts" element={<AlertsFeed />} />
+        <Route path="/dashboard/eod-summary" element={<EodSummary />} />
         <Route path="/dashboard/quick-analytics" element={<QuickAnalytics />} />
         <Route path="/dashboard/menu-item-entry" element={<MenuItemQuickEntry />} />
 

@@ -66,6 +66,12 @@ class ReorderForecastEngine:
         except (TypeError, ValueError):
             return None
 
+    @staticmethod
+    def _to_decimal(value: Optional[Any]) -> Decimal:
+        if value is None:
+            return Decimal("0.00")
+        return Decimal(str(value)).quantize(Decimal("0.01"))
+
     async def _get_abc_context(self, ingredient_id: int) -> Dict[str, Any]:
         cached = self._abc_cache.get(ingredient_id)
         if cached:
@@ -126,16 +132,20 @@ class ReorderForecastEngine:
         abc_class = abc_context["abc_class"]
         abc_multiplier = self.ABC_MULTIPLIERS.get(abc_class, self.ABC_MULTIPLIERS["C"])
 
+        lead_demand = self._to_decimal(lead_demand)
+        shelf_demand = self._to_decimal(shelf_demand)
+        total_demand = self._to_decimal(total_demand)
+
         if current_stock is None or current_unit is None:
             current_stock, current_unit = await self.stats_service.get_current_inventory(
                 ingredient_id
             )
-        current_stock = Decimal(str(current_stock or 0)).quantize(Decimal("0.01"))
+        current_stock = self._to_decimal(current_stock)
         current_unit = current_unit or unit or ""
 
         if moq is None:
             moq = await self.stats_service.get_moq(ingredient_id)
-        moq = Decimal(str(moq or 0)).quantize(Decimal("0.01"))
+        moq = self._to_decimal(moq)
 
         safety_stock = await self.calculate_safety_stock(ingredient_id, lead_time)
         reorder_point = (lead_demand + safety_stock).quantize(Decimal("0.01"))

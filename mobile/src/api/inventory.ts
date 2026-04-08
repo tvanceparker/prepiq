@@ -2,19 +2,26 @@ import { get, patch, post, del } from './index';
 import type {
   InventoryItemDTO,
   SupplierDTO,
-  PurchaseOrder,
   PurchaseOrderCreate,
+  PurchaseOrderCreateResult,
+  PurchaseOrder,
   PurchaseOrderItem,
+  PurchaseOrderItemAddResult,
+  PurchaseOrderItemDeleteResult,
+  PurchaseOrderItemUpdateResult,
   PurchaseOrderReceiptSummary,
   PurchaseOrderStatus,
+  PurchaseOrderStatusUpdateResult,
   StockMovement,
   IngredientName,
   POSuggestionsResponse,
+  POSuggestionItem,
   IngredientStockLevel,
   IngredientSupplierOption,
   InventoryAdjustmentResult,
   InventoryDeductionDiscrepancy,
   InventorySetCurrentStockRequest,
+  LastEodDateResponse,
 } from '../interfaces/inventory';
 
 // =============================================================================
@@ -118,8 +125,10 @@ export const getInventoryAdjustments = async (): Promise<any[]> => {
 // Purchase Orders
 // =============================================================================
 
-export const createPurchaseOrder = async (data: PurchaseOrderCreate): Promise<PurchaseOrder> => {
-  return post<PurchaseOrder>('/inventory/purchase_orders', data);
+export const createPurchaseOrder = async (
+  data: PurchaseOrderCreate
+): Promise<PurchaseOrderCreateResult> => {
+  return post<PurchaseOrderCreateResult>('/inventory/purchase_orders', data);
 };
 
 export const getPurchaseOrders = async (params?: {
@@ -140,7 +149,7 @@ export const getPurchaseOrderDetail = async (order_id: number): Promise<Purchase
 export const updatePurchaseOrderStatus = async (
   order_id: number,
   status: PurchaseOrderStatus
-): Promise<any> => {
+): Promise<PurchaseOrderStatusUpdateResult | PurchaseOrderReceiptSummary> => {
   return patch(
     `/inventory/purchase_orders/${order_id}/status?status=${encodeURIComponent(status)}`,
     {}
@@ -159,23 +168,28 @@ export const receivePurchaseOrder = async (
 export const addItemToPurchaseOrder = async (
   order_id: number,
   item: Partial<PurchaseOrderItem>
-): Promise<any> => {
-  return post(`/inventory/purchase_orders/${order_id}/items`, item);
+): Promise<PurchaseOrderItemAddResult> => {
+  return post<PurchaseOrderItemAddResult>(`/inventory/purchase_orders/${order_id}/items`, item);
 };
 
 export const removeItemFromPurchaseOrder = async (
   order_id: number,
   order_item_id: number
-): Promise<void> => {
-  return del(`/inventory/purchase_orders/${order_id}/items/${order_item_id}`);
+): Promise<PurchaseOrderItemDeleteResult> => {
+  return del<PurchaseOrderItemDeleteResult>(
+    `/inventory/purchase_orders/${order_id}/items/${order_item_id}`
+  );
 };
 
 export const updatePurchaseOrderItem = async (
   order_id: number,
   order_item_id: number,
   updates: Partial<PurchaseOrderItem>
-): Promise<any> => {
-  return patch(`/inventory/purchase_orders/${order_id}/items/${order_item_id}`, updates);
+): Promise<PurchaseOrderItemUpdateResult> => {
+  return patch<PurchaseOrderItemUpdateResult>(
+    `/inventory/purchase_orders/${order_id}/items/${order_item_id}`,
+    updates
+  );
 };
 
 // =============================================================================
@@ -197,10 +211,10 @@ export const generatePOSuggestions = async (
 };
 
 export const createPOsFromSuggestions = async (
-  suggestions: any[],
+  suggestions: POSuggestionItem[],
   notes?: string
-): Promise<any[]> => {
-  return post<any[]>('/inventory/purchase_orders/create-from-suggestions', {
+): Promise<PurchaseOrderCreateResult[]> => {
+  return post<PurchaseOrderCreateResult[]>('/inventory/purchase_orders/create-from-suggestions', {
     suggestions,
     notes,
   });
@@ -226,8 +240,8 @@ export const getIngredientSuppliers = async (
   return get<IngredientSupplierOption[]>(`/inventory/ingredients/${ingredientId}/suppliers`);
 };
 
-export const getLastEodDate = async (): Promise<{ last_eod_run_date: string | null }> => {
-  return get<{ last_eod_run_date: string | null }>('/inventory/last-eod-date');
+export const getLastEodDate = async (): Promise<LastEodDateResponse> => {
+  return get<LastEodDateResponse>('/inventory/last-eod-date');
 };
 
 // =============================================================================

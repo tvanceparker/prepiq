@@ -53,6 +53,77 @@ interface POSection {
 type WizardStep = 0 | 1;
 const WIZARD_STEPS = ['Method', 'Build'];
 
+const getForecastSourceLabel = (forecastSourceType: 'eod' | 'on_demand') =>
+  forecastSourceType === 'eod' ? 'EOD' : 'On-demand';
+
+const getForecastStatusTone = (status: 'ready' | 'stale' | 'degraded' | 'failed') => {
+  switch (status) {
+    case 'ready':
+      return '#2e7d32';
+    case 'stale':
+      return '#ed6c02';
+    case 'degraded':
+      return '#d9822b';
+    case 'failed':
+      return '#d32f2f';
+    default:
+      return '#6b7280';
+  }
+};
+
+const formatExplanationValue = (value: number | null | undefined): string => {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return 'n/a';
+  }
+  return Number.isInteger(value) ? String(value) : Number(value).toFixed(2);
+};
+
+const formatSelectionRule = (rule?: string | null): string => {
+  if (rule === 'preferred_lowest_priority') {
+    return 'preferred supplier rule';
+  }
+  if (rule === 'fallback_lowest_priority') {
+    return 'fallback to lowest supplier priority';
+  }
+  return rule || 'supplier rule';
+};
+
+const getOrderSourceLabel = (sourceType?: 'manual' | 'suggestion' | 'eod_auto' | null): string => {
+  if (sourceType === 'eod_auto') {
+    return 'EOD draft';
+  }
+  if (sourceType === 'suggestion') {
+    return 'Reorder draft';
+  }
+  return 'Manual order';
+};
+
+const getReviewItemWarnings = (
+  flags?: {
+    lead_time_source: string;
+    moq_source: string;
+    shelf_life_source: string;
+    inventory_source: string;
+    unit_conversion_fallback: boolean;
+    pricing_missing: boolean;
+    abc_defaulted: boolean;
+  } | null
+): string[] => {
+  if (!flags) {
+    return [];
+  }
+
+  const warnings: string[] = [];
+  if (flags.lead_time_source !== 'supplier') warnings.push('lead time fallback');
+  if (flags.moq_source !== 'supplier') warnings.push('MOQ fallback');
+  if (flags.shelf_life_source === 'missing_assumed_zero') warnings.push('shelf life assumed 0');
+  if (flags.inventory_source !== 'inventory_summary') warnings.push('inventory fallback');
+  if (flags.unit_conversion_fallback) warnings.push('unit conversion fallback');
+  if (flags.pricing_missing) warnings.push('pricing missing');
+  if (flags.abc_defaulted) warnings.push('ABC defaulted to C');
+  return warnings;
+};
+
 export default function PurchaseOrders(): React.JSX.Element {
   const theme = useTheme();
   const { tier } = useContext(AuthContext) || {};
@@ -99,6 +170,8 @@ export default function PurchaseOrders(): React.JSX.Element {
     createOrder,
     updateItem,
     updatingItem,
+    removeItem,
+    removingItem,
   } = usePurchaseOrders({
     status: statusFilter !== 'all' ? statusFilter : undefined,
   });
@@ -196,6 +269,16 @@ export default function PurchaseOrders(): React.JSX.Element {
     const result = await updateStatus({ orderId: poId, status: newStatus });
     if (result && typeof result === 'object' && 'receipt_mode' in result) {
       showToast(formatReceiptSummary(result));
+    } else if (
+      result &&
+      typeof result === 'object' &&
+      'expected_delivery_refreshed' in result &&
+      result.expected_delivery_refreshed &&
+      result.expected_delivery_date
+    ) {
+      showToast(
+        `Order submitted. Expected delivery refreshed to ${new Date(result.expected_delivery_date).toLocaleDateString()}.`
+      );
     } else {
       showToast('Order status updated.');
     }
@@ -220,7 +303,7 @@ export default function PurchaseOrders(): React.JSX.Element {
       return;
     }
     try {
-      await updateItem({
+      const result = await updateItem({
         orderId: selectedPO.order_id,
         orderItemId: editingItem.order_item_id,
         updates: {
@@ -242,12 +325,78 @@ export default function PurchaseOrders(): React.JSX.Element {
                 }
               : it
           ),
+          total_order_price:
+            result && typeof result === 'object' && 'order_total_price' in result
+              ? result.order_total_price
+              : prev.total_order_price,
         };
       });
 
       closeItemEditor();
     } catch (err) {
       console.error('Failed to update item', err);
+    }
+  };
+
+  const handleNudgeDraftItemQty = async (item: PurchaseOrderItem, delta: number) => {
+    if (!selectedPO) return;
+    const nextQty = Math.max(1, Number(item.quantity_ordered) + delta);
+
+    try {
+      const result = await updateItem({
+        orderId: selectedPO.order_id,
+        orderItemId: item.order_item_id,
+        updates: {
+          quantity_ordered: nextQty,
+        },
+      });
+
+      setSelectedPO(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.map(it =>
+            it.order_item_id === item.order_item_id
+              ? {
+                  ...it,
+                  quantity_ordered: nextQty,
+                  total_item_price: nextQty * it.unit_price,
+                }
+              : it
+          ),
+          total_order_price:
+            result && typeof result === 'object' && 'order_total_price' in result
+              ? result.order_total_price
+              : prev.total_order_price,
+        };
+      });
+    } catch (err) {
+      console.error('Failed to update item quantity', err);
+    }
+  };
+
+  const handleRemoveDraftItem = async (item: PurchaseOrderItem) => {
+    if (!selectedPO) return;
+
+    try {
+      const result = await removeItem({
+        orderId: selectedPO.order_id,
+        orderItemId: item.order_item_id,
+      });
+
+      setSelectedPO(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.filter(it => it.order_item_id !== item.order_item_id),
+          total_order_price:
+            result && typeof result === 'object' && 'order_total_price' in result
+              ? result.order_total_price
+              : prev.total_order_price,
+        };
+      });
+    } catch (err) {
+      console.error('Failed to remove draft item', err);
     }
   };
 
@@ -277,6 +426,14 @@ export default function PurchaseOrders(): React.JSX.Element {
     setWizardMode('supplier');
   }, []);
 
+  const openReorderPreviewWorkspace = useCallback(() => {
+    setUseCachedForecast(true);
+    resetSuggestions();
+    setSelectedItems(new Map());
+    setExpandedSuppliers(new Set());
+    openSupplierPreviewWizard();
+  }, [openSupplierPreviewWizard, resetSuggestions]);
+
   const handleRunFreshReorderPreview = useCallback(async () => {
     setUseCachedForecast(false);
     resetSuggestions();
@@ -293,6 +450,10 @@ export default function PurchaseOrders(): React.JSX.Element {
       setSelectedItems(allItems);
       const supplierIds = new Set(result.suggestions.map(s => s.supplier_id));
       setExpandedSuppliers(supplierIds);
+      showToast(
+        result.forecast_status_message ||
+          `Generated ${result.all_items.length} suggestion${result.all_items.length === 1 ? '' : 's'} using the ${getForecastSourceLabel(result.forecast_source_type)} forecast.`
+      );
     } catch (error) {
       console.error('Failed to generate fresh preview suggestions:', error);
     }
@@ -309,6 +470,10 @@ export default function PurchaseOrders(): React.JSX.Element {
       setSelectedItems(allItems);
       const supplierIds = new Set(result.suggestions.map(s => s.supplier_id));
       setExpandedSuppliers(supplierIds);
+      showToast(
+        result.forecast_status_message ||
+          `Generated ${result.all_items.length} suggestion${result.all_items.length === 1 ? '' : 's'} using the ${getForecastSourceLabel(result.forecast_source_type)} forecast.`
+      );
     } catch (error) {
       console.error('Failed to generate suggestions:', error);
     }
@@ -339,6 +504,13 @@ export default function PurchaseOrders(): React.JSX.Element {
       console.error('Failed to create orders:', error);
     }
   };
+
+  const wizardDescriptor =
+    wizardStep === 0
+      ? 'Choose how you want to build the draft, then move into a focused order workspace.'
+      : wizardMode === 'supplier'
+        ? 'Review forecast-driven lines while the live draft stays visible before you save it.'
+        : 'Assemble a supplier-grouped draft with ingredient-level control before you save it.';
 
   // Create ingredient order
   const handleAddToCart = (item: IngredientCartItem) => {
@@ -782,6 +954,31 @@ export default function PurchaseOrders(): React.JSX.Element {
                 {selectedPO.status?.toUpperCase()}
               </Chip>
 
+              <View style={styles.modalMetaRow}>
+                <Chip compact mode="outlined">
+                  {getOrderSourceLabel(selectedPO.review_context?.source_type)}
+                </Chip>
+                {selectedPO.review_context?.source_run_date && (
+                  <Chip compact mode="outlined">
+                    Run {new Date(selectedPO.review_context.source_run_date).toLocaleDateString()}
+                  </Chip>
+                )}
+              </View>
+
+              {selectedPO.expected_delivery_stale &&
+                selectedPO.expected_delivery_status_message && (
+                  <Card style={styles.warningCard} mode="contained">
+                    <Card.Content>
+                      <Text
+                        variant="bodySmall"
+                        style={{ color: theme.colors.error, fontWeight: '600' }}
+                      >
+                        {selectedPO.expected_delivery_status_message}
+                      </Text>
+                    </Card.Content>
+                  </Card>
+                )}
+
               <Divider style={{ marginVertical: 12 }} />
 
               <List.Item
@@ -825,51 +1022,309 @@ export default function PurchaseOrders(): React.JSX.Element {
 
               <Divider style={{ marginVertical: 12 }} />
 
-              <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 8 }}>
-                Items ({selectedPO.items?.length || 0})
-              </Text>
+              {selectedPO.status === 'cart' ? (
+                <>
+                  <Card style={styles.draftWorkspaceCard} mode="outlined">
+                    <Card.Content>
+                      <Text variant="titleMedium" style={{ fontWeight: '600' }}>
+                        Draft Workspace
+                      </Text>
+                      <Text
+                        variant="bodySmall"
+                        style={{ color: theme.colors.onSurfaceVariant, marginTop: 6 }}
+                      >
+                        Adjust the live draft here, then submit it when you are ready to place the
+                        order.
+                      </Text>
+                    </Card.Content>
+                  </Card>
 
-              {selectedPO.items?.map((item, index) => (
-                <List.Item
-                  key={index}
-                  title={item.ingredient_name || `Item ${index + 1}`}
-                  description={`Qty: ${item.quantity_ordered} | Unit: $${item.unit_price?.toFixed(
-                    2
-                  )}`}
-                  onPress={selectedPO.status === 'cart' ? () => openItemEditor(item) : undefined}
-                  style={
-                    selectedPO.status === 'cart'
-                      ? {
-                          borderWidth: 1,
-                          borderColor:
-                            editingItem?.order_item_id === item.order_item_id
-                              ? theme.colors.primary
-                              : theme.colors.surfaceVariant,
-                          borderRadius: 8,
-                          marginBottom: 6,
-                        }
-                      : undefined
-                  }
-                  right={() => (
-                    <Text variant="bodyMedium" style={{ fontWeight: '600', alignSelf: 'center' }}>
-                      ${((item.quantity_ordered || 0) * (item.unit_price || 0)).toFixed(2)}
-                    </Text>
+                  <View style={styles.draftSummaryRow}>
+                    <Card style={styles.draftSummaryCard} mode="outlined">
+                      <Card.Content>
+                        <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                          Items
+                        </Text>
+                        <Text variant="titleLarge" style={{ fontWeight: '700', marginTop: 4 }}>
+                          {selectedPO.items?.length || 0}
+                        </Text>
+                      </Card.Content>
+                    </Card>
+                    <Card style={styles.draftSummaryCard} mode="outlined">
+                      <Card.Content>
+                        <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                          Total
+                        </Text>
+                        <Text
+                          variant="titleLarge"
+                          style={{ fontWeight: '700', marginTop: 4, color: theme.colors.primary }}
+                        >
+                          $
+                          {selectedPO.items
+                            ?.reduce(
+                              (sum, item) =>
+                                sum +
+                                Number(
+                                  item.total_item_price ||
+                                    item.quantity_ordered * item.unit_price ||
+                                    0
+                                ),
+                              0
+                            )
+                            .toFixed(2) || '0.00'}
+                        </Text>
+                      </Card.Content>
+                    </Card>
+                  </View>
+
+                  <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 8 }}>
+                    Current Draft
+                  </Text>
+
+                  {selectedPO.items?.length ? (
+                    selectedPO.items.map(item => (
+                      <Card key={item.order_item_id} style={styles.draftItemCard} mode="outlined">
+                        <Card.Content>
+                          <View style={styles.draftItemHeader}>
+                            <View style={{ flex: 1 }}>
+                              <Text variant="titleSmall" style={{ fontWeight: '600' }}>
+                                {item.ingredient_name}
+                              </Text>
+                              <Text
+                                variant="bodySmall"
+                                style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
+                              >
+                                ${Number(item.unit_price || 0).toFixed(2)} per {item.unit}
+                              </Text>
+                            </View>
+                            <Text
+                              variant="titleSmall"
+                              style={{ fontWeight: '700', color: theme.colors.primary }}
+                            >
+                              $
+                              {Number(
+                                item.total_item_price ||
+                                  item.quantity_ordered * item.unit_price ||
+                                  0
+                              ).toFixed(2)}
+                            </Text>
+                          </View>
+
+                          <View style={styles.draftItemControls}>
+                            <Button
+                              mode="outlined"
+                              compact
+                              onPress={() => handleNudgeDraftItemQty(item, -1)}
+                              disabled={updatingItem || removingItem}
+                            >
+                              -
+                            </Button>
+                            <Text variant="titleMedium" style={styles.draftQtyValue}>
+                              {item.quantity_ordered}
+                            </Text>
+                            <Button
+                              mode="outlined"
+                              compact
+                              onPress={() => handleNudgeDraftItemQty(item, 1)}
+                              disabled={updatingItem || removingItem}
+                            >
+                              +
+                            </Button>
+                            <Button
+                              mode="text"
+                              compact
+                              onPress={() => openItemEditor(item)}
+                              disabled={updatingItem || removingItem}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              mode="text"
+                              compact
+                              textColor={theme.colors.error}
+                              onPress={() => handleRemoveDraftItem(item)}
+                              disabled={updatingItem || removingItem}
+                            >
+                              Remove
+                            </Button>
+                          </View>
+                        </Card.Content>
+                      </Card>
+                    ))
+                  ) : (
+                    <Card style={styles.builderPlaceholderCard} mode="outlined">
+                      <Card.Content>
+                        <Text
+                          variant="titleSmall"
+                          style={{ fontWeight: '600', textAlign: 'center' }}
+                        >
+                          No lines in this draft yet
+                        </Text>
+                        <Text
+                          variant="bodySmall"
+                          style={{
+                            color: theme.colors.onSurfaceVariant,
+                            textAlign: 'center',
+                            marginTop: 6,
+                          }}
+                        >
+                          This draft is empty now. You can keep reviewing it here or close it and
+                          rebuild from the order workspace.
+                        </Text>
+                      </Card.Content>
+                    </Card>
                   )}
-                />
-              ))}
+                </>
+              ) : (
+                <>
+                  <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 8 }}>
+                    Items ({selectedPO.items?.length || 0})
+                  </Text>
+
+                  {selectedPO.items?.map((item, index) => (
+                    <List.Item
+                      key={index}
+                      title={item.ingredient_name || `Item ${index + 1}`}
+                      description={`Qty: ${item.quantity_ordered} | Unit: $${item.unit_price?.toFixed(2)}`}
+                      right={() => (
+                        <Text
+                          variant="bodyMedium"
+                          style={{ fontWeight: '600', alignSelf: 'center' }}
+                        >
+                          ${((item.quantity_ordered || 0) * (item.unit_price || 0)).toFixed(2)}
+                        </Text>
+                      )}
+                    />
+                  ))}
+                </>
+              )}
+
+              {selectedPO.notes ? (
+                <Card style={styles.notesCard} mode="outlined">
+                  <Card.Content>
+                    <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      Notes
+                    </Text>
+                    <Text variant="bodyMedium" style={{ marginTop: 4 }}>
+                      {selectedPO.notes}
+                    </Text>
+                  </Card.Content>
+                </Card>
+              ) : null}
+
+              {selectedPO.review_context?.explanation_items?.length ? (
+                <>
+                  <Divider style={{ marginVertical: 12 }} />
+
+                  <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 8 }}>
+                    Why This Order Exists
+                  </Text>
+
+                  {selectedPO.review_context.explanation_items.map(item => {
+                    const explanation = item.explanation;
+                    const warnings = getReviewItemWarnings(explanation?.assumption_flags);
+                    return (
+                      <Card
+                        key={`${item.supplier_id}-${item.ingredient_id}`}
+                        style={styles.explanationCard}
+                        mode="outlined"
+                      >
+                        <Card.Content>
+                          <View style={styles.explanationHeader}>
+                            <View style={{ flex: 1 }}>
+                              <Text variant="titleSmall" style={{ fontWeight: '600' }}>
+                                {item.ingredient_name}
+                              </Text>
+                              <Text
+                                variant="bodySmall"
+                                style={{ color: theme.colors.onSurfaceVariant }}
+                              >
+                                {item.quantity_to_order ?? 0} {item.unit || ''}
+                                {item.packs_to_order ? ` • ${item.packs_to_order} packs` : ''}
+                              </Text>
+                            </View>
+                            {typeof item.line_total === 'number' && (
+                              <Text
+                                variant="titleSmall"
+                                style={{ color: theme.colors.primary, fontWeight: '700' }}
+                              >
+                                ${item.line_total.toFixed(2)}
+                              </Text>
+                            )}
+                          </View>
+                          {explanation?.summary ? (
+                            <Text
+                              variant="bodySmall"
+                              style={{ color: theme.colors.onSurfaceVariant, marginTop: 6 }}
+                            >
+                              {explanation.summary}
+                            </Text>
+                          ) : null}
+                          {explanation ? (
+                            <View style={styles.explanationBody}>
+                              <Text variant="bodySmall" style={styles.explanationLine}>
+                                Stock{' '}
+                                {formatExplanationValue(explanation.why_reorder.current_stock)}{' '}
+                                {explanation.why_reorder.current_unit} vs reorder point{' '}
+                                {formatExplanationValue(explanation.why_reorder.reorder_point)}.
+                              </Text>
+                              <Text variant="bodySmall" style={styles.explanationLine}>
+                                Lead {formatExplanationValue(explanation.why_reorder.lead_demand)} +
+                                shelf {formatExplanationValue(explanation.why_reorder.shelf_demand)}{' '}
+                                + safety{' '}
+                                {formatExplanationValue(explanation.why_reorder.safety_stock)} =
+                                target{' '}
+                                {formatExplanationValue(explanation.why_reorder.reorder_target)}.
+                              </Text>
+                              <Text variant="bodySmall" style={styles.explanationLine}>
+                                ABC {explanation.policy_factors.abc_class} x{' '}
+                                {formatExplanationValue(explanation.policy_factors.abc_multiplier)};
+                                MOQ floor{' '}
+                                {formatExplanationValue(explanation.policy_factors.moq_floor)};
+                                final before packs{' '}
+                                {formatExplanationValue(
+                                  explanation.quantity_factors.final_quantity_before_pack_rounding
+                                )}
+                                .
+                              </Text>
+                              <Text variant="bodySmall" style={styles.explanationLine}>
+                                {formatExplanationValue(
+                                  explanation.quantity_factors.packs_to_order
+                                )}{' '}
+                                packs x{' '}
+                                {formatExplanationValue(
+                                  explanation.quantity_factors.quantity_per_pack
+                                )}{' '}
+                                {explanation.quantity_factors.supplier_unit} ={' '}
+                                {formatExplanationValue(
+                                  explanation.quantity_factors.total_quantity_ordered
+                                )}{' '}
+                                {explanation.quantity_factors.supplier_unit}.
+                              </Text>
+                              <Text variant="bodySmall" style={styles.explanationLine}>
+                                Supplier: {explanation.supplier_factors.selected_supplier} (
+                                {formatSelectionRule(explanation.supplier_factors.selection_rule)}).
+                              </Text>
+                              {warnings.length ? (
+                                <Text
+                                  variant="bodySmall"
+                                  style={[styles.explanationLine, { color: theme.colors.error }]}
+                                >
+                                  Assumptions: {warnings.join(', ')}.
+                                </Text>
+                              ) : null}
+                            </View>
+                          ) : null}
+                        </Card.Content>
+                      </Card>
+                    );
+                  })}
+                </>
+              ) : null}
 
               <Divider style={{ marginVertical: 12 }} />
 
               <View style={styles.modalActions}>
-                {selectedPO.status === 'pending' && (
-                  <Button
-                    mode="contained"
-                    onPress={() => handleStatusUpdate(selectedPO.order_id, 'delivered')}
-                    loading={updatingStatus}
-                  >
-                    Mark as Delivered
-                  </Button>
-                )}
                 {selectedPO.status === 'cart' && (
                   <Button
                     mode="contained"
@@ -877,7 +1332,16 @@ export default function PurchaseOrders(): React.JSX.Element {
                     onPress={() => handleStatusUpdate(selectedPO.order_id, 'pending')}
                     loading={updatingStatus}
                   >
-                    Submit Order
+                    Submit Draft
+                  </Button>
+                )}
+                {selectedPO.status === 'pending' && (
+                  <Button
+                    mode="contained"
+                    onPress={() => handleStatusUpdate(selectedPO.order_id, 'delivered')}
+                    loading={updatingStatus}
+                  >
+                    Mark as Delivered
                   </Button>
                 )}
                 {['cart', 'pending'].includes(selectedPO.status) && (
@@ -947,11 +1411,27 @@ export default function PurchaseOrders(): React.JSX.Element {
         >
           {/* Wizard Header */}
           <View style={styles.wizardHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <MaterialCommunityIcons name="cart-plus" size={24} color={theme.colors.primary} />
-              <Text variant="titleLarge" style={{ fontWeight: '600' }}>
-                New Order
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <MaterialCommunityIcons name="cart-plus" size={24} color={theme.colors.primary} />
+                <Text variant="titleLarge" style={{ fontWeight: '600' }}>
+                  Build Draft Purchase Order
+                </Text>
+              </View>
+              <Text
+                variant="bodySmall"
+                style={{ marginTop: 6, color: theme.colors.onSurfaceVariant }}
+              >
+                {wizardDescriptor}
               </Text>
+              <View style={[styles.modalMetaRow, { marginTop: 10 }]}>
+                <Chip compact mode="outlined">{`Step ${wizardStep + 1} of 2`}</Chip>
+                {wizardMode && wizardStep === 1 ? (
+                  <Chip compact mode="outlined">
+                    {wizardMode === 'supplier' ? 'Supplier Builder' : 'Ingredient Builder'}
+                  </Chip>
+                ) : null}
+              </View>
             </View>
             <IconButton
               icon={() => (
@@ -1015,6 +1495,60 @@ export default function PurchaseOrders(): React.JSX.Element {
           <Divider />
 
           {/* Wizard Content */}
+          <View
+            style={{
+              marginHorizontal: 16,
+              marginTop: 16,
+              marginBottom: 8,
+              padding: 12,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: theme.colors.outlineVariant,
+              backgroundColor: theme.colors.surfaceVariant,
+            }}
+          >
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Save drafts first, then submit them when you are actually ready to place the order.
+            </Text>
+          </View>
+          {wizardMode === 'supplier' && suggestions && (
+            <View
+              style={{
+                marginHorizontal: 16,
+                marginBottom: 8,
+                padding: 12,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: theme.colors.outlineVariant,
+                backgroundColor: theme.colors.surface,
+              }}
+            >
+              <Text
+                variant="labelMedium"
+                style={{
+                  color: getForecastStatusTone(suggestions.forecast_status),
+                  fontWeight: '700',
+                }}
+              >
+                {suggestions.forecast_status.toUpperCase()} ·{' '}
+                {getForecastSourceLabel(suggestions.forecast_source_type)} forecast
+              </Text>
+              <Text
+                variant="bodySmall"
+                style={{ marginTop: 4, color: theme.colors.onSurfaceVariant }}
+              >
+                {suggestions.forecast_status_message || 'Forecast status available for this draft.'}
+              </Text>
+              {suggestions.forecast_generated_at && (
+                <Text
+                  variant="bodySmall"
+                  style={{ marginTop: 4, color: theme.colors.onSurfaceVariant }}
+                >
+                  Generated {new Date(suggestions.forecast_generated_at).toLocaleString()}
+                </Text>
+              )}
+            </View>
+          )}
           <ScrollView style={{ flex: 1 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {renderWizardContent()}
           </ScrollView>
@@ -1023,7 +1557,7 @@ export default function PurchaseOrders(): React.JSX.Element {
           <Divider />
           <View style={styles.wizardFooter}>
             <Button mode="text" onPress={closeWizard}>
-              Cancel
+              Close
             </Button>
             <View style={{ flex: 1 }} />
             {wizardStep > 0 && (
@@ -1058,8 +1592,8 @@ export default function PurchaseOrders(): React.JSX.Element {
                 {creating
                   ? 'Creating...'
                   : wizardMode === 'supplier'
-                    ? `Create ${reviewTotals.supplierCount} Draft(s)`
-                    : `Create ${Math.max(1, ingredientReviewTotals.supplierCount)} Draft(s)`}
+                    ? `Save ${reviewTotals.supplierCount} Draft(s)`
+                    : `Save ${Math.max(1, ingredientReviewTotals.supplierCount)} Draft(s)`}
               </Button>
             )}
           </View>
@@ -1135,6 +1669,39 @@ const styles = StyleSheet.create({
   sectionTitle: {
     flex: 1,
     fontWeight: '600',
+  },
+  modalMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  warningCard: {
+    marginTop: 12,
+    borderRadius: 12,
+  },
+  notesCard: {
+    marginTop: 8,
+    borderRadius: 12,
+  },
+  explanationCard: {
+    marginBottom: 10,
+    borderRadius: 12,
+  },
+  explanationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  explanationBody: {
+    marginTop: 8,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  explanationLine: {
+    marginTop: 4,
   },
   countChip: {
     minHeight: 26,
@@ -1212,6 +1779,41 @@ const styles = StyleSheet.create({
   },
   modalActions: {
     marginTop: 8,
+  },
+  draftWorkspaceCard: {
+    marginBottom: 12,
+    borderRadius: 12,
+  },
+  draftSummaryRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  draftSummaryCard: {
+    flex: 1,
+    borderRadius: 12,
+  },
+  draftItemCard: {
+    marginBottom: 10,
+    borderRadius: 12,
+  },
+  draftItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  draftItemControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  draftQtyValue: {
+    minWidth: 32,
+    textAlign: 'center',
+    fontWeight: '700',
   },
   builderPlaceholderCard: {
     margin: 16,

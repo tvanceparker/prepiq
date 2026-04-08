@@ -4,6 +4,7 @@ import {
   getForecastAccuracyChart,
   getForecastAccuracyTable,
   getComputedForecastAccuracy,
+  getForecastState,
 } from '../../../api/forecast';
 
 export interface ForecastAccuracyPoint {
@@ -48,8 +49,17 @@ export const useForecastAccuracy = (startDate: string, endDate: string) => {
     enabled: !!startDate && !!endDate,
   });
 
-  const loading = chartLoading || tableLoading || computedLoading;
-  const error = chartError || tableError || computedError || null;
+  const {
+    data: forecastState = null,
+    isLoading: stateLoading,
+    error: stateError,
+  } = useQuery({
+    queryKey: ['forecastState'],
+    queryFn: () => getForecastState(),
+  });
+
+  const loading = chartLoading || tableLoading || computedLoading || stateLoading;
+  const error = chartError || tableError || computedError || stateError || null;
 
   const filteredChartData = useMemo(
     () =>
@@ -82,6 +92,7 @@ export const useForecastAccuracy = (startDate: string, endDate: string) => {
     chartData,
     tableData,
     computedData,
+    forecastState,
     setSelectedMenuItemIds,
     selectedMenuItemIds,
     loading,

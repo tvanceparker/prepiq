@@ -14,6 +14,8 @@ from app.repositories.ingredients_repo import IngredientRepository
 from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
 from app.repositories.purchase_orders_repo import PurchaseOrderRepository
 from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
+from app.repositories.restaurants_repo import RestaurantRepository
+from app.repositories.forecast_run_ledger_repo import ForecastRunLedgerRepository
 from app.schemas.sales_forecast_dto import SaleUpdateDTO, SaleCreateDTO
 from typing import List, Dict, Optional, Literal, Any
 from datetime import datetime, date, timedelta
@@ -48,6 +50,119 @@ class SalesForecastService:
         self.ingredient_supplier_repo = IngredientSupplierRepository(db, restaurant_id)
         self.purchase_orders_repo = PurchaseOrderRepository(db, restaurant_id)
         self.purchase_order_items_repo = PurchaseOrderItemRepository(db, restaurant_id)
+        self.restaurant_repo = RestaurantRepository(db, restaurant_id)
+        self.forecast_run_ledger_repo = ForecastRunLedgerRepository(db, restaurant_id)
+
+    @staticmethod
+    def _build_forecast_state(
+        *,
+        forecast_generated_at: Optional[datetime],
+        forecast_stale: bool,
+        forecast_status: Literal["ready", "stale", "degraded", "failed"],
+        forecast_status_message: Optional[str],
+        forecast_confidence_score: Optional[float] = None,
+        forecast_version: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        return {
+            "forecast_source": "cached",
+            "forecast_source_type": "eod",
+            "forecast_generated_at": forecast_generated_at,
+            "forecast_reused": True,
+            "forecast_stale": forecast_stale,
+            "forecast_status": forecast_status,
+            "forecast_status_message": forecast_status_message,
+            "forecast_confidence_score": forecast_confidence_score,
+            "forecast_version": forecast_version,
+        }
+
+    async def _get_forecast_batch_metadata(self, run_date: Optional[date]) -> Dict[str, Optional[float | int]]:
+        if run_date is None:
+            return {
+                "forecast_confidence_score": None,
+                "forecast_version": None,
+            }
+
+        start_dt = datetime.combine(run_date, datetime.min.time())
+        end_dt = datetime.combine(run_date, datetime.max.time())
+        forecasts = await self.forecast_repo.get_forecasts_created_between(start_dt, end_dt)
+        if not forecasts:
+            return {
+                "forecast_confidence_score": None,
+                "forecast_version": None,
+            }
+
+        confidence_scores = [
+            float(forecast.confidence_score)
+            for forecast in forecasts
+            if getattr(forecast, "confidence_score", None) is not None
+        ]
+        version_candidates = [
+            int(forecast.forecast_version)
+            for forecast in forecasts
+            if getattr(forecast, "forecast_version", None) is not None
+        ]
+
+        return {
+            "forecast_confidence_score": round(sum(confidence_scores) / len(confidence_scores), 2)
+            if confidence_scores
+            else None,
+            "forecast_version": max(version_candidates) if version_candidates else None,
+        }
+
+    @log_method("Get Forecast State")
+    async def get_forecast_state(self) -> Dict[str, Any]:
+        restaurant = await self.restaurant_repo.get_by_id(self.restaurant_id)
+        last_eod_run_date = getattr(restaurant, "last_eod_run_date", None)
+        metadata = await self._get_forecast_batch_metadata(last_eod_run_date)
+
+        if last_eod_run_date is None:
+            return self._build_forecast_state(
+                forecast_generated_at=None,
+                forecast_stale=True,
+                forecast_status="failed",
+                forecast_status_message="No finalized EOD forecast is available yet.",
+                **metadata,
+            )
+
+        ledger = await self.forecast_run_ledger_repo.get_one_by({"run_date": last_eod_run_date})
+        forecast_stale = last_eod_run_date < date.today()
+        generated_at = getattr(ledger, "finished_at", None) if ledger else None
+
+        if not ledger or not getattr(ledger, "finalized", False):
+            return self._build_forecast_state(
+                forecast_generated_at=generated_at,
+                forecast_stale=forecast_stale,
+                forecast_status="failed",
+                forecast_status_message="The latest EOD forecast did not finalize successfully.",
+                **metadata,
+            )
+
+        errors = getattr(ledger, "errors", None) or []
+        if errors:
+            return self._build_forecast_state(
+                forecast_generated_at=generated_at,
+                forecast_stale=forecast_stale,
+                forecast_status="degraded",
+                forecast_status_message="The latest finalized EOD forecast completed with warnings.",
+                **metadata,
+            )
+
+        if forecast_stale:
+            return self._build_forecast_state(
+                forecast_generated_at=generated_at,
+                forecast_stale=True,
+                forecast_status="stale",
+                forecast_status_message="The latest finalized EOD forecast is older than today's cycle.",
+                **metadata,
+            )
+
+        return self._build_forecast_state(
+            forecast_generated_at=generated_at,
+            forecast_stale=False,
+            forecast_status="ready",
+            forecast_status_message="Using the latest finalized EOD forecast.",
+            **metadata,
+        )
 
     async def log_activity(self, action: str, details: Any = None):
         """

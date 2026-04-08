@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Avatar,
   Box,
@@ -35,6 +36,8 @@ import {
 export default function InventoryTable() {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const {
     inventory,
@@ -249,6 +252,31 @@ export default function InventoryTable() {
 
     return (discrepancyMap.get(key) || [])[0] || null;
   }, [activeInventoryRow, discrepancyMap]);
+
+  useEffect(() => {
+    const target = (location.state as any)?.focusReview;
+    if (!target || loading) {
+      return;
+    }
+
+    setFilterType('review');
+
+    const matchedItem = inventory.find(item => {
+      if (target.ingredientId != null && item.ingredient_id === target.ingredientId) {
+        return true;
+      }
+      if (target.batchRecipeId != null && item.batch_recipe_id === target.batchRecipeId) {
+        return true;
+      }
+      return false;
+    });
+
+    if (matchedItem) {
+      handleReviewAdjust(matchedItem);
+    }
+
+    navigate(location.pathname, { replace: true, state: null });
+  }, [handleReviewAdjust, inventory, loading, location.pathname, location.state, navigate]);
 
   const filteredInventory = useMemo(() => {
     if (filterType === 'ingredients') {

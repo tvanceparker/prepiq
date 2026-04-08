@@ -13,6 +13,22 @@ import DateSelector from '../../../components/DateSelector';
 import { Chip, useTheme } from 'react-native-paper';
 // ...existing imports...
 
+function getForecastSourceLabel(forecastState: any) {
+  return forecastState?.forecast_source_type === 'eod' ? 'EOD' : 'On-demand';
+}
+
+function formatForecastTimestamp(value: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleString();
+}
+
+function formatConfidence(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(value)) return null;
+  return `${Math.round(value * 100)}% confidence`;
+}
+
 function formatDate(date: Date | string) {
   if (typeof date === 'string') {
     const [y, m, d] = date.split('-');
@@ -45,6 +61,7 @@ export default function UpcomingForecastBasicMobile() {
     forecastTable,
     forecastTotals,
     topItems,
+    forecastState,
     loading,
     error,
   } = useUpcomingForecast(today, end);
@@ -81,6 +98,51 @@ export default function UpcomingForecastBasicMobile() {
       <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 12 }}>
         🔮 Forecast (Next {dayRange} Day{dayRange > 1 ? 's' : ''})
       </Text>
+
+      {forecastState && (
+        <View
+          style={{
+            backgroundColor: theme.colors.surface,
+            borderWidth: 1,
+            borderColor:
+              forecastState.forecast_status === 'ready'
+                ? theme.colors.outline
+                : forecastState.forecast_status === 'failed'
+                  ? theme.colors.error
+                  : '#d97706',
+            padding: 12,
+            borderRadius: 12,
+            marginBottom: 12,
+          }}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+            <Text style={{ fontWeight: '700', flex: 1 }}>
+              {forecastState.forecast_status_message}
+            </Text>
+            <Chip compact>
+              {getForecastSourceLabel(forecastState)} · {forecastState.forecast_status}
+            </Chip>
+          </View>
+          {forecastState.forecast_generated_at && (
+            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12 }}>
+              {forecastState.forecast_reused ? 'Reused' : 'Generated'}{' '}
+              {getForecastSourceLabel(forecastState)} forecast on{' '}
+              {formatForecastTimestamp(forecastState.forecast_generated_at)}
+            </Text>
+          )}
+          {(forecastState.forecast_version ||
+            forecastState.forecast_confidence_score !== undefined) && (
+            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginTop: 4 }}>
+              {forecastState.forecast_version
+                ? `Version ${forecastState.forecast_version}`
+                : 'Version n/a'}
+              {formatConfidence(forecastState.forecast_confidence_score)
+                ? ` · ${formatConfidence(forecastState.forecast_confidence_score)}`
+                : ''}
+            </Text>
+          )}
+        </View>
+      )}
 
       {/* Date selector (forward presets, default showing next 3 days) */}
       <View style={{ marginBottom: 12 }}>

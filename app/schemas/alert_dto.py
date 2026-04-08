@@ -41,4 +41,7 @@ class AlertResponse(AlertBase):
     date_resolved: Optional[datetime]
     status: str
     is_acknowledged: bool
+    title: Optional[str] = None
+    action_label: Optional[str] = None
+    description: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
