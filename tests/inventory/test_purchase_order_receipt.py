@@ -301,6 +301,42 @@ async def test_create_purchase_orders_from_suggestions_passes_review_context(
 
 
 @pytest.mark.asyncio
+async def test_create_purchase_orders_from_suggestions_supports_unspecified_supplier_group(
+    inventory_service,
+):
+    inventory_service.create_purchase_order = AsyncMock(
+        return_value={'order_id': 100, 'total_order_price': 0.0, 'status': 'cart'}
+    )
+
+    result = await inventory_service.create_purchase_orders_from_suggestions(
+        suggestions=[
+            {
+                'ingredient_id': 101,
+                'ingredient_name': 'Garlic',
+                'ingredient_supplier_id': None,
+                'supplier_id': None,
+                'supplier_name': 'Unspecified supplier',
+                'quantity_to_order': 12.0,
+                'packs_to_order': 12,
+                'unit': 'lb',
+                'unit_price': 0.0,
+                'line_total': 0.0,
+                'lead_time_days': 0,
+                'lead_demand': 5.0,
+                'shelf_demand': 7.0,
+                'explanation': None,
+            }
+        ]
+    )
+
+    assert result == [{'order_id': 100, 'total_order_price': 0.0, 'status': 'cart'}]
+    inventory_service.create_purchase_order.assert_awaited_once()
+    kwargs = inventory_service.create_purchase_order.await_args.kwargs
+    assert kwargs['supplier_id'] is None
+    assert kwargs['expected_delivery_date'] is None
+
+
+@pytest.mark.asyncio
 async def test_get_purchase_order_detail_parses_review_context_and_stale_eta(inventory_service):
     purchase_order = MagicMock(
         order_id=55,

@@ -29,10 +29,12 @@ from app.services.utils.purchase_order_note_helper import (
 )
 
 class InventoryService:
+    UNSPECIFIED_SUPPLIER_NAME = "Unspecified supplier"
+
     # --- Purchase Orders ---
     async def create_purchase_order(
         self,
-        supplier_id: int,
+        supplier_id: Optional[int],
         expected_delivery_date,
         items: list,
         notes: str = None,
@@ -89,7 +91,7 @@ class InventoryService:
         )
         result = []
         for po in pos:
-            supplier = await self.supplier_repo.get_by_id(po.supplier_id)
+            supplier = await self.supplier_repo.get_by_id(po.supplier_id) if po.supplier_id else None
             items = await self.purchase_order_item_repo.get_by_field("order_id", po.order_id)
             parsed_notes = parse_purchase_order_notes(getattr(po, "notes", None))
             item_dtos = []
@@ -115,7 +117,7 @@ class InventoryService:
                 "order_id": po.order_id,
                 "restaurant_id": po.restaurant_id,
                 "supplier_id": po.supplier_id,
-                "supplier_name": supplier.name if supplier else "Unknown",
+                "supplier_name": supplier.name if supplier else self.UNSPECIFIED_SUPPLIER_NAME,
                 "order_date": po.order_date,
                 "expected_delivery_date": po.expected_delivery_date,
                 "actual_delivery_date": po.actual_delivery_date,
@@ -140,7 +142,7 @@ class InventoryService:
         po = await self.purchase_order_repo.get_by_id(order_id)
         if not po:
             return None
-        supplier = await self.supplier_repo.get_by_id(po.supplier_id)
+        supplier = await self.supplier_repo.get_by_id(po.supplier_id) if po.supplier_id else None
         items = await self.purchase_order_item_repo.get_by_field("order_id", po.order_id)
         parsed_notes = parse_purchase_order_notes(getattr(po, "notes", None))
         item_dtos = []
@@ -166,7 +168,7 @@ class InventoryService:
             "order_id": po.order_id,
             "restaurant_id": po.restaurant_id,
             "supplier_id": po.supplier_id,
-            "supplier_name": supplier.name if supplier else "Unknown",
+            "supplier_name": supplier.name if supplier else self.UNSPECIFIED_SUPPLIER_NAME,
             "order_date": po.order_date,
             "expected_delivery_date": po.expected_delivery_date,
             "actual_delivery_date": po.actual_delivery_date,
@@ -615,35 +617,63 @@ class InventoryService:
         
         for ingredient_id in ingredient_forecast.keys():
             suppliers = await self.ingredient_supplier_repo.get_all_by_ingredient_id(ingredient_id)
-            if not suppliers:
-                logger.warning(f"[PO_SUGGEST] No suppliers found ingredient={ingredient_id}")
-                continue
+            ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+            ingredient_name = ingredient.name if ingredient else f"Ingredient {ingredient_id}"
 
-            supplier_selection = await reorder_engine.choose_supplier_option(suppliers)
-            if not supplier_selection:
-                continue
+            supplier = None
+            ingredient_supplier_id = None
+            supplier_id = None
+            supplier_name = self.UNSPECIFIED_SUPPLIER_NAME
+            supplier_unit = ingredient_forecast[ingredient_id].get("unit", "unit")
+            lead_time = 0
+            min_order_quantity = Decimal("0.00")
+            pack_size = 1
+            quantity_per_pack_item = Decimal("1.00")
+            supplier_selection = {
+                "reason_code": "unspecified_supplier",
+                "preferred_supplier_available": False,
+                "selected_supplier_priority": None,
+                "selected_supplier_preferred": False,
+                "pricing_available": False,
+            }
 
-            supplier = supplier_selection["supplier"]
-            ingredient_supplier_id = supplier.ingredient_supplier_id
-            supplier_id = supplier.supplier_id
-            lead_time = supplier.lead_time_days or 0
-            supplier_unit = supplier.unit
-            min_order_quantity = Decimal(str(supplier.min_order_quantity or 0)).quantize(
-                Decimal("0.01")
-            )
-            pack_size = supplier.pack_size or 1
-            quantity_per_pack_item = Decimal(str(supplier.quantity_per_pack_item or 1)).quantize(
-                Decimal("0.01")
-            )
+            if suppliers:
+                supplier_selection = await reorder_engine.choose_supplier_option(suppliers)
+                if not supplier_selection:
+                    continue
+
+                supplier = supplier_selection["supplier"]
+                ingredient_supplier_id = supplier.ingredient_supplier_id
+                supplier_id = supplier.supplier_id
+                lead_time = supplier.lead_time_days or 0
+                supplier_unit = supplier.unit or supplier_unit
+                min_order_quantity = Decimal(str(supplier.min_order_quantity or 0)).quantize(
+                    Decimal("0.01")
+                )
+                pack_size = supplier.pack_size or 1
+                quantity_per_pack_item = Decimal(str(supplier.quantity_per_pack_item or 1)).quantize(
+                    Decimal("0.01")
+                )
+
+                supplier_obj = await self.supplier_repo.get_by_id(supplier_id)
+                supplier_name = supplier_obj.name if supplier_obj else f"Supplier {supplier_id}"
+            else:
+                logger.info(
+                    "[PO_SUGGEST] No suppliers configured for ingredient=%s; using unspecified supplier fallback",
+                    ingredient_id,
+                )
 
             inventory = await self.inventory_repo.get_inventory_by_ingredient(ingredient_id)
             if inventory:
                 if inventory.shelf_life_days is not None:
                     shelf_life = inventory.shelf_life_days
                     shelf_life_source = "inventory"
-                elif supplier.shelf_life_days is not None:
+                elif supplier and supplier.shelf_life_days is not None:
                     shelf_life = supplier.shelf_life_days
                     shelf_life_source = "supplier"
+                elif not suppliers:
+                    shelf_life = horizon_days
+                    shelf_life_source = "forecast_horizon"
                 else:
                     shelf_life = 0
                     shelf_life_source = "missing_assumed_zero"
@@ -653,13 +683,13 @@ class InventoryService:
                 )
                 inventory_source = "inventory_summary"
             else:
-                shelf_life = supplier.shelf_life_days or 0
+                shelf_life = supplier.shelf_life_days if supplier and supplier.shelf_life_days is not None else horizon_days
                 inventory_unit = supplier_unit
                 current_stock = Decimal("0.00")
                 shelf_life_source = (
                     "supplier"
-                    if supplier.shelf_life_days is not None
-                    else "missing_assumed_zero"
+                    if supplier and supplier.shelf_life_days is not None
+                    else "forecast_horizon"
                 )
                 inventory_source = "missing_assumed_zero"
 
@@ -724,12 +754,6 @@ class InventoryService:
             )
 
             # Get ingredient and supplier names
-            ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
-            ingredient_name = ingredient.name if ingredient else f"Ingredient {ingredient_id}"
-
-            supplier_obj = await self.supplier_repo.get_by_id(supplier_id)
-            supplier_name = supplier_obj.name if supplier_obj else f"Supplier {supplier_id}"
-
             explanation = reorder_engine.build_explanation_payload(
                 decision=decision,
                 supplier_selection=supplier_selection,
@@ -744,14 +768,18 @@ class InventoryService:
                 assumption_flags={
                     "inventory_source": inventory_source,
                     "lead_time_source": (
-                        "supplier" if supplier.lead_time_days is not None else "missing_assumed_zero"
+                        "supplier"
+                        if supplier and supplier.lead_time_days is not None
+                        else ("no_supplier_assumed_zero" if not suppliers else "missing_assumed_zero")
                     ),
                     "moq_source": (
-                        "supplier" if supplier.min_order_quantity is not None else "missing_assumed_zero"
+                        "supplier"
+                        if supplier and supplier.min_order_quantity is not None
+                        else ("no_supplier_assumed_zero" if not suppliers else "missing_assumed_zero")
                     ),
                     "shelf_life_source": shelf_life_source,
                     "unit_conversion_fallback": unit_conversion_fallback,
-                    "pricing_missing": supplier.cost_per_unit is None,
+                    "pricing_missing": supplier is None or supplier.cost_per_unit is None,
                 },
             )
 
@@ -768,8 +796,8 @@ class InventoryService:
                 "pack_size": pack_size,
                 "quantity_per_pack_item": float(quantity_per_pack_item),
                 "unit": supplier_unit,
-                "unit_price": float(supplier.cost_per_unit or 0),
-                "line_total": float(total_quantity_ordered) * float(supplier.cost_per_unit or 0),
+                "unit_price": float(supplier.cost_per_unit or 0) if supplier else 0.0,
+                "line_total": float(total_quantity_ordered) * (float(supplier.cost_per_unit or 0) if supplier else 0.0),
                 "lead_time_days": lead_time,
                 "min_order_quantity": float(min_order_quantity),
                 "lead_demand": float(lead_demand),
@@ -788,7 +816,7 @@ class InventoryService:
                     "total_cost": 0,
                 }
             
-            item_cost = float(total_quantity_ordered) * float(supplier.cost_per_unit or 0)
+            item_cost = float(total_quantity_ordered) * (float(supplier.cost_per_unit or 0) if supplier else 0.0)
             suggestions_by_supplier[supplier_id]["items"].append(suggestion)
             suggestions_by_supplier[supplier_id]["total_cost"] += item_cost
         
@@ -919,29 +947,43 @@ class InventoryService:
         
         # Handle both flat list and grouped format
         items_by_supplier = defaultdict(list)
+        supplier_identity: dict[str, dict[str, Any]] = {}
+
+        def resolve_group_key(item: dict) -> str:
+            supplier_id = item.get("supplier_id")
+            if supplier_id is None:
+                return "unspecified"
+            return f"supplier:{supplier_id}"
         
         for item in suggestions:
             # If it's a grouped supplier object with 'items' array
             if "items" in item and isinstance(item["items"], list):
                 for sub_item in item["items"]:
-                    supplier_id = sub_item.get("supplier_id")
-                    if supplier_id:
-                        items_by_supplier[supplier_id].append(sub_item)
+                    group_key = resolve_group_key(sub_item)
+                    items_by_supplier[group_key].append(sub_item)
+                    supplier_identity[group_key] = {
+                        "supplier_id": sub_item.get("supplier_id"),
+                        "supplier_name": sub_item.get("supplier_name") or self.UNSPECIFIED_SUPPLIER_NAME,
+                    }
             else:
                 # Flat item
-                supplier_id = item.get("supplier_id")
-                if supplier_id:
-                    items_by_supplier[supplier_id].append(item)
+                group_key = resolve_group_key(item)
+                items_by_supplier[group_key].append(item)
+                supplier_identity[group_key] = {
+                    "supplier_id": item.get("supplier_id"),
+                    "supplier_name": item.get("supplier_name") or self.UNSPECIFIED_SUPPLIER_NAME,
+                }
         
         created_orders = []
         
-        for supplier_id, items in items_by_supplier.items():
+        for group_key, items in items_by_supplier.items():
             if not items:
                 continue
+            supplier_id = supplier_identity.get(group_key, {}).get("supplier_id")
             
             # Calculate expected delivery date based on max lead time
             max_lead_time = max(item.get("lead_time_days", 0) for item in items)
-            expected_delivery = date.today() + timedelta(days=max_lead_time)
+            expected_delivery = date.today() + timedelta(days=max_lead_time) if max_lead_time > 0 else None
             
             # Prepare items for create_purchase_order
             po_items = []

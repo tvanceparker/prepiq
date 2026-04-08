@@ -92,8 +92,8 @@ export interface PurchaseOrderReviewContext {
 export interface PurchaseOrder {
   order_id: number;
   restaurant_id: number;
-  supplier_id: number;
-  supplier_name: string;
+  supplier_id?: number | null;
+  supplier_name?: string | null;
   order_date: string;
   expected_delivery_date?: string | null;
   actual_delivery_date?: string | null;
@@ -176,7 +176,7 @@ export interface PurchaseOrderCreateItem {
 }
 
 export interface PurchaseOrderCreate {
-  supplier_id: number;
+  supplier_id?: number | null;
   expected_delivery_date?: string | null;
   items: PurchaseOrderCreateItem[];
   notes?: string | null;
@@ -371,9 +371,9 @@ export interface POReorderExplanation {
 export interface POSuggestionItem {
   ingredient_id: number;
   ingredient_name: string;
-  ingredient_supplier_id: number;
-  supplier_id: number;
-  supplier_name: string;
+  ingredient_supplier_id?: number | null;
+  supplier_id?: number | null;
+  supplier_name?: string | null;
   current_stock: number;
   raw_quantity_needed: number;
   quantity_to_order: number; // The final quantity after pack rounding
@@ -391,8 +391,8 @@ export interface POSuggestionItem {
 }
 
 export interface POSuggestionGroup {
-  supplier_id: number;
-  supplier_name: string;
+  supplier_id?: number | null;
+  supplier_name?: string | null;
   items: POSuggestionItem[];
   total_cost: number;
 }

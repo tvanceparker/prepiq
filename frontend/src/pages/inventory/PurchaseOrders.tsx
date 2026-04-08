@@ -107,6 +107,19 @@ const getOrderSourceLabel = (sourceType?: 'manual' | 'suggestion' | 'eod_auto' |
   return 'Manual order';
 };
 
+const getSupplierGroupKey = (supplierId?: number | null) =>
+  supplierId === null || supplierId === undefined ? 'unspecified' : String(supplierId);
+
+const getSupplierLabel = (supplierName?: string | null, supplierId?: number | null) => {
+  if (supplierName) {
+    return supplierName;
+  }
+  if (supplierId === null || supplierId === undefined) {
+    return 'Unspecified supplier';
+  }
+  return `Supplier ${supplierId}`;
+};
+
 const getReviewItemWarnings = (
   explanation?: PurchaseOrder['review_context'] extends { explanation_items: infer T }
     ? T extends Array<infer U>
@@ -149,7 +162,7 @@ export default function PurchaseOrders() {
   const [horizonDays, setHorizonDays] = useState(7);
   const [suggestions, setSuggestions] = useState<POSuggestionsResponse | null>(null);
   const [selectedItems, setSelectedItems] = useState<Map<string, number>>(new Map());
-  const [expandedSuppliers, setExpandedSuppliers] = useState<Set<number>>(new Set());
+  const [expandedSuppliers, setExpandedSuppliers] = useState<Set<string>>(new Set());
 
   // Ingredient mode state
   const [selectedIngredient, setSelectedIngredient] = useState<IngredientStockLevel | null>(null);
@@ -318,10 +331,13 @@ export default function PurchaseOrders() {
       setSuggestions(data);
       const allItems = new Map<string, number>();
       data.all_items.forEach(item => {
-        allItems.set(`${item.supplier_id}-${item.ingredient_id}`, item.quantity_to_order);
+        allItems.set(
+          `${getSupplierGroupKey(item.supplier_id)}-${item.ingredient_id}`,
+          item.quantity_to_order
+        );
       });
       setSelectedItems(allItems);
-      setExpandedSuppliers(new Set(data.suggestions.map(s => s.supplier_id)));
+      setExpandedSuppliers(new Set(data.suggestions.map(s => getSupplierGroupKey(s.supplier_id))));
       if (data.all_items.length === 0) {
         showToast(
           data.forecast_status_message ||
@@ -347,7 +363,7 @@ export default function PurchaseOrders() {
     mutationFn: () => {
       const selectedItemsList: any[] = [];
       suggestions?.all_items.forEach(item => {
-        const key = `${item.supplier_id}-${item.ingredient_id}`;
+        const key = `${getSupplierGroupKey(item.supplier_id)}-${item.ingredient_id}`;
         if (selectedItems.has(key)) {
           selectedItemsList.push({
             ...item,
@@ -505,13 +521,13 @@ export default function PurchaseOrders() {
     if (!suggestions) return { itemCount: 0, total: 0, supplierCount: 0 };
     let total = 0,
       itemCount = 0;
-    const supplierSet = new Set<number>();
+    const supplierSet = new Set<string>();
     suggestions.all_items.forEach(item => {
-      const key = `${item.supplier_id}-${item.ingredient_id}`;
+      const key = `${getSupplierGroupKey(item.supplier_id)}-${item.ingredient_id}`;
       if (selectedItems.has(key)) {
         total += (selectedItems.get(key) || item.quantity_to_order) * item.unit_price;
         itemCount++;
-        supplierSet.add(item.supplier_id);
+        supplierSet.add(getSupplierGroupKey(item.supplier_id));
       }
     });
     return { itemCount, total, supplierCount: supplierSet.size };
@@ -523,9 +539,11 @@ export default function PurchaseOrders() {
     return suggestions.suggestions
       .map(group => {
         const items = group.items
-          .filter(item => selectedItems.has(`${group.supplier_id}-${item.ingredient_id}`))
+          .filter(item =>
+            selectedItems.has(`${getSupplierGroupKey(group.supplier_id)}-${item.ingredient_id}`)
+          )
           .map(item => {
-            const key = `${group.supplier_id}-${item.ingredient_id}`;
+            const key = `${getSupplierGroupKey(group.supplier_id)}-${item.ingredient_id}`;
             const quantity = selectedItems.get(key) || item.quantity_to_order;
             return {
               key,
@@ -540,7 +558,7 @@ export default function PurchaseOrders() {
 
         return {
           supplierId: group.supplier_id,
-          supplierName: group.supplier_name,
+          supplierName: getSupplierLabel(group.supplier_name, group.supplier_id),
           items,
           total: items.reduce((sum, item) => sum + item.lineTotal, 0),
         };
@@ -607,7 +625,7 @@ export default function PurchaseOrders() {
   const groupedBySupplier = useMemo(() => {
     const map = new Map<string, PurchaseOrder[]>();
     orders.forEach(po => {
-      const key = po.supplier_name || `Supplier ${po.supplier_id}`;
+      const key = getSupplierLabel(po.supplier_name, po.supplier_id);
       map.set(key, [...(map.get(key) || []), po]);
     });
     return Array.from(map.entries());

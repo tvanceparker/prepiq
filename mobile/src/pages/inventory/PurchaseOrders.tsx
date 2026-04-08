@@ -56,6 +56,19 @@ const WIZARD_STEPS = ['Method', 'Build'];
 const getForecastSourceLabel = (forecastSourceType: 'eod' | 'on_demand') =>
   forecastSourceType === 'eod' ? 'EOD' : 'On-demand';
 
+const getSupplierGroupKey = (supplierId?: number | null) =>
+  supplierId === null || supplierId === undefined ? 'unspecified' : String(supplierId);
+
+const getSupplierLabel = (supplierName?: string | null, supplierId?: number | null): string => {
+  if (supplierName) {
+    return supplierName;
+  }
+  if (supplierId === null || supplierId === undefined) {
+    return 'Unspecified supplier';
+  }
+  return `Supplier ${supplierId}`;
+};
+
 const getForecastStatusTone = (status: 'ready' | 'stale' | 'degraded' | 'failed') => {
   switch (status) {
     case 'ready':
@@ -141,7 +154,7 @@ export default function PurchaseOrders(): React.JSX.Element {
   const [useCachedForecast, setUseCachedForecast] = useState(true);
   const [horizonDays, setHorizonDays] = useState(7);
   const [selectedItems, setSelectedItems] = useState<Map<string, number>>(new Map());
-  const [expandedSuppliers, setExpandedSuppliers] = useState<Set<number>>(new Set());
+  const [expandedSuppliers, setExpandedSuppliers] = useState<Set<string>>(new Set());
 
   // Ingredient mode state
   const [selectedIngredient, setSelectedIngredient] = useState<IngredientStockLevel | null>(null);
@@ -445,10 +458,13 @@ export default function PurchaseOrders(): React.JSX.Element {
       const result = await generateSuggestions({ horizonDays, useCachedForecast: false });
       const allItems = new Map<string, number>();
       result.all_items.forEach(item => {
-        allItems.set(`${item.supplier_id}-${item.ingredient_id}`, item.quantity_to_order);
+        allItems.set(
+          `${getSupplierGroupKey(item.supplier_id)}-${item.ingredient_id}`,
+          item.quantity_to_order
+        );
       });
       setSelectedItems(allItems);
-      const supplierIds = new Set(result.suggestions.map(s => s.supplier_id));
+      const supplierIds = new Set(result.suggestions.map(s => getSupplierGroupKey(s.supplier_id)));
       setExpandedSuppliers(supplierIds);
       showToast(
         result.forecast_status_message ||
@@ -465,10 +481,13 @@ export default function PurchaseOrders(): React.JSX.Element {
       const result = await generateSuggestions({ horizonDays, useCachedForecast });
       const allItems = new Map<string, number>();
       result.all_items.forEach(item => {
-        allItems.set(`${item.supplier_id}-${item.ingredient_id}`, item.quantity_to_order);
+        allItems.set(
+          `${getSupplierGroupKey(item.supplier_id)}-${item.ingredient_id}`,
+          item.quantity_to_order
+        );
       });
       setSelectedItems(allItems);
-      const supplierIds = new Set(result.suggestions.map(s => s.supplier_id));
+      const supplierIds = new Set(result.suggestions.map(s => getSupplierGroupKey(s.supplier_id)));
       setExpandedSuppliers(supplierIds);
       showToast(
         result.forecast_status_message ||
@@ -484,7 +503,7 @@ export default function PurchaseOrders(): React.JSX.Element {
     if (!suggestions) return;
     const selectedItemsList: any[] = [];
     suggestions.all_items.forEach(item => {
-      const key = `${item.supplier_id}-${item.ingredient_id}`;
+      const key = `${getSupplierGroupKey(item.supplier_id)}-${item.ingredient_id}`;
       if (selectedItems.has(key)) {
         selectedItemsList.push({
           ...item,
@@ -591,15 +610,15 @@ export default function PurchaseOrders(): React.JSX.Element {
     if (!suggestions) return { itemCount: 0, total: 0, supplierCount: 0 };
     let total = 0;
     let itemCount = 0;
-    const supplierSet = new Set<number>();
+    const supplierSet = new Set<string>();
 
     suggestions.all_items.forEach(item => {
-      const key = `${item.supplier_id}-${item.ingredient_id}`;
+      const key = `${getSupplierGroupKey(item.supplier_id)}-${item.ingredient_id}`;
       if (selectedItems.has(key)) {
         const qty = selectedItems.get(key) || item.quantity_to_order;
         total += qty * item.unit_price;
         itemCount++;
-        supplierSet.add(item.supplier_id);
+        supplierSet.add(getSupplierGroupKey(item.supplier_id));
       }
     });
 
@@ -684,7 +703,7 @@ export default function PurchaseOrders(): React.JSX.Element {
               {`PO #${item.order_id}`}
             </Text>
             <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-              {item.supplier_name || 'Unknown Supplier'}
+              {getSupplierLabel(item.supplier_name, item.supplier_id)}
             </Text>
           </View>
           <Chip
@@ -983,7 +1002,7 @@ export default function PurchaseOrders(): React.JSX.Element {
 
               <List.Item
                 title="Supplier"
-                description={selectedPO.supplier_name || 'Unknown'}
+                description={getSupplierLabel(selectedPO.supplier_name, selectedPO.supplier_id)}
                 left={() => (
                   <MaterialCommunityIcons
                     name="truck"

@@ -44,7 +44,7 @@ class PurchaseOrderCreateItemDTO(BaseModel):
     notes: Optional[str] = None
 
 class PurchaseOrderCreateDTO(BaseModel):
-    supplier_id: int
+    supplier_id: Optional[int] = None
     expected_delivery_date: Optional[date]
     items: List[PurchaseOrderCreateItemDTO]
     notes: Optional[str] = None
@@ -83,8 +83,8 @@ class PurchaseOrderReceiptSummaryDTO(BaseModel):
 class PurchaseOrderDTO(BaseModel):
     order_id: int
     restaurant_id: int
-    supplier_id: int
-    supplier_name: str
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
     order_date: date
     expected_delivery_date: Optional[date]
     actual_delivery_date: Optional[date]
@@ -213,9 +213,9 @@ class POReorderExplanationDTO(BaseModel):
 class POSuggestionItemDTO(BaseModel):
     ingredient_id: int
     ingredient_name: str
-    ingredient_supplier_id: int
-    supplier_id: int
-    supplier_name: str
+    ingredient_supplier_id: Optional[int] = None
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
     current_stock: float
     raw_quantity_needed: float
     quantity_to_order: float
@@ -233,8 +233,8 @@ class POSuggestionItemDTO(BaseModel):
 
 
 class POSuggestionGroupDTO(BaseModel):
-    supplier_id: int
-    supplier_name: str
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
     items: List[POSuggestionItemDTO]
     total_cost: float
 

@@ -300,6 +300,100 @@ async def test_generate_purchase_order_suggestions_falls_back_to_supplier_shelf_
 
 
 @pytest.mark.asyncio
+async def test_generate_purchase_order_suggestions_includes_unspecified_supplier_when_mapping_missing():
+    service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
+    service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(return_value=None)
+    service.forecast_repo.get_forecasts_created_between = AsyncMock(return_value=[])
+    service.ingredient_supplier_repo.get_all_by_ingredient_id = AsyncMock(return_value=[])
+    service.ingredient_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Tomatoes"))
+    service.inventory_repo.get_inventory_by_ingredient = AsyncMock(
+        return_value=MagicMock(quantity_on_hand=Decimal("2.00"), unit="lb", shelf_life_days=3)
+    )
+
+    reorder_decision = {
+        "current_stock": Decimal("2.00"),
+        "current_unit": "lb",
+        "lead_demand": Decimal("0.00"),
+        "shelf_demand": Decimal("8.00"),
+        "total_demand": Decimal("8.00"),
+        "safety_stock": Decimal("1.00"),
+        "reorder_point": Decimal("1.00"),
+        "reorder_target": Decimal("9.00"),
+        "raw_order_quantity": Decimal("7.00"),
+        "buffered_quantity": Decimal("7.70"),
+        "moq": Decimal("0.00"),
+        "moq_floor": Decimal("0.00"),
+        "max_allowed": Decimal("100.00"),
+        "final_quantity": Decimal("7.70"),
+        "should_reorder": True,
+        "service_level_z": Decimal("1.65"),
+        "abc_class": "C",
+        "abc_multiplier": Decimal("1.0"),
+        "abc_defaulted": False,
+    }
+
+    with patch("app.repositories.restaurants_repo.RestaurantRepository") as restaurant_repo_cls, patch(
+        "app.services.forecasting_engine.ForecastingEngine"
+    ) as forecasting_engine_cls, patch(
+        "app.services.reorder_forecast_engine.ReorderForecastEngine"
+    ) as reorder_engine_cls:
+        restaurant_repo = MagicMock()
+        restaurant_repo.get_by_id = AsyncMock(return_value=MagicMock(last_eod_run_date=None))
+        restaurant_repo_cls.return_value = restaurant_repo
+
+        forecasting_engine = MagicMock()
+        forecasting_engine.initialize = AsyncMock()
+        forecasting_engine.run_forecasting_pipeline = AsyncMock(
+            return_value={
+                1001: {
+                    "unit": "lb",
+                    "daily_breakdown": [
+                        (date.today() + timedelta(days=index), Decimal("2.00"))
+                        for index in range(7)
+                    ],
+                }
+            }
+        )
+        forecasting_engine_cls.return_value = forecasting_engine
+
+        reorder_engine = MagicMock()
+        reorder_engine.build_reorder_decision = AsyncMock(return_value=reorder_decision)
+        reorder_engine.build_explanation_payload = MagicMock(
+            return_value={
+                "summary": "Suggested for unspecified supplier draft.",
+                "why_reorder": {"current_stock": 2.0, "current_unit": "lb", "reorder_point": 1.0},
+                "quantity_factors": {"packs_to_order": 8},
+                "policy_factors": {"abc_class": "C", "service_level_z": 1.65},
+                "supplier_factors": {"selection_rule": "unspecified_supplier"},
+                "assumption_flags": {
+                    "inventory_source": "inventory_summary",
+                    "lead_time_source": "no_supplier_assumed_zero",
+                    "moq_source": "no_supplier_assumed_zero",
+                    "shelf_life_source": "inventory",
+                    "unit_conversion_fallback": False,
+                    "pricing_missing": True,
+                    "abc_defaulted": False,
+                },
+            }
+        )
+        reorder_engine_cls.return_value = reorder_engine
+
+        result = await service.generate_purchase_order_suggestions(
+            horizon_days=7,
+            use_cached_forecast=False,
+        )
+
+    assert len(result["all_items"]) == 1
+    item = result["all_items"][0]
+    assert item["supplier_id"] is None
+    assert item["ingredient_supplier_id"] is None
+    assert item["supplier_name"] == "Unspecified supplier"
+    assert item["unit_price"] == 0.0
+    assert result["suggestions"][0]["supplier_id"] is None
+    assert result["suggestions"][0]["supplier_name"] == "Unspecified supplier"
+
+
+@pytest.mark.asyncio
 async def test_generate_purchase_order_suggestions_uses_recent_eod_forecast_when_fresh_run_fails():
     service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
     service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Primary Supplier"))
