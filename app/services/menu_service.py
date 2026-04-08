@@ -143,13 +143,13 @@ class MenuService:
         return sorted(list(categories))
 
     async def get_all_recipes(self):
-        return await self.recipe_repo.get_all()
+        return await self.recipe_repo.get_active()
 
     async def get_all_ingredients(self):
         return await self.ingredient_repo.get_all()
 
     async def get_all_batch_recipes(self):
-        return await self.batch_recipe_repo.get_all()
+        return await self.batch_recipe_repo.get_active()
 
     async def upsert_ingredient_with_suppliers(self, data: dict):
         # Prepare the base ingredient data
@@ -337,7 +337,7 @@ class MenuService:
         return enriched_ingredients
 
     async def get_all_recipes_with_ingredients(self) -> List[Dict]:
-        recipes = await self.recipe_repo.get_all()
+        recipes = await self.recipe_repo.get_active()
         results = []
 
         for recipe in recipes:
@@ -372,11 +372,58 @@ class MenuService:
                     "recipe_id": recipe.recipe_id,
                     "name": recipe.name,
                     "description": recipe.description,
+                    "is_active": getattr(recipe, "is_active", True),
                     "ingredients": ingredient_details,
                     "restaurant_id": self.restaurant_id,
                 }
             )
         return results
+
+    async def get_recipe_usage(self, recipe_id: int) -> Dict:
+        recipe = await self.recipe_repo.get_by_id(recipe_id)
+        if not recipe:
+            raise ValueError("Recipe not found")
+
+        menu_item_links = await self.menu_recipe_repo.get_by_recipe(recipe_id)
+        nested_recipe_links = await self.recipe_ingredient_repo.get_all_by_reference_id_and_type(
+            "recipe", recipe_id
+        )
+
+        menu_items = []
+        for link in menu_item_links:
+            menu_item = await self.menu_repo.get_by_id(link.menu_item_id)
+            if menu_item:
+                menu_items.append(
+                    {
+                        "menu_item_id": menu_item.menu_item_id,
+                        "menu_item_name": menu_item.name,
+                        "is_active": getattr(menu_item, "is_active", True),
+                    }
+                )
+
+        nested_in_recipes = []
+        for link in nested_recipe_links:
+            parent_recipe = await self.recipe_repo.get_by_id(link.recipe_id)
+            if parent_recipe:
+                nested_in_recipes.append(
+                    {
+                        "recipe_id": parent_recipe.recipe_id,
+                        "recipe_name": parent_recipe.name,
+                        "is_active": getattr(parent_recipe, "is_active", True),
+                    }
+                )
+
+        return {
+            "recipe_id": recipe.recipe_id,
+            "recipe_name": recipe.name,
+            "is_active": getattr(recipe, "is_active", True),
+            "usage": {
+                "menu_items": menu_items,
+                "nested_in_recipes": nested_in_recipes,
+                "menu_item_count": len(menu_items),
+                "nested_recipe_count": len(nested_in_recipes),
+            },
+        }
 
     async def update_recipe_with_ingredients(self, recipe_dict: dict):
         updated_recipe = None
@@ -451,36 +498,27 @@ class MenuService:
         return {**recipe_dict, "ingredients": ingredients}
 
     async def delete_recipe(self, recipe_id: int):
-        menu_item_links = await self.menu_recipe_repo.get_by_recipe(recipe_id)
-        if menu_item_links:
-            raise ValueError(
-                f"Recipe is still linked to {len(menu_item_links)} menu item(s). Remove those links before deleting it."
-            )
+        recipe = await self.recipe_repo.get_by_id(recipe_id)
+        if not recipe:
+            raise ValueError("Recipe not found")
 
-        nested_recipe_links = await self.recipe_ingredient_repo.get_all_by_reference_id_and_type(
-            "recipe", recipe_id
-        )
-        if nested_recipe_links:
-            raise ValueError(
-                f"Recipe is still used as a nested recipe in {len(nested_recipe_links)} recipe reference(s). Remove those links before deleting it."
-            )
-
-        async with self.db.begin():  # Ensure the transaction is handled correctly
-            # Step 1: Delete all recipe ingredients
-            deleted_ingredients_count = await self.recipe_ingredient_repo.delete_by_recipe_id(recipe_id)
-            
-            # Step 2: Delete the recipe itself
-            recipe = await self.recipe_repo.get_by_id(recipe_id)
-            if not recipe:
-                raise ValueError("Recipe not found")
-            
-            await self.recipe_repo.delete(recipe_id)
-            
-            # Optionally, return how many ingredients were deleted
+        if getattr(recipe, "is_active", True) is False:
             return {
-                "message": f"Recipe and {deleted_ingredients_count} ingredients deleted successfully",
-                "deleted_ingredients_count": deleted_ingredients_count,
+                "message": "Recipe already archived",
+                "archived": True,
+                "usage": (await self.get_recipe_usage(recipe_id))["usage"],
             }
+
+        usage = await self.get_recipe_usage(recipe_id)
+
+        async with self.db.begin():
+            await self.recipe_repo.update(recipe_id, {"is_active": False})
+
+        return {
+            "message": "Recipe archived successfully",
+            "archived": True,
+            "usage": usage["usage"],
+        }
 
     async def delete_ingredient(self, ingredient_id: int):
         async with self.db.begin():

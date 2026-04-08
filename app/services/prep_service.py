@@ -707,6 +707,29 @@ class PrepService:
         if not batch_recipe:
             raise ValueError(f"Batch recipe ID {batch_recipe_id} not found.")
 
+        if getattr(batch_recipe, "is_active", True) is False:
+            return {
+                "message": "Batch recipe already archived",
+                "archived": True,
+                "usage": (await self.get_batch_recipe_usage(batch_recipe_id))["usage"],
+            }
+
+        usage = await self.get_batch_recipe_usage(batch_recipe_id)
+
+        async with self.db.begin():
+            await self.batch_recipe_repo.update(batch_recipe_id, {"is_active": False})
+
+        return {
+            "message": "Batch recipe archived successfully",
+            "archived": True,
+            "usage": usage["usage"],
+        }
+
+    async def get_batch_recipe_usage(self, batch_recipe_id: int) -> dict:
+        batch_recipe = await self.batch_recipe_repo.get_by_id(batch_recipe_id)
+        if not batch_recipe:
+            raise ValueError(f"Batch recipe ID {batch_recipe_id} not found.")
+
         recipe_dependencies = await self.recipe_ingredient_repo.get_all_by_reference_id_and_type(
             ingredient_type="batch",
             reference_id=batch_recipe_id,
@@ -723,36 +746,46 @@ class PrepService:
             batch_recipe_id
         )
 
-        blockers = []
-        if recipe_dependencies:
-            blockers.append(f"{len(recipe_dependencies)} recipe reference(s)")
-        if batch_dependencies:
-            blockers.append(f"{len(batch_dependencies)} nested batch reference(s)")
-        if prep_schedule_dependencies:
-            blockers.append(f"{len(prep_schedule_dependencies)} prep schedule(s)")
-        if inventory_lot_dependencies:
-            blockers.append(f"{len(inventory_lot_dependencies)} inventory lot(s)")
+        used_in_recipes = []
+        for dependency in recipe_dependencies:
+            recipe = await self.recipe_repo.get_by_id(dependency.recipe_id)
+            if recipe:
+                used_in_recipes.append(
+                    {
+                        "recipe_id": recipe.recipe_id,
+                        "recipe_name": recipe.name,
+                        "is_active": getattr(recipe, "is_active", True),
+                    }
+                )
 
-        if blockers:
-            raise ValueError(
-                "Batch recipe cannot be deleted because it is still used by "
-                + ", ".join(blockers)
-                + "."
-            )
-
-        async with self.db.begin():
-            deleted_ingredients_count = await self.batch_recipe_ingredient_repo.delete_all_by_batch_recipe_id(
-                batch_recipe_id
-            )
-            await self.batch_recipe_repo.delete(batch_recipe_id)
+        used_in_batches = []
+        for dependency in batch_dependencies:
+            parent_batch = await self.batch_recipe_repo.get_by_id(dependency.batch_recipe_id)
+            if parent_batch:
+                used_in_batches.append(
+                    {
+                        "batch_recipe_id": parent_batch.batch_recipe_id,
+                        "batch_recipe_name": parent_batch.name,
+                        "is_active": getattr(parent_batch, "is_active", True),
+                    }
+                )
 
         return {
-            "message": f"Batch recipe and {deleted_ingredients_count} ingredient rows deleted successfully",
-            "deleted_ingredients_count": deleted_ingredients_count,
+            "batch_recipe_id": batch_recipe.batch_recipe_id,
+            "batch_recipe_name": batch_recipe.name,
+            "is_active": getattr(batch_recipe, "is_active", True),
+            "usage": {
+                "recipes": used_in_recipes,
+                "batches": used_in_batches,
+                "prep_schedule_count": len(prep_schedule_dependencies),
+                "inventory_lot_count": len(inventory_lot_dependencies),
+                "recipe_count": len(used_in_recipes),
+                "batch_count": len(used_in_batches),
+            },
         }
 
     async def view_batch_recipes(self) -> List[dict]:
-        batch_recipes = await self.batch_recipe_repo.get_all()
+        batch_recipes = await self.batch_recipe_repo.get_active()
         result = []
 
         for batch in batch_recipes:
@@ -824,6 +857,7 @@ class PrepService:
                     "yield_unit": batch.yield_unit,
                     "estimated_prep_time_minutes": batch.estimated_prep_time_minutes,
                     "shelf_life_days": batch.shelf_life_days,
+                    "is_active": getattr(batch, "is_active", True),
                     "ingredients": ingredient_details,
                     "used_in_recipes": used_in_details,
                 }
