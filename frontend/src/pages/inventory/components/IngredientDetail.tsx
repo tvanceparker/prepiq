@@ -10,13 +10,17 @@ import {
   Chip,
   FormControlLabel,
   Grid,
+  Paper,
   Stack,
   Switch,
   TextField,
   Typography,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
+import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
 import SaveIcon from '@mui/icons-material/Save';
 
 const COMMON_INGREDIENT_NAMES = [
@@ -112,6 +116,10 @@ export default function IngredientDetail({
   };
 
   const supplierCount = useMemo(() => (localData?.suppliers || []).length, [localData]);
+  const preferredCount = useMemo(
+    () => (localData?.suppliers || []).filter(supplier => supplier.preferred).length,
+    [localData]
+  );
 
   if (!localData) {
     return (
@@ -123,112 +131,201 @@ export default function IngredientDetail({
 
   return (
     <Box
-      p={3}
-      bgcolor="background.paper"
+      p={{ xs: 2, md: 3 }}
+      bgcolor="transparent"
       borderRadius={2}
-      boxShadow={1}
-      maxHeight={600}
+      maxHeight={760}
       overflow="auto"
     >
-      <Box
-        position="sticky"
-        top={0}
-        zIndex={10}
-        bgcolor="background.paper"
-        pb={1}
-        mb={3}
-        borderBottom={1}
-        borderColor="divider"
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
+      <Paper
+        sx={theme => ({
+          p: { xs: 2, md: 2.5 },
+          mb: 2.5,
+          borderRadius: 3,
+          border: '1px solid',
+          borderColor: alpha(theme.palette.primary.main, 0.12),
+          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.1)} 0%, ${alpha(
+            theme.palette.background.paper,
+            0.98
+          )} 72%)`,
+        })}
       >
-        <Box>
-          <Typography variant="h5" fontWeight={700}>
-            {localData.name || 'New Ingredient'}
-          </Typography>
-          <Stack direction="row" spacing={1} mt={0.5}>
-            <Chip
-              label={`Suppliers: ${supplierCount}`}
-              size="small"
-              color={supplierCount ? 'primary' : 'default'}
-            />
-            <Chip label={localData.category || 'Uncategorized'} size="small" variant="outlined" />
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          justifyContent="space-between"
+          spacing={2}
+          alignItems={{ xs: 'flex-start', md: 'center' }}
+        >
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Box
+              sx={theme => ({
+                width: 52,
+                height: 52,
+                borderRadius: 2.5,
+                display: 'grid',
+                placeItems: 'center',
+                backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                color: 'primary.main',
+              })}
+            >
+              <Inventory2OutlinedIcon />
+            </Box>
+            <Box>
+              <Typography variant="h5" fontWeight={800}>
+                {localData.name || 'New Ingredient'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Maintain category, unit, and supplier purchasing details in one editor.
+              </Typography>
+            </Box>
           </Stack>
-        </Box>
 
-        {!hideEditToggle && (
-          <FormControlLabel
-            control={
-              <Switch
-                checked={editable}
-                onChange={() => setEditable(prev => !prev)}
-                color="primary"
-              />
-            }
-            label="Edit Mode"
+          {!hideEditToggle && (
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={editable}
+                  onChange={() => setEditable(prev => !prev)}
+                  color="primary"
+                />
+              }
+              label={editable ? 'Editing enabled' : 'Preview mode'}
+            />
+          )}
+        </Stack>
+
+        <Stack direction="row" spacing={1} mt={2} flexWrap="wrap" useFlexGap>
+          <Chip
+            label={`${supplierCount} supplier${supplierCount === 1 ? '' : 's'}`}
+            color={supplierCount ? 'primary' : 'default'}
+            size="small"
           />
-        )}
-      </Box>
+          <Chip label={`${preferredCount} preferred`} size="small" variant="outlined" />
+          <Chip label={localData.category || 'Uncategorized'} size="small" variant="outlined" />
+          <Chip label={localData.unit || 'Unit not set'} size="small" variant="outlined" />
+        </Stack>
+      </Paper>
 
-      <Box mb={3}>
-        <Autocomplete
-          options={COMMON_INGREDIENT_NAMES}
-          freeSolo
-          value={localData.name || ''}
-          onInputChange={(_, value) => handleChange('name', value)}
-          renderInput={params => (
-            <TextField
-              {...params}
-              label="Ingredient Name"
-              size="small"
-              margin="normal"
+      <Paper
+        sx={{
+          p: { xs: 2, md: 2.5 },
+          borderRadius: 3,
+          mb: 2.5,
+          border: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        <Stack spacing={0.75} mb={2}>
+          <Typography variant="h6" fontWeight={700}>
+            Core details
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            These fields drive browseability and downstream purchasing context.
+          </Typography>
+        </Stack>
+
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <Autocomplete
+              options={COMMON_INGREDIENT_NAMES}
+              freeSolo
+              value={localData.name || ''}
+              onInputChange={(_, value) => handleChange('name', value)}
+              renderInput={params => (
+                <TextField
+                  {...params}
+                  label="Ingredient name"
+                  size="small"
+                  disabled={!editable}
+                  fullWidth
+                />
+              )}
               disabled={!editable}
-              fullWidth
             />
-          )}
-          disabled={!editable}
-        />
+          </Grid>
 
-        <Autocomplete
-          options={COMMON_UNITS}
-          freeSolo
-          value={localData.unit || ''}
-          onInputChange={(_, value) => handleChange('unit', value)}
-          renderInput={params => (
-            <TextField
-              {...params}
-              label="Unit"
-              size="small"
-              margin="normal"
+          <Grid item xs={12} md={3}>
+            <Autocomplete
+              options={COMMON_UNITS}
+              freeSolo
+              value={localData.unit || ''}
+              onInputChange={(_, value) => handleChange('unit', value)}
+              renderInput={params => (
+                <TextField
+                  {...params}
+                  label="Base unit"
+                  size="small"
+                  disabled={!editable}
+                  fullWidth
+                />
+              )}
               disabled={!editable}
-              fullWidth
             />
-          )}
-          disabled={!editable}
-        />
+          </Grid>
 
-        <TextField
-          label="Category"
-          fullWidth
-          size="small"
-          margin="normal"
-          value={localData.category || ''}
-          onChange={e => handleChange('category', e.target.value)}
-          disabled={!editable}
-        />
-      </Box>
+          <Grid item xs={12} md={3}>
+            <TextField
+              label="Category"
+              fullWidth
+              size="small"
+              value={localData.category || ''}
+              onChange={e => handleChange('category', e.target.value)}
+              disabled={!editable}
+            />
+          </Grid>
+        </Grid>
+      </Paper>
 
-      <Typography variant="h6" gutterBottom>
-        Suppliers
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+        <LocalShippingOutlinedIcon color="action" />
+        <Typography variant="h6" fontWeight={700}>
+          Supplier details
+        </Typography>
+      </Stack>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Keep pricing, pack size, lead time, and preferred supplier logic readable enough for reorder
+        and draft PO review.
       </Typography>
 
       {(localData.suppliers || []).map((supplier, i) => (
-        <Accordion key={supplier.ingredient_supplier_id || i}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography sx={{ fontWeight: 700 }}>
-              {supplier.supplier_name || `Supplier ${i + 1}`}
-            </Typography>
+        <Accordion
+          key={supplier.ingredient_supplier_id || i}
+          disableGutters
+          sx={{
+            mb: 1.5,
+            borderRadius: 3,
+            overflow: 'hidden',
+            border: '1px solid',
+            borderColor: 'divider',
+            '&:before': { display: 'none' },
+          }}
+        >
+          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 2, py: 0.5 }}>
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={1}
+              alignItems={{ md: 'center' }}
+              sx={{ width: '100%' }}
+            >
+              <Typography sx={{ fontWeight: 700, flex: 1 }}>
+                {supplier.supplier_name || `Supplier ${i + 1}`}
+              </Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Chip
+                  label={supplier.preferred ? 'Preferred' : 'Standard'}
+                  size="small"
+                  color={supplier.preferred ? 'primary' : 'default'}
+                />
+                <Chip label={supplier.unit || 'No unit'} size="small" variant="outlined" />
+                <Chip
+                  label={
+                    supplier.cost_per_unit ? `$${supplier.cost_per_unit}/unit` : 'Pricing pending'
+                  }
+                  size="small"
+                  variant="outlined"
+                />
+              </Stack>
+            </Stack>
           </AccordionSummary>
           <AccordionDetails>
             <Grid container spacing={2}>
@@ -238,7 +335,6 @@ export default function IngredientDetail({
                   value={supplier.supplier_name}
                   fullWidth
                   size="small"
-                  margin="normal"
                   disabled
                 />
               </Grid>
@@ -252,7 +348,6 @@ export default function IngredientDetail({
                   onChange={e => handleSupplierChange(i, 'cost_per_unit', e.target.value)}
                   fullWidth
                   size="small"
-                  margin="normal"
                   disabled={!editable}
                 />
               </Grid>
@@ -264,7 +359,6 @@ export default function IngredientDetail({
                   onChange={e => handleSupplierChange(i, 'unit', e.target.value)}
                   fullWidth
                   size="small"
-                  margin="normal"
                   disabled={!editable}
                 />
               </Grid>
@@ -278,11 +372,10 @@ export default function IngredientDetail({
                   onChange={e => handleSupplierChange(i, 'pack_size', e.target.value)}
                   fullWidth
                   size="small"
-                  margin="normal"
                   disabled={!editable}
                 />
               </Grid>
-              <Grid item xs={12}>
+              <Grid item xs={12} md={6}>
                 <TextField
                   label="Quantity per Pack Item"
                   type="number"
@@ -291,12 +384,11 @@ export default function IngredientDetail({
                   onChange={e => handleSupplierChange(i, 'quantity_per_pack_item', e.target.value)}
                   fullWidth
                   size="small"
-                  margin="normal"
                   disabled={!editable}
                 />
               </Grid>
 
-              <Grid item xs={12}>
+              <Grid item xs={12} md={6}>
                 <TextField
                   label="Lead Time (days)"
                   type="number"
@@ -305,7 +397,6 @@ export default function IngredientDetail({
                   onChange={e => handleSupplierChange(i, 'lead_time_days', e.target.value)}
                   fullWidth
                   size="small"
-                  margin="normal"
                   disabled={!editable}
                 />
               </Grid>
@@ -327,9 +418,9 @@ export default function IngredientDetail({
         </Accordion>
       ))}
 
-      <Box mt={2} display="flex" gap={2} flexWrap="wrap">
-        <Button variant="contained" color="primary" onClick={addSupplier} disabled={!editable}>
-          + Add Supplier
+      <Box mt={2.5} display="flex" gap={1.5} flexWrap="wrap">
+        <Button variant="outlined" color="primary" onClick={addSupplier} disabled={!editable}>
+          Add Supplier Row
         </Button>
 
         <Button

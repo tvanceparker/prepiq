@@ -20,7 +20,9 @@ import {
   ListItemText,
   ListItemIcon,
   Fade,
+  Divider,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import AddIcon from '@mui/icons-material/Add';
@@ -217,13 +219,47 @@ export default function POSupplierReview({
     return { itemCount, total, supplierCount: supplierSet.size };
   }, [suggestions, selectedItems]);
 
+  const supplierBuckets = useMemo(
+    () =>
+      suggestions.suggestions.map(supplier => {
+        const supplierGroupKey = getSupplierGroupKey(supplier.supplier_id);
+        const selectedCount = supplier.items.filter(item =>
+          selectedItems.has(`${supplierGroupKey}-${item.ingredient_id}`)
+        ).length;
+
+        return {
+          key: supplierGroupKey,
+          label: getSupplierLabel(supplier.supplier_name, supplier.supplier_id),
+          selectedCount,
+          totalCount: supplier.items.length,
+          unspecified: supplier.supplier_id === null || supplier.supplier_id === undefined,
+        };
+      }),
+    [selectedItems, suggestions.suggestions]
+  );
+
   return (
     <Fade in timeout={300}>
       <Box>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-          <Stack spacing={0.75}>
-            <Typography variant="subtitle1" fontWeight={600}>
+        <Paper
+          variant="outlined"
+          sx={theme => ({
+            p: 2.5,
+            mb: 2,
+            borderRadius: 3,
+            background: `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.08)} 0%, ${alpha(
+              theme.palette.background.paper,
+              0.98
+            )} 75%)`,
+          })}
+        >
+          <Stack spacing={1.25}>
+            <Typography variant="subtitle1" fontWeight={700}>
               {title}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Review one grouped purchasing session, then create a separate draft order for each
+              supplier bucket.
             </Typography>
             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
               <Chip
@@ -268,8 +304,21 @@ export default function POSupplierReview({
                 )}
               </Box>
             )}
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {supplierBuckets.map(bucket => (
+                <Chip
+                  key={bucket.key}
+                  label={`${bucket.label}: ${bucket.selectedCount}/${bucket.totalCount}`}
+                  size="small"
+                  color={
+                    bucket.unspecified ? 'warning' : bucket.selectedCount ? 'primary' : 'default'
+                  }
+                  variant={bucket.selectedCount ? 'filled' : 'outlined'}
+                />
+              ))}
+            </Stack>
           </Stack>
-        </Stack>
+        </Paper>
 
         {showSummary && (
           <Paper sx={{ p: 2, mb: 3, bgcolor: 'primary.50' }} variant="outlined">
@@ -321,10 +370,14 @@ export default function POSupplierReview({
               }, 0);
 
               return (
-                <Box key={supplierGroupKey} sx={{ mb: 1 }}>
+                <Paper
+                  key={supplierGroupKey}
+                  variant="outlined"
+                  sx={{ mb: 1.5, borderRadius: 3, overflow: 'hidden' }}
+                >
                   <ListItemButton
                     onClick={() => toggleSupplierExpand(supplier.supplier_id)}
-                    sx={{ bgcolor: 'background.paper', borderRadius: 1 }}
+                    sx={{ bgcolor: 'background.paper', px: 2, py: 1.25 }}
                   >
                     <ListItemIcon>
                       <Checkbox
@@ -338,12 +391,21 @@ export default function POSupplierReview({
                     </ListItemIcon>
                     <ListItemText
                       primary={
-                        <Typography fontWeight={500}>
+                        <Typography fontWeight={700}>
                           {getSupplierLabel(supplier.supplier_name, supplier.supplier_id)}
                         </Typography>
                       }
-                      secondary={`${supplier.items.filter(i => selectedItems.has(`${supplierGroupKey}-${i.ingredient_id}`)).length} items`}
+                      secondary={`${supplier.items.filter(i => selectedItems.has(`${supplierGroupKey}-${i.ingredient_id}`)).length} of ${supplier.items.length} items selected`}
                     />
+                    {(supplier.supplier_id === null || supplier.supplier_id === undefined) && (
+                      <Chip
+                        label="Draft without supplier"
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                        sx={{ mr: 1 }}
+                      />
+                    )}
                     <Typography
                       variant="subtitle1"
                       fontWeight={600}
@@ -360,6 +422,7 @@ export default function POSupplierReview({
                     timeout="auto"
                     unmountOnExit
                   >
+                    <Divider />
                     <Table size="small" sx={{ ml: 4, width: 'calc(100% - 32px)', mb: 1 }}>
                       <TableHead>
                         <TableRow>
@@ -532,22 +595,31 @@ export default function POSupplierReview({
                       </TableBody>
                     </Table>
                   </Collapse>
-                </Box>
+                </Paper>
               );
             })}
           </List>
         </Box>
 
         {showNotes && (
-          <TextField
-            fullWidth
-            label="Order Notes (optional)"
-            value={orderNotes}
-            onChange={e => setOrderNotes(e.target.value)}
-            multiline
-            rows={2}
-            sx={{ mt: 2 }}
-          />
+          <Paper variant="outlined" sx={{ mt: 2, p: 2, borderRadius: 3 }}>
+            <Stack spacing={1}>
+              <Typography variant="subtitle2" fontWeight={700}>
+                Draft notes
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                These notes are copied to each draft order created from this grouped review.
+              </Typography>
+              <TextField
+                fullWidth
+                label="Order Notes (optional)"
+                value={orderNotes}
+                onChange={e => setOrderNotes(e.target.value)}
+                multiline
+                rows={2}
+              />
+            </Stack>
+          </Paper>
         )}
       </Box>
     </Fade>

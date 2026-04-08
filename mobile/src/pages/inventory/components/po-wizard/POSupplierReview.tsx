@@ -135,6 +135,25 @@ export default function POSupplierReview({
     return { itemCount, total, supplierCount: supplierSet.size };
   }, [suggestions, selectedItems]);
 
+  const supplierBuckets = React.useMemo(
+    () =>
+      suggestions.suggestions.map(supplier => {
+        const supplierGroupKey = getSupplierGroupKey(supplier.supplier_id);
+        const selectedCount = supplier.items.filter(item =>
+          selectedItems.has(`${supplierGroupKey}-${item.ingredient_id}`)
+        ).length;
+
+        return {
+          key: supplierGroupKey,
+          label: getSupplierLabel(supplier.supplier_name, supplier.supplier_id),
+          selectedCount,
+          totalCount: supplier.items.length,
+          unspecified: supplier.supplier_id === null || supplier.supplier_id === undefined,
+        };
+      }),
+    [selectedItems, suggestions.suggestions]
+  );
+
   // Toggle supplier expansion
   const toggleSupplierExpand = (supplierId: number | null | undefined) => {
     const groupKey = getSupplierGroupKey(supplierId);
@@ -204,6 +223,12 @@ export default function POSupplierReview({
           <Text variant="titleMedium" style={styles.title}>
             Review Orders
           </Text>
+          <Text
+            variant="bodySmall"
+            style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}
+          >
+            Review one grouped session, then create separate draft orders for each supplier bucket.
+          </Text>
           <View style={styles.forecastMetaRow}>
             <Chip compact mode="outlined">
               {getForecastSourceLabel(suggestions)} forecast
@@ -239,6 +264,23 @@ export default function POSupplierReview({
           )}
         </View>
       </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.bucketRow}
+      >
+        {supplierBuckets.map(bucket => (
+          <Chip
+            key={bucket.key}
+            compact
+            mode={bucket.selectedCount ? 'flat' : 'outlined'}
+            style={[styles.bucketChip, bucket.unspecified ? styles.unspecifiedBucketChip : null]}
+          >
+            {bucket.label}: {bucket.selectedCount}/{bucket.totalCount}
+          </Chip>
+        ))}
+      </ScrollView>
 
       <Card style={styles.summaryCard} mode="contained">
         <Card.Content style={styles.summaryRow}>
@@ -293,7 +335,7 @@ export default function POSupplierReview({
             <Card key={supplierGroupKey} style={styles.supplierCard} mode="outlined">
               <List.Accordion
                 title={getSupplierLabel(supplier.supplier_name, supplier.supplier_id)}
-                description={`$${supplierTotal.toFixed(2)}`}
+                description={`${supplier.items.filter(i => selectedItems.has(`${supplierGroupKey}-${i.ingredient_id}`)).length}/${supplier.items.length} selected · $${supplierTotal.toFixed(2)}`}
                 expanded={expandedSuppliers.has(supplierGroupKey)}
                 onPress={() => toggleSupplierExpand(supplier.supplier_id)}
                 left={props => (
@@ -303,6 +345,13 @@ export default function POSupplierReview({
                   />
                 )}
               >
+                {(supplier.supplier_id === null || supplier.supplier_id === undefined) && (
+                  <View style={styles.unspecifiedNoteWrap}>
+                    <Chip compact mode="outlined" style={styles.unspecifiedNoteChip}>
+                      Draft without supplier
+                    </Chip>
+                  </View>
+                )}
                 {supplier.items.map(item => {
                   const key = `${supplierGroupKey}-${item.ingredient_id}`;
                   const isSelected = selectedItems.has(key);
@@ -459,6 +508,12 @@ export default function POSupplierReview({
         numberOfLines={2}
         style={styles.notesInput}
       />
+      <Text
+        variant="bodySmall"
+        style={[styles.notesHelper, { color: theme.colors.onSurfaceVariant }]}
+      >
+        Notes are copied to each draft order created from this review.
+      </Text>
     </View>
   );
 }
@@ -476,6 +531,10 @@ const styles = StyleSheet.create({
   title: {
     fontWeight: '600',
   },
+  subtitle: {
+    marginTop: 4,
+    maxWidth: 320,
+  },
   forecastMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -490,6 +549,15 @@ const styles = StyleSheet.create({
   },
   forecastWarningText: {
     color: '#b45309',
+  },
+  bucketRow: {
+    paddingBottom: 12,
+  },
+  bucketChip: {
+    marginRight: 8,
+  },
+  unspecifiedBucketChip: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
   },
   summaryCard: {
     borderRadius: 12,
@@ -511,6 +579,14 @@ const styles = StyleSheet.create({
   supplierCard: {
     marginBottom: 8,
     borderRadius: 12,
+  },
+  unspecifiedNoteWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+  },
+  unspecifiedNoteChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
   },
   reviewItem: {
     flexDirection: 'row',
@@ -558,5 +634,8 @@ const styles = StyleSheet.create({
   },
   notesInput: {
     marginTop: 12,
+  },
+  notesHelper: {
+    marginTop: 8,
   },
 });

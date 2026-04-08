@@ -117,6 +117,23 @@ export default function Suppliers(): React.JSX.Element {
     return result;
   }, [suppliers, filterActive, searchQuery]);
 
+  const supplierStats = useMemo(() => {
+    const linkedIngredients = filteredSuppliers.reduce(
+      (sum, supplier) => sum + (supplier.ingredients?.length || 0),
+      0
+    );
+    const preferredIngredients = filteredSuppliers.reduce(
+      (sum, supplier) =>
+        sum + (supplier.ingredients?.filter(ingredient => ingredient.preferred).length || 0),
+      0
+    );
+
+    return {
+      linkedIngredients,
+      preferredIngredients,
+    };
+  }, [filteredSuppliers]);
+
   // Open create dialog
   const openCreate = () => {
     setFormData({
@@ -521,27 +538,52 @@ export default function Suppliers(): React.JSX.Element {
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header */}
       <Surface style={styles.headerSurface} elevation={1}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerLeft}>
-            <MaterialCommunityIcons name="truck-delivery" size={28} color={theme.colors.primary} />
-            <Text variant="titleLarge" style={{ marginLeft: 8, fontWeight: '600' }}>
-              Suppliers
-            </Text>
-          </View>
-          <View style={styles.headerRight}>
-            <View style={styles.filterToggle}>
-              <Text
-                variant="bodySmall"
-                style={{ color: theme.colors.onSurfaceVariant, marginRight: 4 }}
-              >
-                {filterActive ? 'Active' : 'Inactive'}
-              </Text>
-              <Switch
-                value={filterActive}
-                onValueChange={setFilterActive}
-                color={theme.colors.primary}
-              />
+        <View style={styles.heroCard}>
+          <View style={styles.headerRow}>
+            <View style={styles.headerLeft}>
+              <View style={[styles.heroIconWrap, { backgroundColor: `${theme.colors.primary}14` }]}>
+                <MaterialCommunityIcons
+                  name="truck-delivery"
+                  size={28}
+                  color={theme.colors.primary}
+                />
+              </View>
+              <View style={{ marginLeft: 12, flex: 1 }}>
+                <Text variant="titleLarge" style={styles.heroTitle}>
+                  Supplier workspace
+                </Text>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  Review vendors, linked ingredients, and purchasing assumptions in one place.
+                </Text>
+              </View>
             </View>
+            <View style={styles.headerRight}>
+              <View style={styles.filterToggle}>
+                <Text
+                  variant="bodySmall"
+                  style={{ color: theme.colors.onSurfaceVariant, marginRight: 4 }}
+                >
+                  {filterActive ? 'Active' : 'Inactive'}
+                </Text>
+                <Switch
+                  value={filterActive}
+                  onValueChange={setFilterActive}
+                  color={theme.colors.primary}
+                />
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.heroBadgeRow}>
+            <Chip compact style={styles.heroBadge}>
+              {filteredSuppliers.length} suppliers in view
+            </Chip>
+            <Chip compact style={styles.heroBadge}>
+              {supplierStats.linkedIngredients} linked ingredients
+            </Chip>
+            <Chip compact style={styles.heroBadge}>
+              {supplierStats.preferredIngredients} preferred items
+            </Chip>
           </View>
         </View>
 
@@ -552,7 +594,6 @@ export default function Suppliers(): React.JSX.Element {
           style={styles.searchbar}
         />
 
-        {/* Stats row */}
         <View style={styles.statsRow}>
           <Chip
             compact
@@ -576,6 +617,9 @@ export default function Suppliers(): React.JSX.Element {
           >
             {filteredSuppliers.reduce((sum, s) => sum + (s.ingredients?.length || 0), 0)} items
           </Chip>
+          <Button mode="contained" compact onPress={openCreate} style={styles.inlineActionButton}>
+            New supplier
+          </Button>
         </View>
       </Surface>
 
@@ -971,8 +1015,11 @@ const styles = StyleSheet.create({
   },
   headerSurface: {
     padding: 16,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  heroCard: {
+    marginBottom: 14,
   },
   headerRow: {
     flexDirection: 'row',
@@ -983,10 +1030,29 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  heroIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heroTitle: {
+    fontWeight: '700',
+  },
+  heroBadgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  heroBadge: {
+    backgroundColor: 'rgba(255,255,255,0.88)',
   },
   filterToggle: {
     flexDirection: 'row',
@@ -998,16 +1064,23 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: 8,
+    flexWrap: 'wrap',
+    alignItems: 'center',
   },
   statChip: {
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(255,255,255,0.82)',
+  },
+  inlineActionButton: {
+    borderRadius: 999,
   },
   listContent: {
     padding: 16,
     paddingBottom: 100,
   },
   card: {
-    marginBottom: 12,
+    marginBottom: 14,
+    borderRadius: 22,
+    overflow: 'hidden',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -1023,7 +1096,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   supplierName: {
-    fontWeight: '600',
+    fontWeight: '700',
   },
   statusChip: {
     height: 24,
@@ -1037,7 +1110,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   infoChip: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f7f8fa',
   },
   infoChipText: {
     fontSize: 12,
@@ -1056,7 +1129,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   expandedContent: {
-    paddingTop: 8,
+    paddingTop: 12,
   },
   ingredientGroup: {
     marginBottom: 8,
@@ -1096,6 +1169,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 24,
   },
   fab: {
     position: 'absolute',
