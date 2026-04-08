@@ -14,6 +14,7 @@ interface AlertItem {
   severity: string;
   alert_type: string;
   title?: string;
+  action_label?: string;
   description?: string;
   message?: string;
   is_acknowledged?: boolean;
@@ -83,9 +84,7 @@ export default function useAlertsFeed({ pageSize = 20 } = {}) {
     onSuccess: (_res, variables) => {
       qc.setQueryData<AlertsInfiniteData>(queryKey, old => {
         if (!old) return old;
-        const pages = (old.pages || []).map(page =>
-          page.filter(a => a.alert_id !== variables.id)
-        );
+        const pages = (old.pages || []).map(page => page.filter(a => a.alert_id !== variables.id));
         return { ...old, pages };
       });
     },
@@ -107,8 +106,7 @@ export default function useAlertsFeed({ pageSize = 20 } = {}) {
     loadMore: () => fetchNextPage(),
     acknowledge: (id: number) => ackMutation.mutateAsync(id),
     resolve: (id: number) => resolveMutation.mutateAsync(id),
-    fix: (id: number, fixData: Record<string, unknown>) =>
-      fixMutation.mutateAsync({ id, fixData }),
+    fix: (id: number, fixData: Record<string, unknown>) => fixMutation.mutateAsync({ id, fixData }),
     isFixable,
     setFeedMode,
     refetch,

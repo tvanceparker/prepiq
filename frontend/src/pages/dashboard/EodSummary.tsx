@@ -26,17 +26,64 @@ export default function EodSummary(): JSX.Element {
           : 'info';
 
   return (
-    <Box sx={{ maxWidth: 1200, mx: 'auto', mt: 4, px: { xs: 2, md: 4 }, pb: 6 }}>
+    <Box sx={{ maxWidth: 1240, mx: 'auto', mt: 4, px: { xs: 2, md: 4 }, pb: 6 }}>
       <PageHeader title="EOD Detail" />
 
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 3 }}>
-        <Button variant="outlined" onClick={() => navigate('/dashboard/alerts')}>
-          Back To Alerts
-        </Button>
-        <Button variant="contained" onClick={() => navigate('/inventory/table')}>
-          Open Inventory Review
-        </Button>
-      </Stack>
+      <Paper
+        elevation={0}
+        sx={{
+          p: { xs: 2, md: 3 },
+          mb: 3,
+          borderRadius: 4,
+          background:
+            'radial-gradient(circle at top left, rgba(24,91,78,0.16), transparent 42%), linear-gradient(135deg, #17352d 0%, #245648 48%, #f2e3bf 160%)',
+          color: 'common.white',
+          overflow: 'hidden',
+        }}
+      >
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} justifyContent="space-between">
+          <Box sx={{ maxWidth: 700 }}>
+            <Typography variant="overline" sx={{ opacity: 0.82, letterSpacing: 1.2 }}>
+              EOD Deep Dive
+            </Typography>
+            <Typography variant="h4" sx={{ mt: 0.5, mb: 1, fontWeight: 700 }}>
+              Trace the run, understand the failure points, and move directly into repair.
+            </Typography>
+            <Typography sx={{ opacity: 0.88, maxWidth: 560 }}>
+              This view keeps forecast trust, stage completion, warnings, and repair targets in one
+              place so operators can move from summary to action without guessing.
+            </Typography>
+          </Box>
+
+          <Stack direction="row" spacing={1.5} useFlexGap flexWrap="wrap" alignItems="flex-start">
+            <Paper
+              sx={{ p: 1.5, minWidth: 120, bgcolor: 'rgba(255,255,255,0.12)', color: 'inherit' }}
+            >
+              <Typography variant="overline" sx={{ opacity: 0.72 }}>
+                Run Status
+              </Typography>
+              <Typography variant="h5">{data?.status?.toUpperCase() ?? '...'}</Typography>
+            </Paper>
+            <Paper
+              sx={{ p: 1.5, minWidth: 120, bgcolor: 'rgba(255,255,255,0.12)', color: 'inherit' }}
+            >
+              <Typography variant="overline" sx={{ opacity: 0.72 }}>
+                Open Review
+              </Typography>
+              <Typography variant="h5">{data?.counts.open_discrepancy_count ?? 0}</Typography>
+            </Paper>
+          </Stack>
+        </Stack>
+
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 3 }}>
+          <Button variant="outlined" color="inherit" onClick={() => navigate('/dashboard/alerts')}>
+            Back To Alerts
+          </Button>
+          <Button variant="contained" onClick={() => navigate('/inventory/table')}>
+            Open Inventory Review
+          </Button>
+        </Stack>
+      </Paper>
 
       {isLoading && (
         <Paper sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
@@ -52,7 +99,7 @@ export default function EodSummary(): JSX.Element {
 
       {data && (
         <Stack spacing={3}>
-          <Paper sx={{ p: 3 }}>
+          <Paper sx={{ p: 3, borderRadius: 3 }}>
             <Stack
               direction={{ xs: 'column', md: 'row' }}
               spacing={2}
@@ -101,7 +148,7 @@ export default function EodSummary(): JSX.Element {
             </Stack>
           </Paper>
 
-          <Paper sx={{ p: 3 }}>
+          <Paper sx={{ p: 3, borderRadius: 3 }}>
             <Typography variant="h6" sx={{ mb: 1 }}>
               Forecast Trust
             </Typography>
@@ -114,7 +161,7 @@ export default function EodSummary(): JSX.Element {
             </Typography>
           </Paper>
 
-          <Paper sx={{ p: 3 }}>
+          <Paper sx={{ p: 3, borderRadius: 3 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
               Stage Status
             </Typography>
@@ -138,7 +185,7 @@ export default function EodSummary(): JSX.Element {
             </Stack>
           </Paper>
 
-          <Paper sx={{ p: 3 }}>
+          <Paper sx={{ p: 3, borderRadius: 3 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
               Errors And Warnings
             </Typography>
@@ -163,7 +210,7 @@ export default function EodSummary(): JSX.Element {
             )}
           </Paper>
 
-          <Paper sx={{ p: 3 }}>
+          <Paper sx={{ p: 3, borderRadius: 3 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
               Repair Targets
             </Typography>

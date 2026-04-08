@@ -1,5 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ActivityIndicator,
+  ScrollView,
+  TextInput,
+} from 'react-native';
 import { useTheme } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import useAlertsFeed from '../hooks/useAlertsFeed';
@@ -7,11 +14,27 @@ import { fetchLatestEodSummary } from '../../../api/eod';
 import type { EodRunSummary } from '../../../interfaces/eod';
 
 const formatStageLabel = (stage: string) => stage.replace(/_/g, ' ');
+const getSeverityRank = (severity: string) => {
+  switch (severity) {
+    case 'urgent':
+      return 4;
+    case 'error':
+      return 3;
+    case 'warning':
+      return 2;
+    default:
+      return 1;
+  }
+};
 
 export default function AlertsFeedBasicMobile() {
   const theme = useTheme();
   const navigation = useNavigation<any>();
   const [viewAll, setViewAll] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [feedFilter, setFeedFilter] = useState<'priority' | 'all' | 'inventory' | 'fixable'>(
+    'priority'
+  );
   const [eodSummary, setEodSummary] = useState<EodRunSummary | null>(null);
   const {
     alerts,
@@ -72,9 +95,274 @@ export default function AlertsFeedBasicMobile() {
     });
   };
 
+  const sortedAlerts = useMemo(() => {
+    return [...alerts].sort((left, right) => {
+      const severityDelta = getSeverityRank(right.severity) - getSeverityRank(left.severity);
+      if (severityDelta !== 0) return severityDelta;
+
+      const leftPriority =
+        left.alert_type === 'Inventory:DeductionFailed' || isFixable(left) ? 1 : 0;
+      const rightPriority =
+        right.alert_type === 'Inventory:DeductionFailed' || isFixable(right) ? 1 : 0;
+      if (rightPriority !== leftPriority) return rightPriority - leftPriority;
+
+      return Number(left.is_acknowledged) - Number(right.is_acknowledged);
+    });
+  }, [alerts, isFixable]);
+
+  const filteredAlerts = useMemo(() => {
+    const search = searchTerm.trim().toLowerCase();
+
+    return sortedAlerts.filter(alert => {
+      if (feedFilter === 'priority') {
+        const isPriority =
+          getSeverityRank(alert.severity) >= 3 ||
+          alert.alert_type === 'Inventory:DeductionFailed' ||
+          isFixable(alert);
+        if (!isPriority) return false;
+      }
+
+      if (feedFilter === 'inventory' && !alert.alert_type.startsWith('Inventory:')) return false;
+      if (feedFilter === 'fixable' && !isFixable(alert)) return false;
+
+      if (!search) return true;
+
+      const haystack = [
+        alert.title,
+        alert.alert_type,
+        alert.message,
+        JSON.stringify(alert.meta ?? {}),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(search);
+    });
+  }, [feedFilter, isFixable, searchTerm, sortedAlerts]);
+
+  const priorityCount = alerts.filter(alert => getSeverityRank(alert.severity) >= 3).length;
+  const inventoryCount = alerts.filter(alert => alert.alert_type.startsWith('Inventory:')).length;
+  const groupedSections = useMemo(() => {
+    const sections: Array<{
+      key: string;
+      title: string;
+      subtitle: string;
+      alerts: typeof filteredAlerts;
+    }> = [];
+    const usedIds = new Set<string | number>();
+
+    const takeSection = (
+      key: string,
+      title: string,
+      subtitle: string,
+      predicate: (alert: (typeof filteredAlerts)[number]) => boolean
+    ) => {
+      const sectionAlerts = filteredAlerts.filter(
+        alert => !usedIds.has(alert.alert_id) && predicate(alert)
+      );
+      sectionAlerts.forEach(alert => usedIds.add(alert.alert_id));
+      if (sectionAlerts.length > 0) {
+        sections.push({ key, title, subtitle, alerts: sectionAlerts });
+      }
+    };
+
+    takeSection(
+      'priority',
+      'Priority & Repair',
+      'Highest-signal items to work first.',
+      alert =>
+        getSeverityRank(alert.severity) >= 3 ||
+        alert.alert_type === 'Inventory:DeductionFailed' ||
+        isFixable(alert)
+    );
+    takeSection(
+      'inventory',
+      'Inventory Watch',
+      'Stock issues that impact trust and recovery.',
+      alert => alert.alert_type.startsWith('Inventory:')
+    );
+    takeSection(
+      'operations',
+      'Operations',
+      'Lower-noise items that still need attention.',
+      () => true
+    );
+
+    return sections;
+  }, [filteredAlerts, isFixable]);
+
+  const renderAlertCard = (a: (typeof filteredAlerts)[number]) => (
+    <View
+      key={a.alert_id}
+      style={{
+        padding: 12,
+        borderWidth: 1,
+        borderColor:
+          getSeverityRank(a.severity) >= 3
+            ? theme.colors.error
+            : a.alert_type.startsWith('Inventory:')
+              ? '#d9822b'
+              : theme.colors.outlineVariant,
+        borderRadius: 10,
+        marginBottom: 10,
+        backgroundColor: theme.colors.surface,
+      }}
+    >
+      <Text style={{ fontWeight: '600' }}>{a.title || a.alert_type}</Text>
+      <Text style={{ fontSize: 11, color: theme.colors.onSurfaceVariant, marginTop: 2 }}>
+        {a.alert_type}
+      </Text>
+      <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 2 }}>
+        {a.description || a.message}
+      </Text>
+      {a.alert_type === 'Inventory:DeductionFailed' && (
+        <View style={{ marginTop: 6 }}>
+          {(a.meta as any)?.ingredient_name && (
+            <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>
+              Ingredient: {(a.meta as any).ingredient_name}
+            </Text>
+          )}
+          {((a.meta as any)?.current_quantity_on_hand !== undefined ||
+            (a.meta as any)?.required_quantity !== undefined) && (
+            <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>
+              Current: {Number((a.meta as any)?.current_quantity_on_hand ?? 0)}{' '}
+              {(a.meta as any)?.unit || ''} · Required:{' '}
+              {Number((a.meta as any)?.required_quantity ?? 0)} {(a.meta as any)?.unit || ''}
+            </Text>
+          )}
+          {(a.meta as any)?.deduction_reason && (
+            <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>
+              Reason: {(a.meta as any).deduction_reason}
+            </Text>
+          )}
+          {(a.meta as any)?.attempted_day && (
+            <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>
+              Day: {(a.meta as any).attempted_day}
+            </Text>
+          )}
+        </View>
+      )}
+      <View style={{ flexDirection: 'row', marginTop: 8 }}>
+        {a.alert_type === 'Inventory:DeductionFailed' && (
+          <TouchableOpacity
+            onPress={() =>
+              navigateToReview({
+                alertId: a.alert_id,
+                ingredientId: (a.meta as any)?.ingredient_id ?? null,
+                batchRecipeId: (a.meta as any)?.batch_recipe_id ?? null,
+              })
+            }
+            style={{
+              paddingVertical: 6,
+              paddingHorizontal: 10,
+              backgroundColor: theme.colors.secondaryContainer,
+              borderRadius: 6,
+              marginRight: 8,
+            }}
+          >
+            <Text style={{ color: theme.colors.onSecondaryContainer, fontSize: 12 }}>
+              {a.action_label || 'Review Inventory'}
+            </Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          onPress={() => acknowledge(a.alert_id)}
+          style={{
+            paddingVertical: 6,
+            paddingHorizontal: 10,
+            backgroundColor: theme.colors.secondary,
+            borderRadius: 6,
+            marginRight: 8,
+          }}
+        >
+          <Text style={{ color: theme.colors.onSecondary, fontSize: 12 }}>Seen</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => resolve(a.alert_id)}
+          style={{
+            paddingVertical: 6,
+            paddingHorizontal: 10,
+            backgroundColor: theme.colors.primary,
+            borderRadius: 6,
+            marginRight: isFixable(a) ? 8 : 0,
+          }}
+        >
+          <Text style={{ color: theme.colors.onPrimary, fontSize: 12 }}>Close</Text>
+        </TouchableOpacity>
+        {isFixable(a) && (
+          <TouchableOpacity
+            onPress={() => {
+              if (a.alert_type === 'Inventory:DeductionFailed') {
+                const required = Number((a.meta as any)?.required_quantity ?? 0);
+                const available = Number((a.meta as any)?.available_quantity ?? 0);
+                const target = Number.isFinite(required) && required > 0 ? required : available;
+                fix(a.alert_id, { target_quantity_on_hand: Math.max(target, 0) });
+                return;
+              }
+
+              if (a.alert_type === 'DataQuality:MissingChannel') {
+                fix(a.alert_id, { sales_channel: 'unknown' });
+                return;
+              }
+
+              const quantity = Number((a.meta as any)?.required_quantity ?? 1);
+              fix(a.alert_id, {
+                quantity_sold: Number.isFinite(quantity) && quantity >= 0 ? quantity : 1,
+              });
+            }}
+            style={{
+              paddingVertical: 6,
+              paddingHorizontal: 10,
+              backgroundColor: theme.colors.tertiary,
+              borderRadius: 6,
+            }}
+          >
+            <Text style={{ color: theme.colors.onTertiary, fontSize: 12 }}>
+              {a.alert_type === 'DataQuality:MissingChannel'
+                ? 'Set Channel'
+                : a.alert_type === 'Inventory:DeductionFailed'
+                  ? 'Adjust Qty'
+                  : 'Fix Now'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+
   return (
-    <ScrollView contentContainerStyle={{ padding: 16 }}>
-      <Text style={{ fontSize: 20, fontWeight: '600', marginBottom: 12 }}>Alerts & Issues</Text>
+    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>
+      <View
+        style={{
+          padding: 16,
+          borderRadius: 16,
+          marginBottom: 12,
+          backgroundColor: '#20453d',
+        }}
+      >
+        <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', marginBottom: 6 }}>
+          Operator Queue
+        </Text>
+        <Text style={{ fontSize: 24, fontWeight: '700', color: '#fff', marginBottom: 8 }}>
+          Alerts & Issues
+        </Text>
+        <Text style={{ color: 'rgba(255,255,255,0.84)', marginBottom: 12 }}>
+          Work the highest-signal alerts first, keep inventory repairs close, and leave the
+          low-noise items for later.
+        </Text>
+        <View style={{ flexDirection: 'row' }}>
+          <View style={{ marginRight: 20 }}>
+            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Priority</Text>
+            <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>{priorityCount}</Text>
+          </View>
+          <View>
+            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Inventory</Text>
+            <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>{inventoryCount}</Text>
+          </View>
+        </View>
+      </View>
+
       {eodSummary && (
         <View
           style={{
@@ -195,6 +483,69 @@ export default function AlertsFeedBasicMobile() {
           </TouchableOpacity>
         </View>
       )}
+
+      <View
+        style={{
+          padding: 12,
+          borderWidth: 1,
+          borderColor: theme.colors.outlineVariant,
+          borderRadius: 12,
+          marginBottom: 12,
+          backgroundColor: theme.colors.surface,
+        }}
+      >
+        <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginBottom: 8 }}>
+          Filter Queue
+        </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 }}>
+          {[
+            ['priority', `Priority · ${priorityCount}`],
+            ['inventory', `Inventory · ${inventoryCount}`],
+            ['fixable', `Fixable · ${alerts.filter(alert => isFixable(alert)).length}`],
+            ['all', `All · ${alerts.length}`],
+          ].map(([key, label]) => {
+            const active = feedFilter === key;
+            return (
+              <TouchableOpacity
+                key={key}
+                onPress={() => setFeedFilter(key as any)}
+                style={{
+                  paddingVertical: 6,
+                  paddingHorizontal: 10,
+                  borderRadius: 999,
+                  marginRight: 8,
+                  marginBottom: 8,
+                  backgroundColor: active ? theme.colors.primary : theme.colors.surfaceVariant,
+                }}
+              >
+                <Text
+                  style={{
+                    color: active ? theme.colors.onPrimary : theme.colors.onSurfaceVariant,
+                    fontSize: 12,
+                  }}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <TextInput
+          value={searchTerm}
+          onChangeText={setSearchTerm}
+          placeholder="Search alerts, ingredients, or metadata"
+          placeholderTextColor={theme.colors.onSurfaceVariant}
+          style={{
+            borderWidth: 1,
+            borderColor: theme.colors.outlineVariant,
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            color: theme.colors.onSurface,
+          }}
+        />
+      </View>
+
       {error && <Text style={{ color: theme.colors.error, marginBottom: 8 }}>{error}</Text>}
       <TouchableOpacity
         onPress={() => setViewAll(v => !v)}
@@ -209,132 +560,61 @@ export default function AlertsFeedBasicMobile() {
           {viewAll ? 'View Active Only' : 'View All'}
         </Text>
       </TouchableOpacity>
-      {alerts.map(a => (
-        <View
-          key={a.alert_id}
-          style={{
-            padding: 12,
-            borderWidth: 1,
-            borderColor: theme.colors.outlineVariant,
-            borderRadius: 10,
-            marginBottom: 10,
-            backgroundColor: theme.colors.surface,
-          }}
-        >
-          <Text style={{ fontWeight: '600' }}>{a.title || a.alert_type}</Text>
-          <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 2 }}>
-            {a.description || a.message}
+
+      {filteredAlerts.length > 0 && (
+        <View style={{ marginBottom: 10 }}>
+          <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>
+            {filteredAlerts.length} alerts match the current queue.
           </Text>
-          {a.alert_type === 'Inventory:DeductionFailed' && (
-            <View style={{ marginTop: 6 }}>
-              {(a.meta as any)?.ingredient_name && (
-                <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>
-                  Ingredient: {(a.meta as any).ingredient_name}
-                </Text>
-              )}
-              {((a.meta as any)?.current_quantity_on_hand !== undefined ||
-                (a.meta as any)?.required_quantity !== undefined) && (
-                <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>
-                  Current: {Number((a.meta as any)?.current_quantity_on_hand ?? 0)}{' '}
-                  {(a.meta as any)?.unit || ''} · Required:{' '}
-                  {Number((a.meta as any)?.required_quantity ?? 0)} {(a.meta as any)?.unit || ''}
-                </Text>
-              )}
-              {(a.meta as any)?.deduction_reason && (
-                <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>
-                  Reason: {(a.meta as any).deduction_reason}
-                </Text>
-              )}
-              {(a.meta as any)?.attempted_day && (
-                <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>
-                  Day: {(a.meta as any).attempted_day}
-                </Text>
-              )}
-            </View>
-          )}
-          <View style={{ flexDirection: 'row', marginTop: 8 }}>
-            {a.alert_type === 'Inventory:DeductionFailed' && (
-              <TouchableOpacity
-                onPress={() =>
-                  navigateToReview({
-                    alertId: a.alert_id,
-                    ingredientId: (a.meta as any)?.ingredient_id ?? null,
-                    batchRecipeId: (a.meta as any)?.batch_recipe_id ?? null,
-                  })
-                }
-                style={{
-                  paddingVertical: 6,
-                  paddingHorizontal: 10,
-                  backgroundColor: theme.colors.secondaryContainer,
-                  borderRadius: 6,
-                  marginRight: 8,
-                }}
-              >
-                <Text style={{ color: theme.colors.onSecondaryContainer, fontSize: 12 }}>
-                  Review
-                </Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              onPress={() => acknowledge(a.alert_id)}
-              style={{
-                paddingVertical: 6,
-                paddingHorizontal: 10,
-                backgroundColor: theme.colors.secondary,
-                borderRadius: 6,
-                marginRight: 8,
-              }}
-            >
-              <Text style={{ color: theme.colors.onSecondary, fontSize: 12 }}>Ack</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => resolve(a.alert_id)}
-              style={{
-                paddingVertical: 6,
-                paddingHorizontal: 10,
-                backgroundColor: theme.colors.primary,
-                borderRadius: 6,
-                marginRight: isFixable(a) ? 8 : 0,
-              }}
-            >
-              <Text style={{ color: theme.colors.onPrimary, fontSize: 12 }}>Resolve</Text>
-            </TouchableOpacity>
-            {isFixable(a) && (
-              <TouchableOpacity
-                onPress={() => {
-                  if (a.alert_type === 'Inventory:DeductionFailed') {
-                    const required = Number((a.meta as any)?.required_quantity ?? 0);
-                    const available = Number((a.meta as any)?.available_quantity ?? 0);
-                    const target = Number.isFinite(required) && required > 0 ? required : available;
-                    fix(a.alert_id, { target_quantity_on_hand: Math.max(target, 0) });
-                    return;
-                  }
+        </View>
+      )}
 
-                  if (a.alert_type === 'DataQuality:MissingChannel') {
-                    fix(a.alert_id, { sales_channel: 'unknown' });
-                    return;
-                  }
-
-                  const quantity = Number((a.meta as any)?.required_quantity ?? 1);
-                  fix(a.alert_id, {
-                    quantity_sold: Number.isFinite(quantity) && quantity >= 0 ? quantity : 1,
-                  });
-                }}
-                style={{
-                  paddingVertical: 6,
-                  paddingHorizontal: 10,
-                  backgroundColor: theme.colors.tertiary,
-                  borderRadius: 6,
-                }}
-              >
-                <Text style={{ color: theme.colors.onTertiary, fontSize: 12 }}>Fix</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+      {groupedSections.map(section => (
+        <View key={section.key} style={{ marginBottom: 10 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 4 }}>{section.title}</Text>
+          <Text style={{ color: theme.colors.onSurfaceVariant, marginBottom: 10 }}>
+            {section.subtitle}
+          </Text>
+          {section.alerts.map(renderAlertCard)}
         </View>
       ))}
+
+      {!loading && filteredAlerts.length === 0 && (
+        <View
+          style={{
+            padding: 18,
+            borderWidth: 1,
+            borderColor: theme.colors.outlineVariant,
+            borderRadius: 12,
+            backgroundColor: theme.colors.surface,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ fontWeight: '700', marginBottom: 6 }}>Nothing matches this view.</Text>
+          <Text
+            style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', marginBottom: 10 }}
+          >
+            Clear the search or switch the queue filter to bring more alerts back into view.
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              setSearchTerm('');
+              setFeedFilter('all');
+            }}
+            style={{
+              paddingVertical: 8,
+              paddingHorizontal: 12,
+              borderRadius: 8,
+              backgroundColor: theme.colors.secondaryContainer,
+            }}
+          >
+            <Text style={{ color: theme.colors.onSecondaryContainer }}>Reset Filters</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {loading && <ActivityIndicator style={{ marginTop: 20 }} />}
-      {hasMore && !loading && (
+      {hasMore && !loading && filteredAlerts.length > 0 && (
         <TouchableOpacity
           onPress={loadMore}
           style={{

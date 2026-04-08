@@ -45,22 +45,54 @@ export default function EodSummary() {
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
-      <Text style={{ fontSize: 24, fontWeight: '700', marginBottom: 12 }}>EOD Detail</Text>
+      <View
+        style={{
+          padding: 16,
+          borderRadius: 16,
+          marginBottom: 12,
+          backgroundColor: '#20453d',
+        }}
+      >
+        <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', marginBottom: 6 }}>
+          EOD Deep Dive
+        </Text>
+        <Text style={{ fontSize: 24, fontWeight: '700', color: '#fff', marginBottom: 8 }}>
+          EOD Detail
+        </Text>
+        <Text style={{ color: 'rgba(255,255,255,0.84)', marginBottom: 12 }}>
+          Follow the run from trust signal to repair target without bouncing between disconnected
+          screens.
+        </Text>
+        <View style={{ flexDirection: 'row', marginBottom: 10 }}>
+          <View style={{ marginRight: 20 }}>
+            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Open Review</Text>
+            <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>
+              {summary?.counts.open_discrepancy_count ?? 0}
+            </Text>
+          </View>
+          <View>
+            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Forecast</Text>
+            <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>
+              {summary?.forecast.forecast_status.toUpperCase() ?? '...'}
+            </Text>
+          </View>
+        </View>
 
-      <View style={{ flexDirection: 'row', marginBottom: 12 }}>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('dashboard_alerts')}
-          style={{
-            paddingVertical: 8,
-            paddingHorizontal: 12,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: theme.colors.outlineVariant,
-            marginRight: 8,
-          }}
-        >
-          <Text>Back To Alerts</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row' }}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('dashboard_alerts')}
+            style={{
+              paddingVertical: 8,
+              paddingHorizontal: 12,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.35)',
+              marginRight: 8,
+            }}
+          >
+            <Text style={{ color: '#fff' }}>Back To Alerts</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading && <ActivityIndicator style={{ marginTop: 24 }} />}

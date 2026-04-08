@@ -23,6 +23,20 @@ import {
 import useMediaQuery from '../hooks/useMediaQuery';
 import Button from '../../../components/Button';
 
+const getFixButtonLabel = alert => {
+  switch (alert?.alert_type) {
+    case 'DataQuality:MissingChannel':
+      return 'Set Channel';
+    case 'DataQuality:NullOrZeroQuantity':
+    case 'DataQuality:QuantityOutlier':
+      return 'Correct Quantity';
+    case 'Inventory:DeductionFailed':
+      return 'Adjust Quantity';
+    default:
+      return 'Fix Now';
+  }
+};
+
 export default function AlertsFeedTableBasic({
   alerts,
   loading,
@@ -162,10 +176,14 @@ export default function AlertsFeedTableBasic({
                 >
                   <CardContent>
                     <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
-                      {`${alert.alert_type} - ${alert.severity.toUpperCase()}`}
+                      {`${alert.title || alert.alert_type} - ${alert.severity.toUpperCase()}`}
                     </Typography>
                     <Typography variant="body1" color="text.primary" gutterBottom sx={{ mb: 1 }}>
                       {alert.message}
+                    </Typography>
+
+                    <Typography variant="caption" color="text.secondary">
+                      {alert.alert_type}
                     </Typography>
 
                     <Divider sx={{ my: 1 }} />
@@ -194,7 +212,7 @@ export default function AlertsFeedTableBasic({
                       onClick={() => onAcknowledge(alert.alert_id)}
                       requiredPermission="alerts"
                     >
-                      Acknowledge
+                      Mark Seen
                     </Button>
 
                     <Button
@@ -204,7 +222,7 @@ export default function AlertsFeedTableBasic({
                       onClick={() => onResolve(alert.alert_id)}
                       requiredPermission="alerts"
                     >
-                      Resolve
+                      Close Alert
                     </Button>
 
                     <Button
@@ -213,7 +231,7 @@ export default function AlertsFeedTableBasic({
                       onClick={() => toggleExpanded(alert.alert_id)}
                       requiredPermission="alerts"
                     >
-                      {expandedAlertId === alert.alert_id ? 'Hide Details' : 'Details'}
+                      {expandedAlertId === alert.alert_id ? 'Hide Context' : 'More Context'}
                     </Button>
 
                     {isFixable(alert) && (
@@ -224,7 +242,7 @@ export default function AlertsFeedTableBasic({
                         onClick={() => handleFixClick(alert)}
                         requiredPermission="alerts"
                       >
-                        {fixAlertId === alert.alert_id ? 'Close Fix' : 'Fix'}
+                        {fixAlertId === alert.alert_id ? 'Close Fix' : getFixButtonLabel(alert)}
                       </Button>
                     )}
 
@@ -235,7 +253,7 @@ export default function AlertsFeedTableBasic({
                         onClick={() => onReviewInInventory(alert)}
                         requiredPermission="alerts"
                       >
-                        Review
+                        {alert.action_label || 'Review Inventory'}
                       </Button>
                     )}
                   </CardActions>
@@ -273,7 +291,14 @@ export default function AlertsFeedTableBasic({
                 <React.Fragment key={alert.alert_id}>
                   <TableRow hover>
                     <TableCell>{alert.alert_id}</TableCell>
-                    <TableCell>{alert.alert_type}</TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {alert.title || alert.alert_type}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {alert.alert_type}
+                      </Typography>
+                    </TableCell>
                     <TableCell>
                       <Typography variant="body2">{alert.message}</Typography>
                     </TableCell>
@@ -305,7 +330,7 @@ export default function AlertsFeedTableBasic({
                           size="sm"
                           requiredPermission="alerts"
                         >
-                          Ack
+                          Seen
                         </Button>
                         <Button
                           variant="delete"
@@ -314,7 +339,7 @@ export default function AlertsFeedTableBasic({
                           size="sm"
                           requiredPermission="alerts"
                         >
-                          Resolve
+                          Close
                         </Button>
                         <Button
                           variant="default"
@@ -322,7 +347,7 @@ export default function AlertsFeedTableBasic({
                           size="sm"
                           requiredPermission="alerts"
                         >
-                          {expandedAlertId === alert.alert_id ? 'Hide' : 'Details'}
+                          {expandedAlertId === alert.alert_id ? 'Hide' : 'Context'}
                         </Button>
                         {isFixable(alert) && (
                           <Button
@@ -332,7 +357,7 @@ export default function AlertsFeedTableBasic({
                             size="sm"
                             requiredPermission="alerts"
                           >
-                            {fixAlertId === alert.alert_id ? 'Close Fix' : 'Fix'}
+                            {fixAlertId === alert.alert_id ? 'Close Fix' : getFixButtonLabel(alert)}
                           </Button>
                         )}
                         {alert.alert_type === 'Inventory:DeductionFailed' &&
@@ -343,7 +368,7 @@ export default function AlertsFeedTableBasic({
                               size="sm"
                               requiredPermission="alerts"
                             >
-                              Review
+                              {alert.action_label || 'Review Inventory'}
                             </Button>
                           )}
                       </Box>
