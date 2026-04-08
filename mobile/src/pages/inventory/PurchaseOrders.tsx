@@ -122,6 +122,19 @@ const getOrderSourceLabel = (sourceType?: 'manual' | 'suggestion' | 'eod_auto' |
   return 'Manual order';
 };
 
+const getExplanationEmptyState = (sourceType?: 'manual' | 'suggestion' | 'eod_auto' | null) => {
+  if (sourceType === 'manual') {
+    return 'This order was built manually, so no reorder explanation was captured.';
+  }
+  if (sourceType === 'eod_auto') {
+    return 'No persisted reorder explanation is available for this EOD-created draft.';
+  }
+  if (sourceType === 'suggestion') {
+    return 'No persisted reorder explanation is available for this reorder draft.';
+  }
+  return 'No explanation available for this order yet.';
+};
+
 const getReviewItemWarnings = (
   flags?: {
     lead_time_source: string;
@@ -1327,115 +1340,117 @@ export default function PurchaseOrders(): React.JSX.Element {
                 </Card>
               ) : null}
 
+              <Divider style={{ marginVertical: 12 }} />
+
+              <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 8 }}>
+                Why This Order Exists
+              </Text>
+
               {selectedPO.review_context?.explanation_items?.length ? (
-                <>
-                  <Divider style={{ marginVertical: 12 }} />
-
-                  <Text variant="titleMedium" style={{ fontWeight: '600', marginBottom: 8 }}>
-                    Why This Order Exists
-                  </Text>
-
-                  {selectedPO.review_context.explanation_items.map(item => {
-                    const explanation = item.explanation;
-                    const warnings = getReviewItemWarnings(explanation?.assumption_flags);
-                    return (
-                      <Card
-                        key={`${item.supplier_id}-${item.ingredient_id}`}
-                        style={styles.explanationCard}
-                        mode="outlined"
-                      >
-                        <Card.Content>
-                          <View style={styles.explanationHeader}>
-                            <View style={{ flex: 1 }}>
-                              <Text variant="titleSmall" style={{ fontWeight: '600' }}>
-                                {item.ingredient_name}
-                              </Text>
-                              <Text
-                                variant="bodySmall"
-                                style={{ color: theme.colors.onSurfaceVariant }}
-                              >
-                                {item.quantity_to_order ?? 0} {item.unit || ''}
-                                {item.packs_to_order ? ` • ${item.packs_to_order} packs` : ''}
-                              </Text>
-                            </View>
-                            {typeof item.line_total === 'number' && (
-                              <Text
-                                variant="titleSmall"
-                                style={{ color: theme.colors.primary, fontWeight: '700' }}
-                              >
-                                ${item.line_total.toFixed(2)}
-                              </Text>
-                            )}
-                          </View>
-                          {explanation?.summary ? (
+                selectedPO.review_context.explanation_items.map(item => {
+                  const explanation = item.explanation;
+                  const warnings = getReviewItemWarnings(explanation?.assumption_flags);
+                  return (
+                    <Card
+                      key={`${item.supplier_id}-${item.ingredient_id}`}
+                      style={styles.explanationCard}
+                      mode="outlined"
+                    >
+                      <Card.Content>
+                        <View style={styles.explanationHeader}>
+                          <View style={{ flex: 1 }}>
+                            <Text variant="titleSmall" style={{ fontWeight: '600' }}>
+                              {item.ingredient_name}
+                            </Text>
                             <Text
                               variant="bodySmall"
-                              style={{ color: theme.colors.onSurfaceVariant, marginTop: 6 }}
+                              style={{ color: theme.colors.onSurfaceVariant }}
                             >
-                              {explanation.summary}
+                              {item.quantity_to_order ?? 0} {item.unit || ''}
+                              {item.packs_to_order ? ` • ${item.packs_to_order} packs` : ''}
                             </Text>
-                          ) : null}
-                          {explanation ? (
-                            <View style={styles.explanationBody}>
-                              <Text variant="bodySmall" style={styles.explanationLine}>
-                                Stock{' '}
-                                {formatExplanationValue(explanation.why_reorder.current_stock)}{' '}
-                                {explanation.why_reorder.current_unit} vs reorder point{' '}
-                                {formatExplanationValue(explanation.why_reorder.reorder_point)}.
+                          </View>
+                          {typeof item.line_total === 'number' && (
+                            <Text
+                              variant="titleSmall"
+                              style={{ color: theme.colors.primary, fontWeight: '700' }}
+                            >
+                              ${item.line_total.toFixed(2)}
+                            </Text>
+                          )}
+                        </View>
+                        {explanation?.summary ? (
+                          <Text
+                            variant="bodySmall"
+                            style={{ color: theme.colors.onSurfaceVariant, marginTop: 6 }}
+                          >
+                            {explanation.summary}
+                          </Text>
+                        ) : null}
+                        {explanation ? (
+                          <View style={styles.explanationBody}>
+                            <Text variant="bodySmall" style={styles.explanationLine}>
+                              Stock {formatExplanationValue(explanation.why_reorder.current_stock)}{' '}
+                              {explanation.why_reorder.current_unit} vs reorder point{' '}
+                              {formatExplanationValue(explanation.why_reorder.reorder_point)}.
+                            </Text>
+                            <Text variant="bodySmall" style={styles.explanationLine}>
+                              Lead {formatExplanationValue(explanation.why_reorder.lead_demand)} +
+                              shelf {formatExplanationValue(explanation.why_reorder.shelf_demand)} +
+                              safety {formatExplanationValue(explanation.why_reorder.safety_stock)}{' '}
+                              = target{' '}
+                              {formatExplanationValue(explanation.why_reorder.reorder_target)}.
+                            </Text>
+                            <Text variant="bodySmall" style={styles.explanationLine}>
+                              ABC {explanation.policy_factors.abc_class} x{' '}
+                              {formatExplanationValue(explanation.policy_factors.abc_multiplier)};
+                              MOQ floor{' '}
+                              {formatExplanationValue(explanation.policy_factors.moq_floor)}; final
+                              before packs{' '}
+                              {formatExplanationValue(
+                                explanation.quantity_factors.final_quantity_before_pack_rounding
+                              )}
+                              .
+                            </Text>
+                            <Text variant="bodySmall" style={styles.explanationLine}>
+                              {formatExplanationValue(explanation.quantity_factors.packs_to_order)}{' '}
+                              packs x{' '}
+                              {formatExplanationValue(
+                                explanation.quantity_factors.quantity_per_pack
+                              )}{' '}
+                              {explanation.quantity_factors.supplier_unit} ={' '}
+                              {formatExplanationValue(
+                                explanation.quantity_factors.total_quantity_ordered
+                              )}{' '}
+                              {explanation.quantity_factors.supplier_unit}.
+                            </Text>
+                            <Text variant="bodySmall" style={styles.explanationLine}>
+                              Supplier: {explanation.supplier_factors.selected_supplier} (
+                              {formatSelectionRule(explanation.supplier_factors.selection_rule)}).
+                            </Text>
+                            {warnings.length ? (
+                              <Text
+                                variant="bodySmall"
+                                style={[styles.explanationLine, { color: theme.colors.error }]}
+                              >
+                                Assumptions: {warnings.join(', ')}.
                               </Text>
-                              <Text variant="bodySmall" style={styles.explanationLine}>
-                                Lead {formatExplanationValue(explanation.why_reorder.lead_demand)} +
-                                shelf {formatExplanationValue(explanation.why_reorder.shelf_demand)}{' '}
-                                + safety{' '}
-                                {formatExplanationValue(explanation.why_reorder.safety_stock)} =
-                                target{' '}
-                                {formatExplanationValue(explanation.why_reorder.reorder_target)}.
-                              </Text>
-                              <Text variant="bodySmall" style={styles.explanationLine}>
-                                ABC {explanation.policy_factors.abc_class} x{' '}
-                                {formatExplanationValue(explanation.policy_factors.abc_multiplier)};
-                                MOQ floor{' '}
-                                {formatExplanationValue(explanation.policy_factors.moq_floor)};
-                                final before packs{' '}
-                                {formatExplanationValue(
-                                  explanation.quantity_factors.final_quantity_before_pack_rounding
-                                )}
-                                .
-                              </Text>
-                              <Text variant="bodySmall" style={styles.explanationLine}>
-                                {formatExplanationValue(
-                                  explanation.quantity_factors.packs_to_order
-                                )}{' '}
-                                packs x{' '}
-                                {formatExplanationValue(
-                                  explanation.quantity_factors.quantity_per_pack
-                                )}{' '}
-                                {explanation.quantity_factors.supplier_unit} ={' '}
-                                {formatExplanationValue(
-                                  explanation.quantity_factors.total_quantity_ordered
-                                )}{' '}
-                                {explanation.quantity_factors.supplier_unit}.
-                              </Text>
-                              <Text variant="bodySmall" style={styles.explanationLine}>
-                                Supplier: {explanation.supplier_factors.selected_supplier} (
-                                {formatSelectionRule(explanation.supplier_factors.selection_rule)}).
-                              </Text>
-                              {warnings.length ? (
-                                <Text
-                                  variant="bodySmall"
-                                  style={[styles.explanationLine, { color: theme.colors.error }]}
-                                >
-                                  Assumptions: {warnings.join(', ')}.
-                                </Text>
-                              ) : null}
-                            </View>
-                          ) : null}
-                        </Card.Content>
-                      </Card>
-                    );
-                  })}
-                </>
-              ) : null}
+                            ) : null}
+                          </View>
+                        ) : null}
+                      </Card.Content>
+                    </Card>
+                  );
+                })
+              ) : (
+                <Card style={styles.explanationCard} mode="outlined">
+                  <Card.Content>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      {getExplanationEmptyState(selectedPO.review_context?.source_type)}
+                    </Text>
+                  </Card.Content>
+                </Card>
+              )}
 
               <Divider style={{ marginVertical: 12 }} />
 

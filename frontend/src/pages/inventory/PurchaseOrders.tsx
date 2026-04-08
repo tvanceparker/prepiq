@@ -108,6 +108,19 @@ const getOrderSourceLabel = (sourceType?: 'manual' | 'suggestion' | 'eod_auto' |
   return 'Manual order';
 };
 
+const getExplanationEmptyState = (sourceType?: 'manual' | 'suggestion' | 'eod_auto' | null) => {
+  if (sourceType === 'manual') {
+    return 'This order was built manually, so no reorder explanation was captured.';
+  }
+  if (sourceType === 'eod_auto') {
+    return 'No persisted reorder explanation is available for this EOD-created draft.';
+  }
+  if (sourceType === 'suggestion') {
+    return 'No persisted reorder explanation is available for this reorder draft.';
+  }
+  return 'No explanation available for this order yet.';
+};
+
 const getSupplierGroupKey = (supplierId?: number | null) =>
   supplierId === null || supplierId === undefined ? 'unspecified' : String(supplierId);
 
@@ -1233,12 +1246,12 @@ export default function PurchaseOrders() {
       });
     };
 
-    const explanationSection =
-      reviewItems.length > 0 ? (
-        <Box>
-          <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.25 }}>
-            Why This Order Exists
-          </Typography>
+    const explanationSection = (
+      <Box>
+        <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.25 }}>
+          Why This Order Exists
+        </Typography>
+        {reviewItems.length > 0 ? (
           <Stack spacing={1.5}>
             {reviewItems.map(item => {
               const explanation = item.explanation;
@@ -1329,8 +1342,15 @@ export default function PurchaseOrders() {
               );
             })}
           </Stack>
-        </Box>
-      ) : null;
+        ) : (
+          <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
+            <Typography variant="body2" color="text.secondary">
+              {getExplanationEmptyState(order.review_context?.source_type)}
+            </Typography>
+          </Paper>
+        )}
+      </Box>
+    );
 
     const itemsTable = (
       <Table size="small">
