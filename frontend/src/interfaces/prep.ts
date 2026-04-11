@@ -1,6 +1,16 @@
 // src/interfaces/prep.ts
 import type { AlertColor } from '@mui/material';
 
+export type BatchComponentType = 'ingredient' | 'batch';
+
+export interface IngredientOption {
+  ingredient_id: number;
+  name: string;
+  unit?: string | null;
+  category?: string | null;
+  is_active?: boolean;
+}
+
 export interface PrepScheduleState {
   createQuantity: number | string;
   updateTime: number | string;
@@ -39,8 +49,81 @@ export interface BatchRecipe {
   yield_unit?: string;
   estimated_prep_time_minutes?: number;
   shelf_life_days?: number;
-  ingredients?: any[];
-  used_in_recipes?: any[];
+  is_active?: boolean;
+  ingredients?: BatchRecipeIngredient[];
+  used_in_recipes?: BatchRecipeRecipeLink[];
+}
+
+export interface BatchRecipeIngredient {
+  ingredient_type: BatchComponentType;
+  reference_id: number;
+  ingredient_id?: number | null;
+  batch_recipe_id?: number | null;
+  ingredient_name: string;
+  quantity_used: number;
+  unit: string;
+}
+
+export interface BatchRecipeRecipeLink {
+  recipe_id: number;
+  recipe_name: string;
+  recipe_description?: string | null;
+  is_active?: boolean;
+}
+
+export interface BatchRecipeBatchLink {
+  batch_recipe_id: number;
+  batch_recipe_name: string;
+  is_active?: boolean;
+}
+
+export interface BatchRecipeUsageResponse {
+  batch_recipe_id: number;
+  batch_recipe_name: string;
+  is_active: boolean;
+  usage: {
+    recipes: BatchRecipeRecipeLink[];
+    batches: BatchRecipeBatchLink[];
+    prep_schedule_count: number;
+    inventory_lot_count: number;
+    recipe_count: number;
+    batch_count: number;
+  };
+}
+
+export interface BatchRecipeFormIngredient {
+  ingredient_type: BatchComponentType;
+  reference_id?: number | null;
+  ingredient_id?: number | null;
+  quantity_used: string;
+  unit: string;
+}
+
+export interface BatchRecipeFormState {
+  batch_recipe_id?: number;
+  name: string;
+  description: string;
+  yield_quantity: string;
+  yield_unit: string;
+  estimated_prep_time_minutes: string;
+  shelf_life_days: string;
+  ingredients: BatchRecipeFormIngredient[];
+}
+
+export interface BatchRecipePayload {
+  name: string;
+  description?: string;
+  yield_quantity: number;
+  yield_unit: string;
+  estimated_prep_time_minutes?: number;
+  shelf_life_days?: number;
+  ingredients: Array<{
+    ingredient_id?: number;
+    reference_id?: number;
+    ingredient_type: BatchComponentType;
+    quantity_used: number;
+    unit: string;
+  }>;
 }
 
 export interface WasteLog {
