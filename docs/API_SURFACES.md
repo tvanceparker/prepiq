@@ -12,24 +12,29 @@ Routers are mounted from `main.py` under `/api/v1`, with websocket routes regist
 
 Current route modules include:
 
-- `admin_routes`
-- `alert_routes`
-- `auth_routes`
-- `dashboard_routes`
-- `eod_routes`
-- `inventory_routes`
 - `kitchen_routes`
-- `menu_routes`
-- `orders_routes`
 - `pos_routes`
 - `pos_webhooks`
 - `pos_mappings_routes`
-- `prep_routes`
+- `orders_routes`
+- `dashboard_routes`
 - `profit_analytic_routes`
-- `sales_forecast_routes`
-- `settings_routes`
-- `team_routes`
 - `waste_analytics_routes`
+- `prep_routes`
+- `eod_routes`
+- `admin_routes`
+- `menu_routes`
+- `sales_forecast_routes`
+- `inventory_routes`
+- `settings_routes`
+- `alert_routes`
+- `auth_routes`
+
+Route files currently present in the repo but not mounted in `main.py` include:
+
+- `team_routes`
+- `permission_routes`
+- `waiter_routes`
 
 ## Core Route Groups
 
@@ -42,7 +47,7 @@ Primary capabilities:
 - quick analytics
 - menu item management helpers
 - sales upload flows and template download
-- pro overview data
+- extended overview data
 
 ### `/sales_forecast`
 
@@ -71,6 +76,27 @@ Primary capabilities:
 - purchase order create, review, update, receive, and item mutation flows
 - PO suggestion generation and order creation from suggestions
 - discrepancy and deduction history endpoints
+
+### `/orders`
+
+Primary capabilities:
+
+- menu access for order entry
+- list orders
+- retrieve one order
+- create, update, complete, cancel, and send orders
+- update order status
+- sales-channel lookup for order flows
+
+This is a distinct backend surface from `/pos`, even though both support POS-adjacent workflows.
+
+### `/kitchen`
+
+Primary capabilities:
+
+- mark kitchen orders done
+
+This is currently a very small mounted route surface, with most kitchen realtime behavior living in websocket flows rather than a large REST route set.
 
 ### `/menu`
 
@@ -126,16 +152,6 @@ Primary capabilities:
 - fix flow endpoint
 - active count
 
-### `/team`
-
-Primary capabilities:
-
-- employee CRUD-like flows
-- shift creation, listing, editing, deletion
-- weekly schedule and staffing views
-- clock events
-- staffing insights
-
 ### `/settings`
 
 Primary capabilities:
@@ -176,6 +192,14 @@ Primary capabilities:
 - item mappings list, create, update, delete
 - auto-match helper
 - unmapped view
+
+### Route Files Not Currently Mounted
+
+The following route modules exist in `app/api/v1`, but are not currently included in `main.py` and therefore should not be documented as active API surfaces:
+
+- `/team`
+- `/permissions`
+- waiter-specific route surfaces
 
 ### Webhook And Realtime Surfaces
 

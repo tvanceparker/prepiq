@@ -192,18 +192,16 @@ Tenant-bound data should follow these rules:
 
 ## Current Tier Representation
 
-Backend restaurant records currently store:
-
-- `basic`
-- `pro`
-- `master`
-
-Client navigation and route gating often normalize this into:
+PrepIQ v1 should be documented with two product-facing tiers:
 
 - `basic`
 - `full`
 
-This tier translation should remain explicit in documentation and client logic.
+Current client navigation and route gating already use this model directly.
+
+Some backend persistence and older code still contain legacy tier values, but those should be treated as implementation leftovers rather than the active product contract.
+
+For current documentation and assistant design, use `basic` and `full` as the canonical tier vocabulary.
 
 ## Data Model Notes For Assistant Design
 

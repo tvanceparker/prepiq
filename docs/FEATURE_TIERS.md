@@ -2,21 +2,20 @@
 
 ## Purpose
 
-PrepIQ currently exposes tier information differently in backend persistence and client navigation. This document records the current state so future work stays explicit instead of assuming a single tier vocabulary.
+PrepIQ v1 uses a simplified two-tier model. This document records the current product-facing tier setup and calls out where older code still contains legacy references.
 
-## Backend Tier Values
+## Current V1 Tier Model
 
-The `restaurants` table currently stores subscription tier as:
+PrepIQ v1 uses:
 
 - `basic`
-- `pro`
-- `master`
+- `full`
 
-This is the backend source-of-record representation.
+This is the tier vocabulary that current product and documentation work should use.
 
-## Client Tier Model
+## Current Client Behavior
 
-The current client experience often normalizes access into two buckets:
+The active client experience already follows this two-tier model:
 
 - `basic`
 - `full`
@@ -26,14 +25,15 @@ This is visible in route gating and mobile navigation. For example:
 - web uses `TierGatedRoute` with `requiredTiers=['full']` for some routes
 - mobile sidebar navigation uses `basic` and `full`
 
-## Practical Interpretation
+## Legacy References Still In Code
 
-Current practical product behavior is:
+Some backend persistence and older code paths still reference older tier names such as `pro` and `master`.
 
-- `basic` remains a limited experience
-- `pro` and `master` often collapse into broader full-access client experiences
+For v1 documentation purposes:
 
-This means backend and client code do not currently describe tiering in exactly the same terms.
+- treat those as legacy implementation details
+- do not describe the current product as having three active tiers
+- document current user-facing behavior as `basic` and `full`
 
 ## Areas Affected By Tiering
 
@@ -50,21 +50,18 @@ Tier differences affect at least:
 
 When writing or updating docs:
 
-- use backend values when discussing persistence or JWT data
-- use client values when discussing UI gating and navigation
-- explicitly explain any translation between the two
+- use `basic` and `full` as the default tier vocabulary for v1
+- only mention `pro` or `master` when explicitly calling out legacy code or migration work
+- keep UI gating and product behavior aligned to the two-tier model
 
-## Recommendation For Future Cleanup
+## Implementation Note
 
-The system should eventually standardize one of these approaches:
+The codebase is not fully normalized yet, but the docs should lead with the simplified v1 model rather than mirror every leftover legacy enum or comment.
 
-- preserve `basic`, `pro`, `master` end to end
-- or explicitly document a stable mapping from backend tiers to UI tiers
+Any new feature work should answer a simple question:
 
-Until then, any new feature should state both:
-
-- the backend tier model it depends on
-- the UI tier bucket in which it is exposed
+- is this available to `basic`?
+- or is it `full` only?
 
 ## Assistant And MCP Considerations
 
