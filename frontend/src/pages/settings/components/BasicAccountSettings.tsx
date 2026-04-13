@@ -15,8 +15,10 @@ import {
   Alert as MuiAlert,
   useTheme,
 } from '@mui/material';
+import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
 
 import Button from '../../../components/Button'; // ✅ Custom Button
+import { PageHeader } from '../../../components/PageHeader';
 
 export default function BasicAccountSettings() {
   const theme = useTheme();
@@ -108,9 +110,12 @@ export default function BasicAccountSettings() {
         py: { xs: 4, md: 8 },
       }}
     >
-      <Typography variant="h4" component="h1" fontWeight="bold" color="text.primary" gutterBottom>
-        Account Settings
-      </Typography>
+      <PageHeader
+        eyebrow="Settings"
+        title="Account Settings"
+        description="Review personal account details, update contact information, and manage login and preference settings from one place."
+        icon={<ManageAccountsOutlinedIcon />}
+      />
 
       <Grid container spacing={4}>
         {/* User Info */}

@@ -17,6 +17,7 @@ import SalesChannelBreakdownChart from '../charts/SalesChannelBreakdownChart';
 import { PageHeader } from '../../../components/PageHeader';
 import DateSelector from '../../../components/DateSelector';
 import Button from '../../../components/Button';
+import InsightsOutlinedIcon from '@mui/icons-material/InsightsOutlined';
 
 export default function SalesPatternsBasic() {
   const {
@@ -69,7 +70,12 @@ export default function SalesPatternsBasic() {
         py: { xs: 4, md: 8 },
       }}
     >
-      <PageHeader title="Sales Patterns" />
+      <PageHeader
+        eyebrow="Sales and forecasting"
+        title="Sales Patterns"
+        description="Explore trend direction, weekday behavior, and channel mix with controls that keep comparison mode and normalization visible while you review the charts."
+        icon={<InsightsOutlinedIcon />}
+      />
 
       {/* Controls */}
       <Stack

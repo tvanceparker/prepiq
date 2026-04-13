@@ -13,6 +13,7 @@ import {
   useTheme,
   useMediaQuery,
 } from '@mui/material';
+import QueryStatsOutlinedIcon from '@mui/icons-material/QueryStatsOutlined';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { MaterialReactTable } from 'material-react-table';
 import DateSelector from '../../../components/DateSelector';
@@ -142,7 +143,12 @@ export default function BasicUpcomingForecast() {
         py: { xs: 4, md: 8 },
       }}
     >
-      <PageHeader title={`🔮 Forecast for Next ${dayRange} Day${dayRange > 1 ? 's' : ''}`} />
+      <PageHeader
+        eyebrow="Sales and forecasting"
+        title={`Forecast for Next ${dayRange} Day${dayRange > 1 ? 's' : ''}`}
+        description="Review near-term demand, compare forecast totals across the selected date range, and keep the underlying forecast state visible while planning work."
+        icon={<QueryStatsOutlinedIcon />}
+      />
 
       {forecastState && (
         <Alert

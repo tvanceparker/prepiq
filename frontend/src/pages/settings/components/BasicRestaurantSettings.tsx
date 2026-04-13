@@ -9,7 +9,6 @@ import {
   Paper,
   Stack,
   Typography,
-  Divider,
   Grid,
   Box,
   CircularProgress,
@@ -28,6 +27,7 @@ import {
   Storefront as ChannelIcon,
 } from '@mui/icons-material';
 import Button from '../../../components/Button';
+import { PageHeader } from '../../../components/PageHeader';
 
 interface SettingItemProps {
   icon: React.ReactNode;
@@ -142,46 +142,22 @@ export default function BasicRestaurantSettings() {
         borderRadius: 3,
       }}
     >
-      {/* Header */}
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          mb: 3,
-        }}
-      >
-        <Box display="flex" alignItems="center" gap={2}>
-          <Avatar
-            sx={{
-              bgcolor: alpha(theme.palette.primary.main, 0.1),
-              color: theme.palette.primary.main,
-              width: 48,
-              height: 48,
-            }}
+      <PageHeader
+        eyebrow="Settings"
+        title="Restaurant Settings"
+        description="Configure forecast horizons, timezone behavior, EOD timing, and sales-channel inputs for the active restaurant."
+        icon={<SettingsIcon />}
+        actions={
+          <Button
+            variant="edit"
+            onClick={() => settings && openEditModal(applyDefaults(settings))}
+            requiredPermission="restaurant_settings"
+            showIcon={false}
           >
-            <SettingsIcon />
-          </Avatar>
-          <Box>
-            <Typography variant="h5" fontWeight={700} color="text.primary">
-              Restaurant Settings
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Configure forecasting and operational settings
-            </Typography>
-          </Box>
-        </Box>
-        <Button
-          variant="edit"
-          onClick={() => settings && openEditModal(applyDefaults(settings))}
-          requiredPermission="restaurant_settings"
-          showIcon={false}
-        >
-          Edit Settings
-        </Button>
-      </Box>
-
-      <Divider sx={{ mb: 3 }} />
+            Edit Settings
+          </Button>
+        }
+      />
 
       {/* Settings Grid */}
       <Grid container spacing={2}>

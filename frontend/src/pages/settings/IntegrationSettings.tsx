@@ -25,6 +25,7 @@ import {
 } from '@mui/icons-material';
 import { useIntegrationSettings } from './hooks/useIntegrationSettings';
 import type { POSProvider } from '../../interfaces/pos';
+import { PageHeader } from '../../components/PageHeader';
 
 export default function IntegrationSettings() {
   const {
@@ -59,9 +60,12 @@ export default function IntegrationSettings() {
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', p: 3 }}>
-      <Typography variant="h4" fontWeight="bold" mb={3}>
-        Integration Settings
-      </Typography>
+      <PageHeader
+        eyebrow="Settings"
+        title="Integration Settings"
+        description="Manage the active external POS connection, review sync status, and keep the v1 integration surface focused on the supported provider workflow."
+        icon={<POSIcon />}
+      />
 
       <Card sx={{ mb: 3 }}>
         <CardContent>

@@ -7,6 +7,7 @@ import FilterButtons from '../../../components/FilterButtons'; // Keep your exis
 import DateSelector from '../../../components/DateSelector';
 import { PageHeader } from '../../../components/PageHeader';
 import { Box, Typography, CircularProgress, Alert, Paper, Chip } from '@mui/material';
+import TrackChangesOutlinedIcon from '@mui/icons-material/TrackChangesOutlined';
 
 const formatDate = date => date.toISOString().split('T')[0];
 const getDateNDaysAgo = n => {
@@ -71,8 +72,12 @@ const ForecastAccuracyBasic = () => {
         py: { xs: 4, md: 8 },
       }}
     >
-      {/* Heading */}
-      <PageHeader title="📈 Forecast Accuracy" />
+      <PageHeader
+        eyebrow="Sales and forecasting"
+        title="Forecast Accuracy"
+        description="Compare predicted demand against actuals, filter by menu item, and keep the forecast trust state visible while reviewing model performance."
+        icon={<TrackChangesOutlinedIcon />}
+      />
 
       {forecastState && (
         <Alert

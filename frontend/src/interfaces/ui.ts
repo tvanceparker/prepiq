@@ -4,6 +4,11 @@ import type { AlertColor } from '@mui/material';
 
 export interface PageHeaderProps {
   title: string;
+  eyebrow?: string;
+  description?: React.ReactNode;
+  icon?: React.ReactNode;
+  actions?: React.ReactNode;
+  compact?: boolean;
   sx?: Record<string, any>;
 }
 

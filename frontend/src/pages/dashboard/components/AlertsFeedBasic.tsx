@@ -16,9 +16,15 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import NotificationsActiveOutlinedIcon from '@mui/icons-material/NotificationsActiveOutlined';
 
 type FeedFilter = 'all' | 'priority' | 'inventory' | 'data' | 'unacknowledged' | 'fixable';
-
+<PageHeader
+  eyebrow="Operator queue"
+  title="Alerts & Issues"
+  description="Review high-signal operational issues, move directly into repair workflows, and keep the queue focused on what needs action next."
+  icon={<NotificationsActiveOutlinedIcon />}
+/>;
 const severityColors: Record<string, string> = {
   info: 'blue',
   warning: 'orange',

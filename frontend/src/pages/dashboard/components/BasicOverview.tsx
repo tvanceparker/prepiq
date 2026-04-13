@@ -21,6 +21,7 @@ import DownloadIcon from '@mui/icons-material/Download';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import InsightsOutlinedIcon from '@mui/icons-material/InsightsOutlined';
 
 import { downloadSalesTemplate } from '../../../api/dashboard';
 import SalesUploadModal from './SalesUploadModal';
@@ -221,7 +222,12 @@ export default function BasicOverview({ data }) {
           py: { xs: 4, md: 8 },
         }}
       >
-        <PageHeader title="📊 Daily Overview" />
+        <PageHeader
+          eyebrow="Daily operations snapshot"
+          title="Daily Overview"
+          description="Track forecasted sales, yesterday's accuracy, and manual sales upload tools from one workspace."
+          icon={<InsightsOutlinedIcon />}
+        />
 
         {/* Summary Cards */}
         <Grid container spacing={2} justifyContent="center" sx={{ mt: 2, mb: 4 }}>

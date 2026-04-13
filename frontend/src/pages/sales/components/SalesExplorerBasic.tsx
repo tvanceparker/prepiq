@@ -14,6 +14,7 @@ import {
   Autocomplete,
   Paper,
 } from '@mui/material';
+import ManageSearchOutlinedIcon from '@mui/icons-material/ManageSearchOutlined';
 import SalesExplorerTable from './SalesExplorerTable';
 import { useSalesExplorer } from '../hooks/useSalesExplorer';
 import DateSelector from '../../../components/DateSelector';
@@ -182,7 +183,12 @@ export default function SalesExplorerBasic() {
         py: { xs: 4, md: 8 },
       }}
     >
-      <PageHeader title="Sales Explorer" />
+      <PageHeader
+        eyebrow="Sales review workspace"
+        title="Sales Explorer"
+        description="Inspect sales records, filter by date, and make controlled manual corrections without losing context around the underlying data set."
+        icon={<ManageSearchOutlinedIcon />}
+      />
 
       <Stack
         direction={{ xs: 'column', sm: 'row' }}

@@ -2,11 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { useEmployees } from '../hooks/useEmployees';
 import UserManagementBasicModal from './UserManagementBasicModal';
 import Button from '../../../components/Button';
+import { PageHeader } from '../../../components/PageHeader';
 import type { Employee, UserManagementFormData } from '../../../interfaces/admin';
 import type { SnackbarState } from '../../../interfaces/ui';
 import {
   Box,
-  Typography,
   Stack,
   Snackbar,
   Alert,
@@ -20,7 +20,13 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   CircularProgress,
+  Chip,
+  Grid,
+  Typography,
 } from '@mui/material';
+import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined';
+import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined';
+import PersonOffOutlinedIcon from '@mui/icons-material/PersonOffOutlined';
 
 export default function UserManagementBasic() {
   const {
@@ -111,6 +117,17 @@ export default function UserManagementBasic() {
     });
   }, [filteredEmployees, roles]);
 
+  const stats = useMemo(() => {
+    const activeCount = Array.isArray(employees)
+      ? employees.filter(emp => emp.is_active).length
+      : 0;
+    const inactiveCount = Array.isArray(employees)
+      ? employees.filter(emp => !emp.is_active).length
+      : 0;
+    const adminCount = rows.filter(row => row._isAdmin).length;
+    return { activeCount, inactiveCount, adminCount };
+  }, [employees, rows]);
+
   return (
     <Paper
       sx={{
@@ -121,9 +138,80 @@ export default function UserManagementBasic() {
         py: { xs: 4, md: 8 },
       }}
     >
-      <Typography variant="h5" mb={2}>
-        User Management
-      </Typography>
+      <PageHeader
+        eyebrow="Admin workspace"
+        title="User Management"
+        description="Manage active staff accounts, review role coverage, and disable access cleanly without leaving the main workspace."
+        icon={<GroupOutlinedIcon />}
+        actions={
+          <Button showIcon={false} variant="confirm" onClick={() => openModal()}>
+            Add Employee
+          </Button>
+        }
+      />
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={4}>
+          <Paper sx={{ p: 2, borderRadius: 3 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Active employees
+                </Typography>
+                <Typography variant="h4" fontWeight={800}>
+                  {stats.activeCount}
+                </Typography>
+              </Box>
+              <Chip
+                icon={<GroupOutlinedIcon />}
+                label="Active"
+                color="success"
+                variant="outlined"
+              />
+            </Stack>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <Paper sx={{ p: 2, borderRadius: 3 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Admin coverage
+                </Typography>
+                <Typography variant="h4" fontWeight={800}>
+                  {stats.adminCount}
+                </Typography>
+              </Box>
+              <Chip
+                icon={<AdminPanelSettingsOutlinedIcon />}
+                label="Admins"
+                color="primary"
+                variant="outlined"
+              />
+            </Stack>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <Paper sx={{ p: 2, borderRadius: 3 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Inactive accounts
+                </Typography>
+                <Typography variant="h4" fontWeight={800}>
+                  {stats.inactiveCount}
+                </Typography>
+              </Box>
+              <Chip
+                icon={<PersonOffOutlinedIcon />}
+                label="Inactive"
+                color="default"
+                variant="outlined"
+              />
+            </Stack>
+          </Paper>
+        </Grid>
+      </Grid>
 
       {/* Active / Inactive Filter Toggle */}
       <Box mb={2}>
@@ -141,12 +229,6 @@ export default function UserManagementBasic() {
             Inactive
           </ToggleButton>
         </ToggleButtonGroup>
-      </Box>
-
-      <Box mb={2}>
-        <Button showIcon={false} variant="confirm" onClick={() => openModal()}>
-          Add Employee
-        </Button>
       </Box>
 
       {error && (

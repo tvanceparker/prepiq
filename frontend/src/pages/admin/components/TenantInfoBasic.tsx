@@ -12,7 +12,9 @@ import {
   Alert,
   Paper,
   Divider,
+  Chip,
 } from '@mui/material';
+import StorefrontOutlinedIcon from '@mui/icons-material/StorefrontOutlined';
 import { TenantInfoResponse, TenantInfoUpdateRequest } from '../../../interfaces/admin';
 
 type Severity = 'error' | 'warning' | 'info' | 'success';
@@ -82,7 +84,24 @@ export default function TenantInfoBasic() {
         py: { xs: 4, md: 8 },
       }}
     >
-      <PageHeader title="Tenant Info" />
+      <PageHeader
+        eyebrow="Admin workspace"
+        title="Tenant Info"
+        description="Review the restaurant profile, subscription state, and hours of operation from one place before making controlled account-level updates."
+        icon={<StorefrontOutlinedIcon />}
+        actions={
+          info ? (
+            <Button
+              onClick={handleEditClick}
+              variant="contained"
+              size="large"
+              requiredPermission="tenant_info"
+            >
+              Edit Info
+            </Button>
+          ) : null
+        }
+      />
 
       {loading ? (
         <Box display="flex" justifyContent="center" my={6}>
@@ -94,6 +113,21 @@ export default function TenantInfoBasic() {
         </Typography>
       ) : info ? (
         <Stack spacing={4}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            <Chip
+              label={`Tier: ${info.subscription_tier}`}
+              color="primary"
+              variant="outlined"
+              sx={{ width: 'fit-content' }}
+            />
+            <Chip
+              label={`Status: ${info.subscription_status}`}
+              color={info.subscription_status === 'active' ? 'success' : 'default'}
+              variant="outlined"
+              sx={{ width: 'fit-content' }}
+            />
+          </Stack>
+
           <Typography variant="h5" fontWeight={700}>
             Basic Information
           </Typography>
@@ -153,17 +187,6 @@ export default function TenantInfoBasic() {
                   .join('\n')}
               </Typography>
             </Stack>
-
-            <Box pt={2}>
-              <Button
-                onClick={handleEditClick}
-                variant="contained"
-                size="large"
-                requiredPermission="tenant_info"
-              >
-                Edit Info
-              </Button>
-            </Box>
           </Stack>
         </Stack>
       ) : (
