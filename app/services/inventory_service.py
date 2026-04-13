@@ -607,7 +607,11 @@ class InventoryService:
             forecast_reused=use_cached_forecast,
             forecast_stale=False,
             forecast_status="ready",
-            forecast_status_message=None,
+            forecast_status_message=(
+                "Using the latest finalized EOD forecast for reorder suggestions."
+                if use_cached_forecast
+                else "Using a fresh on-demand forecast preview for reorder suggestions."
+            ),
             **(recent_eod_metadata if use_cached_forecast else {"forecast_confidence_score": None, "forecast_version": None}),
         )
 
@@ -631,15 +635,22 @@ class InventoryService:
             forecast_state["forecast_generated_at"] = self._serialize_forecast_timestamp(
                 getattr(ledger, "finished_at", None) or effective_run_date
             )
-            forecast_state["forecast_stale"] = (
-                effective_run_date is None or effective_run_date < date.today()
+            forecast_state["forecast_stale"] = self._is_forecast_stale(
+                preferred_run_date=last_eod_run_date,
+                authoritative_run_date=effective_run_date,
             )
 
             if ingredient_forecast:
                 if forecast_state["forecast_stale"]:
                     forecast_state["forecast_status"] = "stale"
                     forecast_state["forecast_status_message"] = (
-                        "Using the most recent finalized EOD forecast, but it is older than today's cycle."
+                        f"Using the most recent finalized EOD forecast from {effective_run_date.isoformat()}. "
+                        "A newer EOD cycle still needs to finalize before this forecast becomes current."
+                    )
+                else:
+                    forecast_state["forecast_status"] = "ready"
+                    forecast_state["forecast_status_message"] = (
+                        "Using the latest finalized EOD forecast for reorder suggestions."
                     )
             else:
                 forecast_state["forecast_status"] = "failed"
@@ -663,10 +674,17 @@ class InventoryService:
                 )
                 forecast_state["forecast_reused"] = False
                 forecast_state.update(await self._get_forecast_batch_metadata(date.today()))
+                forecast_state["forecast_status_message"] = (
+                    "Using a fresh on-demand forecast preview for reorder suggestions."
+                )
 
                 if not ingredient_forecast:
                     cached_forecast, ledger, effective_run_date = await load_recent_eod_forecast()
                     if cached_forecast:
+                        cached_forecast_stale = self._is_forecast_stale(
+                            preferred_run_date=last_eod_run_date,
+                            authoritative_run_date=effective_run_date,
+                        )
                         ingredient_forecast = cached_forecast
                         forecast_state.update(
                             self._build_forecast_state(
@@ -676,9 +694,15 @@ class InventoryService:
                                     getattr(ledger, "finished_at", None) or effective_run_date
                                 ),
                                 forecast_reused=True,
-                                forecast_stale=effective_run_date is None or effective_run_date < date.today(),
+                                forecast_stale=cached_forecast_stale,
                                 forecast_status="degraded",
-                                forecast_status_message="Fresh forecast returned no usable output. Using the most recent finalized EOD forecast instead.",
+                                forecast_status_message=(
+                                    "Fresh forecast returned no usable output. Using the latest finalized EOD forecast instead."
+                                    if not cached_forecast_stale
+                                    else (
+                                        f"Fresh forecast returned no usable output. Using the most recent finalized EOD forecast from {effective_run_date.isoformat()} until the newer cycle finalizes."
+                                    )
+                                ),
                                 **recent_eod_metadata,
                             )
                         )
@@ -691,6 +715,10 @@ class InventoryService:
                 logger.exception("[PO_SUGGEST] Fresh forecast failed: %s", exc)
                 cached_forecast, ledger, effective_run_date = await load_recent_eod_forecast()
                 if cached_forecast:
+                    cached_forecast_stale = self._is_forecast_stale(
+                        preferred_run_date=last_eod_run_date,
+                        authoritative_run_date=effective_run_date,
+                    )
                     ingredient_forecast = cached_forecast
                     forecast_state.update(
                         self._build_forecast_state(
@@ -700,9 +728,15 @@ class InventoryService:
                                 getattr(ledger, "finished_at", None) or effective_run_date
                             ),
                             forecast_reused=True,
-                            forecast_stale=effective_run_date is None or effective_run_date < date.today(),
+                            forecast_stale=cached_forecast_stale,
                             forecast_status="degraded",
-                            forecast_status_message="Fresh forecast failed. Using the most recent finalized EOD forecast instead.",
+                            forecast_status_message=(
+                                "Fresh forecast failed. Using the latest finalized EOD forecast instead."
+                                if not cached_forecast_stale
+                                else (
+                                    f"Fresh forecast failed. Using the most recent finalized EOD forecast from {effective_run_date.isoformat()} until the newer cycle finalizes."
+                                )
+                            ),
                             **recent_eod_metadata,
                         )
                     )
@@ -1156,6 +1190,18 @@ class InventoryService:
         if isinstance(value, datetime):
             return value.isoformat()
         return datetime.combine(value, datetime.min.time()).isoformat()
+
+    @staticmethod
+    def _is_forecast_stale(
+        *,
+        preferred_run_date: Optional[date],
+        authoritative_run_date: Optional[date],
+    ) -> bool:
+        return (
+            preferred_run_date is not None
+            and authoritative_run_date is not None
+            and authoritative_run_date < preferred_run_date
+        )
 
     @staticmethod
     def _build_forecast_state(

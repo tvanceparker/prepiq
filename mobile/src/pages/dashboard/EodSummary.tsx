@@ -7,6 +7,8 @@ import { fetchLatestEodSummary } from '../../api/eod';
 import type { EodRunSummary } from '../../interfaces/eod';
 
 const formatStageLabel = (stage: string) => stage.replace(/_/g, ' ');
+const formatDecisionLabel = (action: EodRunSummary['downstream']['forecast_action']) =>
+  action.toUpperCase();
 
 export default function EodSummary() {
   const theme = useTheme();
@@ -123,6 +125,9 @@ export default function EodSummary() {
               Forecast {summary.forecast.forecast_status.toUpperCase()} ·{' '}
               {summary.counts.open_discrepancy_count} open review
             </Text>
+            <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 6 }}>
+              {summary.is_historical ? 'Historical review' : 'Latest finalized run'}
+            </Text>
           </View>
 
           <View
@@ -144,6 +149,33 @@ export default function EodSummary() {
                 • {step}
               </Text>
             ))}
+          </View>
+
+          <View
+            style={{
+              padding: 14,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: theme.colors.outlineVariant,
+              backgroundColor: theme.colors.surface,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ fontWeight: '700', marginBottom: 8 }}>Forecast Trust</Text>
+            <Text style={{ color: theme.colors.onSurface, marginBottom: 6 }}>
+              {summary.forecast.forecast_status_message}
+            </Text>
+            <Text style={{ color: theme.colors.onSurfaceVariant, marginBottom: 6 }}>
+              {summary.forecast.forecast_usage_message}
+            </Text>
+            <Text style={{ color: theme.colors.onSurfaceVariant, marginBottom: 6 }}>
+              {summary.downstream.message}
+            </Text>
+            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12 }}>
+              Forecast {formatDecisionLabel(summary.downstream.forecast_action)} · Reorder{' '}
+              {formatDecisionLabel(summary.downstream.reorder_action)} · Draft POs{' '}
+              {formatDecisionLabel(summary.downstream.purchase_orders_action)}
+            </Text>
           </View>
 
           <View

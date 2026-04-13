@@ -61,6 +61,7 @@ class TestEODRunSummary:
         summary = await service.get_eod_run_summary()
 
         assert summary is not None
+        assert summary["is_historical"] is False
         assert summary["status"] == "success"
         assert summary["forecast"]["forecast_status"] == "ready"
         assert summary["forecast"]["forecast_authority"] == "finalized_eod"
@@ -118,6 +119,7 @@ class TestEODRunSummary:
         summary = await service.get_eod_run_summary()
 
         assert summary is not None
+        assert summary["is_historical"] is False
         assert summary["status"] == "partial"
         assert summary["forecast"]["forecast_status"] == "degraded"
         assert summary["forecast"]["forecast_authority"] == "finalized_eod"
@@ -131,3 +133,58 @@ class TestEODRunSummary:
         assert summary["guidance"]["headline"] == "Manual review is required before trusting every downstream output."
         assert any("provisional" in step for step in summary["guidance"]["steps"])
         assert any("purchase-order creation errors" in step for step in summary["guidance"]["steps"])
+
+    @pytest.mark.asyncio
+    async def test_get_eod_run_summary_marks_historical_run_for_review(
+        self,
+        mock_db_session,
+        restaurant_id,
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        latest_run_date = date.today()
+        historical_run_date = latest_run_date - timedelta(days=2)
+
+        latest_ledger = MagicMock(run_date=latest_run_date)
+        historical_ledger = MagicMock(
+            run_date=historical_run_date,
+            running=False,
+            finalized=True,
+            started_at=datetime.utcnow() - timedelta(minutes=5),
+            finished_at=datetime.utcnow() - timedelta(minutes=1),
+            sales_deducted=True,
+            forecast_completed=True,
+            reorder_completed=True,
+            po_written=True,
+            durations={},
+            errors=[],
+        )
+        forecast_ledger = MagicMock(
+            finalized=True,
+            finished_at=datetime.utcnow() - timedelta(minutes=2),
+            errors=[],
+            menu_items_processed=6,
+        )
+
+        service.ledger_repo.get_latest = AsyncMock(return_value=latest_ledger)
+        service.ledger_repo.get_by_date = AsyncMock(return_value=historical_ledger)
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=forecast_ledger)
+        service.po_suggestion_repo.list_by_run_date = AsyncMock(return_value=[MagicMock()])
+        service.discrepancy_repo.get_open_by_reference = AsyncMock(return_value=[])
+        service.inventory_usage_log_repo.count_for_reference = AsyncMock(return_value=4)
+        service.purchase_order_repo.count_eod_auto_orders_for_run_date = AsyncMock(return_value=1)
+
+        summary = await service.get_eod_run_summary(run_date=historical_run_date)
+
+        assert summary is not None
+        assert summary["is_historical"] is True
+        assert summary["status"] == "success"
+        assert summary["status_message"] == "Historical EOD run finalized successfully."
+        assert summary["forecast"]["forecast_status"] == "ready"
+        assert summary["forecast"]["forecast_usage_action"] == "review"
+        assert "historical business date" in (summary["forecast"]["forecast_usage_message"] or "")
+        assert summary["downstream"]["forecast_action"] == "review"
+        assert summary["downstream"]["reorder_action"] == "review"
+        assert summary["downstream"]["purchase_orders_action"] == "review"
+        assert "historical downstream outputs" in summary["downstream"]["message"].lower()
+        assert "Historical outputs are available" in summary["guidance"]["headline"]
+        assert any("historical record" in step for step in summary["guidance"]["steps"])

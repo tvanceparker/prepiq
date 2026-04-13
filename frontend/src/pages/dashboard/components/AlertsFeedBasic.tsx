@@ -26,6 +26,12 @@ const severityColors: Record<string, string> = {
   urgent: 'red',
 };
 
+const highSignalAlertTypes = new Set([
+  'MissingSalesData',
+  'Inventory:DeductionFailed',
+  'prep_incomplete',
+]);
+
 const formatStageLabel = (stage: string) => stage.replace(/_/g, ' ');
 
 const formatAuthorityLabel = (authority: EodRunSummary['forecast']['forecast_authority']) => {
@@ -55,6 +61,16 @@ const getSeverityRank = (severity: string) => {
       return 1;
   }
 };
+
+const isHighSignalAlert = (alert: { alert_type: string; severity: string }) =>
+  highSignalAlertTypes.has(alert.alert_type) || getSeverityRank(alert.severity) >= 3;
+
+const getForecastStatusColor = (status: EodRunSummary['forecast']['forecast_status']) =>
+  status === 'failed'
+    ? 'error'
+    : status === 'degraded' || status === 'stale'
+      ? 'warning'
+      : 'success';
 
 export default function AlertsFeedBasic(): JSX.Element {
   const isMobile = useMediaQuery('(max-width: 768px)');
@@ -221,16 +237,20 @@ export default function AlertsFeedBasic(): JSX.Element {
         : eodSummary?.status === 'failed'
           ? 'error'
           : 'info';
+  const forecastStatusColor = eodSummary
+    ? getForecastStatusColor(eodSummary.forecast.forecast_status)
+    : 'default';
 
   const sortedAlerts = useMemo(() => {
     return [...alerts].sort((left, right) => {
+      const highSignalDelta = Number(isHighSignalAlert(right)) - Number(isHighSignalAlert(left));
+      if (highSignalDelta !== 0) return highSignalDelta;
+
       const severityDelta = getSeverityRank(right.severity) - getSeverityRank(left.severity);
       if (severityDelta !== 0) return severityDelta;
 
-      const leftPriority =
-        left.alert_type === 'Inventory:DeductionFailed' || isFixable(left) ? 1 : 0;
-      const rightPriority =
-        right.alert_type === 'Inventory:DeductionFailed' || isFixable(right) ? 1 : 0;
+      const leftPriority = isFixable(left) ? 1 : 0;
+      const rightPriority = isFixable(right) ? 1 : 0;
       if (rightPriority !== leftPriority) return rightPriority - leftPriority;
 
       const leftAck = left.is_acknowledged ? 1 : 0;
@@ -248,10 +268,7 @@ export default function AlertsFeedBasic(): JSX.Element {
 
     return sortedAlerts.filter(alert => {
       if (feedFilter === 'priority') {
-        const isPriority =
-          getSeverityRank(alert.severity) >= 3 ||
-          alert.alert_type === 'Inventory:DeductionFailed' ||
-          isFixable(alert);
+        const isPriority = isHighSignalAlert(alert);
         if (!isPriority) return false;
       }
 
@@ -279,7 +296,8 @@ export default function AlertsFeedBasic(): JSX.Element {
   }, [feedFilter, isFixable, searchTerm, sortedAlerts]);
 
   const summaryStats = useMemo(() => {
-    const urgentCount = alerts.filter(alert => getSeverityRank(alert.severity) >= 3).length;
+    const highSignalCount = alerts.filter(alert => isHighSignalAlert(alert)).length;
+    const fixableCount = alerts.filter(alert => isFixable(alert)).length;
     const inventoryCount = alerts.filter(alert => alert.alert_type.startsWith('Inventory:')).length;
     const dataQualityCount = alerts.filter(alert =>
       alert.alert_type.startsWith('DataQuality:')
@@ -288,20 +306,23 @@ export default function AlertsFeedBasic(): JSX.Element {
 
     return {
       total: alerts.length,
-      urgentCount,
+      highSignalCount,
+      fixableCount,
       inventoryCount,
       dataQualityCount,
       reviewCount,
     };
   }, [alerts]);
 
-  const spotlightAlerts = filteredAlerts.slice(0, 3);
+  const spotlightAlerts = filteredAlerts.filter(alert => isHighSignalAlert(alert)).slice(0, 3);
+  const visibleSpotlightAlerts =
+    spotlightAlerts.length > 0 ? spotlightAlerts : filteredAlerts.slice(0, 3);
   const quickFilters: Array<{ key: FeedFilter; label: string; count: number }> = [
-    { key: 'priority', label: 'Priority Queue', count: summaryStats.urgentCount },
+    { key: 'priority', label: 'Trust Blockers', count: summaryStats.highSignalCount },
     { key: 'inventory', label: 'Inventory', count: summaryStats.inventoryCount },
     { key: 'data', label: 'Data Quality', count: summaryStats.dataQualityCount },
     { key: 'unacknowledged', label: 'Needs Ack', count: summaryStats.reviewCount },
-    { key: 'fixable', label: 'Fixable', count: alerts.filter(alert => isFixable(alert)).length },
+    { key: 'fixable', label: 'Fix Now', count: summaryStats.fixableCount },
     { key: 'all', label: 'All Visible', count: summaryStats.total },
   ];
 
@@ -330,13 +351,16 @@ export default function AlertsFeedBasic(): JSX.Element {
     };
 
     takeSection(
-      'priority',
-      'Priority & Repair',
-      'Highest-risk items and the alerts that can be acted on immediately.',
-      alert =>
-        getSeverityRank(alert.severity) >= 3 ||
-        alert.alert_type === 'Inventory:DeductionFailed' ||
-        isFixable(alert)
+      'trust',
+      'Trust Blockers',
+      'Alerts most likely to change whether you can trust EOD, forecast, or inventory outputs.',
+      alert => isHighSignalAlert(alert)
+    );
+    takeSection(
+      'repair',
+      'Fix Now',
+      'Records you can correct immediately to reduce queue noise and restore trust faster.',
+      alert => !isHighSignalAlert(alert) && isFixable(alert)
     );
     takeSection(
       'inventory',
@@ -413,17 +437,17 @@ export default function AlertsFeedBasic(): JSX.Element {
                 sx={{ p: 1.5, minWidth: 120, bgcolor: 'rgba(255,255,255,0.12)', color: 'inherit' }}
               >
                 <Typography variant="overline" sx={{ opacity: 0.72 }}>
-                  Priority
+                  Trust
                 </Typography>
-                <Typography variant="h4">{summaryStats.urgentCount}</Typography>
+                <Typography variant="h4">{summaryStats.highSignalCount}</Typography>
               </Paper>
               <Paper
                 sx={{ p: 1.5, minWidth: 120, bgcolor: 'rgba(255,255,255,0.12)', color: 'inherit' }}
               >
                 <Typography variant="overline" sx={{ opacity: 0.72 }}>
-                  Inventory
+                  Fix Now
                 </Typography>
-                <Typography variant="h4">{summaryStats.inventoryCount}</Typography>
+                <Typography variant="h4">{summaryStats.fixableCount}</Typography>
               </Paper>
               <Paper
                 sx={{ p: 1.5, minWidth: 120, bgcolor: 'rgba(255,255,255,0.12)', color: 'inherit' }}
@@ -459,6 +483,12 @@ export default function AlertsFeedBasic(): JSX.Element {
               <Stack direction="row" spacing={1} flexWrap="wrap">
                 <Chip color={runStatusColor} label={eodSummary.status.toUpperCase()} />
                 <Chip
+                  color={eodSummary.is_historical ? 'warning' : 'default'}
+                  variant={eodSummary.is_historical ? 'filled' : 'outlined'}
+                  label={eodSummary.is_historical ? 'Historical Review' : 'Latest Finalized Run'}
+                />
+                <Chip
+                  color={forecastStatusColor}
                   variant="outlined"
                   label={`Forecast ${eodSummary.forecast.forecast_status.toUpperCase()}`}
                 />
@@ -469,6 +499,10 @@ export default function AlertsFeedBasic(): JSX.Element {
                 <Chip
                   variant="outlined"
                   label={`${eodSummary.counts.purchase_order_suggestion_count} suggestions`}
+                />
+                <Chip
+                  variant="outlined"
+                  label={`${eodSummary.counts.purchase_orders_created} draft POs`}
                 />
               </Stack>
             </Stack>
@@ -508,6 +542,11 @@ export default function AlertsFeedBasic(): JSX.Element {
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
               {eodSummary.downstream.message}
             </Typography>
+            {eodSummary.guidance.steps[0] && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                Next step: {eodSummary.guidance.steps[0]}
+              </Typography>
+            )}
 
             <Box sx={{ mt: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
@@ -630,13 +669,13 @@ export default function AlertsFeedBasic(): JSX.Element {
           </Paper>
         </Stack>
 
-        {spotlightAlerts.length > 0 && (
+        {visibleSpotlightAlerts.length > 0 && (
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" sx={{ mb: 1.5 }}>
-              Priority Spotlight
+              Trust Spotlight
             </Typography>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-              {spotlightAlerts.map(alert => (
+              {visibleSpotlightAlerts.map(alert => (
                 <Paper
                   key={`spotlight-${alert.alert_id}`}
                   variant="outlined"

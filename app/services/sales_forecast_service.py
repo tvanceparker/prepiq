@@ -78,6 +78,18 @@ class SalesForecastService:
             forecast_version=forecast_version,
         )
 
+    @staticmethod
+    def _is_forecast_stale(
+        *,
+        preferred_run_date: Optional[date],
+        authoritative_run_date: Optional[date],
+    ) -> bool:
+        return (
+            preferred_run_date is not None
+            and authoritative_run_date is not None
+            and authoritative_run_date < preferred_run_date
+        )
+
     async def _resolve_authoritative_forecast_run_date(
         self,
         preferred_run_date: Optional[date],
@@ -130,22 +142,25 @@ class SalesForecastService:
     @log_method("Get Forecast State")
     async def get_forecast_state(self) -> Dict[str, Any]:
         restaurant = await self.restaurant_repo.get_by_id(self.restaurant_id)
-        last_eod_run_date = getattr(restaurant, "last_eod_run_date", None)
-        authoritative_run_date = await self._resolve_authoritative_forecast_run_date(last_eod_run_date)
+        preferred_run_date = getattr(restaurant, "last_eod_run_date", None)
+        authoritative_run_date = await self._resolve_authoritative_forecast_run_date(preferred_run_date)
         metadata = await self._get_forecast_batch_metadata(authoritative_run_date)
 
         if authoritative_run_date is None:
             return self._build_forecast_state(
                 forecast_run_date=None,
                 forecast_generated_at=None,
-                forecast_stale=True,
+                forecast_stale=False,
                 forecast_status="failed",
                 forecast_status_message="No finalized EOD forecast is available yet.",
                 **metadata,
             )
 
         ledger = await self.forecast_run_ledger_repo.get_one_by({"run_date": authoritative_run_date})
-        forecast_stale = authoritative_run_date < date.today()
+        forecast_stale = self._is_forecast_stale(
+            preferred_run_date=preferred_run_date,
+            authoritative_run_date=authoritative_run_date,
+        )
         generated_at = getattr(ledger, "finished_at", None) if ledger else None
 
         if not ledger or not getattr(ledger, "finalized", False):
@@ -175,7 +190,10 @@ class SalesForecastService:
                 forecast_generated_at=generated_at,
                 forecast_stale=True,
                 forecast_status="stale",
-                forecast_status_message="The latest finalized EOD forecast is older than today's cycle.",
+                forecast_status_message=(
+                    f"Using the most recent finalized EOD forecast from {authoritative_run_date.isoformat()}. "
+                    "A newer EOD cycle still needs to finalize before this becomes current."
+                ),
                 **metadata,
             )
 

@@ -60,6 +60,7 @@ export interface EodOperatorGuidance {
 
 export interface EodRunSummary {
   run_date: string;
+  is_historical: boolean;
   status: EodRunStatus;
   status_message: string;
   finalized: boolean;

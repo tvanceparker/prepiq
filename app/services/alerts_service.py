@@ -116,7 +116,7 @@ class AlertsService:
             return {
                 "title": "Missing sales channel",
                 "action_label": "Set channel",
-                "description": "A sale is missing its sales channel. Set the channel so reporting and forecasting stay accurate.",
+                "description": "A sale is missing its sales channel. Set the channel so reporting, forecasting, and channel mix stay trustworthy.",
             }
 
         if alert_type == "DataQuality:NullOrZeroQuantity":
@@ -124,7 +124,7 @@ class AlertsService:
             return {
                 "title": "Zero or missing quantity",
                 "action_label": "Correct quantity",
-                "description": f"A recorded {item_name} sale has a zero or missing quantity. Correct it before trusting today\'s totals.",
+                "description": f"A recorded {item_name} sale has a zero or missing quantity. Correct it before trusting sales totals or rerunning EOD.",
             }
 
         if alert_type == "DataQuality:QuantityOutlier":
@@ -132,7 +132,7 @@ class AlertsService:
             return {
                 "title": "Quantity looks unusual",
                 "action_label": "Review quantity",
-                "description": f"A recorded {item_name} sale looks unusual compared with recent activity. Review the quantity before using it for decisions.",
+                "description": f"A recorded {item_name} sale looks unusual compared with recent activity. Review it before relying on forecast accuracy or demand analysis.",
             }
 
         if alert_type == "LowStock":
@@ -141,10 +141,10 @@ class AlertsService:
             reorder_point = self._format_quantity(meta.get("reorder_point"))
             if current_stock is not None and reorder_point is not None:
                 description = (
-                    f"{item_name} is at {current_stock}, below the reorder point of {reorder_point}. Review reorder suggestions soon."
+                    f"{item_name} is at {current_stock}, below the reorder point of {reorder_point}. Review reorder suggestions before the shortage reaches service impact."
                 )
             else:
-                description = f"{item_name} is below its reorder point. Review reorder suggestions soon."
+                description = f"{item_name} is below its reorder point. Review reorder suggestions before the shortage reaches service impact."
             return {
                 "title": "Low stock warning",
                 "action_label": "Review reorder",
@@ -155,17 +155,22 @@ class AlertsService:
             return {
                 "title": "Missing sales data",
                 "action_label": "Upload sales",
-                "description": "No sales data was found for this run. Upload or sync sales before rerunning forecast and EOD workflows.",
+                "description": "No sales data was found for this run. Upload or sync sales before rerunning EOD. Forecast, reorder, and purchasing outputs stay review-only until sales are restored.",
             }
 
         if alert_type == "prep_incomplete":
+            batch_recipe_name = meta.get("batch_recipe_name")
             batch_recipe_id = meta.get("batch_recipe_id")
-            if batch_recipe_id is not None:
+            if batch_recipe_name:
                 description = (
-                    f"A scheduled prep task for batch recipe {batch_recipe_id} was not marked complete. Review prep status before closing the day."
+                    f"Prep for {batch_recipe_name} was not marked complete. Confirm the prep outcome before trusting close-of-day usage and reorder outputs."
+                )
+            elif batch_recipe_id is not None:
+                description = (
+                    f"A scheduled prep task for batch recipe {batch_recipe_id} was not marked complete. Confirm the prep outcome before trusting close-of-day usage and reorder outputs."
                 )
             else:
-                description = "A scheduled prep task was not marked complete. Review prep status before closing the day."
+                description = "A scheduled prep task was not marked complete. Confirm prep status before trusting close-of-day usage and reorder outputs."
             return {
                 "title": "Prep not completed",
                 "action_label": "Review prep",

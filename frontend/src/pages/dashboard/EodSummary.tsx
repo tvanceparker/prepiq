@@ -18,6 +18,13 @@ const formatAuthorityLabel = (authority: EodRunSummary['forecast']['forecast_aut
 const getDecisionColor = (action: EodRunSummary['downstream']['forecast_action']) =>
   action === 'allow' ? 'success' : action === 'review' ? 'warning' : 'error';
 
+const getForecastStatusColor = (status: EodRunSummary['forecast']['forecast_status']) =>
+  status === 'failed'
+    ? 'error'
+    : status === 'degraded' || status === 'stale'
+      ? 'warning'
+      : 'success';
+
 export default function EodSummary(): JSX.Element {
   const navigate = useNavigate();
   const { data, isLoading, error } = useQuery<EodRunSummary>({
@@ -134,6 +141,12 @@ export default function EodSummary(): JSX.Element {
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="flex-start">
                 <Chip color={runStatusColor} label={data.status.toUpperCase()} />
                 <Chip
+                  color={data.is_historical ? 'warning' : 'default'}
+                  variant={data.is_historical ? 'filled' : 'outlined'}
+                  label={data.is_historical ? 'Historical Review' : 'Latest Finalized Run'}
+                />
+                <Chip
+                  color={getForecastStatusColor(data.forecast.forecast_status)}
                   variant="outlined"
                   label={`Forecast ${data.forecast.forecast_status.toUpperCase()}`}
                 />
@@ -178,6 +191,11 @@ export default function EodSummary(): JSX.Element {
               Forecast Trust
             </Typography>
             <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 1.5 }}>
+              <Chip
+                color={data.is_historical ? 'warning' : 'default'}
+                variant={data.is_historical ? 'filled' : 'outlined'}
+                label={data.is_historical ? 'Historical Business Date' : 'Current Planning Context'}
+              />
               <Chip
                 label={formatAuthorityLabel(data.forecast.forecast_authority)}
                 variant="outlined"

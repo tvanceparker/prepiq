@@ -14,6 +14,12 @@ import { fetchLatestEodSummary } from '../../../api/eod';
 import type { EodRunSummary } from '../../../interfaces/eod';
 
 const formatStageLabel = (stage: string) => stage.replace(/_/g, ' ');
+const highSignalAlertTypes = new Set([
+  'MissingSalesData',
+  'Inventory:DeductionFailed',
+  'prep_incomplete',
+]);
+
 const getSeverityRank = (severity: string) => {
   switch (severity) {
     case 'urgent':
@@ -26,6 +32,9 @@ const getSeverityRank = (severity: string) => {
       return 1;
   }
 };
+
+const isHighSignalAlert = (alert: { alert_type: string; severity: string }) =>
+  highSignalAlertTypes.has(alert.alert_type) || getSeverityRank(alert.severity) >= 3;
 
 export default function AlertsFeedBasicMobile() {
   const theme = useTheme();
@@ -97,13 +106,14 @@ export default function AlertsFeedBasicMobile() {
 
   const sortedAlerts = useMemo(() => {
     return [...alerts].sort((left, right) => {
+      const highSignalDelta = Number(isHighSignalAlert(right)) - Number(isHighSignalAlert(left));
+      if (highSignalDelta !== 0) return highSignalDelta;
+
       const severityDelta = getSeverityRank(right.severity) - getSeverityRank(left.severity);
       if (severityDelta !== 0) return severityDelta;
 
-      const leftPriority =
-        left.alert_type === 'Inventory:DeductionFailed' || isFixable(left) ? 1 : 0;
-      const rightPriority =
-        right.alert_type === 'Inventory:DeductionFailed' || isFixable(right) ? 1 : 0;
+      const leftPriority = isFixable(left) ? 1 : 0;
+      const rightPriority = isFixable(right) ? 1 : 0;
       if (rightPriority !== leftPriority) return rightPriority - leftPriority;
 
       return Number(left.is_acknowledged) - Number(right.is_acknowledged);
@@ -115,10 +125,7 @@ export default function AlertsFeedBasicMobile() {
 
     return sortedAlerts.filter(alert => {
       if (feedFilter === 'priority') {
-        const isPriority =
-          getSeverityRank(alert.severity) >= 3 ||
-          alert.alert_type === 'Inventory:DeductionFailed' ||
-          isFixable(alert);
+        const isPriority = isHighSignalAlert(alert);
         if (!isPriority) return false;
       }
 
@@ -141,7 +148,8 @@ export default function AlertsFeedBasicMobile() {
     });
   }, [feedFilter, isFixable, searchTerm, sortedAlerts]);
 
-  const priorityCount = alerts.filter(alert => getSeverityRank(alert.severity) >= 3).length;
+  const trustCount = alerts.filter(alert => isHighSignalAlert(alert)).length;
+  const fixableCount = alerts.filter(alert => isFixable(alert)).length;
   const inventoryCount = alerts.filter(alert => alert.alert_type.startsWith('Inventory:')).length;
   const groupedSections = useMemo(() => {
     const sections: Array<{
@@ -168,13 +176,16 @@ export default function AlertsFeedBasicMobile() {
     };
 
     takeSection(
-      'priority',
-      'Priority & Repair',
-      'Highest-signal items to work first.',
-      alert =>
-        getSeverityRank(alert.severity) >= 3 ||
-        alert.alert_type === 'Inventory:DeductionFailed' ||
-        isFixable(alert)
+      'trust',
+      'Trust Blockers',
+      'Alerts most likely to change whether you can trust EOD, forecast, or inventory outputs.',
+      alert => isHighSignalAlert(alert)
+    );
+    takeSection(
+      'repair',
+      'Fix Now',
+      'Records you can correct immediately to reduce queue noise and restore trust faster.',
+      alert => !isHighSignalAlert(alert) && isFixable(alert)
     );
     takeSection(
       'inventory',
@@ -353,12 +364,12 @@ export default function AlertsFeedBasicMobile() {
         </Text>
         <View style={{ flexDirection: 'row' }}>
           <View style={{ marginRight: 20 }}>
-            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Priority</Text>
-            <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>{priorityCount}</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Trust</Text>
+            <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>{trustCount}</Text>
           </View>
           <View>
-            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Inventory</Text>
-            <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>{inventoryCount}</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>Fix Now</Text>
+            <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>{fixableCount}</Text>
           </View>
         </View>
       </View>
@@ -382,13 +393,25 @@ export default function AlertsFeedBasicMobile() {
             {eodSummary.status.toUpperCase()} · Forecast{' '}
             {eodSummary.forecast.forecast_status.toUpperCase()}
           </Text>
+          <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginBottom: 6 }}>
+            {eodSummary.is_historical ? 'Historical review' : 'Latest finalized run'}
+          </Text>
           <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>
             {eodSummary.counts.open_discrepancy_count} open review ·{' '}
-            {eodSummary.counts.purchase_order_suggestion_count} suggestions
+            {eodSummary.counts.purchase_order_suggestion_count} suggestions ·{' '}
+            {eodSummary.counts.purchase_orders_created} draft POs
           </Text>
           <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 6 }}>
             {eodSummary.forecast.forecast_status_message}
           </Text>
+          <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 6 }}>
+            {eodSummary.downstream.message}
+          </Text>
+          {eodSummary.guidance.steps[0] && (
+            <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 6 }}>
+              Next step: {eodSummary.guidance.steps[0]}
+            </Text>
+          )}
 
           <View style={{ marginTop: 8 }}>
             <Text style={{ fontWeight: '600', marginBottom: 4 }}>
@@ -513,9 +536,9 @@ export default function AlertsFeedBasicMobile() {
         </Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 }}>
           {[
-            ['priority', `Priority · ${priorityCount}`],
+            ['priority', `Trust · ${trustCount}`],
             ['inventory', `Inventory · ${inventoryCount}`],
-            ['fixable', `Fixable · ${alerts.filter(alert => isFixable(alert)).length}`],
+            ['fixable', `Fix Now · ${fixableCount}`],
             ['all', `All · ${alerts.length}`],
           ].map(([key, label]) => {
             const active = feedFilter === key;

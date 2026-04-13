@@ -151,7 +151,7 @@ class TestSalesForecastService:
         assert result["forecast_confidence_score"] == 0.84
         assert result["forecast_version"] == 3
 
-    async def test_get_forecast_state_stale(self, service):
+    async def test_get_forecast_state_previous_eod_run_is_ready(self, service):
         stale_day = date.today() - timedelta(days=1)
         service.restaurant_repo.get_by_id = AsyncMock(
             return_value=MagicMock(last_eod_run_date=stale_day)
@@ -166,10 +166,10 @@ class TestSalesForecastService:
 
         result = await service.get_forecast_state()
 
-        assert result["forecast_status"] == "stale"
-        assert result["forecast_stale"] is True
+    assert result["forecast_status"] == "ready"
+    assert result["forecast_stale"] is False
         assert result["forecast_authority"] == "finalized_eod"
-        assert result["forecast_usage_action"] == "review"
+    assert result["forecast_usage_action"] == "allow"
 
     async def test_get_forecast_state_degraded(self, service):
         service.restaurant_repo.get_by_id = AsyncMock(
@@ -237,6 +237,8 @@ class TestSalesForecastService:
         result = await service.get_forecast_state()
 
         assert result["forecast_status"] == "stale"
+        assert result["forecast_stale"] is True
         assert result["forecast_authority"] == "finalized_eod"
         assert result["forecast_usage_action"] == "review"
+        assert "still needs to finalize" in (result["forecast_status_message"] or "")
         assert result["forecast_version"] == 5

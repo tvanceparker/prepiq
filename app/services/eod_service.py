@@ -106,20 +106,26 @@ class EODService:
         self._purchase_order_suggestions = []
         self.purchase_order_suggestions = []
 
-    def _build_run_status(self, ledger) -> tuple[str, str]:
+    def _build_run_status(self, ledger, *, is_historical: bool = False) -> tuple[str, str]:
         errors = getattr(ledger, "errors", None) or []
+        run_label = "Historical EOD run" if is_historical else "EOD"
 
         if getattr(ledger, "running", False) and not getattr(ledger, "finalized", False):
-            return "processing", "EOD is currently running."
+            return "processing", f"{run_label} is currently running."
         if getattr(ledger, "finalized", False) and errors:
-            return "partial", "EOD finalized with warnings and requires manual review."
+            return "partial", f"{run_label} finalized with warnings and requires manual review."
         if getattr(ledger, "finalized", False):
-            return "success", "EOD finalized successfully."
-        return "failed", "EOD did not finalize successfully."
+            return "success", f"{run_label} finalized successfully."
+        return "failed", f"{run_label} did not finalize successfully."
 
-    def _build_forecast_summary(self, run_date: date, forecast_ledger) -> Dict[str, Any]:
+    def _build_forecast_summary(
+        self,
+        run_date: date,
+        forecast_ledger,
+        *,
+        is_historical: bool = False,
+    ) -> Dict[str, Any]:
         forecast_generated_at = getattr(forecast_ledger, "finished_at", None) if forecast_ledger else None
-        forecast_stale = run_date < date.today()
 
         if not forecast_ledger or not getattr(forecast_ledger, "finalized", False):
             return build_forecast_contract(
@@ -128,37 +134,40 @@ class EODService:
                 forecast_run_date=run_date,
                 forecast_generated_at=forecast_generated_at,
                 forecast_reused=True,
-                forecast_stale=forecast_stale,
+                forecast_stale=False,
                 forecast_status="failed",
-                forecast_status_message="No finalized forecast is available for this EOD run.",
+                forecast_status_message=(
+                    "No finalized forecast is available for this historical EOD run."
+                    if is_historical
+                    else "No finalized forecast is available for this EOD run."
+                ),
             )
 
         errors = getattr(forecast_ledger, "errors", None) or []
         if errors:
-            return build_forecast_contract(
+            summary = build_forecast_contract(
                 forecast_source="cached",
                 forecast_source_type="eod",
                 forecast_run_date=run_date,
                 forecast_generated_at=forecast_generated_at,
                 forecast_reused=True,
-                forecast_stale=forecast_stale,
+                forecast_stale=False,
                 forecast_status="degraded",
-                forecast_status_message="The forecast finalized with warnings for this EOD run.",
+                forecast_status_message=(
+                    "The forecast finalized with warnings for this historical EOD run."
+                    if is_historical
+                    else "The forecast finalized with warnings for this EOD run."
+                ),
             )
+            if is_historical:
+                summary["forecast_usage_action"] = "review"
+                summary["forecast_usage_message"] = (
+                    "This forecast belongs to the selected historical business date and completed with warnings. "
+                    "Review downstream outputs in that context before using them in a live workflow."
+                )
+            return summary
 
-        if forecast_stale:
-            return build_forecast_contract(
-                forecast_source="cached",
-                forecast_source_type="eod",
-                forecast_run_date=run_date,
-                forecast_generated_at=forecast_generated_at,
-                forecast_reused=True,
-                forecast_stale=True,
-                forecast_status="stale",
-                forecast_status_message="The finalized forecast is older than today's cycle.",
-            )
-
-        return build_forecast_contract(
+        summary = build_forecast_contract(
             forecast_source="cached",
             forecast_source_type="eod",
             forecast_run_date=run_date,
@@ -166,8 +175,19 @@ class EODService:
             forecast_reused=True,
             forecast_stale=False,
             forecast_status="ready",
-            forecast_status_message="Using the finalized forecast for this EOD run.",
+            forecast_status_message=(
+                "Using the finalized forecast for this historical EOD run."
+                if is_historical
+                else "Using the finalized forecast for this EOD run."
+            ),
         )
+        if is_historical:
+            summary["forecast_usage_action"] = "review"
+            summary["forecast_usage_message"] = (
+                "This finalized EOD forecast is trustworthy for the selected historical business date. "
+                "Review downstream outputs in that business-date context before acting on them today."
+            )
+        return summary
 
     def _build_downstream_actions(
         self,
@@ -176,13 +196,18 @@ class EODService:
         run_status: str,
         forecast_summary: Dict[str, Any],
         discrepancy_count: int,
+        is_historical: bool = False,
     ) -> Dict[str, str]:
         if run_status == "processing":
             return {
                 "forecast_action": "block",
                 "reorder_action": "block",
                 "purchase_orders_action": "block",
-                "message": "This EOD run is still in progress. Wait for completion before trusting downstream outputs.",
+                "message": (
+                    "This historical EOD run is still in progress. Wait for completion before trusting downstream outputs."
+                    if is_historical
+                    else "This EOD run is still in progress. Wait for completion before trusting downstream outputs."
+                ),
             }
 
         if run_status == "failed":
@@ -190,7 +215,11 @@ class EODService:
                 "forecast_action": "block",
                 "reorder_action": "block",
                 "purchase_orders_action": "block",
-                "message": "This EOD run did not finalize. Do not trust downstream forecast, reorder, or purchase-order outputs yet.",
+                "message": (
+                    "This historical EOD run did not finalize. Do not trust its forecast, reorder, or purchase-order outputs yet."
+                    if is_historical
+                    else "This EOD run did not finalize. Do not trust downstream forecast, reorder, or purchase-order outputs yet."
+                ),
             }
 
         forecast_action = str(forecast_summary.get("forecast_usage_action") or "block")
@@ -211,7 +240,15 @@ class EODService:
         else:
             purchase_orders_action = "allow"
 
-        if "block" in {forecast_action, reorder_action, purchase_orders_action}:
+        if is_historical and "block" not in {forecast_action, reorder_action, purchase_orders_action}:
+            forecast_action = "review"
+            reorder_action = "review"
+            if purchase_orders_action == "allow":
+                purchase_orders_action = "review"
+            message = (
+                "Historical downstream outputs are available for review. Use them to validate or repair that business date before reusing them in a live workflow."
+            )
+        elif "block" in {forecast_action, reorder_action, purchase_orders_action}:
             message = "At least one downstream output is blocked pending rerun or repair."
         elif "review" in {forecast_action, reorder_action, purchase_orders_action}:
             message = "Downstream outputs are available, but they require manual review before operators act on them."
@@ -234,6 +271,7 @@ class EODService:
         discrepancy_count: int,
         purchase_order_suggestion_count: int,
         purchase_orders_created: int,
+        is_historical: bool = False,
     ) -> Dict[str, Any]:
         steps: List[str] = []
         seen_steps = set()
@@ -255,18 +293,33 @@ class EODService:
         ).lower()
 
         if run_status == "processing":
-            headline = "EOD is still running."
+            headline = "Historical EOD run is still running." if is_historical else "EOD is still running."
             add_step("Wait for the current run to finish before trusting new EOD, reorder, or purchasing outputs.")
             return {"headline": headline, "steps": steps}
 
         if run_status == "partial":
-            headline = "Manual review is required before trusting every downstream output."
+            headline = (
+                "Manual review is required before trusting this historical run."
+                if is_historical
+                else "Manual review is required before trusting every downstream output."
+            )
         elif run_status == "failed":
-            headline = "This EOD run did not complete successfully."
+            headline = (
+                "This historical EOD run did not complete successfully."
+                if is_historical
+                else "This EOD run did not complete successfully."
+            )
+        elif is_historical:
+            headline = "Historical outputs are available, but they should be reviewed in the context of that business date."
         elif discrepancy_count > 0 or purchase_orders_created > 0 or purchase_order_suggestion_count > 0:
             headline = "The run finished, but there is follow-up work before you close the loop."
         else:
             headline = "This EOD run is ready to use."
+
+        if is_historical:
+            add_step(
+                "Treat this run as a historical record for the selected business date. Review reorder suggestions and draft purchase orders before reusing them in today's workflow."
+            )
 
         if discrepancy_count > 0:
             if discrepancy_count == 1:
@@ -290,20 +343,40 @@ class EODService:
 
         if purchase_orders_created > 0:
             if purchase_orders_created == 1:
-                add_step("Review the draft purchase order before submission.")
-            else:
-                add_step(f"Review the {purchase_orders_created} draft purchase orders before submission.")
-        elif purchase_order_suggestion_count > 0:
-            if purchase_order_suggestion_count == 1:
-                add_step("Review the reorder suggestion and decide whether to create a draft purchase order.")
+                add_step(
+                    "Review the historical draft purchase order before submitting, cancelling, or recreating it for today."
+                    if is_historical
+                    else "Review the draft purchase order before submission."
+                )
             else:
                 add_step(
-                    f"Review the {purchase_order_suggestion_count} reorder suggestions and decide which draft purchase orders to create."
+                    f"Review the {purchase_orders_created} historical draft purchase orders before submitting, cancelling, or recreating them for today."
+                    if is_historical
+                    else f"Review the {purchase_orders_created} draft purchase orders before submission."
+                )
+        elif purchase_order_suggestion_count > 0:
+            if purchase_order_suggestion_count == 1:
+                add_step(
+                    "Review the historical reorder suggestion before deciding whether to recreate a draft purchase order for today."
+                    if is_historical
+                    else "Review the reorder suggestion and decide whether to create a draft purchase order."
+                )
+            else:
+                add_step(
+                    (
+                        f"Review the {purchase_order_suggestion_count} historical reorder suggestions before deciding which draft purchase orders to recreate for today."
+                    )
+                    if is_historical
+                    else f"Review the {purchase_order_suggestion_count} reorder suggestions and decide which draft purchase orders to create."
                 )
 
         if not steps:
             if run_status == "success":
-                add_step("No immediate repair work is required. You can use this EOD output as the current source of truth.")
+                add_step(
+                    "No immediate repair work is required. Keep this run as the reconciled record for that business date."
+                    if is_historical
+                    else "No immediate repair work is required. You can use this EOD output as the current source of truth."
+                )
             elif run_status == "failed":
                 add_step("Review the recorded errors, correct the blocking issue, and rerun EOD when the inputs are ready.")
             else:
@@ -315,11 +388,14 @@ class EODService:
         }
 
     async def get_eod_run_summary(self, run_date: Optional[date] = None) -> Optional[Dict[str, Any]]:
-        ledger = await self.ledger_repo.get_by_date(run_date) if run_date else await self.ledger_repo.get_latest()
+        latest_ledger = await self.ledger_repo.get_latest()
+        ledger = await self.ledger_repo.get_by_date(run_date) if run_date else latest_ledger
         if not ledger:
             return None
 
         effective_run_date = ledger.run_date
+        latest_run_date = getattr(latest_ledger, "run_date", None)
+        is_historical = bool(latest_run_date and effective_run_date < latest_run_date)
         reference_id = int(effective_run_date.strftime("%Y%m%d"))
         forecast_ledger = await self.forecast_run_ledger_repo.get_one_by({"run_date": effective_run_date})
         po_suggestions = await self.po_suggestion_repo.list_by_run_date(effective_run_date)
@@ -327,7 +403,7 @@ class EODService:
             reference_type="eod_sales",
             reference_id=reference_id,
         )
-        run_status, status_message = self._build_run_status(ledger)
+        run_status, status_message = self._build_run_status(ledger, is_historical=is_historical)
 
         durations = getattr(ledger, "durations", None) or {}
         errors = getattr(ledger, "errors", None) or []
@@ -360,13 +436,18 @@ class EODService:
             },
         ]
 
-        forecast_summary = self._build_forecast_summary(effective_run_date, forecast_ledger)
+        forecast_summary = self._build_forecast_summary(
+            effective_run_date,
+            forecast_ledger,
+            is_historical=is_historical,
+        )
         purchase_orders_created = await self.purchase_order_repo.count_eod_auto_orders_for_run_date(
             effective_run_date
         )
 
         return {
             "run_date": effective_run_date,
+            "is_historical": is_historical,
             "status": run_status,
             "status_message": status_message,
             "finalized": bool(getattr(ledger, "finalized", False)),
@@ -388,6 +469,7 @@ class EODService:
                 run_status=run_status,
                 forecast_summary=forecast_summary,
                 discrepancy_count=len(discrepancies),
+                is_historical=is_historical,
             ),
             "counts": {
                 "sales_usage_log_count": await self.inventory_usage_log_repo.count_for_reference(
@@ -420,6 +502,7 @@ class EODService:
                 discrepancy_count=len(discrepancies),
                 purchase_order_suggestion_count=len(po_suggestions),
                 purchase_orders_created=purchase_orders_created,
+                is_historical=is_historical,
             ),
         }
 

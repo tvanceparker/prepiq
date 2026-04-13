@@ -71,6 +71,7 @@ class EODOperatorGuidanceDTO(BaseModel):
 
 class EODRunSummaryDTO(BaseModel):
     run_date: date
+    is_historical: bool = False
     status: Literal["processing", "success", "partial", "failed"]
     status_message: str
     finalized: bool

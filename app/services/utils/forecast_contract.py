@@ -44,7 +44,7 @@ def resolve_forecast_policy(
         return (
             "finalized_eod",
             "review",
-            "This finalized EOD forecast is older than today's cycle. Review forecast-driven outputs before acting on them.",
+            "This finalized EOD forecast is behind the latest available EOD cycle. Review forecast-driven outputs before acting on them.",
         )
 
     return (

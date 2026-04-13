@@ -69,6 +69,7 @@ export default function ManualEodRunCard() {
 
   const lastEodDate = lastEodData?.last_eod_run_date ?? null;
   const isRerunDate = !!lastEodDate && eodDate === lastEodDate;
+  const selectedIsHistorical = !!lastEodDate && dayjs(eodDate).isBefore(dayjs(lastEodDate), 'day');
 
   return (
     <Box
@@ -100,8 +101,9 @@ export default function ManualEodRunCard() {
             Manual End of Day Run
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Start the EOD pipeline for a specific business date. Force rerun is manual-only and
-            resets the ledger before rerunning that date.
+            Start the EOD pipeline for a specific business date. Force rerun is for intentional
+            historical repair or audit work and resets that date&apos;s ledger before rebuilding its
+            downstream outputs.
           </Typography>
         </Box>
       </Stack>
@@ -138,8 +140,16 @@ export default function ManualEodRunCard() {
 
         {forceRerun ? (
           <Alert severity="warning">
-            This is for intentional manual reruns only. It resets the EOD ledger for the selected
-            date before rerunning the pipeline.
+            This is for intentional historical reruns only. It resets the EOD ledger for the
+            selected date and rebuilds forecast, reorder, and downstream purchasing artifacts for
+            that business date. Review the results in that historical context before acting on them
+            today.
+          </Alert>
+        ) : selectedIsHistorical ? (
+          <Alert severity="info">
+            The selected date is older than your latest completed EOD run. Leave force off only if
+            you want normal guardrails to inspect the existing ledger. Enable force when you
+            intentionally need to rebuild that historical run.
           </Alert>
         ) : isRerunDate ? (
           <Alert severity="info">
@@ -155,7 +165,7 @@ export default function ManualEodRunCard() {
         {launchSummary && (
           <Alert severity="info">
             {launchSummary.run_mode === 'force_rerun'
-              ? `Forced rerun queued for ${dayjs(launchSummary.run_date).format('MMM D, YYYY')}.`
+              ? `Forced rerun queued for ${dayjs(launchSummary.run_date).format('MMM D, YYYY')}. Review any rebuilt downstream outputs in that business-date context before reusing them today.`
               : `Background EOD queued for ${dayjs(launchSummary.run_date).format('MMM D, YYYY')}.`}{' '}
             Protections active: {launchSummary.protections.join(', ')}.
           </Alert>
