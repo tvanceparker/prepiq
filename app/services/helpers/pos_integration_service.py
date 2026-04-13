@@ -20,6 +20,7 @@ from app.repositories.pos_merchant_mappings_repo import POSMerchantMappingsRepos
 from app.services.order_service import OrderService
 from app.services.helpers.pos_menu_matcher import POSMenuMatcher
 from app.services.utils.inventory_deduction_helper import InventoryDeductionHelper
+from app.services.utils.subscription_tiers import is_full_service_tier
 from app.repositories.sales_repo import SalesRepository
 from app.schemas.order_dto import OrderCreate, OrderItemCreate
 
@@ -316,7 +317,7 @@ class POSIntegrationService:
         }
 
     async def _should_use_real_time_deduction(self) -> bool:
-        if self.subscription_tier not in ("pro", "master"):
+        if not is_full_service_tier(self.subscription_tier):
             return False
         return await self.inventory_helper.is_real_time_enabled()
     

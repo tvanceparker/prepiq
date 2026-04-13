@@ -18,6 +18,10 @@ from app.core.logging import logger
 from app.services.pos_service import InternalPOSService
 from app.services.helpers.cash_drawer_service import CashDrawerService
 from app.services.helpers.stripe_terminal_service import StripeTerminalService
+from app.services.utils.subscription_tiers import (
+    is_full_service_tier,
+    normalize_subscription_tier,
+)
 
 
 class OrderService:
@@ -497,7 +501,9 @@ class OrderService:
         menu_items = await self.menu_repo.get_all()
         active_items = [item for item in menu_items if item.is_active]
         
-        if self.subscription_tier == "basic":
+        normalized_tier = normalize_subscription_tier(self.subscription_tier)
+
+        if normalized_tier == "basic":
             # Basic tier: Simple menu items
             return [
                 {
@@ -509,8 +515,8 @@ class OrderService:
                 }
                 for item in active_items
             ]
-        elif self.subscription_tier in ["pro", "master"]:
-            # Pro/Master: Placeholder for future - will include recipes, ingredients, modifiers
+        elif normalized_tier == "full":
+            # Full tier: Placeholder for future - will include recipes, ingredients, modifiers
             # For now, return basic data with tier flag
             return [
                 {
@@ -518,8 +524,8 @@ class OrderService:
                     "name": item.name,
                     "price": float(item.price),
                     "category": item.category,
-                    "tier": self.subscription_tier,
-                    # TODO: Add recipes, ingredients, available modifiers for pro/master
+                    "tier": normalized_tier,
+                    # TODO: Add recipes, ingredients, available modifiers for full tier
                 }
                 for item in active_items
             ]
@@ -537,7 +543,7 @@ class OrderService:
             ]
 
     async def _should_use_real_time_deduction(self) -> bool:
-        if self.subscription_tier not in ("pro", "master"):
+        if not is_full_service_tier(self.subscription_tier):
             return False
         return await self.inventory_helper.is_real_time_enabled()
 

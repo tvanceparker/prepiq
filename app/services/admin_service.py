@@ -23,6 +23,7 @@ from app.repositories.sales_repo import SalesRepository
 from app.repositories.role_permissions_repo import RolePermissionRepository
 from app.repositories.roles_repo import RoleRepository
 from app.repositories.permissions_repo import PermissionRepository
+from app.services.utils.subscription_tiers import normalize_subscription_tier
 from app.repositories.employees_repo import EmployeeRepository
 from app.services.utils.permissions import (DEFAULT_ROLE_PERMISSIONS_BASIC,DEFAULT_ROLE_PERMISSIONS_MASTER,
                                             DEFAULT_ROLE_PERMISSIONS_PRO,DEFAULT_ROLES_BASIC,DEFAULT_ROLES_MASTER,DEFAULT_ROLES_PRO)
@@ -312,14 +313,11 @@ class AdminService:
     
     # Initialize Default Roles, Permissions, and Role-Permission Mappings
     async def initialize_defaults(self):
-        tier = self.subscription_tier.lower()
+        tier = normalize_subscription_tier(self.subscription_tier)
         if tier == "basic":
             roles = DEFAULT_ROLES_BASIC
             role_permissions = DEFAULT_ROLE_PERMISSIONS_BASIC
-        elif tier == "pro":
-            roles = DEFAULT_ROLES_PRO
-            role_permissions = DEFAULT_ROLE_PERMISSIONS_PRO
-        elif tier == "master":
+        elif tier == "full":
             roles = DEFAULT_ROLES_MASTER
             role_permissions = DEFAULT_ROLE_PERMISSIONS_MASTER
         else:

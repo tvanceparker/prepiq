@@ -39,6 +39,10 @@ from app.services.utils.purchase_order_note_helper import (
     serialize_purchase_order_notes,
 )
 from app.services.utils.forecast_contract import build_forecast_contract
+from app.services.utils.subscription_tiers import (
+    is_full_service_tier,
+    normalize_subscription_tier,
+)
 from typing import List, Dict, Optional, Any
 import math
 from decimal import Decimal
@@ -551,7 +555,7 @@ class EODService:
         return dict(recovered_forecast)
 
     async def _is_real_time_deduction_enabled(self) -> bool:
-        if not self.subscription_tier or self.subscription_tier not in ("pro", "master"):
+        if not is_full_service_tier(self.subscription_tier):
             return False
         return await self.inventory_helper.is_real_time_enabled()
 
@@ -1299,14 +1303,16 @@ class EODService:
             po_suggestions = 0
             po_written = 0
 
-            if self.subscription_tier == 'basic':
+            normalized_tier = normalize_subscription_tier(self.subscription_tier)
+
+            if normalized_tier == 'basic':
                 logger.info('[EOD] Basic tier run - minimal processing')
                 try:
                     self.basic_forecasting_engine = ForecastingEngineBasic(self.db, self.restaurant_id)
                     await self.basic_forecasting_engine.run(date)
                 except Exception as e:
                     logger.error('[EOD] Basic engine failure error=%s', e, exc_info=True)
-            elif self.subscription_tier == 'master' or self.subscription_tier == 'pro':
+            elif normalized_tier == 'full':
                 # Sales & deduction
                 usage_count = await self._stage_sales_deduction(date, ledger)
                 await self._stage_spoilage(date, ledger)
