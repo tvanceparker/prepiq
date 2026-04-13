@@ -32,6 +32,7 @@ from app.schemas.admin_dto import ErrorLogCreate
 from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
 import traceback
+from app.services.utils.graph_validation import normalize_component_type, units_are_compatible
 
 
 class MenuService:
@@ -54,6 +55,84 @@ class MenuService:
         self.error_log_repo = ErrorLogRepository(db, restaurant_id)
         self.supplier_repo = SupplierRepository(db, restaurant_id)
 
+    async def _get_component_reference_unit(
+        self,
+        reference_id: int,
+        ingredient_type: str,
+    ) -> str | None:
+        if ingredient_type == "ingredient":
+            ingredient = await self.ingredient_repo.get_by_id(reference_id)
+            if not ingredient:
+                raise ValueError(f"Ingredient reference {reference_id} not found.")
+            return getattr(ingredient, "unit", None)
+
+        if ingredient_type == "batch":
+            batch_recipe = await self.batch_recipe_repo.get_by_id(reference_id)
+            if not batch_recipe:
+                raise ValueError(f"Batch recipe reference {reference_id} not found.")
+            return getattr(batch_recipe, "yield_unit", None)
+
+        recipe = await self.recipe_repo.get_by_id(reference_id)
+        if not recipe:
+            raise ValueError(f"Recipe reference {reference_id} not found.")
+        return None
+
+    async def _recipe_reference_creates_cycle(
+        self,
+        current_recipe_id: int,
+        referenced_recipe_id: int,
+        visited: Optional[set[int]] = None,
+    ) -> bool:
+        if referenced_recipe_id == current_recipe_id:
+            return True
+
+        visited = visited or set()
+        if referenced_recipe_id in visited:
+            return False
+
+        visited.add(referenced_recipe_id)
+        nested_components = await self.recipe_ingredient_repo.get_by_recipe_id(referenced_recipe_id)
+        for component in nested_components:
+            component_type = normalize_component_type(getattr(component, "ingredient_type", None))
+            if component_type != "recipe":
+                continue
+            if await self._recipe_reference_creates_cycle(
+                current_recipe_id,
+                int(component.reference_id),
+                visited,
+            ):
+                return True
+
+        return False
+
+    async def _validate_recipe_ingredients(
+        self,
+        ingredients_data: List[dict],
+        current_recipe_id: Optional[int] = None,
+    ) -> None:
+        for ingredient_data in ingredients_data:
+            reference_id = ingredient_data.get("reference_id") or ingredient_data.get("ingredient_id")
+            if reference_id is None:
+                raise ValueError("Ingredient must include reference_id or ingredient_id")
+
+            ingredient_type = normalize_component_type(
+                ingredient_data.get("type") or ingredient_data.get("ingredient_type")
+            )
+
+            if ingredient_type == "recipe" and current_recipe_id is not None:
+                if await self._recipe_reference_creates_cycle(current_recipe_id, int(reference_id)):
+                    raise ValueError(
+                        f"Recipe reference {reference_id} would create a cycle."
+                    )
+
+            reference_unit = await self._get_component_reference_unit(reference_id, ingredient_type)
+            requested_unit = ingredient_data.get("unit")
+
+            if not units_are_compatible(requested_unit, reference_unit):
+                raise ValueError(
+                    f"Unit '{requested_unit}' is incompatible with {ingredient_type} unit '{reference_unit}' for reference {reference_id}."
+                )
+
     async def get_all_categories(self) -> list[str]:
         """Get all unique categories from menu items for this restaurant."""
         menu_items = await self.menu_repo.get_all()
@@ -64,13 +143,13 @@ class MenuService:
         return sorted(list(categories))
 
     async def get_all_recipes(self):
-        return await self.recipe_repo.get_all()
+        return await self.recipe_repo.get_active()
 
     async def get_all_ingredients(self):
         return await self.ingredient_repo.get_all()
 
     async def get_all_batch_recipes(self):
-        return await self.batch_recipe_repo.get_all()
+        return await self.batch_recipe_repo.get_active()
 
     async def upsert_ingredient_with_suppliers(self, data: dict):
         # Prepare the base ingredient data
@@ -258,7 +337,7 @@ class MenuService:
         return enriched_ingredients
 
     async def get_all_recipes_with_ingredients(self) -> List[Dict]:
-        recipes = await self.recipe_repo.get_all()
+        recipes = await self.recipe_repo.get_active()
         results = []
 
         for recipe in recipes:
@@ -271,9 +350,12 @@ class MenuService:
                 if ri.ingredient_type == "ingredient":
                     ingredient = await self.ingredient_repo.get_by_id(ri.reference_id)
                     name = ingredient.name if ingredient else "Unknown Ingredient"
-                else:
+                elif ri.ingredient_type == "batch":
                     batch = await self.batch_recipe_repo.get_by_id(ri.reference_id)
                     name = batch.name if batch else "Unknown Batch"
+                else:
+                    nested_recipe = await self.recipe_repo.get_by_id(ri.reference_id)
+                    name = nested_recipe.name if nested_recipe else "Unknown Recipe"
 
                 ingredient_details.append(
                     {
@@ -290,11 +372,58 @@ class MenuService:
                     "recipe_id": recipe.recipe_id,
                     "name": recipe.name,
                     "description": recipe.description,
+                    "is_active": getattr(recipe, "is_active", True),
                     "ingredients": ingredient_details,
                     "restaurant_id": self.restaurant_id,
                 }
             )
         return results
+
+    async def get_recipe_usage(self, recipe_id: int) -> Dict:
+        recipe = await self.recipe_repo.get_by_id(recipe_id)
+        if not recipe:
+            raise ValueError("Recipe not found")
+
+        menu_item_links = await self.menu_recipe_repo.get_by_recipe(recipe_id)
+        nested_recipe_links = await self.recipe_ingredient_repo.get_all_by_reference_id_and_type(
+            "recipe", recipe_id
+        )
+
+        menu_items = []
+        for link in menu_item_links:
+            menu_item = await self.menu_repo.get_by_id(link.menu_item_id)
+            if menu_item:
+                menu_items.append(
+                    {
+                        "menu_item_id": menu_item.menu_item_id,
+                        "menu_item_name": menu_item.name,
+                        "is_active": getattr(menu_item, "is_active", True),
+                    }
+                )
+
+        nested_in_recipes = []
+        for link in nested_recipe_links:
+            parent_recipe = await self.recipe_repo.get_by_id(link.recipe_id)
+            if parent_recipe:
+                nested_in_recipes.append(
+                    {
+                        "recipe_id": parent_recipe.recipe_id,
+                        "recipe_name": parent_recipe.name,
+                        "is_active": getattr(parent_recipe, "is_active", True),
+                    }
+                )
+
+        return {
+            "recipe_id": recipe.recipe_id,
+            "recipe_name": recipe.name,
+            "is_active": getattr(recipe, "is_active", True),
+            "usage": {
+                "menu_items": menu_items,
+                "nested_in_recipes": nested_in_recipes,
+                "menu_item_count": len(menu_items),
+                "nested_recipe_count": len(nested_in_recipes),
+            },
+        }
 
     async def update_recipe_with_ingredients(self, recipe_dict: dict):
         updated_recipe = None
@@ -302,6 +431,9 @@ class MenuService:
         name = recipe_dict["name"]
         description = recipe_dict["description"]
         ingredients_data = recipe_dict["ingredients"]
+
+        if ingredients_data:
+            await self._validate_recipe_ingredients(ingredients_data, current_recipe_id=recipe_id)
 
         async with self.db.begin():  # Wrap the whole operation in a single transaction
             if recipe_id:
@@ -337,13 +469,16 @@ class MenuService:
                 print(f'adding new ingredients: {ingredients_data}')
                 for ing in ingredients_data:
                     print(f'adding ingredient: {ing}')
+                    ingredient_type = normalize_component_type(
+                        ing.get("type") or ing.get("ingredient_type")
+                    )
                     ingredient = await self.recipe_ingredient_repo.create(
                         {
                             "recipe_id": recipe_id,
-                            "quantity_used": ing["quantity"],
+                            "quantity_used": ing.get("quantity", ing.get("quantity_used")),
                             "unit": ing["unit"],
-                            "ingredient_type": ing["type"],
-                            "reference_id": ing.get("reference_id"),
+                            "ingredient_type": ingredient_type,
+                            "reference_id": ing.get("reference_id") or ing.get("ingredient_id"),
                         }
                     )
                     print(f'added ingredient: {ingredient}')
@@ -363,22 +498,27 @@ class MenuService:
         return {**recipe_dict, "ingredients": ingredients}
 
     async def delete_recipe(self, recipe_id: int):
-        async with self.db.begin():  # Ensure the transaction is handled correctly
-            # Step 1: Delete all recipe ingredients
-            deleted_ingredients_count = await self.recipe_ingredient_repo.delete_by_recipe_id(recipe_id)
-            
-            # Step 2: Delete the recipe itself
-            recipe = await self.recipe_repo.get_by_id(recipe_id)
-            if not recipe:
-                raise ValueError("Recipe not found")
-            
-            await self.recipe_repo.delete(recipe_id)
-            
-            # Optionally, return how many ingredients were deleted
+        recipe = await self.recipe_repo.get_by_id(recipe_id)
+        if not recipe:
+            raise ValueError("Recipe not found")
+
+        if getattr(recipe, "is_active", True) is False:
             return {
-                "message": f"Recipe and {deleted_ingredients_count} ingredients deleted successfully",
-                "deleted_ingredients_count": deleted_ingredients_count,
+                "message": "Recipe already archived",
+                "archived": True,
+                "usage": (await self.get_recipe_usage(recipe_id))["usage"],
             }
+
+        usage = await self.get_recipe_usage(recipe_id)
+
+        async with self.db.begin():
+            await self.recipe_repo.update(recipe_id, {"is_active": False})
+
+        return {
+            "message": "Recipe archived successfully",
+            "archived": True,
+            "usage": usage["usage"],
+        }
 
     async def delete_ingredient(self, ingredient_id: int):
         async with self.db.begin():
@@ -527,6 +667,12 @@ class MenuService:
                             )
                             ingredient_name = batch_data.name
                             ingredient_id = batch_data.batch_recipe_id
+                        elif ingredient.ingredient_type == "recipe":
+                            recipe_data_ref = await self.recipe_repo.get_by_id(
+                                ingredient.reference_id
+                            )
+                            ingredient_name = recipe_data_ref.name if recipe_data_ref else "Unknown Recipe"
+                            ingredient_id = ingredient.reference_id
                         else:
                             ingredient_name = "Unknown"
                             ingredient_id = ingredient.reference_id

@@ -89,6 +89,17 @@ async def list_recipes(service: MenuService = Depends(get_menu_service)):
     return await service.get_all_recipes_with_ingredients()
 
 
+@router.get("/recipes/{recipe_id}/usage")
+async def get_recipe_usage(
+    recipe_id: int,
+    menu_service: MenuService = Depends(get_menu_service),
+):
+    try:
+        return await menu_service.get_recipe_usage(recipe_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+
+
 @router.patch("/recipes/{recipe_id}")
 async def update_recipe_with_ingredients(
     recipe_id: int,
@@ -131,8 +142,7 @@ async def delete_recipe(
     menu_service: MenuService = Depends(get_menu_service),
 ):
     try:
-        response = await menu_service.delete_recipe(recipe_id)
-        return {"message": response["message"], "deleted_ingredients_count": response["deleted_ingredients_count"]}
+        return await menu_service.delete_recipe(recipe_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

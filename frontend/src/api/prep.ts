@@ -1,4 +1,13 @@
 import { get, post, patch, del } from './index';
+import type {
+  BatchRecipe,
+  BatchRecipePayload,
+  BatchRecipeUsageResponse,
+  CreateWasteLogRequest,
+  IngredientOption,
+  PrepLog,
+  WasteLog,
+} from '../interfaces/prep';
 
 // ====================== Types ======================
 
@@ -59,7 +68,7 @@ export interface WasteLogData {
  */
 export const getPrepLogs = async (params: PrepLogParams = {}): Promise<any> => {
   const query = new URLSearchParams(params as any).toString();
-  return await get(`/prep/logs${query ? `?${query}` : ''}`);
+  return await get<PrepLog[]>(`/prep/logs${query ? `?${query}` : ''}`);
 };
 
 // ====================== Prep Schedule ======================
@@ -105,13 +114,19 @@ export const updatePrepSchedule = async (prepData: PrepScheduleData): Promise<an
  * Fetch all batch recipes
  */
 export const getBatchRecipes = async (): Promise<any> => {
-  return await get('/prep/view_batch_recipes');
+  return await get<BatchRecipe[]>('/prep/view_batch_recipes');
+};
+
+export const getBatchRecipeUsage = async (
+  batchRecipeId: number
+): Promise<BatchRecipeUsageResponse> => {
+  return await get<BatchRecipeUsageResponse>(`/prep/batch_recipes/${batchRecipeId}/usage`);
 };
 
 /**
  * Create a new batch recipe
  */
-export const createBatchRecipe = async (batchData: BatchRecipeData): Promise<any> => {
+export const createBatchRecipe = async (batchData: BatchRecipePayload): Promise<any> => {
   return await post('/prep/batch_recipes/create', batchData);
 };
 
@@ -120,12 +135,16 @@ export const createBatchRecipe = async (batchData: BatchRecipeData): Promise<any
  */
 export const updateBatchRecipe = async (
   batch_recipe_id: number,
-  updateData: Partial<BatchRecipeData>
+  updateData: Partial<BatchRecipePayload>
 ): Promise<any> => {
   if (!batch_recipe_id) {
     throw new Error('batch_recipe_id is required to update batch recipe.');
   }
   return await patch(`/prep/batch_recipes/${batch_recipe_id}`, updateData);
+};
+
+export const deleteBatchRecipe = async (batchRecipeId: number): Promise<any> => {
+  return await del(`/prep/batch_recipes/${batchRecipeId}`);
 };
 
 // ====================== Ingredients ======================
@@ -134,7 +153,7 @@ export const updateBatchRecipe = async (
  * Fetch all available ingredients
  */
 export const getIngredients = async (): Promise<any> => {
-  return await get('/prep/get_ingredients');
+  return await get<IngredientOption[]>('/prep/get_ingredients');
 };
 
 // ====================== Waste Logs ======================
@@ -144,12 +163,12 @@ export const getIngredients = async (): Promise<any> => {
  */
 export const getWasteLogs = async (params: WasteLogParams = {}): Promise<any> => {
   const query = new URLSearchParams(params as any).toString();
-  return await get(`/prep/waste-logs${query ? `?${query}` : ''}`);
+  return await get<WasteLog[]>(`/prep/waste-logs${query ? `?${query}` : ''}`);
 };
 
 /**
  * Create a manual waste log entry
  */
-export const createWasteLog = async (wasteData: WasteLogData): Promise<any> => {
+export const createWasteLog = async (wasteData: CreateWasteLogRequest): Promise<any> => {
   return await post('/prep/waste-logs', wasteData);
 };

@@ -1054,16 +1054,12 @@ class ForecastingEngine:
                 )
 
                 for mir in menu_item_recipes:
-                    recipe_id = mir.recipe_id
-                    recipe_ingredients = (
-                        await self.recipe_ingredient_repo.get_by_recipe_id(recipe_id)
+                    batch_requirements = await self._expand_recipe_batch_requirements(
+                        mir.recipe_id,
+                        predicted_qty_decimal,
                     )
-                    for ri in recipe_ingredients:
-                        if ri.ingredient_type == "batch":
-                            batch_recipe_id = ri.reference_id
-                            quantity_used = Decimal(ri.quantity_used)
-                            total_qty = quantity_used * predicted_qty_decimal
-                            batch_breakdown[forecast_date][batch_recipe_id] += total_qty
+                    for batch_recipe_id, total_qty in batch_requirements.items():
+                        batch_breakdown[forecast_date][batch_recipe_id] += total_qty
 
         result: List[Dict[str, Any]] = []
         for forecast_date, batches in batch_breakdown.items():
@@ -1097,17 +1093,15 @@ class ForecastingEngine:
             )
 
             for recipe_id in recipe_ids:
-                recipe_ingredients = await self.recipe_ingredient_repo.get_by_recipe_id(
-                    recipe_id
+                ingredient_requirements = await self._expand_recipe_ingredient_requirements(
+                    recipe_id,
+                    predicted_quantity,
                 )
-                for ri in recipe_ingredients:
-                    if ri.ingredient_type == "ingredient":
-                        ingredient_id = ri.reference_id
-                        total_qty = Decimal(ri.quantity_used) * predicted_quantity
-                        ingredient_ids_used.add(ingredient_id)
-                        ingredient_map[forecast_date][
-                            (ingredient_id, "menu_item", menu_item_id)
-                        ] += total_qty
+                for ingredient_id, total_qty in ingredient_requirements.items():
+                    ingredient_ids_used.add(ingredient_id)
+                    ingredient_map[forecast_date][
+                        (ingredient_id, "menu_item", menu_item_id)
+                    ] += total_qty
 
         for batch in batch_recipe_breakdown:
             batch_recipe_id = batch["batch_recipe_id"]
@@ -1164,6 +1158,67 @@ class ForecastingEngine:
                 )
 
         return result
+
+    async def _expand_recipe_batch_requirements(
+        self,
+        recipe_id: int,
+        multiplier: Decimal,
+        visited: Optional[set[int]] = None,
+    ) -> Dict[int, Decimal]:
+        visited = visited or set()
+        if recipe_id in visited:
+            raise ValueError(f"Recipe graph cycle detected while expanding recipe {recipe_id}")
+
+        visited.add(recipe_id)
+        recipe_ingredients = await self.recipe_ingredient_repo.get_by_recipe_id(recipe_id)
+        batch_requirements: Dict[int, Decimal] = defaultdict(Decimal)
+
+        for component in recipe_ingredients:
+            component_type = getattr(component, "ingredient_type", "ingredient")
+            component_multiplier = Decimal(str(component.quantity_used or 0)) * multiplier
+            if component_type == "batch":
+                batch_requirements[int(component.reference_id)] += component_multiplier
+            elif component_type == "recipe":
+                nested_requirements = await self._expand_recipe_batch_requirements(
+                    int(component.reference_id),
+                    component_multiplier,
+                    visited.copy(),
+                )
+                for batch_recipe_id, qty in nested_requirements.items():
+                    batch_requirements[batch_recipe_id] += qty
+
+        return batch_requirements
+
+    async def _expand_recipe_ingredient_requirements(
+        self,
+        recipe_id: int,
+        multiplier: Decimal,
+        visited: Optional[set[int]] = None,
+    ) -> Dict[int, Decimal]:
+        visited = visited or set()
+        if recipe_id in visited:
+            raise ValueError(f"Recipe graph cycle detected while expanding recipe {recipe_id}")
+
+        visited.add(recipe_id)
+        recipe_ingredients = await self.recipe_ingredient_repo.get_by_recipe_id(recipe_id)
+        ingredient_requirements: Dict[int, Decimal] = defaultdict(Decimal)
+
+        for component in recipe_ingredients:
+            component_type = getattr(component, "ingredient_type", "ingredient")
+            component_multiplier = Decimal(str(component.quantity_used or 0)) * multiplier
+
+            if component_type == "ingredient":
+                ingredient_requirements[int(component.reference_id)] += component_multiplier
+            elif component_type == "recipe":
+                nested_requirements = await self._expand_recipe_ingredient_requirements(
+                    int(component.reference_id),
+                    component_multiplier,
+                    visited.copy(),
+                )
+                for ingredient_id, qty in nested_requirements.items():
+                    ingredient_requirements[ingredient_id] += qty
+
+            return ingredient_requirements
 
     async def generate_batch_prep_suggestions(
         self,

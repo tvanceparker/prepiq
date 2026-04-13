@@ -2,11 +2,9 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.exc import IntegrityError
 from app.repositories.base_repository import BaseRepository
 from app.db.models.recipes_orm import Recipe
-from app.schemas.menu_dto import RecipeCreate, RecipeUpdate
-from typing import List, Optional
+from typing import List
 
 
 class RecipeRepository(BaseRepository):
@@ -14,3 +12,12 @@ class RecipeRepository(BaseRepository):
         self.db = db
         self.restaurant_id = restaurant_id
         super().__init__(db, Recipe, restaurant_id, pk_field="recipe_id")
+
+    async def get_active(self) -> List[Recipe]:
+        result = await self.db.execute(
+            select(Recipe).where(
+                Recipe.restaurant_id == self.restaurant_id,
+                Recipe.is_active.is_(True),
+            )
+        )
+        return result.scalars().all()

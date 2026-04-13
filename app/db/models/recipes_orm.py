@@ -1,6 +1,6 @@
 # db/models/recipes_orm.py
 
-from sqlalchemy import Column, Integer, String, Text, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, Text, ForeignKey
 from app.db.session import Base
 from sqlalchemy.orm import relationship
 
@@ -14,6 +14,7 @@ class Recipe(Base):
     )
     name = Column(String(100), nullable=False)
     description = Column(Text)
+    is_active = Column(Boolean, default=True, nullable=False)
 
     # Relationship with Restaurant
     restaurant = relationship("Restaurant", back_populates="recipes")

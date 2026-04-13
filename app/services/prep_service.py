@@ -21,6 +21,7 @@ from typing import List, Dict, Optional
 from decimal import Decimal
 from datetime import date, timedelta, datetime
 from app.services.utils.unit_conversion import convert_unit, normalize_unit
+from app.services.utils.graph_validation import normalize_component_type, units_are_compatible
 import logging
 
 
@@ -46,6 +47,80 @@ class PrepService:
         self.inventory_lot_repo = InventoryLotRepository(db, restaurant_id)
         self.inventory_repo = InventoryRepository(db, restaurant_id)
         self.employee_repo = EmployeeRepository(db, restaurant_id)
+
+    async def _get_batch_component_reference_unit(
+        self,
+        reference_id: int,
+        ingredient_type: str,
+    ) -> str | None:
+        if ingredient_type == "ingredient":
+            ingredient = await self.ingredient_repo.get_by_id(reference_id)
+            if not ingredient:
+                raise ValueError(f"Ingredient reference {reference_id} not found.")
+            return getattr(ingredient, "unit", None)
+
+        batch_recipe = await self.batch_recipe_repo.get_by_id(reference_id)
+        if not batch_recipe:
+            raise ValueError(f"Batch recipe reference {reference_id} not found.")
+        return getattr(batch_recipe, "yield_unit", None)
+
+    async def _batch_reference_creates_cycle(
+        self,
+        current_batch_id: int,
+        referenced_batch_id: int,
+        visited: Optional[set[int]] = None,
+    ) -> bool:
+        if referenced_batch_id == current_batch_id:
+            return True
+
+        visited = visited or set()
+        if referenced_batch_id in visited:
+            return False
+
+        visited.add(referenced_batch_id)
+        nested_components = await self.batch_recipe_ingredient_repo.get_by_batch_recipe_id(
+            referenced_batch_id
+        )
+        for component in nested_components:
+            component_type = normalize_component_type(getattr(component, "ingredient_type", None))
+            if component_type != "batch":
+                continue
+            if await self._batch_reference_creates_cycle(
+                current_batch_id,
+                int(component.reference_id),
+                visited,
+            ):
+                return True
+
+        return False
+
+    async def _validate_batch_recipe_ingredients(
+        self,
+        ingredients: List[dict],
+        current_batch_id: Optional[int] = None,
+    ) -> None:
+        for ingredient_data in ingredients:
+            reference_id = ingredient_data.get("reference_id") or ingredient_data.get("ingredient_id")
+            if reference_id is None:
+                raise ValueError("Ingredient must include reference_id or ingredient_id")
+
+            ingredient_type = normalize_component_type(ingredient_data.get("ingredient_type"))
+            reference_unit = await self._get_batch_component_reference_unit(
+                reference_id,
+                ingredient_type,
+            )
+            requested_unit = ingredient_data.get("unit")
+
+            if ingredient_type == "batch" and current_batch_id is not None:
+                if await self._batch_reference_creates_cycle(current_batch_id, int(reference_id)):
+                    raise ValueError(
+                        f"Batch recipe reference {reference_id} would create a cycle."
+                    )
+
+            if not units_are_compatible(requested_unit, reference_unit):
+                raise ValueError(
+                    f"Unit '{requested_unit}' is incompatible with {ingredient_type} unit '{reference_unit}' for reference {reference_id}."
+                )
 
 
         #route call
@@ -503,6 +578,8 @@ class PrepService:
         ) -> dict:
             """Create a new batch recipe with associated ingredients."""
 
+            await self._validate_batch_recipe_ingredients(ingredients)
+
             # 1. Create the batch recipe entry
             batch_recipe_data = {
                 "restaurant_id": self.restaurant_id,
@@ -522,7 +599,7 @@ class PrepService:
                     if reference_id is None:
                         raise ValueError("Ingredient must include reference_id or ingredient_id")
 
-                    ingredient_type = ing.get("ingredient_type") or "ingredient"
+                    ingredient_type = normalize_component_type(ing.get("ingredient_type"))
                     ingredient_create = BatchRecipeIngredientCreate(
                         restaurant_id=self.restaurant_id,
                         batch_recipe_id=new_recipe.batch_recipe_id,
@@ -595,6 +672,11 @@ class PrepService:
 
             # 3. Update ingredients if provided
             if ingredients is not None:
+                await self._validate_batch_recipe_ingredients(
+                    ingredients,
+                    current_batch_id=batch_recipe_id,
+                )
+
                 # Delete existing ingredients
                 await self.batch_recipe_ingredient_repo.delete_all_by_batch_recipe_id(
                     batch_recipe_id=batch_recipe_id
@@ -605,7 +687,7 @@ class PrepService:
                     reference_id = ing.get("reference_id") or ing.get("ingredient_id")
                     if reference_id is None:
                         raise ValueError("Ingredient must include reference_id or ingredient_id")
-                    ingredient_type = ing.get("ingredient_type") or "ingredient"
+                    ingredient_type = normalize_component_type(ing.get("ingredient_type"))
 
                     await self.batch_recipe_ingredient_repo.create(
                         {
@@ -620,8 +702,90 @@ class PrepService:
 
         print(f"✅ Batch recipe {batch_recipe_id} updated.")
 
+    async def delete_batch_recipe(self, batch_recipe_id: int) -> dict:
+        batch_recipe = await self.batch_recipe_repo.get_by_id(batch_recipe_id)
+        if not batch_recipe:
+            raise ValueError(f"Batch recipe ID {batch_recipe_id} not found.")
+
+        if getattr(batch_recipe, "is_active", True) is False:
+            return {
+                "message": "Batch recipe already archived",
+                "archived": True,
+                "usage": (await self.get_batch_recipe_usage(batch_recipe_id))["usage"],
+            }
+
+        usage = await self.get_batch_recipe_usage(batch_recipe_id)
+
+        async with self.db.begin():
+            await self.batch_recipe_repo.update(batch_recipe_id, {"is_active": False})
+
+        return {
+            "message": "Batch recipe archived successfully",
+            "archived": True,
+            "usage": usage["usage"],
+        }
+
+    async def get_batch_recipe_usage(self, batch_recipe_id: int) -> dict:
+        batch_recipe = await self.batch_recipe_repo.get_by_id(batch_recipe_id)
+        if not batch_recipe:
+            raise ValueError(f"Batch recipe ID {batch_recipe_id} not found.")
+
+        recipe_dependencies = await self.recipe_ingredient_repo.get_all_by_reference_id_and_type(
+            ingredient_type="batch",
+            reference_id=batch_recipe_id,
+        )
+        batch_dependencies = await self.batch_recipe_ingredient_repo.get_all_by_reference_id_and_type(
+            ingredient_type="batch",
+            reference_id=batch_recipe_id,
+        )
+        prep_schedule_dependencies = await self.prep_schedule_repo.get_by_field(
+            "batch_recipe_id",
+            batch_recipe_id,
+        )
+        inventory_lot_dependencies = await self.inventory_lot_repo.get_all_by_batch_recipe_id(
+            batch_recipe_id
+        )
+
+        used_in_recipes = []
+        for dependency in recipe_dependencies:
+            recipe = await self.recipe_repo.get_by_id(dependency.recipe_id)
+            if recipe:
+                used_in_recipes.append(
+                    {
+                        "recipe_id": recipe.recipe_id,
+                        "recipe_name": recipe.name,
+                        "is_active": getattr(recipe, "is_active", True),
+                    }
+                )
+
+        used_in_batches = []
+        for dependency in batch_dependencies:
+            parent_batch = await self.batch_recipe_repo.get_by_id(dependency.batch_recipe_id)
+            if parent_batch:
+                used_in_batches.append(
+                    {
+                        "batch_recipe_id": parent_batch.batch_recipe_id,
+                        "batch_recipe_name": parent_batch.name,
+                        "is_active": getattr(parent_batch, "is_active", True),
+                    }
+                )
+
+        return {
+            "batch_recipe_id": batch_recipe.batch_recipe_id,
+            "batch_recipe_name": batch_recipe.name,
+            "is_active": getattr(batch_recipe, "is_active", True),
+            "usage": {
+                "recipes": used_in_recipes,
+                "batches": used_in_batches,
+                "prep_schedule_count": len(prep_schedule_dependencies),
+                "inventory_lot_count": len(inventory_lot_dependencies),
+                "recipe_count": len(used_in_recipes),
+                "batch_count": len(used_in_batches),
+            },
+        }
+
     async def view_batch_recipes(self) -> List[dict]:
-        batch_recipes = await self.batch_recipe_repo.get_all()
+        batch_recipes = await self.batch_recipe_repo.get_active()
         result = []
 
         for batch in batch_recipes:
@@ -693,6 +857,7 @@ class PrepService:
                     "yield_unit": batch.yield_unit,
                     "estimated_prep_time_minutes": batch.estimated_prep_time_minutes,
                     "shelf_life_days": batch.shelf_life_days,
+                    "is_active": getattr(batch, "is_active", True),
                     "ingredients": ingredient_details,
                     "used_in_recipes": used_in_details,
                 }

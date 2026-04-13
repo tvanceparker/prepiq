@@ -1,14 +1,6 @@
 # app/db/models/recipe_ingredients_orm.py
 
-from sqlalchemy import (
-    Column,
-    Integer,
-    ForeignKey,
-    Enum,
-    DECIMAL,
-    String,
-    ForeignKeyConstraint,
-)
+from sqlalchemy import Column, Integer, ForeignKey, Enum, DECIMAL, String
 from app.db.session import Base
 from sqlalchemy.orm import relationship, foreign
 import enum
@@ -17,6 +9,7 @@ import enum
 class IngredientType(str, enum.Enum):
     ingredient = "ingredient"
     batch = "batch"
+    recipe = "recipe"
 
 
 class RecipeIngredient(Base):
@@ -32,7 +25,7 @@ class RecipeIngredient(Base):
 
     reference_id = Column(
         Integer, nullable=False
-    )  # This can be either an ingredient_id or batch_recipe_id
+    )  # This can point to an ingredient, batch_recipe, or recipe
     ingredient_type = Column(
         Enum(IngredientType), nullable=False, default=IngredientType.ingredient
     )
@@ -67,21 +60,11 @@ class RecipeIngredient(Base):
         overlaps="ingredient,recipe_ingredients",
     )
 
-    # ForeignKey for reference_id to be either an ingredient_id or batch_recipe_id
-    __table_args__ = (
-        ForeignKeyConstraint(
-            ["reference_id"],
-            ["ingredients.ingredient_id"],
-            name="fk_reference_to_ingredients",
-            deferrable=True,
-            initially="DEFERRED",
-        ),
-        ForeignKeyConstraint(
-            ["reference_id"],
-            ["batch_recipes.batch_recipe_id"],
-            name="fk_reference_to_batch_recipes",
-            deferrable=True,
-            initially="DEFERRED",
-        ),
+    source_recipe = relationship(
+        "Recipe",
+        primaryjoin="and_(RecipeIngredient.ingredient_type == 'recipe', foreign(RecipeIngredient.reference_id) == Recipe.recipe_id)",
+        uselist=False,
+        viewonly=True,
+        overlaps="recipe_ingredients,recipe",
     )
 
