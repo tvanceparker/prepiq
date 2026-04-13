@@ -602,6 +602,7 @@ class InventoryService:
         forecast_state = self._build_forecast_state(
             forecast_source="cached" if use_cached_forecast else "fresh",
             forecast_source_type="eod" if use_cached_forecast else "on_demand",
+            forecast_run_date=resolved_cached_run_date if use_cached_forecast else None,
             forecast_generated_at=None,
             forecast_reused=use_cached_forecast,
             forecast_stale=False,
@@ -1161,9 +1162,8 @@ class InventoryService:
         *,
         forecast_source: str,
         forecast_source_type: str,
-        forecast_run_date: Optional[date],
+        forecast_run_date: Optional[date] = None,
         forecast_generated_at: Optional[str],
-        forecast_run_date: Optional[date],
         forecast_reused: bool,
         forecast_stale: bool,
         forecast_status: str,
@@ -1174,6 +1174,7 @@ class InventoryService:
         return build_forecast_contract(
             forecast_source=forecast_source,
             forecast_source_type=forecast_source_type,
+            forecast_run_date=forecast_run_date,
             forecast_generated_at=forecast_generated_at,
             forecast_reused=forecast_reused,
             forecast_stale=forecast_stale,
@@ -1272,7 +1273,7 @@ class InventoryService:
                 {
                     "daily_breakdown": [],
                     "unit": unit,
-                    forecast_run_date=resolved_cached_run_date,
+                    "forecast_run_date": resolved_cached_run_date,
                 },
             )
             ingredient_forecast[ingredient_id]["daily_breakdown"].append(

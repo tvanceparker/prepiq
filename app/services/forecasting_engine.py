@@ -489,8 +489,8 @@ class ForecastingEngine:
         feature_df["year"] = feature_df["date"].dt.year
 
         split_idx = int(len(feature_df) * 0.8)
-        train_df = feature_df.iloc[:split_idx]
-        valid_df = feature_df.iloc[split_idx:]
+        train_df = feature_df.iloc[:split_idx].reset_index(drop=True)
+        valid_df = feature_df.iloc[split_idx:].reset_index(drop=True)
 
         base_features = ["day_of_week", "day", "month", "year"]
         extra_feats: List[str] = []
@@ -511,6 +511,14 @@ class ForecastingEngine:
         X_valid = valid_df[base_features + extra_feats]
         y_valid = valid_df["quantity_sold"]
 
+        numeric_features = [feature for feature in base_features + extra_feats if feature != "day_of_week"]
+        for frame in (X_train, X_valid):
+            for column in numeric_features:
+                if column in frame.columns:
+                    frame[column] = pd.to_numeric(frame[column], errors="coerce").fillna(0.0)
+        y_train = pd.to_numeric(y_train, errors="coerce").fillna(0.0)
+        y_valid = pd.to_numeric(y_valid, errors="coerce").fillna(0.0)
+
         if not h2o.cluster().is_running():
             h2o.init()
 
@@ -521,15 +529,16 @@ class ForecastingEngine:
             len(valid_df),
         )
 
-        train_h2o = h2o.H2OFrame(
-            pd.concat([X_train, y_train.reset_index(drop=True)], axis=1)
-        )
-        valid_h2o = h2o.H2OFrame(
-            pd.concat([X_valid, y_valid.reset_index(drop=True)], axis=1)
-        )
+        train_h2o = h2o.H2OFrame(pd.concat([X_train.reset_index(drop=True), y_train.reset_index(drop=True)], axis=1))
+        valid_h2o = h2o.H2OFrame(pd.concat([X_valid.reset_index(drop=True), y_valid.reset_index(drop=True)], axis=1))
 
         train_h2o["day_of_week"] = train_h2o["day_of_week"].asfactor()
         valid_h2o["day_of_week"] = valid_h2o["day_of_week"].asfactor()
+        for column in numeric_features:
+            if column in train_h2o.columns:
+                train_h2o[column] = train_h2o[column].asnumeric()
+            if column in valid_h2o.columns:
+                valid_h2o[column] = valid_h2o[column].asnumeric()
         train_h2o["quantity_sold"] = train_h2o["quantity_sold"].asnumeric()
         valid_h2o["quantity_sold"] = valid_h2o["quantity_sold"].asnumeric()
 
