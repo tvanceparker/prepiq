@@ -1,7 +1,8 @@
 # app/services/inventory_stats_service.py
 
+from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import Dict, Optional
 import math
 from statistics import mean, pstdev
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +40,30 @@ class InventoryStatsService:
         self.ingredient_repo = IngredientRepository(db, restaurant_id)
         self.ingredient_supplier_repo = IngredientSupplierRepository(db, restaurant_id)
         self.forecasting_engine = ForecastingEngine(db, restaurant_id)
+        self._sales_derived_usage_cache: Dict[int, Dict[int, Dict[date, Decimal]]] = {}
+
+    async def _get_sales_derived_usage(
+        self, days: int
+    ) -> Dict[int, Dict[date, Decimal]]:
+        cached_usage = self._sales_derived_usage_cache.get(days)
+        if cached_usage is not None:
+            logger.debug(
+                "[INV STATS] SalesDerivedUsage cache_hit days=%s ingredients=%s",
+                days,
+                len(cached_usage),
+            )
+            return cached_usage
+
+        usage_by_ingredient = await self.forecasting_engine.derive_ingredient_usage_from_sales(
+            days
+        )
+        self._sales_derived_usage_cache[days] = usage_by_ingredient
+        logger.debug(
+            "[INV STATS] SalesDerivedUsage cache_fill days=%s ingredients=%s",
+            days,
+            len(usage_by_ingredient),
+        )
+        return usage_by_ingredient
 
     @log_method("InventoryStats: Average Daily Usage")
     async def get_average_daily_usage(
@@ -66,9 +91,7 @@ class InventoryStatsService:
             logger.debug(
                 f"[INV STATS] AvgDaily Fallback ingredient={ingredient_id} log_samples={len(usage_data)} using=sales-derived"
             )
-            usage_by_ingredient = (
-                await self.forecasting_engine.derive_ingredient_usage_from_sales(days)
-            )
+            usage_by_ingredient = await self._get_sales_derived_usage(days)
             ingredient_usage = usage_by_ingredient.get(ingredient_id, {})
             daily_totals = list(ingredient_usage.values())
 
@@ -108,9 +131,7 @@ class InventoryStatsService:
             logger.debug(
                 f"[INV STATS] StdDev Fallback ingredient={ingredient_id} log_samples={len(usage_data)} using=sales-derived"
             )
-            usage_by_ingredient = (
-                await self.forecasting_engine.derive_ingredient_usage_from_sales(days)
-            )
+            usage_by_ingredient = await self._get_sales_derived_usage(days)
             ingredient_usage = usage_by_ingredient.get(ingredient_id, {})
             daily_totals = list(ingredient_usage.values())
 
@@ -266,7 +287,7 @@ class InventoryStatsService:
             logger.debug(
                 f"[INV STATS] TotalUsage Fallback ingredient={ingredient_id} using=sales-derived days={days}"
             )
-            usage_by_ingredient = await self.forecasting_engine.derive_ingredient_usage_from_sales(days)
+            usage_by_ingredient = await self._get_sales_derived_usage(days)
             ingredient_usage = usage_by_ingredient.get(ingredient_id, {})
             total = sum((Decimal(value) for value in ingredient_usage.values()), Decimal("0"))
 
