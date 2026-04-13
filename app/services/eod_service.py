@@ -121,6 +121,7 @@ class EODService:
             return build_forecast_contract(
                 forecast_source="cached",
                 forecast_source_type="eod",
+                forecast_run_date=run_date,
                 forecast_generated_at=forecast_generated_at,
                 forecast_reused=True,
                 forecast_stale=forecast_stale,
@@ -133,6 +134,7 @@ class EODService:
             return build_forecast_contract(
                 forecast_source="cached",
                 forecast_source_type="eod",
+                forecast_run_date=run_date,
                 forecast_generated_at=forecast_generated_at,
                 forecast_reused=True,
                 forecast_stale=forecast_stale,
@@ -144,6 +146,7 @@ class EODService:
             return build_forecast_contract(
                 forecast_source="cached",
                 forecast_source_type="eod",
+                forecast_run_date=run_date,
                 forecast_generated_at=forecast_generated_at,
                 forecast_reused=True,
                 forecast_stale=True,
@@ -154,6 +157,7 @@ class EODService:
         return build_forecast_contract(
             forecast_source="cached",
             forecast_source_type="eod",
+            forecast_run_date=run_date,
             forecast_generated_at=forecast_generated_at,
             forecast_reused=True,
             forecast_stale=False,

@@ -57,6 +57,7 @@ class SalesForecastService:
     @staticmethod
     def _build_forecast_state(
         *,
+        forecast_run_date: Optional[date],
         forecast_generated_at: Optional[datetime],
         forecast_stale: bool,
         forecast_status: Literal["ready", "stale", "degraded", "failed"],
@@ -67,6 +68,7 @@ class SalesForecastService:
         return build_forecast_contract(
             forecast_source="cached",
             forecast_source_type="eod",
+            forecast_run_date=forecast_run_date,
             forecast_generated_at=forecast_generated_at,
             forecast_reused=True,
             forecast_stale=forecast_stale,
@@ -134,6 +136,7 @@ class SalesForecastService:
 
         if authoritative_run_date is None:
             return self._build_forecast_state(
+                forecast_run_date=None,
                 forecast_generated_at=None,
                 forecast_stale=True,
                 forecast_status="failed",
@@ -147,6 +150,7 @@ class SalesForecastService:
 
         if not ledger or not getattr(ledger, "finalized", False):
             return self._build_forecast_state(
+                forecast_run_date=authoritative_run_date,
                 forecast_generated_at=generated_at,
                 forecast_stale=forecast_stale,
                 forecast_status="failed",
@@ -157,6 +161,7 @@ class SalesForecastService:
         errors = getattr(ledger, "errors", None) or []
         if errors:
             return self._build_forecast_state(
+                forecast_run_date=authoritative_run_date,
                 forecast_generated_at=generated_at,
                 forecast_stale=forecast_stale,
                 forecast_status="degraded",
@@ -166,6 +171,7 @@ class SalesForecastService:
 
         if forecast_stale:
             return self._build_forecast_state(
+                forecast_run_date=authoritative_run_date,
                 forecast_generated_at=generated_at,
                 forecast_stale=True,
                 forecast_status="stale",
@@ -174,6 +180,7 @@ class SalesForecastService:
             )
 
         return self._build_forecast_state(
+            forecast_run_date=authoritative_run_date,
             forecast_generated_at=generated_at,
             forecast_stale=False,
             forecast_status="ready",

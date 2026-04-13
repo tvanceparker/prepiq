@@ -152,6 +152,7 @@ class LastEodDateDTO(BaseModel):
 class InventoryForecastStateDTO(BaseModel):
     forecast_source: Literal["cached", "fresh"]
     forecast_source_type: Literal["eod", "on_demand"]
+    forecast_run_date: Optional[date] = None
     forecast_generated_at: Optional[datetime] = None
     forecast_reused: bool
     forecast_stale: bool

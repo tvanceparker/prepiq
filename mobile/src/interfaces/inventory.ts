@@ -435,6 +435,7 @@ export interface POSuggestionsResponse {
   last_eod_run_date: string | null;
   forecast_source: 'cached' | 'fresh';
   forecast_source_type: 'eod' | 'on_demand';
+  forecast_run_date: string | null;
   forecast_generated_at: string | null;
   forecast_reused: boolean;
   forecast_stale: boolean;

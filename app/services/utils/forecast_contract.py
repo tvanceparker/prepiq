@@ -58,6 +58,7 @@ def build_forecast_contract(
     *,
     forecast_source: ForecastSource,
     forecast_source_type: ForecastSourceType,
+    forecast_run_date: Optional[Any] = None,
     forecast_generated_at: Optional[Any],
     forecast_reused: bool,
     forecast_stale: bool,
@@ -74,6 +75,7 @@ def build_forecast_contract(
     return {
         "forecast_source": forecast_source,
         "forecast_source_type": forecast_source_type,
+        "forecast_run_date": forecast_run_date,
         "forecast_generated_at": forecast_generated_at,
         "forecast_reused": forecast_reused,
         "forecast_stale": forecast_stale,

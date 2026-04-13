@@ -1161,7 +1161,9 @@ class InventoryService:
         *,
         forecast_source: str,
         forecast_source_type: str,
+        forecast_run_date: Optional[date],
         forecast_generated_at: Optional[str],
+        forecast_run_date: Optional[date],
         forecast_reused: bool,
         forecast_stale: bool,
         forecast_status: str,
@@ -1244,6 +1246,7 @@ class InventoryService:
             today,
             end_date,
             created_at_cutoff=ledger_finished_at,
+            forecast_run_date=resolved_cached_run_date,
         )
 
         if not breakdowns:
@@ -1269,6 +1272,7 @@ class InventoryService:
                 {
                     "daily_breakdown": [],
                     "unit": unit,
+                    forecast_run_date=resolved_cached_run_date,
                 },
             )
             ingredient_forecast[ingredient_id]["daily_breakdown"].append(
@@ -1316,6 +1320,7 @@ class InventoryService:
     ) -> Optional[str]:
         if current_name:
             return current_name
+            forecast_run_date=resolved_cached_run_date,
 
         if item_kind == "ingredient" and ingredient_id is not None:
             ingredient = ingredient_cache.get(ingredient_id)

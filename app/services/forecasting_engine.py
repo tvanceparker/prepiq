@@ -367,9 +367,17 @@ class ForecastingEngine:
     ) -> bool:
         model = load_model(self.restaurant_id, menu_item_id)
         if model is None:
+            logger.info(
+                "[FORECAST] No persisted model found for menu_item %s; checking H2O availability for retraining",
+                menu_item_id,
+            )
             try:
                 if not h2o.connection():
                     h2o.init()
+                logger.info(
+                    "[FORECAST] H2O available for menu_item %s; retraining is required because no model exists",
+                    menu_item_id,
+                )
             except Exception as exc:
                 logger.warning(
                     "[FORECAST] H2O unavailable for menu_item %s; using fallback forecast instead of retraining: %s",
@@ -381,6 +389,10 @@ class ForecastingEngine:
 
         metrics = await self._compute_forecast_accuracy_metrics(menu_item_id)
         if not metrics:
+            logger.info(
+                "[FORECAST] No accuracy metrics available for menu_item %s; retraining is required",
+                menu_item_id,
+            )
             return True
 
         current_mape = metrics.get("mape")
@@ -392,11 +404,27 @@ class ForecastingEngine:
         )
 
         if not retrain_needed:
+            logger.info(
+                "[FORECAST] Reusing persisted model for menu_item %s mape=%s r2=%s thresholds=(%s,%s)",
+                menu_item_id,
+                current_mape,
+                current_r2,
+                threshold_mape,
+                threshold_r2,
+            )
             return False
 
         try:
             if not h2o.connection():
                 h2o.init()
+            logger.info(
+                "[FORECAST] H2O available for menu_item %s; retraining triggered mape=%s r2=%s thresholds=(%s,%s)",
+                menu_item_id,
+                current_mape,
+                current_r2,
+                threshold_mape,
+                threshold_r2,
+            )
         except Exception as exc:
             logger.warning(
                 "[FORECAST] H2O unavailable for menu_item %s; skipping retrain and reusing existing model/fallback: %s",
@@ -411,17 +439,37 @@ class ForecastingEngine:
     async def train_menu_item_model(
         self, menu_item_id: int, lookback_days: int = 90
     ) -> Tuple[Optional[Any], Dict[str, Optional[float]]]:
+        logger.info(
+            "[FORECAST] Training H2O model for menu_item %s lookback_days=%s",
+            menu_item_id,
+            lookback_days,
+        )
         sales = await self.sales_repo.get_sales_between_dates(
             start_date=date.today() - timedelta(days=lookback_days),
             end_date=date.today(),
         )
         item_sales = [s for s in sales if s.menu_item_id == menu_item_id]
         if not item_sales:
+            logger.warning(
+                "[FORECAST] No sales history available for menu_item %s; skipping H2O training",
+                menu_item_id,
+            )
             return None, {"mape": None, "r2": None}
 
         feature_df = await self._build_feature_matrix(menu_item_id, lookback_days)
         if feature_df is None or feature_df.empty:
+            logger.warning(
+                "[FORECAST] Empty feature matrix for menu_item %s; skipping H2O training",
+                menu_item_id,
+            )
             return None, {"mape": None, "r2": None}
+
+        logger.info(
+            "[FORECAST] Feature matrix ready for menu_item %s rows=%s columns=%s",
+            menu_item_id,
+            len(feature_df),
+            list(feature_df.columns),
+        )
 
         MIN_ROWS_FOR_H2O = 20
         if len(feature_df) < MIN_ROWS_FOR_H2O:
@@ -465,6 +513,13 @@ class ForecastingEngine:
 
         if not h2o.cluster().is_running():
             h2o.init()
+
+        logger.info(
+            "[FORECAST] Starting H2O GBM training for menu_item %s train_rows=%s valid_rows=%s",
+            menu_item_id,
+            len(train_df),
+            len(valid_df),
+        )
 
         train_h2o = h2o.H2OFrame(
             pd.concat([X_train, y_train.reset_index(drop=True)], axis=1)
@@ -516,6 +571,12 @@ class ForecastingEngine:
         r2_metric = float(model.r2(valid=True))
 
         save_model(self.restaurant_id, menu_item_id, model)
+        logger.info(
+            "[FORECAST] Completed H2O training for menu_item %s mape=%s r2=%s",
+            menu_item_id,
+            round(mape_metric, 4),
+            round(r2_metric, 4),
+        )
         return model, {"mape": mape_metric, "r2": r2_metric}
 
     @log_method("Build Feature Matrix (Advanced)")
@@ -1502,14 +1563,31 @@ class ForecastingEngine:
                     retrain = await self.should_retrain_model(
                         menu_item_id, threshold_mape, threshold_r2
                     )
+                    logger.info(
+                        "[FORECAST] Menu item %s retrain_decision=%s",
+                        menu_item_id,
+                        retrain,
+                    )
 
                     if retrain:
                         model, metrics = await self.train_menu_item_model(menu_item_id)
                         self.accuracy_metrics[menu_item_id] = metrics or {}
+                        logger.info(
+                            "[FORECAST] Menu item %s model_source=%s metrics=%s",
+                            menu_item_id,
+                            "trained" if model is not None else "fallback_after_failed_train",
+                            self.accuracy_metrics[menu_item_id],
+                        )
                     else:
                         model = load_model(self.restaurant_id, menu_item_id)
                         metrics = await self._compute_forecast_accuracy_metrics(menu_item_id)
                         self.accuracy_metrics[menu_item_id] = metrics or {}
+                        logger.info(
+                            "[FORECAST] Menu item %s model_source=%s metrics=%s",
+                            menu_item_id,
+                            "loaded" if model is not None else "fallback_without_model",
+                            self.accuracy_metrics[menu_item_id],
+                        )
 
                     if model is None:
                         logger.debug(

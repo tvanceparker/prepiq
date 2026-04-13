@@ -74,6 +74,13 @@ function formatForecastTimestamp(value) {
   return parsed.toLocaleString();
 }
 
+function formatForecastRunDate(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString();
+}
+
 function formatConfidence(value) {
   if (value === null || value === undefined || Number.isNaN(value)) return null;
   return `${Math.round(value * 100)}% confidence`;
@@ -197,10 +204,15 @@ export default function BasicUpcomingForecast() {
           <Typography variant="caption" display="block" sx={{ mt: 0.75 }}>
             {forecastState.forecast_usage_message}
           </Typography>
+          {forecastState.forecast_run_date && (
+            <Typography variant="caption" display="block">
+              Forecast cycle date {formatForecastRunDate(forecastState.forecast_run_date)}
+            </Typography>
+          )}
           {forecastState.forecast_generated_at && (
             <Typography variant="caption" display="block">
               {forecastState.forecast_reused ? 'Reused' : 'Generated'}{' '}
-              {getForecastSourceLabel(forecastState)} forecast on{' '}
+              {getForecastSourceLabel(forecastState)} forecast finalized on{' '}
               {formatForecastTimestamp(forecastState.forecast_generated_at)}
             </Typography>
           )}
