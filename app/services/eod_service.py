@@ -775,72 +775,23 @@ class EODService:
         if not sales_data:
             return []
 
-        usage_summary = []
-        ingredient_totals = defaultdict(Decimal)
-        batch_recipe_totals = defaultdict(Decimal)
-        ingredient_units = {}
+        menu_items = [
+            {
+                "menu_item_id": sale.menu_item_id,
+                "quantity": Decimal(str(sale.quantity_sold or 0)),
+            }
+            for sale in sales_data
+        ]
 
-        for sale in sales_data:
-            menu_item_id = sale.menu_item_id
-            quantity_sold = Decimal(sale.quantity_sold)
+        self.inventory_helper.menu_item_recipe_repo = self.menu_item_recipe_repo
+        self.inventory_helper.recipe_ingredient_repo = self.recipe_ingredient_repo
+        self.inventory_helper.ingredient_repo = self.ingredient_repo
+        self.inventory_helper.batch_recipe_repo = self.batch_recipe_repo
+        usage_summary = await self.inventory_helper.build_usage_summary(menu_items)
 
-            # Get all recipes linked to this menu item
-            menu_item_recipes = await self.menu_item_recipe_repo.get_by_menu_item(
-                menu_item_id
-            )
-            for mir in menu_item_recipes:
-                recipe_id = mir.recipe_id
+        for entry in usage_summary:
+            entry["forecast_date"] = date
 
-                # Get all ingredients for the recipe
-                recipe_ingredients = await self.recipe_ingredient_repo.get_by_recipe_id(
-                    recipe_id
-                )
-
-                for ri in recipe_ingredients:
-                    used_qty = Decimal(ri.quantity_used or 0) * quantity_sold
-
-                    if ri.ingredient_type == "ingredient":
-                        ingredient_id = ri.reference_id
-                        ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
-                        unit = ingredient.unit or "count"
-
-                        ingredient_totals[(ingredient_id, unit)] += used_qty
-                        ingredient_units[ingredient_id] = unit
-
-                    elif ri.ingredient_type == "batch":
-                        batch_recipe_id = ri.reference_id
-                        batch_recipe_totals[
-                            batch_recipe_id
-                        ] += used_qty  # in "count" unless specified
-
-        # Step 2: Add ingredient usage to usage_summary
-        for (ingredient_id, unit), total_qty in ingredient_totals.items():
-            usage_summary.append(
-                {
-                    "ingredient_id": ingredient_id,
-                    "forecast_date": date,
-                    "quantity": round(total_qty, 2),
-                    "unit": unit,
-                    "source": "sale",
-                }
-            )
-
-        # Step 3: Add batch recipe usage to usage_summary
-        for batch_recipe_id, total_qty in batch_recipe_totals.items():
-            batch_recipe = await self.batch_recipe_repo.get_by_id(batch_recipe_id)
-            unit = batch_recipe.yield_unit or "count"
-
-            usage_summary.append(
-                {
-                    "batch_recipe_id": batch_recipe_id,
-                    "forecast_date": date,
-                    "quantity": round(total_qty, 2),
-                    "unit": unit,
-                    "source": "batch",
-                }
-            )
-
-        # print(f"[{date}] usage summary: {usage_summary}")
         return usage_summary
 
     async def deduct_ingredients_from_inventory(

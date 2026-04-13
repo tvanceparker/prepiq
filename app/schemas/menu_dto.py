@@ -4,9 +4,13 @@ Consolidated DTOs for the Menu section (menu items, recipes, ingredients, links,
 All related Pydantic models are defined here to align with the route filename `menu_routes.py`.
 """
 
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, List
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from typing import Optional, List, Literal
 from decimal import Decimal
+
+
+RecipeComponentType = Literal["ingredient", "batch", "recipe"]
+LifecycleAction = Literal["archive"]
 
 # --- Menu items ---
 class MenuItemBase(BaseModel):
@@ -86,9 +90,60 @@ class RecipeIngredientUpdate(RecipeIngredientBase):
     pass
 
 
+class RecipeIngredientInput(BaseModel):
+    ingredient_id: Optional[int] = None
+    reference_id: Optional[int] = None
+    ingredient_type: Optional[RecipeComponentType] = Field(
+        default=None,
+        validation_alias=AliasChoices("ingredient_type", "type"),
+        serialization_alias="ingredient_type",
+    )
+    quantity_used: Decimal = Field(
+        validation_alias=AliasChoices("quantity_used", "quantity"),
+        serialization_alias="quantity_used",
+    )
+    unit: str
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class RecipeUpsertRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    ingredients: List[RecipeIngredientInput]
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class RecipeWithIngredientsDTO(BaseModel):
     recipe: RecipeCreate
     ingredients: List[RecipeIngredientCreate]
+
+
+class RecipeUsageMenuItemReferenceDTO(BaseModel):
+    menu_item_id: int
+    menu_item_name: str
+    is_active: bool
+
+
+class RecipeUsageRecipeReferenceDTO(BaseModel):
+    recipe_id: int
+    recipe_name: str
+    is_active: bool
+
+
+class RecipeUsageDTO(BaseModel):
+    menu_items: List[RecipeUsageMenuItemReferenceDTO]
+    nested_in_recipes: List[RecipeUsageRecipeReferenceDTO]
+    menu_item_count: int
+    nested_recipe_count: int
+
+
+class RecipeArchiveResponseDTO(BaseModel):
+    message: str
+    archived: bool
+    lifecycle_action: Optional[LifecycleAction] = None
+    usage: RecipeUsageDTO
 
 
 class RecipeIngredient(RecipeIngredientBase):
@@ -206,7 +261,10 @@ __all__ = [
     "RecipeIngredientCreate",
     "RecipeIngredientUpdate",
     "RecipeIngredient",
+    "RecipeIngredientInput",
+    "RecipeUpsertRequest",
     "RecipeWithIngredientsDTO",
+    "RecipeArchiveResponseDTO",
     # Links
     "MenuItemRecipeBase",
     "MenuItemRecipeCreate",

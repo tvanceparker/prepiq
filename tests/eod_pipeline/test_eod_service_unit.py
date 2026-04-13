@@ -75,6 +75,61 @@ class TestEODServiceUnit:
         assert batch_usage["quantity"] == 20.0
 
     @pytest.mark.asyncio
+    async def test_aggregate_daily_sales_expands_nested_recipe_references(
+        self, mock_db_session, restaurant_id, sample_sales_data
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+
+        service.sales_repo.get_by_date = AsyncMock(return_value=sample_sales_data[:1])
+        service.menu_item_recipe_repo.get_by_menu_item = AsyncMock(
+            return_value=[MagicMock(recipe_id=301)]
+        )
+
+        async def get_recipe_components(recipe_id):
+            if recipe_id == 301:
+                return [
+                    MagicMock(
+                        ingredient_type="recipe",
+                        reference_id=302,
+                        quantity_used=Decimal("2.0"),
+                    )
+                ]
+            if recipe_id == 302:
+                return [
+                    MagicMock(
+                        ingredient_type="ingredient",
+                        reference_id=1001,
+                        quantity_used=Decimal("0.25"),
+                    ),
+                    MagicMock(
+                        ingredient_type="batch",
+                        reference_id=5001,
+                        quantity_used=Decimal("1.5"),
+                    ),
+                ]
+            return []
+
+        service.recipe_ingredient_repo.get_by_recipe_id = AsyncMock(
+            side_effect=get_recipe_components
+        )
+        service.ingredient_repo.get_by_id = AsyncMock(
+            return_value=MagicMock(unit="lb")
+        )
+        service.batch_recipe_repo.get_by_id = AsyncMock(
+            return_value=MagicMock(yield_unit="count")
+        )
+
+        result = await service.aggregate_daily_sales(date(2025, 11, 20))
+
+        ingredient_usage = next(item for item in result if item.get("ingredient_id") == 1001)
+        batch_usage = next(item for item in result if item.get("batch_recipe_id") == 5001)
+
+        assert ingredient_usage["quantity"] == Decimal("5.00")
+        assert batch_usage["quantity"] == Decimal("30.00")
+        assert ingredient_usage["forecast_date"] == date(2025, 11, 20)
+        assert batch_usage["forecast_date"] == date(2025, 11, 20)
+
+    @pytest.mark.asyncio
     async def test_aggregate_daily_sales_no_sales(
         self, mock_db_session, restaurant_id
     ):
@@ -868,6 +923,143 @@ class TestEODServiceStages:
             (run_date, Decimal("1.50")),
             (run_date + timedelta(days=1), Decimal("1.00")),
         ]
+
+    @pytest.mark.asyncio
+    async def test_recover_ingredient_forecast_from_breakdowns_expands_nested_batch_graph(
+        self, mock_db_session, restaurant_id
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        run_date = date(2025, 11, 20)
+
+        service.forecasting_engine.forecast_breakdown_repo.get_latest_by_date_range = AsyncMock(
+            return_value=[
+                MagicMock(
+                    menu_item_id=99,
+                    forecast_date=run_date,
+                    forecasted_quantity=4,
+                )
+            ]
+        )
+        service.forecasting_engine.menu_item_recipe_repo.get_by_menu_item = AsyncMock(
+            return_value=[MagicMock(recipe_id=10)]
+        )
+        service.forecasting_engine.menu_item_recipe_repo.get_recipe_ids_for_menu_item = AsyncMock(
+            return_value=[10]
+        )
+
+        async def get_recipe_components(recipe_id):
+            if recipe_id == 10:
+                return [
+                    MagicMock(
+                        ingredient_type="ingredient",
+                        reference_id=1001,
+                        quantity_used=Decimal("1.0"),
+                    ),
+                    MagicMock(
+                        ingredient_type="recipe",
+                        reference_id=20,
+                        quantity_used=Decimal("2.0"),
+                    ),
+                    MagicMock(
+                        ingredient_type="batch",
+                        reference_id=501,
+                        quantity_used=Decimal("3.0"),
+                    ),
+                ]
+            if recipe_id == 20:
+                return [
+                    MagicMock(
+                        ingredient_type="ingredient",
+                        reference_id=1002,
+                        quantity_used=Decimal("0.5"),
+                    ),
+                    MagicMock(
+                        ingredient_type="batch",
+                        reference_id=502,
+                        quantity_used=Decimal("1.0"),
+                    ),
+                ]
+            return []
+
+        async def get_batch(batch_recipe_id):
+            if batch_recipe_id == 501:
+                return MagicMock(
+                    batch_recipe_id=501,
+                    yield_quantity=Decimal("10.0"),
+                    yield_unit="count",
+                )
+            if batch_recipe_id == 502:
+                return MagicMock(
+                    batch_recipe_id=502,
+                    yield_quantity=Decimal("8.0"),
+                    yield_unit="count",
+                )
+            return MagicMock(
+                batch_recipe_id=503,
+                yield_quantity=Decimal("5.0"),
+                yield_unit="count",
+            )
+
+        async def get_batch_components(batch_recipe_id):
+            if batch_recipe_id == 501:
+                return [
+                    MagicMock(
+                        ingredient_type="ingredient",
+                        reference_id=1003,
+                        quantity_used=Decimal("4.0"),
+                        unit="count",
+                    ),
+                    MagicMock(
+                        ingredient_type="batch",
+                        reference_id=503,
+                        quantity_used=Decimal("2.0"),
+                        unit="count",
+                    ),
+                ]
+            if batch_recipe_id == 502:
+                return [
+                    MagicMock(
+                        ingredient_type="ingredient",
+                        reference_id=1004,
+                        quantity_used=Decimal("6.0"),
+                        unit="count",
+                    )
+                ]
+            return [
+                MagicMock(
+                    ingredient_type="ingredient",
+                    reference_id=1005,
+                    quantity_used=Decimal("10.0"),
+                    unit="count",
+                )
+            ]
+
+        service.forecasting_engine.recipe_ingredient_repo.get_by_recipe_id = AsyncMock(
+            side_effect=get_recipe_components
+        )
+        service.forecasting_engine.batch_recipe_repo.get_by_id = AsyncMock(
+            side_effect=get_batch
+        )
+        service.forecasting_engine.batch_recipe_ingredients_repo.get_by_batch_recipe_id = AsyncMock(
+            side_effect=get_batch_components
+        )
+        service.forecasting_engine.ingredient_repo.get_by_id = AsyncMock(
+            side_effect=lambda ingredient_id: MagicMock(unit="count")
+        )
+
+        result = await service._recover_ingredient_forecast_from_breakdowns(
+            run_date,
+            1,
+        )
+
+        assert {ingredient_id: data["total_quantity"] for ingredient_id, data in result.items()} == {
+            1001: Decimal("4.0"),
+            1002: Decimal("4.0"),
+            1003: Decimal("4.8"),
+            1004: Decimal("6.0"),
+            1005: Decimal("4.8"),
+        }
+        assert result[1005]["daily_breakdown"] == [(run_date, Decimal("4.8"))]
 
     @pytest.mark.asyncio
     async def test_stage_reorder_recovers_persisted_forecast_after_restart(

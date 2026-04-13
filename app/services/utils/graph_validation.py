@@ -2,6 +2,7 @@ from app.services.utils.unit_conversion import convert_unit, normalize_unit
 
 
 VALID_COMPONENT_TYPES = {"ingredient", "batch", "recipe"}
+BATCH_COMPONENT_TYPES = {"ingredient", "batch"}
 
 
 def normalize_component_type(component_type: str | None) -> str:
@@ -9,6 +10,15 @@ def normalize_component_type(component_type: str | None) -> str:
     if normalized not in VALID_COMPONENT_TYPES:
         raise ValueError(
             f"Unsupported ingredient_type '{component_type}'. Expected one of: ingredient, batch, recipe."
+        )
+    return normalized
+
+
+def normalize_batch_component_type(component_type: str | None) -> str:
+    normalized = normalize_component_type(component_type)
+    if normalized not in BATCH_COMPONENT_TYPES:
+        raise ValueError(
+            "Batch recipe components only support ingredient or batch references."
         )
     return normalized
 

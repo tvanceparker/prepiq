@@ -111,6 +111,51 @@ async def test_update_recipe_with_ingredients_rejects_nested_recipe_cycles(menu_
 
 
 @pytest.mark.asyncio
+async def test_update_recipe_with_ingredients_rejects_archived_batch_reference(menu_service):
+    archived_batch = MagicMock(batch_recipe_id=30, yield_unit="liter")
+    archived_batch.is_active = False
+    menu_service.batch_recipe_repo.get_by_id.return_value = archived_batch
+
+    with pytest.raises(ValueError, match="archived and cannot be reused"):
+        await menu_service.update_recipe_with_ingredients(
+            {
+                "recipe_id": 10,
+                "name": "Sauce",
+                "description": "Test",
+                "ingredients": [
+                    {
+                        "reference_id": 30,
+                        "type": "batch",
+                        "quantity": Decimal("1.0"),
+                        "unit": "liter",
+                    }
+                ],
+            }
+        )
+
+    menu_service.recipe_repo.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_with_ingredients_rejects_archived_recipe_update(menu_service):
+    archived_recipe = MagicMock(recipe_id=10, name="Sauce", description="Old")
+    archived_recipe.is_active = False
+    menu_service.recipe_repo.get_by_id.return_value = archived_recipe
+
+    with pytest.raises(ValueError, match="Archived recipes cannot be updated"):
+        await menu_service.update_recipe_with_ingredients(
+            {
+                "recipe_id": 10,
+                "name": "Sauce",
+                "description": "Updated",
+                "ingredients": [],
+            }
+        )
+
+    menu_service.recipe_repo.update.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_delete_recipe_rejects_when_recipe_is_nested_in_other_recipe(menu_service):
     menu_service.menu_recipe_repo.get_by_recipe.return_value = []
     async def get_recipe_by_id(recipe_id):
@@ -127,6 +172,7 @@ async def test_delete_recipe_rejects_when_recipe_is_nested_in_other_recipe(menu_
 
     assert result["archived"] is True
     assert result["usage"]["nested_recipe_count"] == 1
+    assert result["lifecycle_action"] == "archive"
     menu_service.recipe_repo.update.assert_awaited_once_with(55, {"is_active": False})
 
 
@@ -146,6 +192,33 @@ async def test_create_batch_recipe_rejects_missing_batch_reference(prep_service)
                 {
                     "reference_id": 20,
                     "ingredient_type": "batch",
+                    "quantity_used": Decimal("1.0"),
+                    "unit": "liter",
+                }
+            ],
+        )
+
+    prep_service.batch_recipe_repo.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_batch_recipe_rejects_archived_ingredient_reference(prep_service):
+    archived_ingredient = MagicMock(ingredient_id=20, unit="liter")
+    archived_ingredient.is_active = False
+    prep_service.ingredient_repo.get_by_id.return_value = archived_ingredient
+
+    with pytest.raises(ValueError, match="archived and cannot be reused"):
+        await prep_service.create_batch_recipe(
+            name="Sauce",
+            description=None,
+            yield_quantity=Decimal("2.0"),
+            yield_unit="liter",
+            estimated_prep_time_minutes=None,
+            shelf_life_days=3,
+            ingredients=[
+                {
+                    "reference_id": 20,
+                    "ingredient_type": "ingredient",
                     "quantity_used": Decimal("1.0"),
                     "unit": "liter",
                 }
@@ -182,6 +255,67 @@ async def test_update_batch_recipe_rejects_cycles(prep_service):
 
 
 @pytest.mark.asyncio
+async def test_create_batch_recipe_rejects_recipe_component_type(prep_service):
+    with pytest.raises(
+        ValueError,
+        match="Batch recipe components only support ingredient or batch references",
+    ):
+        await prep_service.create_batch_recipe(
+            name="Mother Sauce",
+            description=None,
+            yield_quantity=Decimal("2.0"),
+            yield_unit="liter",
+            estimated_prep_time_minutes=None,
+            shelf_life_days=3,
+            ingredients=[
+                {
+                    "reference_id": 200,
+                    "ingredient_type": "recipe",
+                    "quantity_used": Decimal("1.0"),
+                    "unit": "liter",
+                }
+            ],
+        )
+
+    prep_service.batch_recipe_repo.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_batch_recipe_rejects_incompatible_parent_recipe_unit(prep_service):
+    prep_service.batch_recipe_repo.get_by_id.return_value = MagicMock(
+        batch_recipe_id=10,
+        yield_unit="liter",
+    )
+    prep_service.recipe_ingredient_repo.get_all_by_reference_id_and_type.return_value = [
+        MagicMock(recipe_id=55, unit="liter")
+    ]
+    recipe = MagicMock(recipe_id=55)
+    recipe.name = "Soup Base"
+    prep_service.recipe_repo.get_by_id.return_value = recipe
+    prep_service.batch_recipe_ingredient_repo.get_all_by_reference_id_and_type.return_value = []
+
+    with pytest.raises(ValueError, match="Soup Base references this batch"):
+        await prep_service.update_batch_recipe(
+            batch_recipe_id=10,
+            yield_unit="lb",
+        )
+
+    prep_service.batch_recipe_repo.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_batch_recipe_rejects_archived_batch_update(prep_service):
+    archived_batch = MagicMock(batch_recipe_id=10, yield_unit="liter")
+    archived_batch.is_active = False
+    prep_service.batch_recipe_repo.get_by_id.return_value = archived_batch
+
+    with pytest.raises(ValueError, match="Archived batch recipes cannot be updated"):
+        await prep_service.update_batch_recipe(batch_recipe_id=10, yield_unit="liter")
+
+    prep_service.batch_recipe_repo.update.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_delete_batch_recipe_rejects_when_dependencies_exist(prep_service):
     prep_service.batch_recipe_repo.get_by_id.side_effect = [
         MagicMock(batch_recipe_id=10, name="Queso", is_active=True),
@@ -203,4 +337,5 @@ async def test_delete_batch_recipe_rejects_when_dependencies_exist(prep_service)
     assert result["usage"]["batch_count"] == 1
     assert result["usage"]["prep_schedule_count"] == 2
     assert result["usage"]["inventory_lot_count"] == 1
+    assert result["lifecycle_action"] == "archive"
     prep_service.batch_recipe_repo.update.assert_awaited_once_with(10, {"is_active": False})

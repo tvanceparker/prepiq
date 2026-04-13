@@ -21,7 +21,11 @@ from typing import List, Dict, Optional
 from decimal import Decimal
 from datetime import date, timedelta, datetime
 from app.services.utils.unit_conversion import convert_unit, normalize_unit
-from app.services.utils.graph_validation import normalize_component_type, units_are_compatible
+from app.services.utils.graph_validation import (
+    normalize_batch_component_type,
+    normalize_component_type,
+    units_are_compatible,
+)
 import logging
 
 
@@ -57,11 +61,19 @@ class PrepService:
             ingredient = await self.ingredient_repo.get_by_id(reference_id)
             if not ingredient:
                 raise ValueError(f"Ingredient reference {reference_id} not found.")
+            if getattr(ingredient, "is_active", True) is False:
+                raise ValueError(
+                    f"Ingredient reference {reference_id} is archived and cannot be reused."
+                )
             return getattr(ingredient, "unit", None)
 
         batch_recipe = await self.batch_recipe_repo.get_by_id(reference_id)
         if not batch_recipe:
             raise ValueError(f"Batch recipe reference {reference_id} not found.")
+        if getattr(batch_recipe, "is_active", True) is False:
+            raise ValueError(
+                f"Batch recipe reference {reference_id} is archived and cannot be reused."
+            )
         return getattr(batch_recipe, "yield_unit", None)
 
     async def _batch_reference_creates_cycle(
@@ -104,7 +116,9 @@ class PrepService:
             if reference_id is None:
                 raise ValueError("Ingredient must include reference_id or ingredient_id")
 
-            ingredient_type = normalize_component_type(ingredient_data.get("ingredient_type"))
+            ingredient_type = normalize_batch_component_type(
+                ingredient_data.get("ingredient_type")
+            )
             reference_unit = await self._get_batch_component_reference_unit(
                 reference_id,
                 ingredient_type,
@@ -121,6 +135,50 @@ class PrepService:
                 raise ValueError(
                     f"Unit '{requested_unit}' is incompatible with {ingredient_type} unit '{reference_unit}' for reference {reference_id}."
                 )
+
+    async def _validate_dependent_batch_reference_units(
+        self,
+        batch_recipe_id: int,
+        candidate_yield_unit: Optional[str],
+    ) -> None:
+        if not candidate_yield_unit:
+            return
+
+        recipe_dependencies = await self.recipe_ingredient_repo.get_all_by_reference_id_and_type(
+            ingredient_type="batch",
+            reference_id=batch_recipe_id,
+        )
+        for dependency in recipe_dependencies:
+            dependency_unit = getattr(dependency, "unit", None)
+            if units_are_compatible(dependency_unit, candidate_yield_unit):
+                continue
+
+            recipe = await self.recipe_repo.get_by_id(dependency.recipe_id)
+            recipe_name = getattr(recipe, "name", None)
+            if not isinstance(recipe_name, str) or not recipe_name:
+                recipe_name = f"recipe {dependency.recipe_id}"
+            raise ValueError(
+                f"Cannot change batch recipe yield unit to '{candidate_yield_unit}' because {recipe_name} references this batch using incompatible unit '{dependency_unit}'."
+            )
+
+        batch_dependencies = await self.batch_recipe_ingredient_repo.get_all_by_reference_id_and_type(
+            ingredient_type="batch",
+            reference_id=batch_recipe_id,
+        )
+        for dependency in batch_dependencies:
+            dependency_unit = getattr(dependency, "unit", None)
+            if units_are_compatible(dependency_unit, candidate_yield_unit):
+                continue
+
+            parent_batch = await self.batch_recipe_repo.get_by_id(
+                dependency.batch_recipe_id
+            )
+            parent_name = getattr(parent_batch, "name", None)
+            if not isinstance(parent_name, str) or not parent_name:
+                parent_name = f"batch recipe {dependency.batch_recipe_id}"
+            raise ValueError(
+                f"Cannot change batch recipe yield unit to '{candidate_yield_unit}' because {parent_name} references this batch using incompatible unit '{dependency_unit}'."
+            )
 
 
         #route call
@@ -599,7 +657,9 @@ class PrepService:
                     if reference_id is None:
                         raise ValueError("Ingredient must include reference_id or ingredient_id")
 
-                    ingredient_type = normalize_component_type(ing.get("ingredient_type"))
+                    ingredient_type = normalize_batch_component_type(
+                        ing.get("ingredient_type")
+                    )
                     ingredient_create = BatchRecipeIngredientCreate(
                         restaurant_id=self.restaurant_id,
                         batch_recipe_id=new_recipe.batch_recipe_id,
@@ -647,6 +707,15 @@ class PrepService:
             batch_recipe = await self.batch_recipe_repo.get_by_id(batch_recipe_id)
             if not batch_recipe:
                 raise ValueError(f"Batch recipe ID {batch_recipe_id} not found.")
+            if getattr(batch_recipe, "is_active", True) is False:
+                raise ValueError("Archived batch recipes cannot be updated.")
+
+            candidate_yield_unit = yield_unit or getattr(batch_recipe, "yield_unit", None)
+            if yield_unit is not None and yield_unit != getattr(batch_recipe, "yield_unit", None):
+                await self._validate_dependent_batch_reference_units(
+                    batch_recipe_id,
+                    candidate_yield_unit,
+                )
 
             # 2. Update metadata fields if provided
             update_data = {}
@@ -664,11 +733,7 @@ class PrepService:
                 update_data["shelf_life_days"] = shelf_life_days
 
             if update_data:
-                await self.batch_recipe_repo.update(
-                    restaurant_id=self.restaurant_id,
-                    batch_recipe_id=batch_recipe_id,
-                    update_data=update_data,
-                )
+                await self.batch_recipe_repo.update(batch_recipe_id, update_data)
 
             # 3. Update ingredients if provided
             if ingredients is not None:
@@ -687,7 +752,9 @@ class PrepService:
                     reference_id = ing.get("reference_id") or ing.get("ingredient_id")
                     if reference_id is None:
                         raise ValueError("Ingredient must include reference_id or ingredient_id")
-                    ingredient_type = normalize_component_type(ing.get("ingredient_type"))
+                    ingredient_type = normalize_batch_component_type(
+                        ing.get("ingredient_type")
+                    )
 
                     await self.batch_recipe_ingredient_repo.create(
                         {
@@ -722,6 +789,7 @@ class PrepService:
         return {
             "message": "Batch recipe archived successfully",
             "archived": True,
+            "lifecycle_action": "archive",
             "usage": usage["usage"],
         }
 

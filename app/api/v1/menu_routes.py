@@ -8,14 +8,20 @@ from app.schemas.menu_dto import (
     MenuItemCreate,
     MenuItemUpdateRequest,
     IngredientCreate,
+    RecipeArchiveResponseDTO,
     RecipeWithIngredientsDTO,
     RecipeBase,
     Recipe,
     RecipeCostingRequest,
+    RecipeUpsertRequest,
 )
 from app.api.dependencies import get_restaurant_id
 
 router = APIRouter(prefix="/menu", tags=["Menu"])
+
+
+def _status_for_value_error(detail: str) -> int:
+    return 404 if "not found" in detail.lower() else 400
 
 
 @router.get("/get_menu_items")
@@ -103,20 +109,35 @@ async def get_recipe_usage(
 @router.patch("/recipes/{recipe_id}")
 async def update_recipe_with_ingredients(
     recipe_id: int,
-    recipe_dict: dict,
+    payload: RecipeUpsertRequest,
     menu_service: MenuService = Depends(get_menu_service),
 ):
+    recipe_dict = payload.model_dump()
     recipe_dict["recipe_id"] = recipe_id
-    return await menu_service.update_recipe_with_ingredients(recipe_dict)
+    try:
+        return await menu_service.update_recipe_with_ingredients(recipe_dict)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(error)),
+            detail=str(error),
+        )
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Something went wrong: {error}")
 
 @router.post("/recipes")
 async def create_recipe(
-    recipe_dict: dict,
+    payload: RecipeUpsertRequest,
     menu_service: MenuService = Depends(get_menu_service),
 ):
-    # Remove recipe_id from the dict if it exists to avoid confusion
-    recipe_dict.pop("recipe_id", None)
-    return await menu_service.update_recipe_with_ingredients(recipe_dict)
+    try:
+        return await menu_service.update_recipe_with_ingredients(payload.model_dump())
+    except ValueError as error:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(error)),
+            detail=str(error),
+        )
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Something went wrong: {error}")
 
 
 @router.patch("/menu_items/{menu_item_id}")
@@ -136,7 +157,7 @@ async def update_menu_item(
         recipes=update_data.recipes,
     )
 
-@router.delete("/recipes/{recipe_id}")
+@router.delete("/recipes/{recipe_id}", response_model=RecipeArchiveResponseDTO)
 async def delete_recipe(
     recipe_id: int,
     menu_service: MenuService = Depends(get_menu_service),
@@ -144,6 +165,6 @@ async def delete_recipe(
     try:
         return await menu_service.delete_recipe(recipe_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=_status_for_value_error(str(e)), detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail= f"Something went wrong: {e}")

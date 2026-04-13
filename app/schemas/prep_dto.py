@@ -3,10 +3,14 @@ Consolidated DTOs for the Prep section (batch recipes, batch recipe ingredients,
 Follows the section-based pattern like admin_dto.py.
 """
 
-from typing import Optional, List
+from typing import Optional, List, Literal
 from decimal import Decimal
 from datetime import date
 from pydantic import BaseModel, ConfigDict
+
+
+BatchComponentType = Literal["ingredient", "batch"]
+LifecycleAction = Literal["archive"]
 
 
 # ---------------- Batch Recipes ----------------
@@ -24,7 +28,7 @@ class BatchRecipeBase(BaseModel):
 class BatchRecipeIngredientUpdate(BaseModel):
     ingredient_id: Optional[int] = None
     reference_id: Optional[int] = None
-    ingredient_type: Optional[str] = None
+    ingredient_type: Optional[BatchComponentType] = None
     quantity_used: Decimal
     unit: str
 
@@ -42,7 +46,7 @@ class BatchRecipeUpdateRequest(BaseModel):
 class IngredientInput(BaseModel):
     ingredient_id: Optional[int] = None
     reference_id: Optional[int] = None
-    ingredient_type: Optional[str] = None
+    ingredient_type: Optional[BatchComponentType] = None
     quantity_used: Decimal
     unit: str
 
@@ -77,7 +81,7 @@ class BatchRecipeIngredientBase(BaseModel):
     restaurant_id: int
     ingredient_id: Optional[int] = None
     reference_id: Optional[int] = None
-    ingredient_type: Optional[str] = None
+    ingredient_type: Optional[BatchComponentType] = None
     quantity_used: Optional[Decimal] = None
     unit: Optional[str] = None
 
@@ -96,6 +100,34 @@ class BatchRecipeIngredientUpdateDTO(BaseModel):
 
 class BatchRecipeIngredient(BatchRecipeIngredientBase):
     model_config = ConfigDict(from_attributes=True)
+
+
+class BatchRecipeUsageRecipeReferenceDTO(BaseModel):
+    recipe_id: int
+    recipe_name: str
+    is_active: bool
+
+
+class BatchRecipeUsageBatchReferenceDTO(BaseModel):
+    batch_recipe_id: int
+    batch_recipe_name: str
+    is_active: bool
+
+
+class BatchRecipeUsageDTO(BaseModel):
+    recipes: List[BatchRecipeUsageRecipeReferenceDTO]
+    batches: List[BatchRecipeUsageBatchReferenceDTO]
+    prep_schedule_count: int
+    inventory_lot_count: int
+    recipe_count: int
+    batch_count: int
+
+
+class BatchRecipeArchiveResponseDTO(BaseModel):
+    message: str
+    archived: bool
+    lifecycle_action: Optional[LifecycleAction] = None
+    usage: BatchRecipeUsageDTO
 
 
 # ----------------- Prep Schedule -----------------
