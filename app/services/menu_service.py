@@ -64,17 +64,29 @@ class MenuService:
             ingredient = await self.ingredient_repo.get_by_id(reference_id)
             if not ingredient:
                 raise ValueError(f"Ingredient reference {reference_id} not found.")
+            if getattr(ingredient, "is_active", True) is False:
+                raise ValueError(
+                    f"Ingredient reference {reference_id} is archived and cannot be reused."
+                )
             return getattr(ingredient, "unit", None)
 
         if ingredient_type == "batch":
             batch_recipe = await self.batch_recipe_repo.get_by_id(reference_id)
             if not batch_recipe:
                 raise ValueError(f"Batch recipe reference {reference_id} not found.")
+            if getattr(batch_recipe, "is_active", True) is False:
+                raise ValueError(
+                    f"Batch recipe reference {reference_id} is archived and cannot be reused."
+                )
             return getattr(batch_recipe, "yield_unit", None)
 
         recipe = await self.recipe_repo.get_by_id(reference_id)
         if not recipe:
             raise ValueError(f"Recipe reference {reference_id} not found.")
+        if getattr(recipe, "is_active", True) is False:
+            raise ValueError(
+                f"Recipe reference {reference_id} is archived and cannot be reused."
+            )
         return None
 
     async def _recipe_reference_creates_cycle(
@@ -440,6 +452,8 @@ class MenuService:
                 # Update existing recipe
                 existing_recipe = await self.recipe_repo.get_by_id(recipe_id)
                 if existing_recipe:
+                    if getattr(existing_recipe, "is_active", True) is False:
+                        raise ValueError("Archived recipes cannot be updated.")
                     await self.recipe_repo.update(
                         recipe_id,
                         {
@@ -517,6 +531,7 @@ class MenuService:
         return {
             "message": "Recipe archived successfully",
             "archived": True,
+            "lifecycle_action": "archive",
             "usage": usage["usage"],
         }
 

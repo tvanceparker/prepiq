@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from app.schemas.prep_dto import (
+    BatchRecipeArchiveResponseDTO,
     BatchRecipeIngredientUpdate,
     BatchRecipeUpdateRequest,
     IngredientInput,
@@ -17,6 +18,10 @@ from typing import Dict, List, Optional
 from datetime import date
 
 router = APIRouter(prefix="/prep", tags=["Prep"])
+
+
+def _status_for_value_error(detail: str) -> int:
+    return 404 if "not found" in detail.lower() else 400
 
 
 @router.get("/logs", response_model=List[PrepLogResponse])
@@ -107,15 +112,23 @@ async def create_batch_recipe(
     data: CreateBatchRecipeRequest,
     prep_service: PrepService = Depends(get_prep_service),
 ):
-    return await prep_service.create_batch_recipe(
-        name=data.name,
-        description=data.description,
-        yield_quantity=data.yield_quantity,
-        yield_unit=data.yield_unit,
-        estimated_prep_time_minutes=data.estimated_prep_time_minutes,
-        shelf_life_days=data.shelf_life_days,
-        ingredients=[ing.dict() for ing in data.ingredients],
-    )
+    try:
+        return await prep_service.create_batch_recipe(
+            name=data.name,
+            description=data.description,
+            yield_quantity=data.yield_quantity,
+            yield_unit=data.yield_unit,
+            estimated_prep_time_minutes=data.estimated_prep_time_minutes,
+            shelf_life_days=data.shelf_life_days,
+            ingredients=[ing.model_dump() for ing in data.ingredients],
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(error)),
+            detail=str(error),
+        )
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {error}")
 
 
 @router.get("/view_batch_recipes")
@@ -180,14 +193,17 @@ async def update_batch_recipe(
             estimated_prep_time_minutes=payload.estimated_prep_time_minutes,
             shelf_life_days=payload.shelf_life_days,
             ingredients=(
-                [ing.dict() for ing in payload.ingredients]
+                [ing.model_dump() for ing in payload.ingredients]
                 if payload.ingredients
                 else None
             ),
         )
         return {"detail": f"Batch recipe {batch_recipe_id} updated successfully."}
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
+    except ValueError as error:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(error)),
+            detail=str(error),
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
 
@@ -203,7 +219,10 @@ async def get_batch_recipe_usage(
         raise HTTPException(status_code=404, detail=str(error))
 
 
-@router.delete("/batch_recipes/{batch_recipe_id}")
+@router.delete(
+    "/batch_recipes/{batch_recipe_id}",
+    response_model=BatchRecipeArchiveResponseDTO,
+)
 async def delete_batch_recipe(
     batch_recipe_id: int,
     prep_service: PrepService = Depends(get_prep_service),
@@ -212,8 +231,7 @@ async def delete_batch_recipe(
         return await prep_service.delete_batch_recipe(batch_recipe_id)
     except ValueError as error:
         detail = str(error)
-        status_code = 404 if "not found" in detail.lower() else 400
-        raise HTTPException(status_code=status_code, detail=detail)
+        raise HTTPException(status_code=_status_for_value_error(detail), detail=detail)
     except Exception as error:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {error}")
 

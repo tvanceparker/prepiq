@@ -12,6 +12,9 @@ from app.services.utils.inventory_deduction_helper import InventoryDeductionHelp
 async def test_forecasting_engine_expands_nested_recipe_batch_requirements(mock_db):
     engine = ForecastingEngine(mock_db, 1, "full")
     engine.menu_item_recipe_repo.get_by_menu_item = AsyncMock(return_value=[MagicMock(recipe_id=10)])
+    engine.batch_recipe_repo.get_by_id = AsyncMock(
+        return_value=MagicMock(yield_unit="count")
+    )
 
     async def get_recipe_components(recipe_id):
         if recipe_id == 10:
@@ -30,7 +33,8 @@ async def test_forecasting_engine_expands_nested_recipe_batch_requirements(mock_
         {
             "batch_recipe_id": 501,
             "forecast_date": date(2026, 4, 8),
-            "required_quantity": 9.0,
+            "required_quantity": Decimal("9.00"),
+            "unit": "count",
         }
     ]
 

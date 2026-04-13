@@ -95,13 +95,18 @@ class InventoryDeductionHelper:
             )
             return {"deducted_items": [], "failures": [], "skipped": "already_logged"}
 
-        usage_summary = await self._build_usage_summary(menu_items)
+        usage_summary = await self.build_usage_summary(menu_items)
         if not usage_summary:
             return {"deducted_items": [], "failures": [], "skipped": "no_usage"}
 
         return await self._apply_usage_summary(
             usage_summary, reference_type=reference_type, reference_id=reference_id
         )
+
+    async def build_usage_summary(
+        self, menu_items: Sequence[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        return await self._build_usage_summary(menu_items)
 
     async def deduct_usage_summary(
         self,

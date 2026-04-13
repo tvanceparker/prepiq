@@ -1113,6 +1113,7 @@ class ForecastingEngine:
         batch_breakdown: Dict[date, Dict[int, Decimal]] = defaultdict(
             lambda: defaultdict(Decimal)
         )
+        batch_units: Dict[date, Dict[int, str]] = defaultdict(dict)
 
         for menu_item_id, data in forecast_breakdown.items():
             daily_breakdown = data.get("daily_breakdown", [])
@@ -1130,6 +1131,13 @@ class ForecastingEngine:
                     )
                     for batch_recipe_id, total_qty in batch_requirements.items():
                         batch_breakdown[forecast_date][batch_recipe_id] += total_qty
+                        if batch_recipe_id not in batch_units[forecast_date]:
+                            batch_recipe = await self.batch_recipe_repo.get_by_id(
+                                batch_recipe_id
+                            )
+                            batch_units[forecast_date][batch_recipe_id] = (
+                                getattr(batch_recipe, "yield_unit", None) or "count"
+                            )
 
         result: List[Dict[str, Any]] = []
         for forecast_date, batches in batch_breakdown.items():
@@ -1139,6 +1147,7 @@ class ForecastingEngine:
                         "batch_recipe_id": batch_recipe_id,
                         "forecast_date": forecast_date,
                         "required_quantity": round(qty, 2),
+                        "unit": batch_units[forecast_date].get(batch_recipe_id, "count"),
                     }
                 )
         return result
@@ -1179,30 +1188,23 @@ class ForecastingEngine:
             required_qty = Decimal(str(batch["required_quantity"]))
 
             batch_recipe = await self.batch_recipe_repo.get_by_id(batch_recipe_id)
-            yield_qty = Decimal(batch_recipe.yield_quantity or 1)
-
-            batch_ingredients = (
-                await self.batch_recipe_ingredients_repo.get_by_batch_recipe_id(
-                    batch_recipe_id
-                )
-            )
-
-            for bi in batch_ingredients:
-                if getattr(bi, "ingredient_type", None) != "ingredient":
-                    continue
-                ingredient_id = bi.reference_id
-                unit_qty = Decimal(bi.quantity_used or 0)
-                ingredient_unit = normalize_unit(bi.unit or "count")
-                batch_yield_unit = normalize_unit(batch_recipe.yield_unit or "count")
-
+            batch_yield_unit = getattr(batch_recipe, "yield_unit", None) or "count"
+            batch_required_unit = batch.get("unit") or batch_yield_unit
+            if normalize_unit(batch_required_unit) != normalize_unit(batch_yield_unit):
                 try:
-                    qty_in_yield_unit = convert_unit(
-                        unit_qty, ingredient_unit, batch_yield_unit
+                    required_qty = convert_unit(
+                        required_qty,
+                        batch_required_unit,
+                        batch_yield_unit,
                     )
                 except ValueError:
-                    qty_in_yield_unit = unit_qty
+                    pass
 
-                total_qty = (qty_in_yield_unit / yield_qty) * required_qty
+            ingredient_requirements = await self._expand_batch_ingredient_requirements(
+                batch_recipe_id,
+                required_qty,
+            )
+            for ingredient_id, total_qty in ingredient_requirements.items():
                 ingredient_ids_used.add(ingredient_id)
                 ingredient_map[forecast_date][
                     (ingredient_id, "batch_recipe", batch_recipe_id)
@@ -1288,7 +1290,104 @@ class ForecastingEngine:
                 for ingredient_id, qty in nested_requirements.items():
                     ingredient_requirements[ingredient_id] += qty
 
-            return ingredient_requirements
+        return ingredient_requirements
+
+    async def _expand_batch_ingredient_requirements(
+        self,
+        batch_recipe_id: int,
+        required_quantity: Decimal,
+        visited: Optional[set[int]] = None,
+    ) -> Dict[int, Decimal]:
+        visited = visited or set()
+        if batch_recipe_id in visited:
+            raise ValueError(
+                f"Batch graph cycle detected while expanding batch recipe {batch_recipe_id}"
+            )
+
+        batch_recipe = await self.batch_recipe_repo.get_by_id(batch_recipe_id)
+        if not batch_recipe:
+            raise ValueError(
+                f"Batch recipe {batch_recipe_id} not found while expanding ingredient requirements"
+            )
+
+        yield_qty = Decimal(str(batch_recipe.yield_quantity or 0))
+        if yield_qty <= 0:
+            raise ValueError(
+                f"Batch recipe {batch_recipe_id} has invalid yield quantity {batch_recipe.yield_quantity}"
+            )
+
+        visited.add(batch_recipe_id)
+        ingredient_requirements: Dict[int, Decimal] = defaultdict(Decimal)
+        components = await self.batch_recipe_ingredients_repo.get_by_batch_recipe_id(
+            batch_recipe_id
+        )
+
+        for component in components:
+            component_type = getattr(component, "ingredient_type", None)
+            component_type = getattr(component_type, "value", component_type)
+            if component_type not in {"ingredient", "batch"}:
+                component_type = (
+                    "ingredient"
+                    if getattr(component, "ingredient_id", None) is not None
+                    else "batch"
+                )
+            component_quantity = Decimal(str(component.quantity_used or 0))
+            reference_id = getattr(component, "reference_id", None)
+            if reference_id is None:
+                reference_id = getattr(component, "ingredient_id", None)
+            if not reference_id or component_quantity <= 0:
+                continue
+
+            if component_type == "ingredient":
+                ingredient = await self.ingredient_repo.get_by_id(reference_id)
+                if not ingredient:
+                    continue
+
+                ingredient_unit = getattr(ingredient, "unit", None) or component.unit or "count"
+                if normalize_unit(component.unit or ingredient_unit) != normalize_unit(
+                    ingredient_unit
+                ):
+                    try:
+                        component_quantity = convert_unit(
+                            component_quantity,
+                            component.unit,
+                            ingredient_unit,
+                        )
+                    except ValueError:
+                        pass
+
+                ingredient_requirements[int(reference_id)] += (
+                    component_quantity / yield_qty
+                ) * required_quantity
+                continue
+
+            nested_batch = await self.batch_recipe_repo.get_by_id(reference_id)
+            if not nested_batch:
+                continue
+
+            nested_batch_unit = getattr(nested_batch, "yield_unit", None) or component.unit or "count"
+            if normalize_unit(component.unit or nested_batch_unit) != normalize_unit(
+                nested_batch_unit
+            ):
+                try:
+                    component_quantity = convert_unit(
+                        component_quantity,
+                        component.unit,
+                        nested_batch_unit,
+                    )
+                except ValueError:
+                    pass
+
+            nested_required_quantity = (component_quantity / yield_qty) * required_quantity
+            nested_requirements = await self._expand_batch_ingredient_requirements(
+                int(reference_id),
+                nested_required_quantity,
+                visited.copy(),
+            )
+            for ingredient_id, quantity in nested_requirements.items():
+                ingredient_requirements[ingredient_id] += quantity
+
+        return ingredient_requirements
 
     async def generate_batch_prep_suggestions(
         self,
