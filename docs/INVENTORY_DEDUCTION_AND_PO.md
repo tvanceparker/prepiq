@@ -6,6 +6,11 @@ This document describes the current inventory and purchase-order behavior that m
 
 It focuses on the current inventory service surfaces, PO suggestion behavior, and the trust model around forecast-backed purchasing.
 
+See also:
+
+- `FORECASTING_SYSTEM.md` for the shared forecast status model used by forecast pages and PO suggestions
+- `EOD_PIPELINE.md` for the EOD summary surface that carries related forecast trust metadata
+
 ## Inventory Scope
 
 The inventory domain currently covers:
@@ -70,6 +75,8 @@ Current purchasing responses can report:
 - `forecast_version`
 
 This means PO suggestions already expose trust metadata and should not be treated as unqualified recommendations.
+
+For retrieval and explanation purposes, this is the same trust model described in `FORECASTING_SYSTEM.md`, applied to purchasing rather than sales screens.
 
 ## Supplier Selection
 

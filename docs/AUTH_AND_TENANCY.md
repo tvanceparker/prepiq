@@ -64,6 +64,8 @@ Current behavior:
 - if `role_id` is absent, shared-access v1 behavior can bypass granular permission enforcement
 - if `role_id` is present, permissions are checked against role-permission records scoped to the same restaurant
 
+This permission model still exists, but it should be treated as a task-specific or legacy-style infrastructure surface rather than the default framing for all new v1 feature work.
+
 This means permission checks are role-aware and tenant-aware.
 
 ## Tenancy Model

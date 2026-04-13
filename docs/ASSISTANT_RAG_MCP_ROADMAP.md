@@ -1,5 +1,9 @@
 # Assistant, RAG, And MCP Roadmap
 
+## Status
+
+Planning guidance only. The assistant and MCP layers described here are future architecture, not current shipped platform behavior.
+
 ## Purpose
 
 This document describes the recommended architecture for adding an operator-facing assistant to PrepIQ.

@@ -6,6 +6,11 @@ This document describes the current EOD entrypoints, summary surface, and operat
 
 It deliberately focuses on current observable behavior rather than older speculative implementation maps.
 
+See also:
+
+- `FORECASTING_SYSTEM.md` for the shared forecast state model used outside EOD
+- `INVENTORY_DEDUCTION_AND_PO.md` for downstream purchasing behavior that consumes the same forecast trust signals
+
 ## Main Components
 
 The EOD path currently involves:
@@ -81,6 +86,8 @@ EOD summary includes a nested forecast summary that mirrors the broader forecast
 - `forecast_status_message`
 
 This keeps EOD status and sales/forecast views aligned.
+
+The same forecast trust model also affects purchase-order suggestion behavior, so EOD status should not be interpreted in isolation from the forecasting and purchasing docs.
 
 ## Operational Guidance
 

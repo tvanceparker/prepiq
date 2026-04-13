@@ -166,6 +166,19 @@ Current integration surfaces include:
 - weather and forecast-supporting operational data
 - Stripe terminal and cash drawer flows for internal POS mode
 
+## Legacy And Internal Surfaces
+
+Some subsystems still exist in the repo but should not be treated as the default v1 product direction unless a task explicitly targets them.
+
+These include:
+
+- internal POS and device-bound terminal flows
+- kitchen realtime and waiter-oriented operational flows
+- granular permission expansion beyond the shared-access v1 model
+- older tier naming and broader internal-ops assumptions left in legacy code paths
+
+These surfaces are still real parts of the codebase, but retrieval and documentation should prioritize the current v1 restaurant operations model first.
+
 ## Documentation Boundaries
 
 This document is the top-level architecture map. More detailed behavior belongs in the focused docs:

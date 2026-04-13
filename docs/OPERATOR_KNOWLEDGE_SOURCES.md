@@ -1,5 +1,9 @@
 # Operator Knowledge Sources
 
+## Status
+
+Planning guidance only. This document describes the intended assistant retrieval model and is not a description of a fully implemented operator assistant in the current product.
+
 ## Purpose
 
 This document explains where an operator-facing assistant should get its answers.

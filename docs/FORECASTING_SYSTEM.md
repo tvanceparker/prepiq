@@ -6,6 +6,11 @@ This document describes the current forecasting architecture and the operator-fa
 
 It focuses on verified current behavior rather than older inferred pipeline narratives.
 
+See also:
+
+- `EOD_PIPELINE.md` for how the same forecast trust model appears inside EOD summaries
+- `INVENTORY_DEDUCTION_AND_PO.md` for how forecast state affects purchase-order suggestions
+
 ## Main Components
 
 The forecasting domain currently spans:
@@ -50,6 +55,11 @@ Current state values include:
 - `degraded`
 - `failed`
 
+Current `forecast_source_type` values used in the service layer are:
+
+- `eod`
+- `on_demand`
+
 ## How Forecast State Is Determined
 
 Current logic checks:
@@ -59,6 +69,10 @@ Current logic checks:
 3. whether the forecast ledger finalized
 4. whether the ledger contains errors
 5. whether the forecast is from a prior day and should be marked stale
+
+In current code, `forecast_stale` is set when the effective finalized run date is older than today's cycle.
+
+That means the present stale rule is date-based, not an hour-window threshold.
 
 This means the current system does not treat forecast availability as a silent boolean. It exposes state and warnings explicitly.
 
@@ -115,6 +129,8 @@ That service can:
 
 This is one of the most important current forecast integrations in the platform.
 
+That purchasing behavior should be read together with `INVENTORY_DEDUCTION_AND_PO.md`, because the same trust metadata is carried into PO suggestion responses.
+
 ## Current Reliability Model
 
 Current purchasing and operator surfaces should interpret forecasts as follows:
@@ -144,3 +160,5 @@ It should retrieve and include:
 - stale state
 - confidence score when available
 - whether the result was reused from a prior finalized EOD run
+
+It should also treat forecast answers, EOD answers, and purchasing answers as part of the same trust model rather than as unrelated surfaces.
