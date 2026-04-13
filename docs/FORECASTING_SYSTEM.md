@@ -1,0 +1,146 @@
+# Forecasting System
+
+## Purpose
+
+This document describes the current forecasting architecture and the operator-facing forecast state model exposed by the backend.
+
+It focuses on verified current behavior rather than older inferred pipeline narratives.
+
+## Main Components
+
+The forecasting domain currently spans:
+
+- `SalesForecastService`
+- `ForecastingEngine`
+- `ForecastingEngineBasic`
+- `ForecastRunLedgerRepository`
+- forecast ORM tables such as forecasts, breakdowns, and accuracy records
+
+## Operator-Facing Forecast Surface
+
+The main operator-facing forecast API is exposed through `/sales_forecast`.
+
+Notable behaviors include:
+
+- upcoming forecast table views
+- top forecasted items
+- accuracy views
+- explicit `forecast_state`
+
+The `forecast_state` response is important because it tells the UI whether forecast-backed output should be treated as ready, stale, degraded, or failed.
+
+## Current Forecast State Contract
+
+`SalesForecastService` builds forecast state around these fields:
+
+- `forecast_source`
+- `forecast_source_type`
+- `forecast_generated_at`
+- `forecast_reused`
+- `forecast_stale`
+- `forecast_status`
+- `forecast_status_message`
+- `forecast_confidence_score`
+- `forecast_version`
+
+Current state values include:
+
+- `ready`
+- `stale`
+- `degraded`
+- `failed`
+
+## How Forecast State Is Determined
+
+Current logic checks:
+
+1. the restaurant's `last_eod_run_date`
+2. the forecast run ledger for that run date
+3. whether the forecast ledger finalized
+4. whether the ledger contains errors
+5. whether the forecast is from a prior day and should be marked stale
+
+This means the current system does not treat forecast availability as a silent boolean. It exposes state and warnings explicitly.
+
+## Forecast Metadata
+
+The current service aggregates metadata such as:
+
+- average confidence score across forecasts generated in a run
+- latest forecast version found in the run batch
+
+This metadata should be preserved in client displays and future assistant responses.
+
+## Forecast Engines
+
+### ForecastingEngine
+
+Role:
+
+- advanced forecasting pipeline
+- confidence scoring
+- breakdown generation
+- ledger-aware pipeline behavior
+
+### ForecastingEngineBasic
+
+Role:
+
+- simpler forecasting path and fallback behavior
+
+## Forecast Ledger
+
+The forecast run ledger exists to provide:
+
+- idempotent tracking
+- stage completion visibility
+- error capture
+- generated item progress
+- finalized state for downstream consumers
+
+This ledger is now part of the trust model for forecast-backed screens and workflows.
+
+## Forecasts In Purchasing
+
+Forecasts do not only power sales pages.
+
+`InventoryService` also uses forecast state for purchase-order suggestion generation.
+
+That service can:
+
+- reuse recent finalized EOD ingredient forecast breakdowns
+- run a fresh forecast on demand
+- degrade back to cached EOD forecast if fresh generation fails
+- return source and warning metadata with the suggestions
+
+This is one of the most important current forecast integrations in the platform.
+
+## Current Reliability Model
+
+Current purchasing and operator surfaces should interpret forecasts as follows:
+
+- `ready`: use as current forecast source
+- `stale`: usable with caution, but older than the current cycle
+- `degraded`: finalized output exists, but warnings/errors occurred
+- `failed`: no trustworthy finalized forecast is available
+
+## Documentation Rule
+
+Any new forecast-facing feature should:
+
+- surface forecast freshness
+- surface degraded or failed states explicitly
+- avoid implying certainty when the ledger indicates problems
+- keep forecast metadata aligned across backend DTOs and client interfaces
+
+## Assistant Implications
+
+A future assistant must not answer forecast questions as though a forecast is always valid.
+
+It should retrieve and include:
+
+- forecast status
+- generation time
+- stale state
+- confidence score when available
+- whether the result was reused from a prior finalized EOD run

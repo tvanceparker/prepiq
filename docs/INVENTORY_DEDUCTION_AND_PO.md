@@ -1,0 +1,124 @@
+# Inventory Deduction And Purchase Orders
+
+## Purpose
+
+This document describes the current inventory and purchase-order behavior that matters most to operators and future assistant features.
+
+It focuses on the current inventory service surfaces, PO suggestion behavior, and the trust model around forecast-backed purchasing.
+
+## Inventory Scope
+
+The inventory domain currently covers:
+
+- inventory table and details
+- lot-level inventory
+- stock movements
+- supplier relationships
+- ingredient supplier links
+- inventory adjustments and set-current-stock flows
+- discrepancy reporting
+- purchase-order generation, review, update, receive, and item-level changes
+
+## Purchase Order Lifecycle
+
+The backend currently supports:
+
+- manual purchase-order creation
+- listing and detail retrieval
+- status updates
+- receiving orders
+- adding, updating, and deleting PO items
+- generating forecast-based suggestions
+- creating draft orders from suggestions
+
+## PO Suggestion Sources
+
+Current suggestion generation supports two forecast modes:
+
+- cached EOD forecast reuse
+- fresh on-demand forecasting
+
+The response includes forecast source metadata so downstream UI and operators can see whether suggestions came from:
+
+- recent finalized EOD forecast data
+- fresh on-demand forecast execution
+- degraded fallback to cached forecast after fresh forecast failure
+
+## Current Forecast-Aware Suggestion Behavior
+
+`InventoryService.generate_purchase_order_suggestions()` currently:
+
+1. checks the restaurant's recent finalized EOD run context
+2. loads recent forecast metadata
+3. attempts to use cached ingredient forecast breakdowns when configured
+4. optionally runs a fresh forecast pipeline
+5. falls back to cached finalized EOD forecast when fresh generation fails or produces unusable output
+6. returns forecast state fields alongside suggestion output
+
+## Suggestion Response Trust Model
+
+Current purchasing responses can report:
+
+- `forecast_source`
+- `forecast_source_type`
+- `forecast_generated_at`
+- `forecast_reused`
+- `forecast_stale`
+- `forecast_status`
+- `forecast_status_message`
+- `forecast_confidence_score`
+- `forecast_version`
+
+This means PO suggestions already expose trust metadata and should not be treated as unqualified recommendations.
+
+## Supplier Selection
+
+The current PO suggestion flow considers:
+
+- supplier availability for the ingredient
+- preferred supplier selection logic
+- lead time
+- minimum order quantity
+- pack size and supplier unit information
+
+Supplier selection also records review context that can explain how a supplier was chosen.
+
+## Deduction And Discrepancy Context
+
+Inventory behavior also includes discrepancy-oriented surfaces such as:
+
+- deduction discrepancy list
+- discrepancy history
+- stock movement views
+- lot information and usage-log access
+
+This matters because purchasing quality depends on inventory quality.
+
+## Reliability Notes
+
+Inventory and purchasing outputs should be treated carefully when:
+
+- no finalized reusable forecast exists
+- forecast output is degraded or stale
+- inventory deduction discrepancies remain open
+- supplier links or packaging data are incomplete
+
+## Documentation Rule
+
+Any operator-facing or assistant-facing explanation of suggested purchasing should include:
+
+- the forecast source
+- whether the forecast was reused or freshly generated
+- forecast freshness and degraded/failed state
+- whether follow-up review is required before submitting orders
+
+## Assistant Implications
+
+The future assistant should answer purchasing questions using structured retrieval from inventory and PO services, not from generic reasoning over historical docs alone.
+
+High-value assistant questions include:
+
+- What should I order and why?
+- Are these suggestions based on fresh or reused forecast data?
+- Which purchase orders are still drafts?
+- Are there unresolved discrepancies affecting stock trust?
