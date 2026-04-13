@@ -28,6 +28,15 @@ const severityColors: Record<string, string> = {
 
 const formatStageLabel = (stage: string) => stage.replace(/_/g, ' ');
 
+const formatAuthorityLabel = (authority: EodRunSummary['forecast']['forecast_authority']) => {
+  if (authority === 'finalized_eod') return 'Finalized EOD';
+  if (authority === 'on_demand_preview') return 'On-demand Preview';
+  return 'Unavailable';
+};
+
+const getDecisionColor = (action: EodRunSummary['downstream']['forecast_action']) =>
+  action === 'allow' ? 'success' : action === 'review' ? 'warning' : 'error';
+
 const getAlertFamily = (alertType: string) => {
   if (alertType.startsWith('Inventory:')) return 'Inventory';
   if (alertType.startsWith('DataQuality:')) return 'Data Quality';
@@ -466,6 +475,38 @@ export default function AlertsFeedBasic(): JSX.Element {
 
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
               {eodSummary.forecast.forecast_status_message}
+            </Typography>
+
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
+              <Chip
+                size="small"
+                variant="outlined"
+                label={formatAuthorityLabel(eodSummary.forecast.forecast_authority)}
+              />
+              <Chip
+                size="small"
+                color={getDecisionColor(eodSummary.forecast.forecast_usage_action)}
+                label={`Forecast ${eodSummary.forecast.forecast_usage_action.toUpperCase()}`}
+              />
+              <Chip
+                size="small"
+                color={getDecisionColor(eodSummary.downstream.reorder_action)}
+                variant="outlined"
+                label={`Reorder ${eodSummary.downstream.reorder_action.toUpperCase()}`}
+              />
+              <Chip
+                size="small"
+                color={getDecisionColor(eodSummary.downstream.purchase_orders_action)}
+                variant="outlined"
+                label={`Draft POs ${eodSummary.downstream.purchase_orders_action.toUpperCase()}`}
+              />
+            </Stack>
+
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+              {eodSummary.forecast.forecast_usage_message}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+              {eodSummary.downstream.message}
             </Typography>
 
             <Box sx={{ mt: 2 }}>

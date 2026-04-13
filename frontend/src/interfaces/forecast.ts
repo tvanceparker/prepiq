@@ -84,6 +84,9 @@ export interface ForecastState {
   forecast_stale: boolean;
   forecast_status: 'ready' | 'stale' | 'degraded' | 'failed';
   forecast_status_message: string | null;
+  forecast_authority: 'finalized_eod' | 'on_demand_preview' | 'unavailable';
+  forecast_usage_action: 'allow' | 'review' | 'block';
+  forecast_usage_message: string | null;
   forecast_confidence_score?: number | null;
   forecast_version?: number | null;
 }

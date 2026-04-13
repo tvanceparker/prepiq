@@ -190,6 +190,9 @@ async def test_generate_purchase_order_suggestions_includes_explanation_payload(
     assert result["forecast_source_type"] == "on_demand"
     assert result["forecast_status"] == "ready"
     assert result["forecast_reused"] is False
+    assert result["forecast_authority"] == "on_demand_preview"
+    assert result["forecast_usage_action"] == "review"
+    assert "preview" in result["forecast_usage_message"].lower()
     assert result["forecast_confidence_score"] == 0.81
     assert result["forecast_version"] == 4
     assert len(result["all_items"]) == 1

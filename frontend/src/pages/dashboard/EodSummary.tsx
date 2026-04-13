@@ -9,6 +9,15 @@ import type { EodRunSummary } from '../../interfaces/eod';
 
 const formatStageLabel = (stage: string) => stage.replace(/_/g, ' ');
 
+const formatAuthorityLabel = (authority: EodRunSummary['forecast']['forecast_authority']) => {
+  if (authority === 'finalized_eod') return 'Finalized EOD';
+  if (authority === 'on_demand_preview') return 'On-demand Preview';
+  return 'Unavailable';
+};
+
+const getDecisionColor = (action: EodRunSummary['downstream']['forecast_action']) =>
+  action === 'allow' ? 'success' : action === 'review' ? 'warning' : 'error';
+
 export default function EodSummary(): JSX.Element {
   const navigate = useNavigate();
   const { data, isLoading, error } = useQuery<EodRunSummary>({
@@ -168,7 +177,33 @@ export default function EodSummary(): JSX.Element {
             <Typography variant="h6" sx={{ mb: 1 }}>
               Forecast Trust
             </Typography>
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 1.5 }}>
+              <Chip
+                label={formatAuthorityLabel(data.forecast.forecast_authority)}
+                variant="outlined"
+              />
+              <Chip
+                color={getDecisionColor(data.forecast.forecast_usage_action)}
+                label={`Forecast ${data.forecast.forecast_usage_action.toUpperCase()}`}
+              />
+              <Chip
+                color={getDecisionColor(data.downstream.reorder_action)}
+                variant="outlined"
+                label={`Reorder ${data.downstream.reorder_action.toUpperCase()}`}
+              />
+              <Chip
+                color={getDecisionColor(data.downstream.purchase_orders_action)}
+                variant="outlined"
+                label={`Draft POs ${data.downstream.purchase_orders_action.toUpperCase()}`}
+              />
+            </Stack>
             <Typography variant="body1">{data.forecast.forecast_status_message}</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {data.forecast.forecast_usage_message}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {data.downstream.message}
+            </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
               Generated{' '}
               {data.forecast.forecast_generated_at

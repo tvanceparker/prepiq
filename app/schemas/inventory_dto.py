@@ -157,6 +157,9 @@ class InventoryForecastStateDTO(BaseModel):
     forecast_stale: bool
     forecast_status: Literal["ready", "stale", "degraded", "failed"]
     forecast_status_message: Optional[str] = None
+    forecast_authority: Literal["finalized_eod", "on_demand_preview", "unavailable"]
+    forecast_usage_action: Literal["allow", "review", "block"]
+    forecast_usage_message: Optional[str] = None
     forecast_confidence_score: Optional[float] = None
     forecast_version: Optional[int] = None
 

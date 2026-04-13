@@ -24,6 +24,7 @@ from collections import defaultdict
 import asyncio
 from app.utils.logger_helpers import log_method
 from app.core.logging import logger 
+from app.services.utils.forecast_contract import build_forecast_contract
 import json
 
 
@@ -63,17 +64,32 @@ class SalesForecastService:
         forecast_confidence_score: Optional[float] = None,
         forecast_version: Optional[int] = None,
     ) -> Dict[str, Any]:
-        return {
-            "forecast_source": "cached",
-            "forecast_source_type": "eod",
-            "forecast_generated_at": forecast_generated_at,
-            "forecast_reused": True,
-            "forecast_stale": forecast_stale,
-            "forecast_status": forecast_status,
-            "forecast_status_message": forecast_status_message,
-            "forecast_confidence_score": forecast_confidence_score,
-            "forecast_version": forecast_version,
-        }
+        return build_forecast_contract(
+            forecast_source="cached",
+            forecast_source_type="eod",
+            forecast_generated_at=forecast_generated_at,
+            forecast_reused=True,
+            forecast_stale=forecast_stale,
+            forecast_status=forecast_status,
+            forecast_status_message=forecast_status_message,
+            forecast_confidence_score=forecast_confidence_score,
+            forecast_version=forecast_version,
+        )
+
+    async def _resolve_authoritative_forecast_run_date(
+        self,
+        preferred_run_date: Optional[date],
+    ) -> Optional[date]:
+        if preferred_run_date is not None:
+            ledger = await self.forecast_run_ledger_repo.get_one_by({"run_date": preferred_run_date})
+            if ledger and getattr(ledger, "finalized", False):
+                return preferred_run_date
+
+        latest_finalized = await self.forecast_run_ledger_repo.get_latest_finalized()
+        if latest_finalized and getattr(latest_finalized, "finalized", False):
+            return getattr(latest_finalized, "run_date", None)
+
+        return preferred_run_date
 
     async def _get_forecast_batch_metadata(self, run_date: Optional[date]) -> Dict[str, Optional[float | int]]:
         if run_date is None:
@@ -113,9 +129,10 @@ class SalesForecastService:
     async def get_forecast_state(self) -> Dict[str, Any]:
         restaurant = await self.restaurant_repo.get_by_id(self.restaurant_id)
         last_eod_run_date = getattr(restaurant, "last_eod_run_date", None)
-        metadata = await self._get_forecast_batch_metadata(last_eod_run_date)
+        authoritative_run_date = await self._resolve_authoritative_forecast_run_date(last_eod_run_date)
+        metadata = await self._get_forecast_batch_metadata(authoritative_run_date)
 
-        if last_eod_run_date is None:
+        if authoritative_run_date is None:
             return self._build_forecast_state(
                 forecast_generated_at=None,
                 forecast_stale=True,
@@ -124,8 +141,8 @@ class SalesForecastService:
                 **metadata,
             )
 
-        ledger = await self.forecast_run_ledger_repo.get_one_by({"run_date": last_eod_run_date})
-        forecast_stale = last_eod_run_date < date.today()
+        ledger = await self.forecast_run_ledger_repo.get_one_by({"run_date": authoritative_run_date})
+        forecast_stale = authoritative_run_date < date.today()
         generated_at = getattr(ledger, "finished_at", None) if ledger else None
 
         if not ledger or not getattr(ledger, "finalized", False):

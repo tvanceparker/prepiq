@@ -63,6 +63,12 @@ class TestEODRunSummary:
         assert summary is not None
         assert summary["status"] == "success"
         assert summary["forecast"]["forecast_status"] == "ready"
+        assert summary["forecast"]["forecast_authority"] == "finalized_eod"
+        assert summary["forecast"]["forecast_usage_action"] == "allow"
+        assert summary["downstream"]["forecast_action"] == "allow"
+        assert summary["downstream"]["reorder_action"] == "review"
+        assert summary["downstream"]["purchase_orders_action"] == "review"
+        assert "manual review" in summary["downstream"]["message"].lower()
         assert summary["counts"]["sales_usage_log_count"] == 9
         assert summary["counts"]["forecast_menu_items_processed"] == 14
         assert summary["counts"]["purchase_order_suggestion_count"] == 3
@@ -114,6 +120,12 @@ class TestEODRunSummary:
         assert summary is not None
         assert summary["status"] == "partial"
         assert summary["forecast"]["forecast_status"] == "degraded"
+        assert summary["forecast"]["forecast_authority"] == "finalized_eod"
+        assert summary["forecast"]["forecast_usage_action"] == "review"
+        assert summary["downstream"]["forecast_action"] == "review"
+        assert summary["downstream"]["reorder_action"] == "review"
+        assert summary["downstream"]["purchase_orders_action"] == "block"
+        assert "blocked" in summary["downstream"]["message"].lower()
         assert summary["errors"][0]["stage"] == "po_write"
         assert summary["counts"]["open_discrepancy_count"] == 0
         assert summary["guidance"]["headline"] == "Manual review is required before trusting every downstream output."

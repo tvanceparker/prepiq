@@ -126,9 +126,16 @@ class TestSalesForecastService:
         service.restaurant_repo.get_by_id = AsyncMock(
             return_value=MagicMock(last_eod_run_date=date.today())
         )
-        service.forecast_run_ledger_repo.get_one_by = AsyncMock(
-            return_value=MagicMock(finalized=True, finished_at=datetime.utcnow(), errors=[])
+        latest_ledger = MagicMock(
+            run_date=date.today(),
+            finalized=True,
+            finished_at=datetime.utcnow(),
+            errors=[],
         )
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(
+            return_value=latest_ledger
+        )
+        service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(return_value=latest_ledger)
         service.forecast_repo.get_forecasts_created_between = AsyncMock(
             return_value=[MagicMock(confidence_score=0.84, forecast_version=3)]
         )
@@ -138,6 +145,9 @@ class TestSalesForecastService:
         assert result["forecast_source_type"] == "eod"
         assert result["forecast_status"] == "ready"
         assert result["forecast_stale"] is False
+        assert result["forecast_authority"] == "finalized_eod"
+        assert result["forecast_usage_action"] == "allow"
+        assert "authoritative downstream input" in result["forecast_usage_message"]
         assert result["forecast_confidence_score"] == 0.84
         assert result["forecast_version"] == 3
 
@@ -149,12 +159,17 @@ class TestSalesForecastService:
         service.forecast_run_ledger_repo.get_one_by = AsyncMock(
             return_value=MagicMock(finalized=True, finished_at=datetime.utcnow(), errors=[])
         )
+        service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(
+            return_value=MagicMock(run_date=stale_day, finalized=True)
+        )
         service.forecast_repo.get_forecasts_created_between = AsyncMock(return_value=[])
 
         result = await service.get_forecast_state()
 
         assert result["forecast_status"] == "stale"
         assert result["forecast_stale"] is True
+        assert result["forecast_authority"] == "finalized_eod"
+        assert result["forecast_usage_action"] == "review"
 
     async def test_get_forecast_state_degraded(self, service):
         service.restaurant_repo.get_by_id = AsyncMock(
@@ -167,19 +182,61 @@ class TestSalesForecastService:
                 errors=[{"stage": "forecasts_generated", "message": "warning"}],
             )
         )
+        service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(
+            return_value=MagicMock(run_date=date.today(), finalized=True)
+        )
         service.forecast_repo.get_forecasts_created_between = AsyncMock(return_value=[])
 
         result = await service.get_forecast_state()
 
         assert result["forecast_status"] == "degraded"
+        assert result["forecast_authority"] == "finalized_eod"
+        assert result["forecast_usage_action"] == "review"
 
     async def test_get_forecast_state_failed_without_finalized_ledger(self, service):
         service.restaurant_repo.get_by_id = AsyncMock(
             return_value=MagicMock(last_eod_run_date=date.today())
         )
         service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
+        service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(return_value=None)
         service.forecast_repo.get_forecasts_created_between = AsyncMock(return_value=[])
 
         result = await service.get_forecast_state()
 
         assert result["forecast_status"] == "failed"
+        assert result["forecast_authority"] == "unavailable"
+        assert result["forecast_usage_action"] == "block"
+
+    async def test_get_forecast_state_falls_back_to_latest_finalized_run(self, service):
+        preferred_run_date = date.today()
+        finalized_run_date = date.today() - timedelta(days=1)
+        latest_finalized = MagicMock(run_date=finalized_run_date, finalized=True)
+        finalized_ledger = MagicMock(
+            finalized=True,
+            finished_at=datetime.utcnow(),
+            errors=[],
+        )
+
+        service.restaurant_repo.get_by_id = AsyncMock(
+            return_value=MagicMock(last_eod_run_date=preferred_run_date)
+        )
+
+        async def get_one_by_side_effect(filters):
+            if filters == {"run_date": preferred_run_date}:
+                return MagicMock(finalized=False, finished_at=None, errors=[])
+            if filters == {"run_date": finalized_run_date}:
+                return finalized_ledger
+            return None
+
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(side_effect=get_one_by_side_effect)
+        service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(return_value=latest_finalized)
+        service.forecast_repo.get_forecasts_created_between = AsyncMock(
+            return_value=[MagicMock(confidence_score=0.77, forecast_version=5)]
+        )
+
+        result = await service.get_forecast_state()
+
+        assert result["forecast_status"] == "stale"
+        assert result["forecast_authority"] == "finalized_eod"
+        assert result["forecast_usage_action"] == "review"
+        assert result["forecast_version"] == 5

@@ -1,5 +1,6 @@
 export type EodRunStatus = 'processing' | 'success' | 'partial' | 'failed';
 export type EodForecastStatus = 'ready' | 'stale' | 'degraded' | 'failed';
+export type EodDecisionAction = 'allow' | 'review' | 'block';
 
 export interface EodStageStatus {
   stage: string;
@@ -14,10 +15,23 @@ export interface EodRunError {
 }
 
 export interface EodForecastState {
+  forecast_source: 'cached' | 'fresh';
+  forecast_source_type: 'eod' | 'on_demand';
   forecast_generated_at: string | null;
+  forecast_reused: boolean;
   forecast_stale: boolean;
   forecast_status: EodForecastStatus;
   forecast_status_message: string | null;
+  forecast_authority: 'finalized_eod' | 'on_demand_preview' | 'unavailable';
+  forecast_usage_action: EodDecisionAction;
+  forecast_usage_message: string | null;
+}
+
+export interface EodDownstreamDecision {
+  forecast_action: EodDecisionAction;
+  reorder_action: EodDecisionAction;
+  purchase_orders_action: EodDecisionAction;
+  message: string;
 }
 
 export interface EodRunCounts {
@@ -54,6 +68,7 @@ export interface EodRunSummary {
   stages: EodStageStatus[];
   errors: EodRunError[];
   forecast: EodForecastState;
+  downstream: EodDownstreamDecision;
   counts: EodRunCounts;
   repair_targets: EodRepairTarget[];
   guidance: EodOperatorGuidance;

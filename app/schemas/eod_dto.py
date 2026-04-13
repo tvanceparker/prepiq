@@ -26,10 +26,23 @@ class EODRunErrorDTO(BaseModel):
 
 
 class EODForecastStateDTO(BaseModel):
+    forecast_source: Literal["cached", "fresh"]
+    forecast_source_type: Literal["eod", "on_demand"]
     forecast_generated_at: Optional[datetime] = None
+    forecast_reused: bool
     forecast_stale: bool
     forecast_status: Literal["ready", "stale", "degraded", "failed"]
     forecast_status_message: Optional[str] = None
+    forecast_authority: Literal["finalized_eod", "on_demand_preview", "unavailable"]
+    forecast_usage_action: Literal["allow", "review", "block"]
+    forecast_usage_message: Optional[str] = None
+
+
+class EODDownstreamDecisionDTO(BaseModel):
+    forecast_action: Literal["allow", "review", "block"]
+    reorder_action: Literal["allow", "review", "block"]
+    purchase_orders_action: Literal["allow", "review", "block"]
+    message: str
 
 
 class EODRunCountsDTO(BaseModel):
@@ -66,6 +79,7 @@ class EODRunSummaryDTO(BaseModel):
     stages: List[EODStageStatusDTO]
     errors: List[EODRunErrorDTO]
     forecast: EODForecastStateDTO
+    downstream: EODDownstreamDecisionDTO
     counts: EODRunCountsDTO
     repair_targets: List[EODRepairTargetDTO]
     guidance: EODOperatorGuidanceDTO

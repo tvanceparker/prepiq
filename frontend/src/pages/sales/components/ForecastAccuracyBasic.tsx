@@ -6,7 +6,7 @@ import ComputedAccuracy from './ComputedAccuracy';
 import FilterButtons from '../../../components/FilterButtons'; // Keep your existing component
 import DateSelector from '../../../components/DateSelector';
 import { PageHeader } from '../../../components/PageHeader';
-import { Box, Typography, CircularProgress, Alert, Paper, Chip } from '@mui/material';
+import { Box, Typography, CircularProgress, Alert, Paper, Chip, Stack } from '@mui/material';
 import TrackChangesOutlinedIcon from '@mui/icons-material/TrackChangesOutlined';
 
 const formatDate = date => date.toISOString().split('T')[0];
@@ -18,6 +18,15 @@ const getDateNDaysAgo = n => {
 
 const getForecastSourceLabel = forecastState =>
   forecastState?.forecast_source_type === 'eod' ? 'EOD' : 'On-demand';
+
+const getForecastAuthorityLabel = forecastState => {
+  if (forecastState?.forecast_authority === 'finalized_eod') return 'Finalized EOD';
+  if (forecastState?.forecast_authority === 'on_demand_preview') return 'On-demand Preview';
+  return 'Unavailable';
+};
+
+const getUsageColor = action =>
+  action === 'allow' ? 'success' : action === 'review' ? 'warning' : 'error';
 
 const formatForecastTimestamp = value => {
   if (!value) return null;
@@ -100,6 +109,21 @@ const ForecastAccuracyBasic = () => {
         >
           <Typography variant="body2" fontWeight={600}>
             {forecastState.forecast_status_message}
+          </Typography>
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1 }}>
+            <Chip
+              size="small"
+              variant="outlined"
+              label={getForecastAuthorityLabel(forecastState)}
+            />
+            <Chip
+              size="small"
+              color={getUsageColor(forecastState.forecast_usage_action)}
+              label={`Usage ${forecastState.forecast_usage_action.toUpperCase()}`}
+            />
+          </Stack>
+          <Typography variant="caption" display="block" sx={{ mt: 0.75 }}>
+            {forecastState.forecast_usage_message}
           </Typography>
           {forecastState.forecast_generated_at && (
             <Typography variant="caption" display="block">

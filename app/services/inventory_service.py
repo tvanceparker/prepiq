@@ -27,6 +27,7 @@ from app.services.utils.purchase_order_note_helper import (
     parse_purchase_order_notes,
     serialize_purchase_order_notes,
 )
+from app.services.utils.forecast_contract import build_forecast_contract
 
 class InventoryService:
     UNSPECIFIED_SUPPLIER_NAME = "Unspecified supplier"
@@ -1168,17 +1169,17 @@ class InventoryService:
         forecast_confidence_score: Optional[float] = None,
         forecast_version: Optional[int] = None,
     ) -> Dict[str, Any]:
-        return {
-            "forecast_source": forecast_source,
-            "forecast_source_type": forecast_source_type,
-            "forecast_generated_at": forecast_generated_at,
-            "forecast_reused": forecast_reused,
-            "forecast_stale": forecast_stale,
-            "forecast_status": forecast_status,
-            "forecast_status_message": forecast_status_message,
-            "forecast_confidence_score": forecast_confidence_score,
-            "forecast_version": forecast_version,
-        }
+        return build_forecast_contract(
+            forecast_source=forecast_source,
+            forecast_source_type=forecast_source_type,
+            forecast_generated_at=forecast_generated_at,
+            forecast_reused=forecast_reused,
+            forecast_stale=forecast_stale,
+            forecast_status=forecast_status,
+            forecast_status_message=forecast_status_message,
+            forecast_confidence_score=forecast_confidence_score,
+            forecast_version=forecast_version,
+        )
 
     async def _get_forecast_batch_metadata(self, run_date: Optional[date]) -> Dict[str, Optional[float | int]]:
         if run_date is None:

@@ -49,6 +49,15 @@ const formatSelectionRule = (rule?: string) => {
 const getForecastSourceLabel = (suggestions: POSuggestionsResponse) =>
   suggestions.forecast_source_type === 'eod' ? 'EOD' : 'On-demand';
 
+const getForecastAuthorityLabel = (suggestions: POSuggestionsResponse) => {
+  if (suggestions.forecast_authority === 'finalized_eod') return 'Finalized EOD';
+  if (suggestions.forecast_authority === 'on_demand_preview') return 'On-demand Preview';
+  return 'Unavailable';
+};
+
+const getUsageColor = (action: POSuggestionsResponse['forecast_usage_action']) =>
+  action === 'allow' ? 'success' : action === 'review' ? 'warning' : 'error';
+
 const getSupplierGroupKey = (supplierId?: number | null) =>
   supplierId === null || supplierId === undefined ? 'unspecified' : String(supplierId);
 
@@ -268,6 +277,17 @@ export default function POSupplierReview({
                 variant="outlined"
                 size="small"
               />
+              <Chip
+                label={getForecastAuthorityLabel(suggestions)}
+                variant="outlined"
+                size="small"
+              />
+              <Chip
+                label={`Usage ${suggestions.forecast_usage_action.toUpperCase()}`}
+                color={getUsageColor(suggestions.forecast_usage_action)}
+                variant="filled"
+                size="small"
+              />
               {suggestions.forecast_status !== 'ready' && (
                 <Chip
                   label={suggestions.forecast_status}
@@ -302,6 +322,9 @@ export default function POSupplierReview({
                     {suggestions.forecast_status_message}
                   </Typography>
                 )}
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {suggestions.forecast_usage_message}
+                </Typography>
               </Box>
             )}
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>

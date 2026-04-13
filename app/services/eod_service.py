@@ -38,6 +38,7 @@ from app.services.utils.purchase_order_note_helper import (
     build_purchase_order_review_context,
     serialize_purchase_order_notes,
 )
+from app.services.utils.forecast_contract import build_forecast_contract
 from typing import List, Dict, Optional, Any
 import math
 from decimal import Decimal
@@ -117,35 +118,103 @@ class EODService:
         forecast_stale = run_date < date.today()
 
         if not forecast_ledger or not getattr(forecast_ledger, "finalized", False):
-            return {
-                "forecast_generated_at": forecast_generated_at,
-                "forecast_stale": forecast_stale,
-                "forecast_status": "failed",
-                "forecast_status_message": "No finalized forecast is available for this EOD run.",
-            }
+            return build_forecast_contract(
+                forecast_source="cached",
+                forecast_source_type="eod",
+                forecast_generated_at=forecast_generated_at,
+                forecast_reused=True,
+                forecast_stale=forecast_stale,
+                forecast_status="failed",
+                forecast_status_message="No finalized forecast is available for this EOD run.",
+            )
 
         errors = getattr(forecast_ledger, "errors", None) or []
         if errors:
-            return {
-                "forecast_generated_at": forecast_generated_at,
-                "forecast_stale": forecast_stale,
-                "forecast_status": "degraded",
-                "forecast_status_message": "The forecast finalized with warnings for this EOD run.",
-            }
+            return build_forecast_contract(
+                forecast_source="cached",
+                forecast_source_type="eod",
+                forecast_generated_at=forecast_generated_at,
+                forecast_reused=True,
+                forecast_stale=forecast_stale,
+                forecast_status="degraded",
+                forecast_status_message="The forecast finalized with warnings for this EOD run.",
+            )
 
         if forecast_stale:
+            return build_forecast_contract(
+                forecast_source="cached",
+                forecast_source_type="eod",
+                forecast_generated_at=forecast_generated_at,
+                forecast_reused=True,
+                forecast_stale=True,
+                forecast_status="stale",
+                forecast_status_message="The finalized forecast is older than today's cycle.",
+            )
+
+        return build_forecast_contract(
+            forecast_source="cached",
+            forecast_source_type="eod",
+            forecast_generated_at=forecast_generated_at,
+            forecast_reused=True,
+            forecast_stale=False,
+            forecast_status="ready",
+            forecast_status_message="Using the finalized forecast for this EOD run.",
+        )
+
+    def _build_downstream_actions(
+        self,
+        *,
+        ledger,
+        run_status: str,
+        forecast_summary: Dict[str, Any],
+        discrepancy_count: int,
+    ) -> Dict[str, str]:
+        if run_status == "processing":
             return {
-                "forecast_generated_at": forecast_generated_at,
-                "forecast_stale": True,
-                "forecast_status": "stale",
-                "forecast_status_message": "The finalized forecast is older than today's cycle.",
+                "forecast_action": "block",
+                "reorder_action": "block",
+                "purchase_orders_action": "block",
+                "message": "This EOD run is still in progress. Wait for completion before trusting downstream outputs.",
             }
 
+        if run_status == "failed":
+            return {
+                "forecast_action": "block",
+                "reorder_action": "block",
+                "purchase_orders_action": "block",
+                "message": "This EOD run did not finalize. Do not trust downstream forecast, reorder, or purchase-order outputs yet.",
+            }
+
+        forecast_action = str(forecast_summary.get("forecast_usage_action") or "block")
+        reorder_completed = bool(getattr(ledger, "reorder_completed", False))
+        po_written = bool(getattr(ledger, "po_written", False))
+
+        if not reorder_completed or forecast_action == "block":
+            reorder_action = "block"
+        elif run_status == "partial" or forecast_action == "review" or discrepancy_count > 0:
+            reorder_action = "review"
+        else:
+            reorder_action = "allow"
+
+        if not po_written or reorder_action == "block":
+            purchase_orders_action = "block"
+        elif run_status == "partial" or reorder_action == "review":
+            purchase_orders_action = "review"
+        else:
+            purchase_orders_action = "allow"
+
+        if "block" in {forecast_action, reorder_action, purchase_orders_action}:
+            message = "At least one downstream output is blocked pending rerun or repair."
+        elif "review" in {forecast_action, reorder_action, purchase_orders_action}:
+            message = "Downstream outputs are available, but they require manual review before operators act on them."
+        else:
+            message = "Forecast, reorder, and purchase-order outputs are safe to use."
+
         return {
-            "forecast_generated_at": forecast_generated_at,
-            "forecast_stale": False,
-            "forecast_status": "ready",
-            "forecast_status_message": "Using the finalized forecast for this EOD run.",
+            "forecast_action": forecast_action,
+            "reorder_action": reorder_action,
+            "purchase_orders_action": purchase_orders_action,
+            "message": message,
         }
 
     def _build_operator_guidance(
@@ -306,6 +375,12 @@ class EODService:
                 for error in errors
             ],
             "forecast": forecast_summary,
+            "downstream": self._build_downstream_actions(
+                ledger=ledger,
+                run_status=run_status,
+                forecast_summary=forecast_summary,
+                discrepancy_count=len(discrepancies),
+            ),
             "counts": {
                 "sales_usage_log_count": await self.inventory_usage_log_repo.count_for_reference(
                     "eod_sales",
