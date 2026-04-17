@@ -1621,6 +1621,94 @@ class InventoryService:
         )
         return history
 
+    def _matches_deduction_item(
+        self,
+        *,
+        ingredient_id: Optional[int] = None,
+        batch_recipe_id: Optional[int] = None,
+        candidate_ingredient_id: Optional[int] = None,
+        candidate_batch_recipe_id: Optional[int] = None,
+    ) -> bool:
+        if ingredient_id is not None:
+            return candidate_ingredient_id == ingredient_id
+        if batch_recipe_id is not None:
+            return candidate_batch_recipe_id == batch_recipe_id
+        return False
+
+    async def resolve_manual_inventory_review_flags(
+        self,
+        *,
+        ingredient_id: Optional[int] = None,
+        batch_recipe_id: Optional[int] = None,
+        current_quantity_on_hand: Decimal,
+    ) -> int:
+        if ingredient_id is None and batch_recipe_id is None:
+            return 0
+
+        current_qty = float(current_quantity_on_hand)
+        resolved_count = 0
+        tracked_alert_ids = set()
+        resolved_at = datetime.utcnow()
+
+        discrepancies = await self.discrepancy_repo.get_open_by_item(
+            ingredient_id=ingredient_id,
+            batch_recipe_id=batch_recipe_id,
+        )
+        for discrepancy in discrepancies:
+            updated_discrepancy = await self.discrepancy_repo.update(
+                discrepancy.discrepancy_id,
+                {
+                    "status": "Resolved",
+                    "is_acknowledged": True,
+                    "date_resolved": resolved_at,
+                    "current_quantity_on_hand": current_qty,
+                    "shortfall_quantity": 0.0,
+                },
+            )
+            if not updated_discrepancy:
+                continue
+
+            alert_id = getattr(discrepancy, "alert_id", None)
+            counted_resolution = False
+
+            if alert_id:
+                tracked_alert_ids.add(alert_id)
+                alert = await self.alert_repo.get_by_id(alert_id)
+                if alert and getattr(alert, "status", None) in ["Active", "Acknowledged"]:
+                    updated_alert = await self.alert_repo.update(
+                        alert_id,
+                        {"status": "Resolved", "date_resolved": resolved_at},
+                    )
+                    if updated_alert:
+                        resolved_count += 1
+                        counted_resolution = True
+
+            if not counted_resolution:
+                resolved_count += 1
+
+        alerts = await self.alert_repo.get_open_inventory_deduction_alerts()
+        for alert in alerts:
+            if alert.alert_id in tracked_alert_ids:
+                continue
+
+            meta = getattr(alert, "meta", None) or {}
+            if not self._matches_deduction_item(
+                ingredient_id=ingredient_id,
+                batch_recipe_id=batch_recipe_id,
+                candidate_ingredient_id=self._coerce_optional_int(meta.get("ingredient_id")),
+                candidate_batch_recipe_id=self._coerce_optional_int(meta.get("batch_recipe_id")),
+            ):
+                continue
+
+            updated = await self.alert_repo.update(
+                alert.alert_id,
+                {"status": "Resolved", "date_resolved": resolved_at},
+            )
+            if updated:
+                resolved_count += 1
+
+        return resolved_count
+
     async def _resolve_satisfied_deduction_alerts(
         self,
         *,
@@ -1634,6 +1722,7 @@ class InventoryService:
         current_qty = float(current_quantity_on_hand)
         resolved_count = 0
         tracked_alert_ids = set()
+        resolved_at = datetime.utcnow()
 
         discrepancies = await self.discrepancy_repo.get_open_by_item(
             ingredient_id=ingredient_id,
@@ -1649,7 +1738,7 @@ class InventoryService:
                 {
                     "status": "Resolved",
                     "is_acknowledged": True,
-                    "date_resolved": datetime.utcnow(),
+                    "date_resolved": resolved_at,
                     "current_quantity_on_hand": current_qty,
                     "available_quantity": current_qty,
                     "shortfall_quantity": 0.0,
@@ -1659,17 +1748,19 @@ class InventoryService:
                 continue
 
             alert_id = getattr(discrepancy, "alert_id", None)
+            counted_resolution = False
             if alert_id:
                 tracked_alert_ids.add(alert_id)
                 alert = await self.alert_repo.get_by_id(alert_id)
                 if alert and getattr(alert, "status", None) in ["Active", "Acknowledged"]:
                     updated_alert = await self.alert_repo.update(
                         alert_id,
-                        {"status": "Resolved", "date_resolved": datetime.utcnow()},
+                        {"status": "Resolved", "date_resolved": resolved_at},
                     )
                     if updated_alert:
                         resolved_count += 1
-            else:
+                        counted_resolution = True
+            if not counted_resolution:
                 resolved_count += 1
 
         alerts = await self.alert_repo.get_open_inventory_deduction_alerts()
@@ -1679,12 +1770,12 @@ class InventoryService:
                 continue
 
             meta = getattr(alert, "meta", None) or {}
-            alert_ingredient_id = self._coerce_optional_int(meta.get("ingredient_id"))
-            alert_batch_recipe_id = self._coerce_optional_int(meta.get("batch_recipe_id"))
-
-            if ingredient_id is not None and alert_ingredient_id != ingredient_id:
-                continue
-            if batch_recipe_id is not None and alert_batch_recipe_id != batch_recipe_id:
+            if not self._matches_deduction_item(
+                ingredient_id=ingredient_id,
+                batch_recipe_id=batch_recipe_id,
+                candidate_ingredient_id=self._coerce_optional_int(meta.get("ingredient_id")),
+                candidate_batch_recipe_id=self._coerce_optional_int(meta.get("batch_recipe_id")),
+            ):
                 continue
 
             required_quantity = self._coerce_float(meta.get("required_quantity"))
@@ -1693,7 +1784,7 @@ class InventoryService:
 
             updated = await self.alert_repo.update(
                 alert.alert_id,
-                {"status": "Resolved", "date_resolved": datetime.utcnow()},
+                {"status": "Resolved", "date_resolved": resolved_at},
             )
             if updated:
                 resolved_count += 1
@@ -2250,7 +2341,7 @@ class InventoryService:
 
                 await self.inventory_usage_log_repo.create(usage_log_entry)
 
-                resolved_deduction_alerts = await self._resolve_satisfied_deduction_alerts(
+                resolved_deduction_alerts = await self.resolve_manual_inventory_review_flags(
                     ingredient_id=inventory_item.ingredient_id,
                     batch_recipe_id=getattr(lot, "batch_recipe_id", None),
                     current_quantity_on_hand=new_quantity,
@@ -2368,8 +2459,9 @@ class InventoryService:
                     {"quantity_on_hand": float(counted_qty)},
                 )
 
-                resolved_deduction_alerts = await self._resolve_satisfied_deduction_alerts(
+                resolved_deduction_alerts = await self.resolve_manual_inventory_review_flags(
                     ingredient_id=getattr(inventory_item, "ingredient_id", None),
+                    batch_recipe_id=getattr(inventory_item, "batch_recipe_id", None),
                     current_quantity_on_hand=counted_qty,
                 )
 

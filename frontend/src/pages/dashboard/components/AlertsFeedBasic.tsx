@@ -199,7 +199,6 @@ export default function AlertsFeedBasic(): JSX.Element {
     try {
       await fix(alert.alert_id, fixData);
       showSnackbar('Alert fixed successfully', 'success');
-      if (!viewAll) remove(alert.alert_id);
     } catch {
       showSnackbar('Failed to fix alert', 'error');
     }

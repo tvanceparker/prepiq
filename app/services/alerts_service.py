@@ -4,6 +4,7 @@ import enum
 from scipy.stats import zscore
 import numpy as np
 from collections import defaultdict
+from decimal import Decimal
 from app.repositories.alerts_repo import AlertRepository
 from app.repositories.inventory_deduction_discrepancies_repo import InventoryDeductionDiscrepancyRepository
 from app.repositories.sales_repo import SalesRepository
@@ -52,6 +53,16 @@ class AlertsService:
         if normalized in self._SEVERITY_MAP:
             return self._SEVERITY_MAP[normalized]
         return "warning"
+
+    def _build_inventory_service(self):
+        from app.services.inventory_service import InventoryService
+
+        return InventoryService(
+            self.db,
+            self.restaurant_id,
+            self.subscription_tier,
+            self.employee_id,
+        )
 
     def _normalize_alert(self, alert: Dict[str, object]) -> Dict[str, object]:
         if not alert:
@@ -326,6 +337,7 @@ class AlertsService:
 
         elif alert_type == "Inventory:DeductionFailed":
             ingredient_id = meta.get("ingredient_id")
+            batch_recipe_id = meta.get("batch_recipe_id")
             required_quantity = float(meta.get("required_quantity") or 0)
             available_quantity = float(meta.get("available_quantity") or 0)
             unit = meta.get("unit") or "count"
@@ -335,6 +347,20 @@ class AlertsService:
                     f"Inventory fix for alert {alert_id} missing ingredient_id in meta."
                 )
                 return False
+
+            try:
+                ingredient_id = int(ingredient_id)
+            except (TypeError, ValueError):
+                logger.warning(
+                    f"Inventory fix for alert {alert_id} has invalid ingredient_id: {ingredient_id}"
+                )
+                return False
+
+            if batch_recipe_id is not None:
+                try:
+                    batch_recipe_id = int(batch_recipe_id)
+                except (TypeError, ValueError):
+                    batch_recipe_id = None
 
             target_quantity = fix_data.get("target_quantity_on_hand")
             if target_quantity is None:
@@ -355,7 +381,7 @@ class AlertsService:
                 return False
 
             inventory_entry = await self.inventory_repo.get_inventory_by_ingredient(
-                int(ingredient_id)
+                ingredient_id
             )
 
             if inventory_entry:
@@ -366,12 +392,19 @@ class AlertsService:
             else:
                 await self.inventory_repo.create(
                     {
-                        "ingredient_id": int(ingredient_id),
+                        "ingredient_id": ingredient_id,
                         "quantity_on_hand": target_quantity,
                         "min_stock_level": 0,
                         "unit": str(unit),
                     }
                 )
+
+            inventory_service = self._build_inventory_service()
+            await inventory_service.resolve_manual_inventory_review_flags(
+                ingredient_id=ingredient_id,
+                batch_recipe_id=batch_recipe_id,
+                current_quantity_on_hand=Decimal(str(target_quantity)),
+            )
 
             fixed = True
 

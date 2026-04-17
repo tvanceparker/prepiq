@@ -82,6 +82,15 @@ export default function useAlertsFeed({ pageSize = 20 }: UseAlertsFeedOptions = 
     setSkip(0);
   }, [feedMode]);
 
+  const refresh = useCallback(async () => {
+    setHasMore(true);
+    if (skip === 0) {
+      await fetchAlerts();
+      return;
+    }
+    setSkip(0);
+  }, [fetchAlerts, skip]);
+
   const loadMore = () => {
     if (!loading && hasMore) setSkip(prev => prev + pageSize);
   };
@@ -112,9 +121,8 @@ export default function useAlertsFeed({ pageSize = 20 }: UseAlertsFeedOptions = 
 
   const fix = async (alertId: string | number, fixData: FixAlertPayload) => {
     try {
-      // forward to backend; backend may update data, so trigger refetch
       await fixAlert(alertId, fixData);
-      setSkip(0);
+      await refresh();
     } catch (err: any) {
       setError(err?.message ?? 'Failed to fix alert');
     }

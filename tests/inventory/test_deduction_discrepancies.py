@@ -323,15 +323,66 @@ async def test_resolve_satisfied_deduction_alerts_clears_matching_alerts(mock_db
 
 
 @pytest.mark.asyncio
+async def test_resolve_manual_inventory_review_flags_clears_all_open_rows_for_item(mock_db):
+    service = InventoryService(mock_db, 1, 'full', employee_id=7)
+    service.alert_repo = AsyncMock()
+    service.discrepancy_repo = AsyncMock()
+
+    linked_alert_one = SimpleNamespace(alert_id=77, status='Active')
+    linked_alert_two = SimpleNamespace(alert_id=78, status='Acknowledged')
+    legacy_same_item = SimpleNamespace(alert_id=79, meta={'ingredient_id': 101})
+    unrelated_alert = SimpleNamespace(alert_id=88, meta={'ingredient_id': 202})
+
+    service.discrepancy_repo.get_open_by_item.return_value = [
+        SimpleNamespace(discrepancy_id=5, alert_id=77, required_quantity=12, available_quantity=4),
+        SimpleNamespace(discrepancy_id=6, alert_id=78, required_quantity=30, available_quantity=0),
+    ]
+    service.discrepancy_repo.update.return_value = object()
+    service.alert_repo.get_by_id.side_effect = [linked_alert_one, linked_alert_two]
+    service.alert_repo.get_open_inventory_deduction_alerts.return_value = [
+        SimpleNamespace(alert_id=77, meta={'ingredient_id': 101}),
+        SimpleNamespace(alert_id=78, meta={'ingredient_id': 101}),
+        legacy_same_item,
+        unrelated_alert,
+    ]
+    service.alert_repo.update.return_value = object()
+
+    resolved_count = await service.resolve_manual_inventory_review_flags(
+        ingredient_id=101,
+        current_quantity_on_hand=Decimal('9'),
+    )
+
+    assert resolved_count == 3
+    assert service.discrepancy_repo.update.await_count == 2
+    discrepancy_updates = {
+        call.args[0]: call.args[1] for call in service.discrepancy_repo.update.await_args_list
+    }
+    assert discrepancy_updates[5]['status'] == 'Resolved'
+    assert discrepancy_updates[5]['current_quantity_on_hand'] == 9.0
+    assert discrepancy_updates[5]['shortfall_quantity'] == 0.0
+    assert 'available_quantity' not in discrepancy_updates[5]
+    assert discrepancy_updates[6]['current_quantity_on_hand'] == 9.0
+    assert discrepancy_updates[6]['shortfall_quantity'] == 0.0
+
+    alert_updates = {
+        call.args[0]: call.args[1] for call in service.alert_repo.update.await_args_list
+    }
+    assert set(alert_updates) == {77, 78, 79}
+    assert 88 not in alert_updates
+    assert alert_updates[79]['status'] == 'Resolved'
+
+
+@pytest.mark.asyncio
 async def test_set_inventory_current_stock_adds_delta_to_selected_lot(mock_db):
     service = InventoryService(mock_db, 1, 'full', employee_id=7)
     service.db.begin = MagicMock(return_value=_AsyncBegin())
     service.inventory_repo = AsyncMock()
     service.inventory_lot_repo = AsyncMock()
     service.inventory_usage_log_repo = AsyncMock()
+    service.inventory_stats = AsyncMock()
     service.alert_repo = AsyncMock()
-    service._resolve_satisfied_deduction_alerts = AsyncMock(return_value=1)
-    service._compute_lot_remaining = AsyncMock(side_effect=[Decimal('4')])
+    service.resolve_manual_inventory_review_flags = AsyncMock(return_value=1)
+    service.inventory_stats.get_lot_remaining = AsyncMock(side_effect=[Decimal('4')])
 
     inventory_item = SimpleNamespace(inventory_id=12, ingredient_id=101, unit='lb')
     lot = SimpleNamespace(
@@ -371,9 +422,10 @@ async def test_set_inventory_current_stock_removes_delta_fifo(mock_db):
     service.inventory_repo = AsyncMock()
     service.inventory_lot_repo = AsyncMock()
     service.inventory_usage_log_repo = AsyncMock()
+    service.inventory_stats = AsyncMock()
     service.alert_repo = AsyncMock()
-    service._resolve_satisfied_deduction_alerts = AsyncMock(return_value=0)
-    service._compute_lot_remaining = AsyncMock(side_effect=[Decimal('2'), Decimal('5')])
+    service.resolve_manual_inventory_review_flags = AsyncMock(return_value=0)
+    service.inventory_stats.get_lot_remaining = AsyncMock(side_effect=[Decimal('2'), Decimal('5')])
 
     inventory_item = SimpleNamespace(inventory_id=12, ingredient_id=101, unit='lb')
     older_lot = SimpleNamespace(

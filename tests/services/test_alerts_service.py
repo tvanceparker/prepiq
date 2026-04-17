@@ -1,3 +1,9 @@
+from decimal import Decimal
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from app.services.alerts_service import AlertsService
 
 
@@ -50,7 +56,7 @@ def test_build_operator_copy_for_low_stock_uses_inventory_context(mock_db):
     assert copy == {
         'title': 'Low stock warning',
         'action_label': 'Review reorder',
-        'description': 'Tomatoes is at 4, below the reorder point of 12. Review reorder suggestions soon.',
+        'description': 'Tomatoes is at 4, below the reorder point of 12. Review reorder suggestions before the shortage reaches service impact.',
     }
 
 
@@ -70,3 +76,38 @@ def test_build_operator_copy_preserves_unknown_alert_message(mock_db):
         'action_label': 'Review details',
         'description': 'Background sync failed on worker 3.',
     }
+
+
+@pytest.mark.asyncio
+async def test_fix_alert_inventory_deduction_failed_uses_shared_manual_clear(mock_db):
+    service = build_service(mock_db)
+    service.alert_repo = AsyncMock()
+    service.inventory_repo = AsyncMock()
+
+    service.alert_repo.get_by_id.return_value = SimpleNamespace(
+        alert_id=42,
+        alert_type='Inventory:DeductionFailed',
+        meta={
+            'ingredient_id': 101,
+            'required_quantity': 12,
+            'available_quantity': 4,
+            'unit': 'oz',
+        },
+    )
+    service.inventory_repo.get_inventory_by_ingredient.return_value = SimpleNamespace(inventory_id=12)
+    service.alert_repo.resolve = AsyncMock(return_value=True)
+
+    inventory_service = AsyncMock()
+    inventory_service.resolve_manual_inventory_review_flags = AsyncMock(return_value=3)
+    service._build_inventory_service = MagicMock(return_value=inventory_service)
+
+    fixed = await service.fix_alert(42, {'target_quantity_on_hand': 9})
+
+    assert fixed is True
+    service.inventory_repo.update.assert_awaited_once_with(12, {'quantity_on_hand': 9.0})
+    inventory_service.resolve_manual_inventory_review_flags.assert_awaited_once_with(
+        ingredient_id=101,
+        batch_recipe_id=None,
+        current_quantity_on_hand=Decimal('9.0'),
+    )
+    service.alert_repo.resolve.assert_awaited_once_with(42)
