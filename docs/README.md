@@ -20,6 +20,7 @@ The files listed below are now the primary docs set for this repository.
 - `EOD_PIPELINE.md`
 - `FORECASTING_SYSTEM.md`
 - `INVENTORY_DEDUCTION_AND_PO.md`
+- `REPLENISHMENT_POLICY_ENGINE.md`
 - `ALERTS_AND_DIAGNOSTICS.md`
 - `INTEGRATIONS.md`
 

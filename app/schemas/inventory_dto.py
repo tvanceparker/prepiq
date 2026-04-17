@@ -3,6 +3,18 @@ from pydantic import ConfigDict
 from typing import Optional, List, Union, Literal
 from datetime import date, datetime
 from decimal import Decimal
+
+ReplenishmentPolicyType = Literal[
+    "fresh_perishable",
+    "stable_stocked",
+    "recipe_dependent",
+    "intermittent_low_turn",
+]
+PolicyAssignmentMode = Literal["system", "manual"]
+OrderScheduleType = Literal["ad_hoc", "fixed_days_of_week", "every_n_days"]
+CadenceSource = Literal["manual", "inferred", "default"]
+WeekdayCode = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
 class PurchaseOrderItemDTO(BaseModel):
     order_item_id: int
     order_id: int
@@ -167,12 +179,18 @@ class InventoryForecastStateDTO(BaseModel):
 
 class POWhyReorderDTO(BaseModel):
     current_stock: Optional[float] = None
+    total_stock: Optional[float] = None
+    excluded_expiring_stock: Optional[float] = None
+    usable_until_date: Optional[date] = None
     current_unit: str
     reorder_point: Optional[float] = None
     lead_demand: Optional[float] = None
     shelf_demand: Optional[float] = None
     safety_stock: Optional[float] = None
     reorder_target: Optional[float] = None
+    effective_lead_days: Optional[int] = None
+    coverage_days: Optional[int] = None
+    protection_window_days: Optional[int] = None
 
 
 class POQuantityFactorsDTO(BaseModel):
@@ -191,6 +209,10 @@ class POQuantityFactorsDTO(BaseModel):
 
 class POPolicyFactorsDTO(BaseModel):
     service_level_z: Optional[float] = None
+    target_service_level: Optional[float] = None
+    service_level_source: Optional[str] = None
+    policy_type: Optional[str] = None
+    policy_assignment_mode: Optional[str] = None
     abc_class: str
     abc_multiplier: Optional[float] = None
     moq: Optional[float] = None
@@ -205,6 +227,14 @@ class POSupplierFactorsDTO(BaseModel):
     selected_supplier_priority: Optional[int] = None
     selected_supplier_preferred: bool
     pricing_available: bool
+    order_schedule_type: Optional[str] = None
+    review_period_days: Optional[int] = None
+    allowed_order_days: List[str] = []
+    allowed_delivery_days: List[str] = []
+    next_order_date: Optional[date] = None
+    next_delivery_date: Optional[date] = None
+    cadence_source: Optional[str] = None
+    cadence_confidence_score: Optional[float] = None
 
 
 class POAssumptionFlagsDTO(BaseModel):
@@ -215,6 +245,12 @@ class POAssumptionFlagsDTO(BaseModel):
     unit_conversion_fallback: bool
     pricing_missing: bool
     abc_defaulted: bool
+    policy_inferred: bool = False
+    coverage_capped_by_shelf_life: bool = False
+    cadence_warnings: List[str] = []
+    service_level_source: Optional[str] = None
+    usable_stock_applied: bool = False
+    inventory_conversion_fallback: bool = False
 
 
 class POReorderExplanationDTO(BaseModel):
@@ -406,6 +442,12 @@ class IngredientOut(BaseModel):
     unit: str
     cost_per_unit: float
     lead_time_days: Optional[int]  # Could be null
+    review_period_days: Optional[int] = None
+    order_schedule_type: Optional[OrderScheduleType] = None
+    allowed_order_days: Optional[List[WeekdayCode]] = None
+    allowed_delivery_days: Optional[List[WeekdayCode]] = None
+    cadence_source: Optional[CadenceSource] = None
+    cadence_confidence_score: Optional[float] = None
     spoilage_rate: float
     shelf_life_days: Optional[int]  # Could be null
     preferred: bool

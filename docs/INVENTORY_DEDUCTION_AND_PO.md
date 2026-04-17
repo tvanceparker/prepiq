@@ -88,7 +88,32 @@ The current PO suggestion flow considers:
 - minimum order quantity
 - pack size and supplier unit information
 
+Cadence-aware replenishment is now part of the live reorder suggestion path. Ingredient-supplier links can carry:
+
+- review period days
+- order schedule type
+- allowed order days
+- allowed delivery days
+- cadence source and confidence metadata
+
 Supplier selection also records review context that can explain how a supplier was chosen.
+
+## Cadence-Aware Replenishment Configuration
+
+The repository now stores the first layer of the cadence-aware replenishment design:
+
+- ingredient-level replenishment policy fields
+- ingredient-supplier cadence fields
+- shared normalization and schedule-resolution helpers
+- web and mobile editing surfaces for cadence metadata
+- cadence-aware protection window calculation in manual PO suggestions
+- cadence-aware protection window calculation in EOD PO suggestions
+- usable-stock projection from available lots so stock that expires before the next replenishment window can be excluded from reorder math
+
+The remaining follow-on work is narrower now:
+
+- explanation UIs can expose more of the new cadence fields directly
+- deeper spoilage-rate learning can still be layered on top of the current expiry-aware usable-stock projection
 
 ## Deduction And Discrepancy Context
 

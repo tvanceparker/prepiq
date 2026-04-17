@@ -90,6 +90,8 @@ Full workflow restaurants need more than menu-level forecasts. PrepIQ is designe
 
 - Forecast breakdown from menu demand into ingredient need
 - Reorder suggestions based on expected usage and available stock
+- Cadence-aware replenishment configuration that separates ingredient policy from supplier ordering schedule
+- Lot-aware usable-stock projection so expiring inventory is not counted the same as durable stock
 - Planning flows that connect forecast output to replenishment actions
 - A path from projected demand to concrete purchasing decisions
 
@@ -99,6 +101,7 @@ Once the restaurant is operating with recipes and inventory, PrepIQ extends into
 
 - Supplier catalog and relationship support
 - Ingredient-to-supplier pricing references
+- Supplier cadence metadata such as review period, order schedule, and allowed order or delivery days
 - Purchase order workflows
 - Purchasing views driven by forecast and reorder context
 

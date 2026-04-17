@@ -40,8 +40,14 @@ const formatSelectionRule = (rule?: string) => {
   if (rule === 'preferred_lowest_priority') {
     return 'preferred supplier rule';
   }
+  if (rule === 'preferred_best_cadence') {
+    return 'preferred supplier with best cadence';
+  }
   if (rule === 'fallback_lowest_priority') {
     return 'fallback to lowest supplier priority';
+  }
+  if (rule === 'fallback_best_cadence') {
+    return 'fallback to best delivery cadence';
   }
   return rule || 'supplier rule';
 };
@@ -105,7 +111,7 @@ const getAssumptionWarnings = (item: POSuggestionsResponse['all_items'][number])
   if (flags.shelf_life_source === 'missing_assumed_zero') {
     warnings.push('shelf life assumed 0');
   }
-  if (flags.inventory_source !== 'inventory_summary') {
+  if (!['inventory_summary', 'usable_lot_projection'].includes(flags.inventory_source)) {
     warnings.push('inventory fallback');
   }
   if (flags.unit_conversion_fallback) {
@@ -116,6 +122,9 @@ const getAssumptionWarnings = (item: POSuggestionsResponse['all_items'][number])
   }
   if (flags.abc_defaulted) {
     warnings.push('ABC defaulted to C');
+  }
+  if (flags.inventory_conversion_fallback) {
+    warnings.push('lot unit conversion fallback');
   }
   return warnings;
 };

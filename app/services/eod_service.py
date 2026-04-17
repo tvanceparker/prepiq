@@ -1036,48 +1036,22 @@ class EODService:
                 )
                 inventory_source = "missing_assumed_zero"
 
-            reorder_days = lead_time + shelf_life
-            logger.debug(
-                f"[EOD] LeadTime ingredient={ingredient_id} lead={lead_time} shelf_life={shelf_life} reorder_days={reorder_days}"
-            )
-
-            if reorder_days <= 0:
-                print(f"[ERROR] Invalid reorder_days for ingredient {ingredient_id}")
-                continue
-
-            lead_window = [effective_run_date + timedelta(days=i) for i in range(lead_time)]
-            shelf_window = [
-                effective_run_date + timedelta(days=i) for i in range(lead_time, reorder_days)
-            ]
-
             daily_forecast = ingredient_forecast[ingredient_id].get(
                 "daily_breakdown", []
             )
             unit = ingredient_forecast[ingredient_id].get("unit", "?")
 
-            logger.debug(f"[EOD] ForecastWindows ingredient={ingredient_id} unit={unit} lead_window={lead_window} shelf_window={shelf_window}")
-
-            lead_demand = sum(
-                (Decimal(str(qty)) for day, qty in daily_forecast if day in lead_window),
-                Decimal("0.00"),
-            )
-            shelf_demand = sum(
-                (Decimal(str(qty)) for day, qty in daily_forecast if day in shelf_window),
-                Decimal("0.00"),
-            )
-            total_demand = lead_demand + shelf_demand
-
-            logger.debug(
-                f"[EOD] Demand ingredient={ingredient_id} lead={lead_demand} shelf={shelf_demand} total={total_demand}"
-            )
-
             decision = await self.reorder_engine.build_reorder_decision(
                 ingredient_id=ingredient_id,
-                lead_demand=lead_demand,
-                shelf_demand=shelf_demand,
-                total_demand=total_demand,
+                lead_demand=Decimal("0.00"),
+                shelf_demand=Decimal("0.00"),
+                total_demand=Decimal("0.00"),
                 unit=unit,
                 lead_time=lead_time,
+                daily_forecast=daily_forecast,
+                supplier=supplier,
+                as_of_date=effective_run_date,
+                shelf_life_days=shelf_life,
                 current_stock=current_stock,
                 current_unit=inventory_unit or supplier_unit,
                 moq=min_order_quantity,
@@ -1164,8 +1138,8 @@ class EODService:
                     "ingredient_supplier_id": ingredient_supplier_id,
                     "supplier_id": supplier_id,
                     "supplier_name": supplier_name,
-                    "lead_demand": float(lead_demand),
-                    "shelf_demand": float(shelf_demand),
+                    "lead_demand": float(decision["lead_demand"]),
+                    "shelf_demand": float(decision["shelf_demand"]),
                     "forecast_unit": inventory_unit,
                     "converted_quantity_needed": float(converted_qty),
                     "suggested_packs_to_order": packs_to_order,

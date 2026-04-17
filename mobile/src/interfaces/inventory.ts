@@ -1,5 +1,17 @@
 // src/interfaces/inventory.ts
 
+export type ReplenishmentPolicyType =
+  | 'fresh_perishable'
+  | 'stable_stocked'
+  | 'recipe_dependent'
+  | 'intermittent_low_turn';
+
+export type PolicyAssignmentMode = 'system' | 'manual';
+
+export type OrderScheduleType = 'ad_hoc' | 'fixed_days_of_week' | 'every_n_days';
+
+export type CadenceSource = 'manual' | 'inferred' | 'default';
+
 export interface InventoryLotDTO {
   lot_id: number;
   supplier_id?: number;
@@ -26,6 +38,12 @@ export interface SupplierIngredient {
   unit: string;
   cost_per_unit: number;
   lead_time_days?: number | null;
+  review_period_days?: number | null;
+  order_schedule_type?: OrderScheduleType | null;
+  allowed_order_days?: string[] | string | null;
+  allowed_delivery_days?: string[] | string | null;
+  cadence_source?: CadenceSource | null;
+  cadence_confidence_score?: number | null;
   spoilage_rate?: number | null;
   shelf_life_days?: number | null;
   preferred: boolean;
@@ -65,6 +83,12 @@ export interface IngredientSupplierDTO {
   price_per_package?: number;
   cost_per_unit?: number;
   lead_time_days?: number;
+  review_period_days?: number | null;
+  order_schedule_type?: OrderScheduleType | null;
+  allowed_order_days?: string[] | null;
+  allowed_delivery_days?: string[] | null;
+  cadence_source?: CadenceSource | null;
+  cadence_confidence_score?: number | null;
   preferred?: boolean;
 }
 
@@ -353,12 +377,18 @@ export interface POReorderExplanation {
   summary: string;
   why_reorder: {
     current_stock: number | null;
+    total_stock?: number | null;
+    excluded_expiring_stock?: number | null;
+    usable_until_date?: string | null;
     current_unit: string;
     reorder_point: number | null;
     lead_demand: number | null;
     shelf_demand: number | null;
     safety_stock: number | null;
     reorder_target: number | null;
+    effective_lead_days?: number | null;
+    coverage_days?: number | null;
+    protection_window_days?: number | null;
   };
   quantity_factors: {
     raw_order_quantity: number | null;
@@ -375,6 +405,10 @@ export interface POReorderExplanation {
   };
   policy_factors: {
     service_level_z: number | null;
+    target_service_level?: number | null;
+    service_level_source?: string | null;
+    policy_type?: string | null;
+    policy_assignment_mode?: string | null;
     abc_class: string;
     abc_multiplier: number | null;
     moq: number | null;
@@ -388,6 +422,14 @@ export interface POReorderExplanation {
     selected_supplier_priority: number | null;
     selected_supplier_preferred: boolean;
     pricing_available: boolean;
+    order_schedule_type?: string | null;
+    review_period_days?: number | null;
+    allowed_order_days?: string[];
+    allowed_delivery_days?: string[];
+    next_order_date?: string | null;
+    next_delivery_date?: string | null;
+    cadence_source?: string | null;
+    cadence_confidence_score?: number | null;
   };
   assumption_flags: {
     inventory_source: string;
@@ -397,6 +439,12 @@ export interface POReorderExplanation {
     unit_conversion_fallback: boolean;
     pricing_missing: boolean;
     abc_defaulted: boolean;
+    policy_inferred?: boolean;
+    coverage_capped_by_shelf_life?: boolean;
+    cadence_warnings?: string[];
+    service_level_source?: string | null;
+    usable_stock_applied?: boolean;
+    inventory_conversion_fallback?: boolean;
   };
 }
 
@@ -473,6 +521,12 @@ export interface IngredientSupplierOption {
   quantity_per_pack_item: number;
   min_order_quantity: number;
   lead_time_days: number;
+  review_period_days?: number | null;
+  order_schedule_type?: OrderScheduleType | null;
+  allowed_order_days?: string[] | null;
+  allowed_delivery_days?: string[] | null;
+  cadence_source?: CadenceSource | null;
+  cadence_confidence_score?: number | null;
   is_preferred: boolean;
   supplier_priority: number;
 }

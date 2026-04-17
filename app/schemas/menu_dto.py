@@ -11,6 +11,16 @@ from decimal import Decimal
 
 RecipeComponentType = Literal["ingredient", "batch", "recipe"]
 LifecycleAction = Literal["archive"]
+ReplenishmentPolicyType = Literal[
+    "fresh_perishable",
+    "stable_stocked",
+    "recipe_dependent",
+    "intermittent_low_turn",
+]
+PolicyAssignmentMode = Literal["system", "manual"]
+OrderScheduleType = Literal["ad_hoc", "fixed_days_of_week", "every_n_days"]
+CadenceSource = Literal["manual", "inferred", "default"]
+WeekdayCode = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 # --- Menu items ---
 class MenuItemBase(BaseModel):
@@ -179,6 +189,11 @@ class IngredientBase(BaseModel):
     name: str
     unit: str
     category: Optional[str] = None
+    policy_type: Optional[ReplenishmentPolicyType] = None
+    policy_assignment_mode: Optional[PolicyAssignmentMode] = None
+    target_service_level: Optional[float] = None
+    service_level_z: Optional[float] = None
+    policy_override_reason: Optional[str] = None
     is_active: Optional[bool] = True
 
 
@@ -201,6 +216,12 @@ class IngredientSupplierBase(BaseModel):
     supplier_id: int
     cost_per_unit: float
     lead_time_days: int
+    review_period_days: Optional[int] = None
+    order_schedule_type: Optional[OrderScheduleType] = None
+    allowed_order_days: Optional[List[WeekdayCode]] = None
+    allowed_delivery_days: Optional[List[WeekdayCode]] = None
+    cadence_source: Optional[CadenceSource] = None
+    cadence_confidence_score: Optional[float] = None
     spoilage_rate: Optional[float] = None
     shelf_life_days: Optional[int] = None
     preferred: Optional[bool] = False

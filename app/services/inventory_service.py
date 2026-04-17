@@ -28,6 +28,7 @@ from app.services.utils.purchase_order_note_helper import (
     serialize_purchase_order_notes,
 )
 from app.services.utils.forecast_contract import build_forecast_contract
+from app.utils.replenishment_policy import normalize_supplier_cadence_settings
 
 class InventoryService:
     UNSPECIFIED_SUPPLIER_NAME = "Unspecified supplier"
@@ -117,6 +118,22 @@ class InventoryService:
             received_quantity_map[order_item_id] = quantity_received
 
         return received_quantity_map
+
+    def _serialize_supplier_cadence(self, supplier_mapping) -> dict:
+        return {
+            "review_period_days": getattr(supplier_mapping, "review_period_days", None),
+            "order_schedule_type": getattr(supplier_mapping, "order_schedule_type", None),
+            "allowed_order_days": getattr(supplier_mapping, "allowed_order_days", None),
+            "allowed_delivery_days": getattr(
+                supplier_mapping, "allowed_delivery_days", None
+            ),
+            "cadence_source": getattr(supplier_mapping, "cadence_source", None),
+            "cadence_confidence_score": (
+                float(supplier_mapping.cadence_confidence_score)
+                if getattr(supplier_mapping, "cadence_confidence_score", None) is not None
+                else None
+            ),
+        }
 
     # --- Purchase Orders ---
     async def create_purchase_order(
@@ -837,28 +854,22 @@ class InventoryService:
                 )
                 inventory_source = "missing_assumed_zero"
 
-            reorder_days = lead_time + shelf_life
-            if reorder_days <= 0:
-                continue
-            
-            today = date.today()
-            lead_window = [today + timedelta(days=i) for i in range(lead_time)]
-            shelf_window = [today + timedelta(days=i) for i in range(lead_time, reorder_days)]
-            
             daily_forecast = ingredient_forecast[ingredient_id].get("daily_breakdown", [])
             unit = ingredient_forecast[ingredient_id].get("unit", "?")
 
-            lead_demand = sum(qty for day, qty in daily_forecast if day in lead_window)
-            shelf_demand = sum(qty for day, qty in daily_forecast if day in shelf_window)
-            total_demand = lead_demand + shelf_demand
+            today = date.today()
 
             decision = await reorder_engine.build_reorder_decision(
                 ingredient_id=ingredient_id,
-                lead_demand=Decimal(str(lead_demand)),
-                shelf_demand=Decimal(str(shelf_demand)),
-                total_demand=Decimal(str(total_demand)),
+                lead_demand=Decimal("0.00"),
+                shelf_demand=Decimal("0.00"),
+                total_demand=Decimal("0.00"),
                 unit=unit,
                 lead_time=lead_time,
+                daily_forecast=daily_forecast,
+                supplier=supplier,
+                as_of_date=today,
+                shelf_life_days=shelf_life,
                 current_stock=current_stock,
                 current_unit=inventory_unit or supplier_unit,
                 moq=min_order_quantity,
@@ -944,8 +955,8 @@ class InventoryService:
                 "line_total": float(total_quantity_ordered) * (float(supplier.cost_per_unit or 0) if supplier else 0.0),
                 "lead_time_days": lead_time,
                 "min_order_quantity": float(min_order_quantity),
-                "lead_demand": float(lead_demand),
-                "shelf_demand": float(shelf_demand),
+                "lead_demand": float(decision["lead_demand"]),
+                "shelf_demand": float(decision["shelf_demand"]),
                 "explanation": explanation,
             }
             
@@ -1008,6 +1019,7 @@ class InventoryService:
                 "lead_time_days": s.lead_time_days or 0,
                 "is_preferred": s.preferred or False,
                 "supplier_priority": s.supplier_priority or 0,
+                **self._serialize_supplier_cadence(s),
             })
         
         return result
@@ -1974,6 +1986,7 @@ class InventoryService:
         try:
             # Inject supplier_id into the data
             create_data["supplier_id"] = supplier_id
+            create_data.update(normalize_supplier_cadence_settings(create_data))
 
             async with self.db.begin():
                 created_ingredient_supplier = await self.ingredient_supplier_repo.create(create_data)
@@ -2009,6 +2022,7 @@ class InventoryService:
         self, ingredient_supplier_id: int, update_data: dict
     ) -> dict:
         try:
+            update_data.update(normalize_supplier_cadence_settings(update_data))
             async with self.db.begin():
                 updated_ing_sup = await self.ingredient_supplier_repo.update(
                     ingredient_supplier_id, update_data
@@ -2085,6 +2099,7 @@ class InventoryService:
                         "quantity_per_pack_item": float(
                             rel.quantity_per_pack_item or 1.0
                         ),
+                        **self._serialize_supplier_cadence(rel),
                     }
                 )
 
@@ -2665,6 +2680,7 @@ class InventoryService:
                         "min_order_quantity": ing_sup.min_order_quantity,
                         "supplier_priority": ing_sup.supplier_priority,
                         "ingredient_supplier_id": ing_sup.ingredient_supplier_id,
+                        **self._serialize_supplier_cadence(ing_sup),
                     }
                 )
 

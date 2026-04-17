@@ -2,7 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 import math
 from statistics import mean, pstdev
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,7 @@ from app.repositories.inventory_usage_log_repo import InventoryUsageLogRepositor
 from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
 from app.repositories.ingredients_repo import IngredientRepository
 from app.services.forecasting_engine import ForecastingEngine
+from app.services.utils.unit_conversion import convert_unit
 from app.core.logging import logger
 from app.utils.logger_helpers import log_method
 
@@ -170,6 +171,142 @@ class InventoryStatsService:
             f"[INV STATS] CurrentInventory ingredient={ingredient_id} qty={qty} unit={unit}"
         )
         return qty, unit
+
+    def _lot_is_available(self, lot: Any) -> bool:
+        return (
+            getattr(getattr(lot, "status", None), "value", getattr(lot, "status", None))
+            == "available"
+        )
+
+    async def _compute_lot_remaining(self, lot: Any) -> Decimal:
+        usage_logs = await self.inventory_usage_log_repo.get_all_by_lot_id(lot.lot_id)
+        used_quantity = Decimal("0.00")
+        wasted_quantity = Decimal("0.00")
+        added_quantity = Decimal("0.00")
+
+        for log in usage_logs:
+            qty = Decimal(str(log.used_quantity or 0))
+            usage_type = getattr(log.usage_type, "value", log.usage_type)
+            if usage_type in {"sale", "batch_production", "batch_output"}:
+                used_quantity += qty
+            elif usage_type in {"waste", "spoilage", "manual_adjustment"}:
+                wasted_quantity += qty
+            elif usage_type == "manual_addition":
+                added_quantity += qty
+
+        lot_qty = Decimal(str(lot.quantity or 0))
+        return (lot_qty - used_quantity - wasted_quantity + added_quantity).quantize(
+            Decimal("0.01")
+        )
+
+    @log_method("InventoryStats: Usable Inventory")
+    async def get_usable_inventory(
+        self,
+        ingredient_id: int,
+        usable_until_date: Optional[date] = None,
+    ) -> Dict[str, Any]:
+        inventory = await self.inventory_repo.get_inventory_by_ingredient(ingredient_id)
+        if not inventory:
+            logger.info(
+                "[INV STATS] UsableInventory ingredient=%s missing_inventory returning=0",
+                ingredient_id,
+            )
+            return {
+                "quantity": Decimal("0.00"),
+                "unit": "",
+                "total_quantity": Decimal("0.00"),
+                "excluded_quantity": Decimal("0.00"),
+                "source": "missing_assumed_zero",
+                "fallback_used": True,
+                "conversion_fallback": False,
+                "lot_count": 0,
+                "eligible_lot_count": 0,
+                "usable_until_date": usable_until_date,
+            }
+
+        inventory_unit = inventory.unit or ""
+        summary_quantity = Decimal(str(inventory.quantity_on_hand or 0)).quantize(
+            Decimal("0.01")
+        )
+        lots = await self.inventory_lot_repo.get_lots_by_ingredient_id(ingredient_id)
+        available_lots = [lot for lot in lots if self._lot_is_available(lot)]
+        if not available_lots:
+            logger.debug(
+                "[INV STATS] UsableInventory ingredient=%s no_lots fallback_summary=%s",
+                ingredient_id,
+                summary_quantity,
+            )
+            return {
+                "quantity": summary_quantity,
+                "unit": inventory_unit,
+                "total_quantity": summary_quantity,
+                "excluded_quantity": Decimal("0.00"),
+                "source": "inventory_summary",
+                "fallback_used": True,
+                "conversion_fallback": False,
+                "lot_count": 0,
+                "eligible_lot_count": 0,
+                "usable_until_date": usable_until_date,
+            }
+
+        total_quantity = Decimal("0.00")
+        usable_quantity = Decimal("0.00")
+        excluded_quantity = Decimal("0.00")
+        conversion_fallback = False
+        eligible_lot_count = 0
+
+        for lot in available_lots:
+            remaining = await self._compute_lot_remaining(lot)
+            if remaining <= 0:
+                continue
+
+            try:
+                remaining_in_inventory_unit = Decimal(
+                    str(convert_unit(float(remaining), lot.unit, inventory_unit))
+                ).quantize(Decimal("0.01"))
+            except Exception:
+                remaining_in_inventory_unit = remaining
+                conversion_fallback = True
+
+            total_quantity += remaining_in_inventory_unit
+
+            if (
+                usable_until_date is not None
+                and getattr(lot, "spoilage_expected_date", None) is not None
+                and lot.spoilage_expected_date <= usable_until_date
+            ):
+                excluded_quantity += remaining_in_inventory_unit
+                continue
+
+            usable_quantity += remaining_in_inventory_unit
+            eligible_lot_count += 1
+
+        total_quantity = total_quantity.quantize(Decimal("0.01"))
+        usable_quantity = usable_quantity.quantize(Decimal("0.01"))
+        excluded_quantity = excluded_quantity.quantize(Decimal("0.01"))
+        source = "usable_lot_projection" if usable_until_date is not None else "available_lots"
+        logger.debug(
+            "[INV STATS] UsableInventory ingredient=%s usable=%s total=%s excluded=%s usable_until=%s eligible_lots=%s total_lots=%s",
+            ingredient_id,
+            usable_quantity,
+            total_quantity,
+            excluded_quantity,
+            usable_until_date,
+            eligible_lot_count,
+            len(available_lots),
+        )
+        return {
+            "quantity": usable_quantity if usable_until_date is not None else total_quantity,
+            "unit": inventory_unit,
+            "total_quantity": total_quantity,
+            "excluded_quantity": excluded_quantity,
+            "source": source,
+            "fallback_used": False,
+            "conversion_fallback": conversion_fallback,
+            "lot_count": len(available_lots),
+            "eligible_lot_count": eligible_lot_count,
+            "usable_until_date": usable_until_date,
+        }
 
     @log_method("InventoryStats: Lead Time")
     async def get_lead_time_days(self, ingredient_id: int) -> int:

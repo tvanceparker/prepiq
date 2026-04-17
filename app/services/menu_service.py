@@ -33,6 +33,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
 import traceback
 from app.services.utils.graph_validation import normalize_component_type, units_are_compatible
+from app.utils.replenishment_policy import (
+    normalize_ingredient_policy_settings,
+    normalize_supplier_cadence_settings,
+)
 
 
 class MenuService:
@@ -165,12 +169,14 @@ class MenuService:
 
     async def upsert_ingredient_with_suppliers(self, data: dict):
         # Prepare the base ingredient data
+        ingredient_policy_settings = normalize_ingredient_policy_settings(data)
         ingredient_data = IngredientUpdate(
             ingredient_id=data.get("ingredient_id"),
             restaurant_id=self.restaurant_id,
             name=data["name"],
             unit=data["unit"],
             category=data.get("category"),
+            **ingredient_policy_settings,
         )
         async with self.db.begin():
 
@@ -179,9 +185,10 @@ class MenuService:
                     ingredient_data.ingredient_id, ingredient_data
                 )
             else:
-                ingredient_data.ingredient_id = await self.ingredient_repo.create(
+                created_ingredient = await self.ingredient_repo.create(
                     ingredient_data
                 )
+                ingredient_data.ingredient_id = created_ingredient.ingredient_id
 
             ingredient_id = ingredient_data.ingredient_id
 
@@ -199,12 +206,21 @@ class MenuService:
             for supplier in data.get("suppliers", []):
                 supplier_id = supplier["supplier_id"]
                 ingredient_supplier_id = supplier.get("ingredient_supplier_id")
+                cadence_settings = normalize_supplier_cadence_settings(supplier)
 
                 supplier_data = IngredientSupplierUpdate(
                     ingredient_id=ingredient_id,
                     supplier_id=supplier_id,
                     cost_per_unit=supplier["cost_per_unit"],
                     lead_time_days=supplier["lead_time_days"],
+                    review_period_days=cadence_settings.get("review_period_days"),
+                    order_schedule_type=cadence_settings.get("order_schedule_type"),
+                    allowed_order_days=cadence_settings.get("allowed_order_days"),
+                    allowed_delivery_days=cadence_settings.get("allowed_delivery_days"),
+                    cadence_source=cadence_settings.get("cadence_source"),
+                    cadence_confidence_score=cadence_settings.get(
+                        "cadence_confidence_score"
+                    ),
                     shelf_life_days=supplier.get("shelf_life_days"),
                     preferred=supplier.get("preferred", False),
                     min_order_quantity=supplier.get("min_order_quantity"),
@@ -225,10 +241,10 @@ class MenuService:
                         updated_mapping_ids.add(updated_mapping.ingredient_supplier_id)
                 else:
                     # Create new mapping
-                    new_id = await self.ingredient_supplier_repo.create(
+                    new_mapping = await self.ingredient_supplier_repo.create(
                         supplier_data_dict
                     )
-                    updated_mapping_ids.add(new_id)
+                    updated_mapping_ids.add(new_mapping.ingredient_supplier_id)
 
             # Delete mappings that were not sent in the request
             mappings_to_delete = existing_mapping_ids - updated_mapping_ids
@@ -260,6 +276,12 @@ class MenuService:
                     "pack_size": s.pack_size,
                     "quantity_per_pack_item": s.quantity_per_pack_item,
                     "lead_time_days": s.lead_time_days,
+                    "review_period_days": s.review_period_days,
+                    "order_schedule_type": s.order_schedule_type,
+                    "allowed_order_days": s.allowed_order_days,
+                    "allowed_delivery_days": s.allowed_delivery_days,
+                    "cadence_source": s.cadence_source,
+                    "cadence_confidence_score": s.cadence_confidence_score,
                     "preferred": s.preferred,
                 }
             )
@@ -272,6 +294,15 @@ class MenuService:
                 "name": ingredient.name,
                 "unit": ingredient.unit,
                 "category": ingredient.category,
+                "policy_type": getattr(ingredient, "policy_type", None),
+                "policy_assignment_mode": getattr(
+                    ingredient, "policy_assignment_mode", None
+                ),
+                "target_service_level": getattr(ingredient, "target_service_level", None),
+                "service_level_z": getattr(ingredient, "service_level_z", None),
+                "policy_override_reason": getattr(
+                    ingredient, "policy_override_reason", None
+                ),
                 "is_active": getattr(ingredient, "is_active", True),
                 "suppliers": suppliers_payload,
             },
@@ -327,6 +358,12 @@ class MenuService:
                 "pack_size": s.pack_size,
                 "quantity_per_pack_item": s.quantity_per_pack_item,
                 "lead_time_days": s.lead_time_days,
+                "review_period_days": s.review_period_days,
+                "order_schedule_type": s.order_schedule_type,
+                "allowed_order_days": s.allowed_order_days,
+                "allowed_delivery_days": s.allowed_delivery_days,
+                "cadence_source": s.cadence_source,
+                "cadence_confidence_score": s.cadence_confidence_score,
                 "preferred": s.preferred,
             }
 
@@ -342,6 +379,17 @@ class MenuService:
                     "name": ingredient.name,
                     "unit": ingredient.unit,
                     "category": ingredient.category,
+                    "policy_type": getattr(ingredient, "policy_type", None),
+                    "policy_assignment_mode": getattr(
+                        ingredient, "policy_assignment_mode", None
+                    ),
+                    "target_service_level": getattr(
+                        ingredient, "target_service_level", None
+                    ),
+                    "service_level_z": getattr(ingredient, "service_level_z", None),
+                    "policy_override_reason": getattr(
+                        ingredient, "policy_override_reason", None
+                    ),
                     "suppliers": supplier_map.get(ingredient.ingredient_id, []),
                 }
             )

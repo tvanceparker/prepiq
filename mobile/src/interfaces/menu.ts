@@ -126,6 +126,11 @@ export interface Ingredient {
   name: string;
   category?: string;
   unit?: string;
+  policy_type?: 'fresh_perishable' | 'stable_stocked' | 'recipe_dependent' | 'intermittent_low_turn' | null;
+  policy_assignment_mode?: 'system' | 'manual' | null;
+  target_service_level?: number | null;
+  service_level_z?: number | null;
+  policy_override_reason?: string | null;
   current_stock?: number;
   reorder_point?: number;
   cost_per_unit?: number;
@@ -137,6 +142,12 @@ export interface IngredientWithSuppliers extends Ingredient {
     supplier_name: string;
     cost_per_unit: number;
     lead_time_days: number;
+    review_period_days?: number | null;
+    order_schedule_type?: 'ad_hoc' | 'fixed_days_of_week' | 'every_n_days' | null;
+    allowed_order_days?: string[] | null;
+    allowed_delivery_days?: string[] | null;
+    cadence_source?: 'manual' | 'inferred' | 'default' | null;
+    cadence_confidence_score?: number | null;
     preferred: boolean;
   }>;
 }

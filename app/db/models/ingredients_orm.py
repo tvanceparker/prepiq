@@ -1,6 +1,6 @@
 # db/models/ingredients_orm.py
 
-from sqlalchemy import Column, Integer, String, DECIMAL, ForeignKey, Boolean, and_
+from sqlalchemy import Column, Integer, String, Text, DECIMAL, ForeignKey, Boolean, and_
 from app.db.session import Base
 from sqlalchemy.orm import relationship, foreign
 
@@ -18,6 +18,11 @@ class Ingredient(Base):
     average_weight_per_unit = Column(DECIMAL(10, 2))
     abc_class = Column(String(1))
     max_stock_level = Column(DECIMAL(10, 2), nullable=True)
+    policy_type = Column(String(32), nullable=True)
+    policy_assignment_mode = Column(String(16), nullable=True)
+    target_service_level = Column(DECIMAL(5, 4), nullable=True)
+    service_level_z = Column(DECIMAL(8, 4), nullable=True)
+    policy_override_reason = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
 
     restaurant = relationship("Restaurant", back_populates="ingredients")

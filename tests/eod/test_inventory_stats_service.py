@@ -9,6 +9,8 @@ import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock
 from decimal import Decimal
+from datetime import date
+from types import SimpleNamespace
 from app.services.inventory_stats_service import InventoryStatsService
 
 
@@ -22,6 +24,7 @@ async def service():
 
     # Mock all repo attributes
     service.inventory_usage_log_repo = AsyncMock()
+    service.inventory_lot_repo = AsyncMock()
     service.inventory_repo = AsyncMock()
     service.ingredient_supplier_repo = AsyncMock()
     service.ingredient_repo = AsyncMock()
@@ -162,6 +165,64 @@ async def test_get_current_inventory_no_inventory(service):
 
     assert qty == Decimal("0.00")
     assert unit == ""
+
+
+@pytest.mark.asyncio
+async def test_get_usable_inventory_excludes_expiring_lots(service):
+    ingredient_id = 1
+    inventory_mock = MagicMock()
+    inventory_mock.quantity_on_hand = Decimal("12.00")
+    inventory_mock.unit = "lb"
+
+    early_lot = SimpleNamespace(
+        lot_id=10,
+        quantity=Decimal("5.00"),
+        unit="lb",
+        status=SimpleNamespace(value="available"),
+        spoilage_expected_date=date(2026, 4, 17),
+    )
+    durable_lot = SimpleNamespace(
+        lot_id=11,
+        quantity=Decimal("7.00"),
+        unit="lb",
+        status=SimpleNamespace(value="available"),
+        spoilage_expected_date=date(2026, 4, 21),
+    )
+
+    service.inventory_repo.get_inventory_by_ingredient.return_value = inventory_mock
+    service.inventory_lot_repo.get_lots_by_ingredient_id.return_value = [early_lot, durable_lot]
+    service.inventory_usage_log_repo.get_all_by_lot_id.side_effect = [[], []]
+
+    result = await service.get_usable_inventory(
+        ingredient_id,
+        usable_until_date=date(2026, 4, 18),
+    )
+
+    assert result["quantity"] == Decimal("7.00")
+    assert result["total_quantity"] == Decimal("12.00")
+    assert result["excluded_quantity"] == Decimal("5.00")
+    assert result["source"] == "usable_lot_projection"
+
+
+@pytest.mark.asyncio
+async def test_get_usable_inventory_falls_back_to_summary_when_lots_missing(service):
+    ingredient_id = 1
+    inventory_mock = MagicMock()
+    inventory_mock.quantity_on_hand = Decimal("9.25")
+    inventory_mock.unit = "kg"
+
+    service.inventory_repo.get_inventory_by_ingredient.return_value = inventory_mock
+    service.inventory_lot_repo.get_lots_by_ingredient_id.return_value = []
+
+    result = await service.get_usable_inventory(
+        ingredient_id,
+        usable_until_date=date(2026, 4, 18),
+    )
+
+    assert result["quantity"] == Decimal("9.25")
+    assert result["total_quantity"] == Decimal("9.25")
+    assert result["excluded_quantity"] == Decimal("0.00")
+    assert result["source"] == "inventory_summary"
 
 
 @pytest.mark.asyncio

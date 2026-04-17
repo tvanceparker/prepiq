@@ -51,7 +51,17 @@ export default function IngredientCatalog() {
 
   const [newDialogOpen, setNewDialogOpen] = useState(false);
   const newIngredientDraft = useMemo(
-    () => ({ ingredient_id: null, name: '', unit: '', category: '', suppliers: [] }),
+    () => ({
+      ingredient_id: null,
+      name: '',
+      unit: '',
+      category: '',
+      policy_type: null,
+      policy_assignment_mode: 'system',
+      target_service_level: null,
+      policy_override_reason: '',
+      suppliers: [],
+    }),
     []
   );
 

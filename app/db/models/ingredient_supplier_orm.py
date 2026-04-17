@@ -1,6 +1,6 @@
 # db/models/ingredient_supplier_orm.py
 
-from sqlalchemy import Column, Integer, DECIMAL, Date, ForeignKey, Boolean, String
+from sqlalchemy import Column, Integer, DECIMAL, Date, ForeignKey, Boolean, String, JSON
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 
@@ -23,6 +23,12 @@ class IngredientSupplier(Base):
     # Other fields
     cost_per_unit = Column(DECIMAL(10, 2), nullable=False)
     lead_time_days = Column(Integer, nullable=False)
+    review_period_days = Column(Integer)
+    order_schedule_type = Column(String(32))
+    allowed_order_days = Column(JSON)
+    allowed_delivery_days = Column(JSON)
+    cadence_source = Column(String(16))
+    cadence_confidence_score = Column(DECIMAL(5, 4))
     spoilage_rate = Column(DECIMAL(4, 3))
     shelf_life_days = Column(Integer)
     preferred = Column(Boolean, default=False)

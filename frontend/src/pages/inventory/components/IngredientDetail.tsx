@@ -48,6 +48,32 @@ const COMMON_INGREDIENT_NAMES = [
 
 const COMMON_UNITS = ['lbs', 'oz', 'kg', 'g', 'each', 'case', 'bag', 'bunch'];
 
+const POLICY_OPTIONS = [
+  { value: 'fresh_perishable', label: 'Fresh Perishable' },
+  { value: 'stable_stocked', label: 'Stable Stocked' },
+  { value: 'recipe_dependent', label: 'Recipe Dependent' },
+  { value: 'intermittent_low_turn', label: 'Intermittent / Low Turn' },
+];
+
+const POLICY_MODE_OPTIONS = [
+  { value: 'system', label: 'System Assigned' },
+  { value: 'manual', label: 'Manual Override' },
+];
+
+const SCHEDULE_OPTIONS = [
+  { value: 'ad_hoc', label: 'Ad Hoc' },
+  { value: 'fixed_days_of_week', label: 'Fixed Days of Week' },
+  { value: 'every_n_days', label: 'Every N Days' },
+];
+
+const CADENCE_SOURCE_OPTIONS = [
+  { value: 'manual', label: 'Manual' },
+  { value: 'inferred', label: 'Inferred' },
+  { value: 'default', label: 'Default' },
+];
+
+const formatDayList = value => (Array.isArray(value) ? value.join(', ') : value || '');
+
 export default function IngredientDetail({
   ingredient,
   onSave,
@@ -89,6 +115,12 @@ export default function IngredientDetail({
           pack_size: '',
           quantity_per_pack_item: '',
           lead_time_days: '',
+          review_period_days: '',
+          order_schedule_type: 'ad_hoc',
+          allowed_order_days: '',
+          allowed_delivery_days: '',
+          cadence_source: 'manual',
+          cadence_confidence_score: '',
           preferred: false,
         },
       ],
@@ -203,6 +235,14 @@ export default function IngredientDetail({
           <Chip label={`${preferredCount} preferred`} size="small" variant="outlined" />
           <Chip label={localData.category || 'Uncategorized'} size="small" variant="outlined" />
           <Chip label={localData.unit || 'Unit not set'} size="small" variant="outlined" />
+          {localData.policy_type && (
+            <Chip
+              label={localData.policy_type.replace(/_/g, ' ')}
+              size="small"
+              color="info"
+              variant="outlined"
+            />
+          )}
         </Stack>
       </Paper>
 
@@ -273,6 +313,77 @@ export default function IngredientDetail({
               disabled={!editable}
             />
           </Grid>
+
+          <Grid item xs={12} md={4}>
+            <TextField
+              label="Replenishment Policy"
+              select
+              SelectProps={{ native: true }}
+              fullWidth
+              size="small"
+              value={localData.policy_type || ''}
+              onChange={e => handleChange('policy_type', e.target.value || null)}
+              disabled={!editable}
+            >
+              <option value="">Unassigned</option>
+              {POLICY_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </TextField>
+          </Grid>
+
+          <Grid item xs={12} md={4}>
+            <TextField
+              label="Policy Assignment"
+              select
+              SelectProps={{ native: true }}
+              fullWidth
+              size="small"
+              value={localData.policy_assignment_mode || ''}
+              onChange={e => handleChange('policy_assignment_mode', e.target.value || null)}
+              disabled={!editable}
+            >
+              <option value="">Unset</option>
+              {POLICY_MODE_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </TextField>
+          </Grid>
+
+          <Grid item xs={12} md={4}>
+            <TextField
+              label="Target Service Level"
+              type="number"
+              inputProps={{ min: 0, max: 0.9999, step: 0.01 }}
+              fullWidth
+              size="small"
+              value={localData.target_service_level ?? ''}
+              onChange={e =>
+                handleChange(
+                  'target_service_level',
+                  e.target.value === '' ? null : e.target.value
+                )
+              }
+              disabled={!editable}
+            />
+          </Grid>
+
+          <Grid item xs={12}>
+            <TextField
+              label="Policy Override Reason"
+              fullWidth
+              size="small"
+              multiline
+              minRows={2}
+              value={localData.policy_override_reason || ''}
+              onChange={e => handleChange('policy_override_reason', e.target.value)}
+              disabled={!editable}
+            />
+          </Grid>
         </Grid>
       </Paper>
 
@@ -317,6 +428,11 @@ export default function IngredientDetail({
                   color={supplier.preferred ? 'primary' : 'default'}
                 />
                 <Chip label={supplier.unit || 'No unit'} size="small" variant="outlined" />
+                <Chip
+                  label={(supplier.order_schedule_type || 'ad_hoc').replace(/_/g, ' ')}
+                  size="small"
+                  variant="outlined"
+                />
                 <Chip
                   label={
                     supplier.cost_per_unit ? `$${supplier.cost_per_unit}/unit` : 'Pricing pending'
@@ -395,6 +511,96 @@ export default function IngredientDetail({
                   inputProps={{ min: 0, max: 365 }}
                   value={supplier.lead_time_days}
                   onChange={e => handleSupplierChange(i, 'lead_time_days', e.target.value)}
+                  fullWidth
+                  size="small"
+                  disabled={!editable}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Review Period (days)"
+                  type="number"
+                  inputProps={{ min: 0, max: 365 }}
+                  value={supplier.review_period_days ?? ''}
+                  onChange={e => handleSupplierChange(i, 'review_period_days', e.target.value)}
+                  fullWidth
+                  size="small"
+                  disabled={!editable}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Order Schedule"
+                  select
+                  SelectProps={{ native: true }}
+                  value={supplier.order_schedule_type || 'ad_hoc'}
+                  onChange={e => handleSupplierChange(i, 'order_schedule_type', e.target.value)}
+                  fullWidth
+                  size="small"
+                  disabled={!editable}
+                >
+                  {SCHEDULE_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </TextField>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Cadence Source"
+                  select
+                  SelectProps={{ native: true }}
+                  value={supplier.cadence_source || 'manual'}
+                  onChange={e => handleSupplierChange(i, 'cadence_source', e.target.value)}
+                  fullWidth
+                  size="small"
+                  disabled={!editable}
+                >
+                  {CADENCE_SOURCE_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </TextField>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Allowed Order Days"
+                  placeholder="mon, wed, fri"
+                  value={formatDayList(supplier.allowed_order_days)}
+                  onChange={e => handleSupplierChange(i, 'allowed_order_days', e.target.value)}
+                  fullWidth
+                  size="small"
+                  disabled={!editable}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Allowed Delivery Days"
+                  placeholder="tue, thu, sat"
+                  value={formatDayList(supplier.allowed_delivery_days)}
+                  onChange={e => handleSupplierChange(i, 'allowed_delivery_days', e.target.value)}
+                  fullWidth
+                  size="small"
+                  disabled={!editable}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Cadence Confidence"
+                  type="number"
+                  inputProps={{ min: 0, max: 1, step: 0.05 }}
+                  value={supplier.cadence_confidence_score ?? ''}
+                  onChange={e =>
+                    handleSupplierChange(i, 'cadence_confidence_score', e.target.value)
+                  }
                   fullWidth
                   size="small"
                   disabled={!editable}

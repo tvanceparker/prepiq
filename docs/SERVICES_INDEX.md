@@ -174,7 +174,9 @@ Purpose:
 
 Purpose:
 
-- safety stock, reorder point, ABC logic, and reorder suggestion math
+- cadence-aware reorder policy evaluation
+- safety stock, reorder point, and supplier timing logic
+- reorder suggestion math that can separate ingredient policy from supplier cadence
 
 ## Helpers And Utilities Worth Knowing
 

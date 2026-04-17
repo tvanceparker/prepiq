@@ -31,6 +31,21 @@ interface SnackbarState {
   type: 'success' | 'error';
 }
 
+const ORDER_SCHEDULE_OPTIONS = [
+  { value: 'ad_hoc', label: 'Ad Hoc' },
+  { value: 'fixed_days_of_week', label: 'Fixed Days' },
+  { value: 'every_n_days', label: 'Every N Days' },
+];
+
+const CADENCE_SOURCE_OPTIONS = [
+  { value: 'manual', label: 'Manual' },
+  { value: 'inferred', label: 'Inferred' },
+  { value: 'default', label: 'Default' },
+];
+
+const formatDayList = (value?: string[] | string | null) =>
+  Array.isArray(value) ? value.join(', ') : value || '';
+
 export default function Suppliers(): React.JSX.Element {
   const theme = useTheme();
   const { tier } = useContext(AuthContext) || {};
@@ -52,6 +67,12 @@ export default function Suppliers(): React.JSX.Element {
     unit: '',
     cost_per_unit: '',
     lead_time_days: '',
+    review_period_days: '',
+    order_schedule_type: 'ad_hoc',
+    allowed_order_days: '',
+    allowed_delivery_days: '',
+    cadence_source: 'manual',
+    cadence_confidence_score: '',
     spoilage_rate: '',
     shelf_life_days: '',
     preferred: false,
@@ -233,6 +254,12 @@ export default function Suppliers(): React.JSX.Element {
       unit: ing.unit || '',
       cost_per_unit: ing.cost_per_unit?.toString() || '',
       lead_time_days: ing.lead_time_days?.toString() || '',
+      review_period_days: ing.review_period_days?.toString() || '',
+      order_schedule_type: ing.order_schedule_type || 'ad_hoc',
+      allowed_order_days: formatDayList(ing.allowed_order_days),
+      allowed_delivery_days: formatDayList(ing.allowed_delivery_days),
+      cadence_source: ing.cadence_source || 'manual',
+      cadence_confidence_score: ing.cadence_confidence_score?.toString() || '',
       spoilage_rate: ing.spoilage_rate?.toString() || '',
       shelf_life_days: ing.shelf_life_days?.toString() || '',
       preferred: ing.preferred || false,
@@ -256,6 +283,16 @@ export default function Suppliers(): React.JSX.Element {
           : null,
         lead_time_days: ingredientForm.lead_time_days
           ? parseInt(ingredientForm.lead_time_days)
+          : null,
+        review_period_days: ingredientForm.review_period_days
+          ? parseInt(ingredientForm.review_period_days)
+          : null,
+        order_schedule_type: ingredientForm.order_schedule_type || null,
+        allowed_order_days: ingredientForm.allowed_order_days || null,
+        allowed_delivery_days: ingredientForm.allowed_delivery_days || null,
+        cadence_source: ingredientForm.cadence_source || null,
+        cadence_confidence_score: ingredientForm.cadence_confidence_score
+          ? parseFloat(ingredientForm.cadence_confidence_score)
           : null,
         spoilage_rate: ingredientForm.spoilage_rate
           ? parseFloat(ingredientForm.spoilage_rate)
@@ -904,6 +941,58 @@ export default function Suppliers(): React.JSX.Element {
                     style={styles.halfInput}
                     dense
                   />
+                  <TextInput
+                    label="Review Period (days)"
+                    value={ingredientForm.review_period_days}
+                    onChangeText={v =>
+                      setIngredientForm(f => ({ ...f, review_period_days: v }))
+                    }
+                    mode="outlined"
+                    keyboardType="number-pad"
+                    style={styles.halfInput}
+                    dense
+                  />
+                </View>
+                <Text variant="labelSmall" style={{ marginBottom: 8 }}>
+                  Order Schedule
+                </Text>
+                <View style={styles.chipRow}>
+                  {ORDER_SCHEDULE_OPTIONS.map(option => (
+                    <Chip
+                      key={option.value}
+                      selected={ingredientForm.order_schedule_type === option.value}
+                      onPress={() =>
+                        setIngredientForm(f => ({ ...f, order_schedule_type: option.value }))
+                      }
+                      style={{ marginRight: 8, marginBottom: 8 }}
+                    >
+                      {option.label}
+                    </Chip>
+                  ))}
+                </View>
+                <View style={styles.formRow}>
+                  <TextInput
+                    label="Allowed Order Days"
+                    value={ingredientForm.allowed_order_days}
+                    onChangeText={v =>
+                      setIngredientForm(f => ({ ...f, allowed_order_days: v }))
+                    }
+                    mode="outlined"
+                    placeholder="mon, wed, fri"
+                    style={styles.halfInput}
+                    dense
+                  />
+                  <TextInput
+                    label="Allowed Delivery Days"
+                    value={ingredientForm.allowed_delivery_days}
+                    onChangeText={v =>
+                      setIngredientForm(f => ({ ...f, allowed_delivery_days: v }))
+                    }
+                    mode="outlined"
+                    placeholder="tue, thu, sat"
+                    style={styles.halfInput}
+                    dense
+                  />
                 </View>
                 <View style={styles.formRow}>
                   <TextInput
@@ -924,6 +1013,34 @@ export default function Suppliers(): React.JSX.Element {
                     style={styles.halfInput}
                     dense
                   />
+                  <TextInput
+                    label="Cadence Confidence"
+                    value={ingredientForm.cadence_confidence_score}
+                    onChangeText={v =>
+                      setIngredientForm(f => ({ ...f, cadence_confidence_score: v }))
+                    }
+                    mode="outlined"
+                    keyboardType="decimal-pad"
+                    style={styles.halfInput}
+                    dense
+                  />
+                </View>
+                <Text variant="labelSmall" style={{ marginBottom: 8 }}>
+                  Cadence Source
+                </Text>
+                <View style={styles.chipRow}>
+                  {CADENCE_SOURCE_OPTIONS.map(option => (
+                    <Chip
+                      key={option.value}
+                      selected={ingredientForm.cadence_source === option.value}
+                      onPress={() =>
+                        setIngredientForm(f => ({ ...f, cadence_source: option.value }))
+                      }
+                      style={{ marginRight: 8, marginBottom: 8 }}
+                    >
+                      {option.label}
+                    </Chip>
+                  ))}
                 </View>
                 <View style={styles.formRow}>
                   <TextInput
