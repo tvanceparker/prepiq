@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { alpha } from '@mui/material/styles';
 import {
   Collapse,
   Table,
@@ -54,6 +55,11 @@ export default function AlertsFeedTableBasic({
   const [expandedAlertId, setExpandedAlertId] = useState(null);
   const [fixAlertId, setFixAlertId] = useState(null);
   const [fixValue, setFixValue] = useState('');
+
+  const getSeverityColor = severity => severityColors[severity] || theme.palette.grey[500];
+
+  const getAlertSurface = alert =>
+    alpha(getSeverityColor(alert.severity), theme.palette.mode === 'dark' ? 0.14 : 0.07);
 
   const getDefaultFixValue = alert => {
     if (alert?.alert_type === 'Inventory:DeductionFailed') {
@@ -122,7 +128,18 @@ export default function AlertsFeedTableBasic({
           : 'Quantity Sold';
 
     return (
-      <Paper variant="outlined" sx={{ p: 2, mt: 1.5 }}>
+      <Paper
+        variant="outlined"
+        sx={{
+          p: 2,
+          mt: 1.5,
+          borderRadius: 2.5,
+          bgcolor:
+            theme.palette.mode === 'dark'
+              ? alpha(theme.palette.background.paper, 0.94)
+              : alpha(theme.palette.background.default, 0.72),
+        }}
+      >
         <Typography variant="subtitle2" fontWeight="bold" mb={1}>
           Fix Alert
         </Typography>
@@ -164,26 +181,59 @@ export default function AlertsFeedTableBasic({
               <Grid item xs={12} sm={6} md={4} key={alert.alert_id}>
                 <Card
                   sx={{
-                    border: `2px solid ${
-                      severityColors[alert.severity] || theme.palette.grey[400]
-                    }`,
+                    border: '1px solid',
+                    borderColor: alpha(getSeverityColor(alert.severity), 0.42),
+                    backgroundColor:
+                      theme.palette.mode === 'dark'
+                        ? alpha(theme.palette.background.paper, 0.94)
+                        : alpha(theme.palette.background.paper, 0.98),
                     height: '100%',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
-                    ':hover': { boxShadow: 6 },
+                    borderRadius: 3,
+                    ':hover': {
+                      boxShadow: theme.palette.mode === 'dark' ? 'none' : 6,
+                      transform: 'translateY(-1px)',
+                    },
                   }}
                 >
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
-                      {`${alert.title || alert.alert_type} - ${alert.severity.toUpperCase()}`}
-                    </Typography>
+                  <CardContent sx={{ backgroundColor: getAlertSurface(alert) }}>
+                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 1 }}>
+                      <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 0 }}>
+                        {alert.title || alert.alert_type}
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 1.25 }}>
+                      <Box
+                        sx={{
+                          px: 1,
+                          py: 0.35,
+                          borderRadius: 999,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: getSeverityColor(alert.severity),
+                          bgcolor: alpha(getSeverityColor(alert.severity), 0.14),
+                        }}
+                      >
+                        {alert.severity.toUpperCase()}
+                      </Box>
+                      <Box
+                        sx={{
+                          px: 1,
+                          py: 0.35,
+                          borderRadius: 999,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: 'text.secondary',
+                          bgcolor: alpha(theme.palette.text.primary, 0.08),
+                        }}
+                      >
+                        {alert.alert_type}
+                      </Box>
+                    </Stack>
                     <Typography variant="body1" color="text.primary" gutterBottom sx={{ mb: 1 }}>
                       {alert.message}
-                    </Typography>
-
-                    <Typography variant="caption" color="text.secondary">
-                      {alert.alert_type}
                     </Typography>
 
                     <Divider sx={{ my: 1 }} />
@@ -204,7 +254,21 @@ export default function AlertsFeedTableBasic({
                     </Collapse>
                   </CardContent>
 
-                  <CardActions sx={{ flexWrap: 'wrap', gap: 1, px: 2, pb: 2 }}>
+                  <CardActions
+                    sx={{
+                      flexWrap: 'wrap',
+                      gap: 1,
+                      px: 2,
+                      pb: 2,
+                      pt: 1.5,
+                      borderTop: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor:
+                        theme.palette.mode === 'dark'
+                          ? alpha(theme.palette.background.default, 0.36)
+                          : alpha(theme.palette.background.default, 0.72),
+                    }}
+                  >
                     <Button
                       size={isMobile ? 'sm' : 'md'}
                       variant="confirm"
@@ -269,18 +333,49 @@ export default function AlertsFeedTableBasic({
   // Table view fallback
   return (
     <>
-      <TableContainer component={Paper} sx={{ maxHeight: 500 }}>
+      <TableContainer
+        component={Paper}
+        sx={{
+          maxHeight: 500,
+          borderRadius: 3,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor:
+            theme.palette.mode === 'dark'
+              ? alpha(theme.palette.background.paper, 0.94)
+              : alpha(theme.palette.background.paper, 0.98),
+        }}
+      >
         <Table stickyHeader size={isMobile ? 'small' : 'medium'}>
           <TableHead>
             <TableRow>
-              <TableCell>ID</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Message</TableCell>
-              <TableCell>Employee ID</TableCell>
-              <TableCell>Role</TableCell>
-              <TableCell>Severity</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell align="center">Actions</TableCell>
+              <TableCell sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08), fontWeight: 700 }}>
+                ID
+              </TableCell>
+              <TableCell sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08), fontWeight: 700 }}>
+                Type
+              </TableCell>
+              <TableCell sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08), fontWeight: 700 }}>
+                Message
+              </TableCell>
+              <TableCell sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08), fontWeight: 700 }}>
+                Employee ID
+              </TableCell>
+              <TableCell sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08), fontWeight: 700 }}>
+                Role
+              </TableCell>
+              <TableCell sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08), fontWeight: 700 }}>
+                Severity
+              </TableCell>
+              <TableCell sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08), fontWeight: 700 }}>
+                Status
+              </TableCell>
+              <TableCell
+                align="center"
+                sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08), fontWeight: 700 }}
+              >
+                Actions
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -289,7 +384,7 @@ export default function AlertsFeedTableBasic({
 
               return (
                 <React.Fragment key={alert.alert_id}>
-                  <TableRow hover>
+                  <TableRow hover sx={{ bgcolor: getAlertSurface(alert) }}>
                     <TableCell>{alert.alert_id}</TableCell>
                     <TableCell>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -306,7 +401,7 @@ export default function AlertsFeedTableBasic({
                     <TableCell>{alert.role ?? '—'}</TableCell>
                     <TableCell
                       sx={{
-                        color: severityColors[alert.severity] || theme.palette.grey[600],
+                        color: getSeverityColor(alert.severity),
                         fontWeight: 'bold',
                         textTransform: 'capitalize',
                       }}
@@ -387,7 +482,16 @@ export default function AlertsFeedTableBasic({
                         timeout="auto"
                         unmountOnExit
                       >
-                        <Box sx={{ py: 2 }}>
+                        <Box
+                          sx={{
+                            py: 2,
+                            px: 1,
+                            bgcolor:
+                              theme.palette.mode === 'dark'
+                                ? alpha(theme.palette.background.default, 0.24)
+                                : alpha(theme.palette.background.default, 0.58),
+                          }}
+                        >
                           {renderMeta(alert)}
                           {renderFixEditor(alert)}
                         </Box>
