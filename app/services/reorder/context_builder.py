@@ -258,6 +258,7 @@ class ReorderContextBuilder:
         shelf_demand = max(total_demand - lead_demand, Decimal("0.00")).quantize(
             Decimal("0.01")
         )
+        capped_tail_demand = shelf_demand
         positive_points = [(day, qty) for day, qty in coverage_points if qty > 0]
         next_event_demand = (
             positive_points[0][1] if positive_points else Decimal("0.00")
@@ -293,6 +294,7 @@ class ReorderContextBuilder:
             "lead_demand": lead_demand,
             "protection_lead_demand": protection_lead_demand,
             "shelf_demand": shelf_demand,
+            "capped_tail_demand": capped_tail_demand,
             "total_demand": total_demand,
             "protection_total_demand": protection_total_demand,
             "average_daily_demand": average_daily_demand,

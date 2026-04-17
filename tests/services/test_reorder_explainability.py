@@ -339,6 +339,93 @@ async def test_build_explanation_payload_preserves_public_structure():
 
 
 @pytest.mark.asyncio
+async def test_build_explanation_payload_remains_compatible_with_cap_fields():
+    engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+
+    payload = engine.build_explanation_payload(
+        decision={
+            "current_stock": Decimal("2.00"),
+            "total_stock": Decimal("2.00"),
+            "excluded_expiring_stock": Decimal("0.00"),
+            "usable_until_date": None,
+            "current_unit": "lb",
+            "reorder_point": Decimal("4.00"),
+            "lead_demand": Decimal("2.00"),
+            "shelf_demand": Decimal("2.00"),
+            "safety_stock": Decimal("1.00"),
+            "reorder_target": Decimal("5.00"),
+            "max_target_stock": Decimal("5.00"),
+            "effective_lead_days": 2,
+            "coverage_days": 4,
+            "protection_window_days": 4,
+            "raw_order_quantity": Decimal("3.00"),
+            "buffered_quantity": Decimal("3.00"),
+            "policy_safe_quantity": Decimal("3.00"),
+            "max_order_cap": Decimal("3.00"),
+            "final_quantity": Decimal("3.00"),
+            "service_level_z": Decimal("1.65"),
+            "target_service_level": Decimal("0.9500"),
+            "service_level_source": "ingredient_target",
+            "demand_source": "forecast_daily_breakdown",
+            "reorder_method": "continuous_review",
+            "policy_type": "stable_stocked",
+            "policy_assignment_mode": "manual",
+            "policy_buffer_quantity": Decimal("1.00"),
+            "abc_class": "B",
+            "abc_multiplier": None,
+            "moq": Decimal("1.00"),
+            "moq_floor": Decimal("1.00"),
+            "max_allowed": Decimal("100.00"),
+            "inventory_position": Decimal("2.00"),
+            "should_reorder": True,
+            "cadence_warnings": [],
+            "assumption_warnings": [],
+            "policy_review_warnings": [],
+            "next_order_date": None,
+            "next_delivery_date": None,
+            "order_schedule_type": None,
+            "review_period_days": None,
+            "allowed_order_days": [],
+            "allowed_delivery_days": [],
+            "cadence_source": None,
+            "cadence_confidence_score": None,
+            "review_required": False,
+            "abc_defaulted": False,
+            "inventory_source": "inventory_summary",
+            "inventory_conversion_fallback": False,
+            "coverage_capped_by_shelf_life": False,
+        },
+        supplier_selection={
+            "reason_code": "fallback_lowest_priority",
+            "preferred_supplier_available": False,
+            "selected_supplier_priority": 2,
+            "selected_supplier_preferred": False,
+            "pricing_available": True,
+        },
+        supplier_name="Dry Goods Vendor",
+        inventory_unit="lb",
+        supplier_unit="lb",
+        converted_quantity_needed=Decimal("3.00"),
+        pack_size=1,
+        quantity_per_pack_item=Decimal("1.00"),
+        packs_to_order=3,
+        total_quantity_ordered=Decimal("3.00"),
+        assumption_flags={"inventory_source": "inventory_summary"},
+    )
+
+    assert set(payload.keys()) == {
+        "summary",
+        "why_reorder",
+        "quantity_factors",
+        "policy_factors",
+        "supplier_factors",
+        "assumption_flags",
+    }
+    assert payload["why_reorder"]["max_target_stock"] == 5.0
+    assert payload["quantity_factors"]["max_order_cap"] == 3.0
+
+
+@pytest.mark.asyncio
 async def test_build_explanation_payload_for_recipe_dependent_uses_dependency_summary():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
     engine.alert_repo = AsyncMock()

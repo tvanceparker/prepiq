@@ -612,14 +612,14 @@ class ReorderForecastEngine:
         *,
         inventory_position: Decimal,
         lead_demand: Decimal,
-        shelf_demand: Decimal,
+        capped_tail_demand: Decimal,
         safety_stock: Decimal,
         max_allowed: Decimal,
     ) -> Dict[str, Decimal]:
         max_target_stock = (
             self._to_decimal(lead_demand)
             + self._to_decimal(safety_stock)
-            + self._to_decimal(shelf_demand)
+            + self._to_decimal(capped_tail_demand)
         ).quantize(Decimal("0.01"))
         max_order_cap = max(
             max_target_stock - self._to_decimal(inventory_position),
@@ -730,6 +730,9 @@ class ReorderForecastEngine:
         effective_lead_days = demand_context["effective_lead_days"]
         lead_demand = demand_context["lead_demand"]
         shelf_demand = demand_context["shelf_demand"]
+        capped_tail_demand = self._to_decimal(
+            demand_context.get("capped_tail_demand", shelf_demand)
+        )
         total_demand = demand_context["total_demand"]
         coverage_days = demand_context["coverage_days"]
         uncapped_coverage_days = demand_context["uncapped_coverage_days"]
@@ -785,7 +788,7 @@ class ReorderForecastEngine:
         cap_context = self._build_stock_position_cap_context(
             inventory_position=inventory_position,
             lead_demand=lead_demand,
-            shelf_demand=shelf_demand,
+            capped_tail_demand=capped_tail_demand,
             safety_stock=safety_stock,
             max_allowed=max_allowed,
         )

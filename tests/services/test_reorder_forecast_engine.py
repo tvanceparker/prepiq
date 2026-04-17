@@ -585,6 +585,59 @@ async def test_build_reorder_decision_without_supplier_uses_shelf_life_window():
 
 
 @pytest.mark.asyncio
+async def test_stable_stocked_does_not_reorder_when_inventory_above_reorder_point():
+    engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.alert_repo = AsyncMock()
+    engine.ingredient_repo.get_by_id = AsyncMock(
+        return_value=DummyIngredient(
+            ingredient_id=1200,
+            unit_cost=Decimal("2.00"),
+            abc_class="A",
+            policy_type="stable_stocked",
+            policy_assignment_mode="manual",
+            target_service_level=0.95,
+        )
+    )
+    engine.stats_service.get_usable_inventory = AsyncMock(
+        return_value={
+            "quantity": Decimal("19.00"),
+            "unit": "lb",
+            "total_quantity": Decimal("19.00"),
+            "excluded_quantity": Decimal("0.00"),
+            "source": "inventory_summary",
+            "conversion_fallback": False,
+        }
+    )
+
+    daily_forecast = [
+        (date(2026, 4, 15) + timedelta(days=index), Decimal("5.00"))
+        for index in range(3)
+    ]
+
+    with patch.object(engine, "calculate_safety_stock", return_value=Decimal("3.00")):
+        with patch.object(engine, "calculate_max_order", return_value=Decimal("100.00")):
+            decision = await engine.build_reorder_decision(
+                ingredient_id=1200,
+                unit="lb",
+                lead_time=3,
+                daily_forecast=daily_forecast,
+                supplier=None,
+                as_of_date=date(2026, 4, 15),
+                shelf_life_days=7,
+                current_stock=Decimal("19.00"),
+                current_unit="lb",
+                moq=Decimal("10.00"),
+                manage_alerts=False,
+            )
+
+    assert decision["policy_type"] == "stable_stocked"
+    assert decision["reorder_point"] == Decimal("18.00")
+    assert decision["should_reorder"] is False
+    assert decision["final_quantity"] == Decimal("0.00")
+    assert decision["skip_reason"] == "stock_at_or_above_reorder_point"
+
+
+@pytest.mark.asyncio
 async def test_fresh_perishable_applies_spoilage_cap_before_moq():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
     engine.alert_repo = AsyncMock()
@@ -833,6 +886,7 @@ async def test_intermittent_low_turn_flags_moq_inflation_review():
     assert decision["policy_safe_quantity"] == Decimal("2.40")
     assert decision["final_quantity"] == Decimal("4.00")
     assert decision["moq_review_required"] is True
+    assert decision["review_required"] is True
     assert "configured MOQ exceeds stock-position cap; review required" in decision[
         "policy_review_warnings"
     ]
