@@ -89,6 +89,8 @@ const formatExplanationValue = (value: number | null | undefined) => {
   return Number.isInteger(value) ? String(value) : Number(value).toFixed(2);
 };
 
+const formatOrderDateLabel = (value: string | Date) => dayjs(value).format('MMM D, YYYY');
+
 const formatSelectionRule = (rule?: string | null) => {
   if (rule === 'preferred_lowest_priority') {
     return 'preferred supplier rule';
@@ -185,9 +187,18 @@ type ReceiptDraft = {
   }>;
 };
 
+type QueueGroupMode = 'supplier' | 'date';
+
+type QueueSection = {
+  key: string;
+  label: string;
+  orders: PurchaseOrder[];
+};
+
 export default function PurchaseOrders() {
   const qc = useQueryClient();
   const [status, setStatus] = useState<PurchaseOrderStatus>('cart');
+  const [queueGroupMode, setQueueGroupMode] = useState<QueueGroupMode>('supplier');
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [confirmDeleteDraft, setConfirmDeleteDraft] = useState(false);
   const [receiptDraft, setReceiptDraft] = useState<ReceiptDraft | null>(null);
@@ -766,14 +777,75 @@ export default function PurchaseOrders() {
   }, [ingredientCart]);
 
   // Order list grouping
-  const groupedBySupplier = useMemo(() => {
-    const map = new Map<string, PurchaseOrder[]>();
+  const groupedBySupplier = useMemo<QueueSection[]>(() => {
+    const map = new Map<string, QueueSection>();
     orders.forEach(po => {
-      const key = getSupplierLabel(po.supplier_name, po.supplier_id);
-      map.set(key, [...(map.get(key) || []), po]);
+      const label = getSupplierLabel(po.supplier_name, po.supplier_id);
+      const key = `supplier:${po.supplier_id ?? label}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.orders.push(po);
+        return;
+      }
+
+      map.set(key, {
+        key,
+        label,
+        orders: [po],
+      });
     });
-    return Array.from(map.entries());
+    return Array.from(map.values());
   }, [orders]);
+
+  const groupedByDate = useMemo<QueueSection[]>(() => {
+    const map = new Map<string, QueueSection>();
+    orders.forEach(po => {
+      const dateKey = dayjs(po.order_date).format('YYYY-MM-DD');
+      const key = `date:${dateKey}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.orders.push(po);
+        return;
+      }
+
+      map.set(key, {
+        key,
+        label: formatOrderDateLabel(po.order_date),
+        orders: [po],
+      });
+    });
+
+    return Array.from(map.values()).sort((left, right) => {
+      const leftDate = left.key.replace('date:', '');
+      const rightDate = right.key.replace('date:', '');
+      return dayjs(rightDate).valueOf() - dayjs(leftDate).valueOf();
+    });
+  }, [orders]);
+
+  const queueSections = useMemo(
+    () => (queueGroupMode === 'supplier' ? groupedBySupplier : groupedByDate),
+    [groupedByDate, groupedBySupplier, queueGroupMode]
+  );
+
+  const queueHelperText = useMemo(() => {
+    if (queueGroupMode === 'supplier') {
+      if (status === 'cart') {
+        return 'Open a draft workspace, adjust lines, or remove a scratch draft entirely.';
+      }
+      if (status === 'pending') {
+        return 'Pending orders stay grouped by supplier until they are received.';
+      }
+      return 'Delivered orders remain available as a receipt and review ledger.';
+    }
+
+    if (status === 'cart') {
+      return 'Browse draft workspaces by order date while the selected draft stays open on the right.';
+    }
+    if (status === 'pending') {
+      return 'Browse pending orders by order date, then open one on the right before receiving it.';
+    }
+    return 'Browse delivered orders by order date and review their original context on the right.';
+  }, [queueGroupMode, status]);
 
   const orderCountsByStatus = useMemo(
     () => ({
@@ -1265,6 +1337,13 @@ export default function PurchaseOrders() {
     const total = (order.items || []).reduce((s, it) => s + (Number(it.total_item_price) || 0), 0);
     const reviewItems = order.review_context?.explanation_items || [];
     const sourceLabel = getOrderSourceLabel(order.review_context?.source_type);
+    const workspaceScrollSx = {
+      flex: 1,
+      minHeight: 0,
+      overflowY: 'auto',
+      pr: { md: 0.5 },
+      mr: { md: -0.5 },
+    };
     const nudgeDraftItemQuantity = (item: PurchaseOrderItem, delta: number) => {
       const nextQty = Math.max(1, Number(item.quantity_ordered) + delta);
       updateItemMut.mutate({
@@ -1508,7 +1587,7 @@ export default function PurchaseOrders() {
     );
 
     return (
-      <Stack spacing={2.5}>
+      <Stack spacing={2.5} sx={{ height: '100%', minHeight: 0 }}>
         <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
           <Box>
             <Typography variant="h6">Order #{order.order_id}</Typography>
@@ -1582,271 +1661,282 @@ export default function PurchaseOrders() {
         )}
 
         {order.status === 'cart' ? (
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1.45fr) minmax(320px, 0.95fr)' },
-              gap: 2,
-              alignItems: 'start',
-            }}
-          >
-            <Stack spacing={2} sx={{ minWidth: 0 }}>
-              <Paper variant="outlined" sx={{ p: 2.5 }}>
-                <Stack spacing={2}>
-                  <Box>
-                    <Typography variant="subtitle1" fontWeight={700}>
-                      Edit Draft Lines
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Keep working in the same draft-style workspace before you submit the order.
-                    </Typography>
-                  </Box>
-                  <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap' }}>
-                    <Autocomplete
-                      options={ingredientNames}
-                      getOptionLabel={opt => opt.ingredient_name}
-                      value={selIngredient}
-                      onChange={(_, v) => setSelIngredient(v)}
-                      renderInput={params => (
-                        <TextField {...params} label="Ingredient" size="small" />
-                      )}
-                      sx={{ minWidth: 240 }}
-                    />
-                    <TextField
-                      size="small"
-                      label="Qty"
-                      value={qty}
-                      onChange={e => setQty(e.target.value)}
-                      sx={{ width: 100 }}
-                    />
-                    <TextField
-                      size="small"
-                      label="Unit"
-                      value={unit}
-                      onChange={e => setUnit(e.target.value)}
-                      sx={{ width: 120 }}
-                    />
-                    <TextField
-                      size="small"
-                      label="Unit Price"
-                      value={price}
-                      onChange={e => setPrice(e.target.value)}
-                      sx={{ width: 140 }}
-                    />
-                    <Button variant="contained" startIcon={<AddIcon />} onClick={addItem}>
-                      Add Item
-                    </Button>
-                  </Stack>
-                </Stack>
-              </Paper>
-
-              {explanationSection}
-
-              <Paper variant="outlined" sx={{ p: 1.5, overflow: 'hidden' }}>
-                {itemsTable}
-              </Paper>
-            </Stack>
-
-            <Paper
-              variant="outlined"
+          <Box sx={workspaceScrollSx}>
+            <Box
               sx={{
-                p: 2.5,
-                height: 'fit-content',
-                bgcolor: 'background.paper',
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1.45fr) minmax(320px, 0.95fr)' },
+                gap: 2,
+                alignItems: 'start',
+                pb: 0.5,
               }}
             >
-              <Stack spacing={1.5} sx={{ mb: 2 }}>
-                <Box>
-                  <Typography variant="subtitle1" fontWeight={700}>
-                    Current Draft
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Adjust quantities here, then submit once the draft looks right. Scratch drafts
-                    can be deleted in one step.
-                  </Typography>
-                </Box>
-                <Stack direction="row" spacing={1}>
-                  <Paper
-                    variant="outlined"
-                    sx={{ p: 1.25, flex: 1, bgcolor: 'background.default' }}
-                  >
-                    <Typography variant="caption" color="text.secondary">
-                      Items
-                    </Typography>
-                    <Typography variant="h6" fontWeight={700}>
-                      {order.items.length}
-                    </Typography>
-                  </Paper>
-                  <Paper
-                    variant="outlined"
-                    sx={{ p: 1.25, flex: 1, bgcolor: 'background.default' }}
-                  >
-                    <Typography variant="caption" color="text.secondary">
-                      Total
-                    </Typography>
-                    <Typography variant="h6" fontWeight={700} color="primary.main">
-                      ${total.toFixed(2)}
-                    </Typography>
-                  </Paper>
-                </Stack>
+              <Stack spacing={2} sx={{ minWidth: 0 }}>
+                <Paper variant="outlined" sx={{ p: 2.5 }}>
+                  <Stack spacing={2}>
+                    <Box>
+                      <Typography variant="subtitle1" fontWeight={700}>
+                        Edit Draft Lines
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Keep working in the same draft-style workspace before you submit the order.
+                      </Typography>
+                    </Box>
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      spacing={1}
+                      sx={{ flexWrap: 'wrap' }}
+                    >
+                      <Autocomplete
+                        options={ingredientNames}
+                        getOptionLabel={opt => opt.ingredient_name}
+                        value={selIngredient}
+                        onChange={(_, v) => setSelIngredient(v)}
+                        renderInput={params => (
+                          <TextField {...params} label="Ingredient" size="small" />
+                        )}
+                        sx={{ minWidth: 240 }}
+                      />
+                      <TextField
+                        size="small"
+                        label="Qty"
+                        value={qty}
+                        onChange={e => setQty(e.target.value)}
+                        sx={{ width: 100 }}
+                      />
+                      <TextField
+                        size="small"
+                        label="Unit"
+                        value={unit}
+                        onChange={e => setUnit(e.target.value)}
+                        sx={{ width: 120 }}
+                      />
+                      <TextField
+                        size="small"
+                        label="Unit Price"
+                        value={price}
+                        onChange={e => setPrice(e.target.value)}
+                        sx={{ width: 140 }}
+                      />
+                      <Button variant="contained" startIcon={<AddIcon />} onClick={addItem}>
+                        Add Item
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </Paper>
+
+                {explanationSection}
+
+                <Paper variant="outlined" sx={{ p: 1.5, overflow: 'hidden' }}>
+                  {itemsTable}
+                </Paper>
               </Stack>
 
-              {confirmDeleteDraft && (
-                <Alert
-                  severity="warning"
-                  sx={{ mb: 2 }}
-                  action={
-                    <Button
-                      color="inherit"
-                      size="small"
-                      onClick={() => setConfirmDeleteDraft(false)}
-                    >
-                      Keep Draft
-                    </Button>
-                  }
-                >
-                  Deleting this draft removes every line item in the order. Use this when the draft
-                  was only temporary or built by mistake.
-                </Alert>
-              )}
-
-              <Stack spacing={1.25}>
-                {order.items.length === 0 ? (
-                  <Paper
-                    variant="outlined"
-                    sx={{
-                      p: 2.5,
-                      textAlign: 'center',
-                      bgcolor: 'background.default',
-                      color: 'text.secondary',
-                    }}
-                  >
-                    <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.5 }}>
-                      No lines in this draft yet
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 2.5,
+                  height: 'fit-content',
+                  bgcolor: 'background.paper',
+                }}
+              >
+                <Stack spacing={1.5} sx={{ mb: 2 }}>
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Current Draft
                     </Typography>
-                    <Typography variant="body2">
-                      Add ingredients on the left and they will stay anchored here while you build.
+                    <Typography variant="body2" color="text.secondary">
+                      Adjust quantities here, then submit once the draft looks right. Scratch drafts
+                      can be deleted in one step.
                     </Typography>
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      startIcon={<DeleteIcon />}
-                      sx={{ mt: 1.5 }}
-                      onClick={() => setConfirmDeleteDraft(true)}
-                    >
-                      Delete Empty Draft
-                    </Button>
-                  </Paper>
-                ) : (
-                  order.items.map(item => (
+                  </Box>
+                  <Stack direction="row" spacing={1}>
                     <Paper
-                      key={item.order_item_id}
                       variant="outlined"
-                      sx={{ p: 1.5, bgcolor: 'background.default' }}
+                      sx={{ p: 1.25, flex: 1, bgcolor: 'background.default' }}
                     >
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Box sx={{ flex: 1 }}>
-                          <Typography variant="body2" fontWeight={600}>
-                            {item.ingredient_name}
+                      <Typography variant="caption" color="text.secondary">
+                        Items
+                      </Typography>
+                      <Typography variant="h6" fontWeight={700}>
+                        {order.items.length}
+                      </Typography>
+                    </Paper>
+                    <Paper
+                      variant="outlined"
+                      sx={{ p: 1.25, flex: 1, bgcolor: 'background.default' }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        Total
+                      </Typography>
+                      <Typography variant="h6" fontWeight={700} color="primary.main">
+                        ${total.toFixed(2)}
+                      </Typography>
+                    </Paper>
+                  </Stack>
+                </Stack>
+
+                {confirmDeleteDraft && (
+                  <Alert
+                    severity="warning"
+                    sx={{ mb: 2 }}
+                    action={
+                      <Button
+                        color="inherit"
+                        size="small"
+                        onClick={() => setConfirmDeleteDraft(false)}
+                      >
+                        Keep Draft
+                      </Button>
+                    }
+                  >
+                    Deleting this draft removes every line item in the order. Use this when the
+                    draft was only temporary or built by mistake.
+                  </Alert>
+                )}
+
+                <Stack spacing={1.25}>
+                  {order.items.length === 0 ? (
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        p: 2.5,
+                        textAlign: 'center',
+                        bgcolor: 'background.default',
+                        color: 'text.secondary',
+                      }}
+                    >
+                      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.5 }}>
+                        No lines in this draft yet
+                      </Typography>
+                      <Typography variant="body2">
+                        Add ingredients on the left and they will stay anchored here while you
+                        build.
+                      </Typography>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        startIcon={<DeleteIcon />}
+                        sx={{ mt: 1.5 }}
+                        onClick={() => setConfirmDeleteDraft(true)}
+                      >
+                        Delete Empty Draft
+                      </Button>
+                    </Paper>
+                  ) : (
+                    order.items.map(item => (
+                      <Paper
+                        key={item.order_item_id}
+                        variant="outlined"
+                        sx={{ p: 1.5, bgcolor: 'background.default' }}
+                      >
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="body2" fontWeight={600}>
+                              {item.ingredient_name}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              ${Number(item.unit_price).toFixed(2)} per {item.unit}
+                            </Typography>
+                          </Box>
+                          <Stack direction="row" spacing={0.25} alignItems="center">
+                            <IconButton
+                              size="small"
+                              onClick={() => nudgeDraftItemQuantity(item, -1)}
+                              disabled={updateItemMut.isPending}
+                            >
+                              <RemoveIcon fontSize="small" />
+                            </IconButton>
+                            <Typography sx={{ minWidth: 34, textAlign: 'center' }}>
+                              {item.quantity_ordered}
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              onClick={() => nudgeDraftItemQuantity(item, 1)}
+                              disabled={updateItemMut.isPending}
+                            >
+                              <AddIcon fontSize="small" />
+                            </IconButton>
+                          </Stack>
+                          <Typography variant="body2" sx={{ minWidth: 82, textAlign: 'right' }}>
+                            ${Number(item.total_item_price || 0).toFixed(2)}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            ${Number(item.unit_price).toFixed(2)} per {item.unit}
-                          </Typography>
-                        </Box>
-                        <Stack direction="row" spacing={0.25} alignItems="center">
                           <IconButton
                             size="small"
-                            onClick={() => nudgeDraftItemQuantity(item, -1)}
-                            disabled={updateItemMut.isPending}
+                            color="error"
+                            onClick={() =>
+                              removeItemMut.mutate({
+                                order_id: order.order_id,
+                                order_item_id: item.order_item_id,
+                              })
+                            }
+                            disabled={removeItemMut.isPending}
                           >
-                            <RemoveIcon fontSize="small" />
-                          </IconButton>
-                          <Typography sx={{ minWidth: 34, textAlign: 'center' }}>
-                            {item.quantity_ordered}
-                          </Typography>
-                          <IconButton
-                            size="small"
-                            onClick={() => nudgeDraftItemQuantity(item, 1)}
-                            disabled={updateItemMut.isPending}
-                          >
-                            <AddIcon fontSize="small" />
+                            <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Stack>
-                        <Typography variant="body2" sx={{ minWidth: 82, textAlign: 'right' }}>
-                          ${Number(item.total_item_price || 0).toFixed(2)}
-                        </Typography>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() =>
-                            removeItemMut.mutate({
-                              order_id: order.order_id,
-                              order_item_id: item.order_item_id,
-                            })
-                          }
-                          disabled={removeItemMut.isPending}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Stack>
-                    </Paper>
-                  ))
-                )}
-              </Stack>
+                      </Paper>
+                    ))
+                  )}
+                </Stack>
 
-              <Stack direction="row" spacing={1} sx={{ mt: 2.5 }}>
-                <Button
-                  variant="contained"
-                  onClick={() =>
-                    updateStatusMut.mutate({ order_id: order.order_id, status: 'pending' })
-                  }
-                >
-                  Submit Draft
-                </Button>
-                <Button
-                  variant={confirmDeleteDraft ? 'contained' : 'outlined'}
-                  color="error"
-                  startIcon={<DeleteIcon />}
-                  onClick={() => {
-                    if (!confirmDeleteDraft) {
-                      setConfirmDeleteDraft(true);
-                      return;
+                <Stack direction="row" spacing={1} sx={{ mt: 2.5 }}>
+                  <Button
+                    variant="contained"
+                    onClick={() =>
+                      updateStatusMut.mutate({ order_id: order.order_id, status: 'pending' })
                     }
-                    deleteOrderMut.mutate(order.order_id);
-                  }}
-                  disabled={deleteOrderMut.isPending}
-                >
-                  {deleteOrderMut.isPending
-                    ? 'Deleting...'
-                    : confirmDeleteDraft
-                      ? 'Confirm Delete Draft'
-                      : 'Delete Draft'}
-                </Button>
-                <Button variant="text" color="inherit" onClick={() => setSelectedOrder(null)}>
-                  Close
-                </Button>
-              </Stack>
-            </Paper>
+                  >
+                    Submit Draft
+                  </Button>
+                  <Button
+                    variant={confirmDeleteDraft ? 'contained' : 'outlined'}
+                    color="error"
+                    startIcon={<DeleteIcon />}
+                    onClick={() => {
+                      if (!confirmDeleteDraft) {
+                        setConfirmDeleteDraft(true);
+                        return;
+                      }
+                      deleteOrderMut.mutate(order.order_id);
+                    }}
+                    disabled={deleteOrderMut.isPending}
+                  >
+                    {deleteOrderMut.isPending
+                      ? 'Deleting...'
+                      : confirmDeleteDraft
+                        ? 'Confirm Delete Draft'
+                        : 'Delete Draft'}
+                  </Button>
+                  <Button variant="text" color="inherit" onClick={() => setSelectedOrder(null)}>
+                    Close
+                  </Button>
+                </Stack>
+              </Paper>
+            </Box>
           </Box>
         ) : (
-          <>
-            {explanationSection}
+          <Box sx={workspaceScrollSx}>
+            <Stack spacing={2.5} sx={{ pb: 0.5 }}>
+              {explanationSection}
 
-            {itemsTable}
+              {itemsTable}
 
-            <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-              {order.status === 'pending' && (
-                <Button variant="outlined" onClick={() => openReceiptDialog(order)}>
-                  Receive Order
-                </Button>
-              )}
-              {order.status !== 'delivered' && (
-                <Button variant="text" color="inherit" onClick={() => setSelectedOrder(null)}>
-                  Close
-                </Button>
-              )}
+              <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                {order.status === 'pending' && (
+                  <Button variant="outlined" onClick={() => openReceiptDialog(order)}>
+                    Receive Order
+                  </Button>
+                )}
+                {order.status !== 'delivered' && (
+                  <Button variant="text" color="inherit" onClick={() => setSelectedOrder(null)}>
+                    Close
+                  </Button>
+                )}
+              </Stack>
             </Stack>
-          </>
+          </Box>
         )}
       </Stack>
     );
@@ -1994,16 +2084,38 @@ export default function PurchaseOrders() {
           }}
           elevation={0}
         >
-          <Typography variant="subtitle1" sx={{ mb: 0.5, fontWeight: 700 }}>
-            Supplier Queues
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            {status === 'cart'
-              ? 'Open a draft workspace, adjust lines, or remove a scratch draft entirely.'
-              : status === 'pending'
-                ? 'Pending orders stay grouped by supplier until they are received.'
-                : 'Delivered orders remain available as a receipt and review ledger.'}
-          </Typography>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            justifyContent="space-between"
+            alignItems={{ sm: 'flex-start' }}
+            spacing={1.5}
+            sx={{ mb: 1 }}
+          >
+            <Box>
+              <Typography variant="subtitle1" sx={{ mb: 0.5, fontWeight: 700 }}>
+                Order Queues
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {queueHelperText}
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1}>
+              <Button
+                size="small"
+                variant={queueGroupMode === 'supplier' ? 'contained' : 'outlined'}
+                onClick={() => setQueueGroupMode('supplier')}
+              >
+                Supplier
+              </Button>
+              <Button
+                size="small"
+                variant={queueGroupMode === 'date' ? 'contained' : 'outlined'}
+                onClick={() => setQueueGroupMode('date')}
+              >
+                Date
+              </Button>
+            </Stack>
+          </Stack>
           <Divider sx={{ mb: 1 }} />
           {isLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -2015,8 +2127,8 @@ export default function PurchaseOrders() {
             </Typography>
           ) : (
             <Stack spacing={1}>
-              {groupedBySupplier.map(([supplier, list]) => (
-                <Box key={supplier}>
+              {queueSections.map(section => (
+                <Box key={section.key}>
                   <Stack
                     direction="row"
                     justifyContent="space-between"
@@ -2024,16 +2136,16 @@ export default function PurchaseOrders() {
                     sx={{ mb: 0.75 }}
                   >
                     <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                      {supplier}
+                      {section.label}
                     </Typography>
                     <Chip
                       size="small"
-                      label={`${list.length} order${list.length === 1 ? '' : 's'}`}
+                      label={`${section.orders.length} order${section.orders.length === 1 ? '' : 's'}`}
                       variant="outlined"
                     />
                   </Stack>
                   <Stack spacing={0.75}>
-                    {list.map(po => (
+                    {section.orders.map(po => (
                       <Button
                         key={po.order_id}
                         variant="text"
@@ -2110,11 +2222,12 @@ export default function PurchaseOrders() {
             bgcolor: 'background.paper',
             borderRadius: 3,
             overflow: 'hidden',
+            height: { xs: 'auto', md: 720 },
           }}
           elevation={0}
         >
           {selectedOrder ? (
-            <Box sx={{ p: 2 }}>
+            <Box sx={{ p: 2, height: '100%', minHeight: 0 }}>
               <ItemEditor order={selectedOrder} />
             </Box>
           ) : (
@@ -2133,8 +2246,8 @@ export default function PurchaseOrders() {
                 Select an order to open its workspace
               </Typography>
               <Typography variant="body2" sx={{ mt: 1, textAlign: 'center', maxWidth: 320 }}>
-                Drafts stay editable, pending orders stay receipt-ready, and delivered orders keep
-                the original review context for later reference.
+                Drafts and pending orders open here for review, while delivered orders keep their
+                original context for later reference.
               </Typography>
             </Box>
           )}
