@@ -175,10 +175,12 @@ async def test_build_explanation_payload_for_fresh_perishable_surfaces_assumptio
     )
 
     assert "Fresh-perishable ordering uses a shelf-life-capped window" in payload["summary"]
+    assert "Configured MOQ exceeds the waste-safe cap and should be reviewed" in payload["summary"]
     assert "Pack rounding pushes the ordered quantity above the spoilage-safe quantity" in payload["summary"]
     warnings = payload["assumption_flags"]["cadence_warnings"]
     assert "inbound quantity unavailable; assumed zero" in warnings
     assert "backorders unavailable; assumed zero" in warnings
+    assert "configured MOQ exceeds waste-safe cap; review required" in warnings
     assert "pack rounding exceeds spoilage-safe quantity" in warnings
 
 
@@ -319,6 +321,8 @@ async def test_build_explanation_payload_preserves_public_structure():
     )
     assert {
         "raw_order_quantity",
+        "policy_safe_quantity",
+        "max_order_cap",
         "final_quantity_before_pack_rounding",
         "total_quantity_ordered",
     }.issubset(payload["quantity_factors"].keys())
@@ -331,6 +335,7 @@ async def test_build_explanation_payload_preserves_public_structure():
     assert {"inventory_source", "cadence_warnings"}.issubset(
         payload["assumption_flags"].keys()
     )
+    assert "review_required" in payload["assumption_flags"]
 
 
 @pytest.mark.asyncio
@@ -488,6 +493,7 @@ async def test_build_explanation_payload_for_intermittent_surfaces_moq_review_wa
     assert "Intermittent low-turn ordering uses next sparse event" in payload["summary"]
     assert "Configured MOQ materially exceeds the sparse policy-safe quantity and should be reviewed" in payload["summary"]
     warnings = payload["assumption_flags"]["cadence_warnings"]
+    assert "configured MOQ exceeds stock-position cap; review required" in warnings
     assert "configured MOQ materially exceeds sparse policy-safe quantity" in warnings
     assert "pack rounding exceeds sparse policy-safe quantity" in warnings
 
@@ -608,6 +614,20 @@ async def test_generate_purchase_order_suggestions_includes_explanation_payload(
     assert item["explanation"] == explanation_payload
     reorder_engine.build_reorder_decision.assert_awaited_once()
     reorder_engine.build_explanation_payload.assert_called_once()
+    decision_kwargs = reorder_engine.build_reorder_decision.await_args.kwargs
+    assert set(decision_kwargs.keys()) == {
+        "ingredient_id",
+        "unit",
+        "lead_time",
+        "daily_forecast",
+        "supplier",
+        "as_of_date",
+        "shelf_life_days",
+        "current_stock",
+        "current_unit",
+        "moq",
+        "manage_alerts",
+    }
     explanation_kwargs = reorder_engine.build_explanation_payload.call_args.kwargs
     assert explanation_kwargs["assumption_flags"]["inventory_source"] == "inventory_summary"
     assert explanation_kwargs["assumption_flags"]["lead_time_source"] == "supplier"

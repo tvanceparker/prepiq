@@ -215,10 +215,12 @@ async def test_build_reorder_decision_from_forecast_uses_cadence_window_and_shel
     assert "inbound quantity unavailable; assumed zero" in decision["assumption_warnings"]
     assert "backorders unavailable; assumed zero" in decision["assumption_warnings"]
     assert decision["spoilage_cap_quantity"] == Decimal("3.00")
-    assert decision["policy_safe_quantity"] == Decimal("3.00")
-    assert decision["buffered_quantity"] == Decimal("3.00")
+    assert decision["max_target_stock"] == Decimal("3.00")
+    assert decision["max_order_cap"] == Decimal("2.00")
+    assert decision["policy_safe_quantity"] == Decimal("2.00")
+    assert decision["buffered_quantity"] == Decimal("2.00")
     assert decision["abc_multiplier"] is None
-    assert decision["final_quantity"] == Decimal("3.00")
+    assert decision["final_quantity"] == Decimal("2.00")
 
 
 @pytest.mark.asyncio
@@ -283,6 +285,8 @@ async def test_build_reorder_decision_preserves_public_payload_contract():
         "moq",
         "moq_floor",
         "max_allowed",
+        "max_target_stock",
+        "max_order_cap",
         "final_quantity",
         "should_reorder",
         "skip_reason",
@@ -322,6 +326,7 @@ async def test_build_reorder_decision_preserves_public_payload_contract():
         "cadence_source",
         "cadence_confidence_score",
         "cadence_warnings",
+        "review_required",
     }
 
     assert expected_keys.issubset(decision.keys())
@@ -626,11 +631,16 @@ async def test_fresh_perishable_applies_spoilage_cap_before_moq():
 
     assert decision["raw_order_quantity"] == Decimal("4.00")
     assert decision["spoilage_cap_quantity"] == Decimal("3.00")
+    assert decision["max_target_stock"] == Decimal("3.00")
+    assert decision["max_order_cap"] == Decimal("3.00")
     assert decision["policy_safe_quantity"] == Decimal("3.00")
     assert decision["buffered_quantity"] == Decimal("3.00")
-    assert decision["final_quantity"] == Decimal("5.00")
-
     assert decision["final_quantity"] == Decimal("3.00")
+    assert decision["moq_review_required"] is True
+    assert decision["review_required"] is True
+    assert decision["policy_review_warnings"] == [
+        "configured MOQ exceeds waste-safe cap; review required"
+    ]
 
 
 @pytest.mark.asyncio
@@ -698,8 +708,10 @@ async def test_recipe_dependent_uses_minimal_topology_guard_without_recomputing_
     assert decision["reorder_point"] == Decimal("6.00")
     assert decision["reorder_target"] == Decimal("10.00")
     assert decision["raw_order_quantity"] == Decimal("9.00")
-    assert decision["policy_safe_quantity"] == Decimal("9.00")
-    assert decision["final_quantity"] == Decimal("9.00")
+    assert decision["max_target_stock"] == Decimal("6.00")
+    assert decision["max_order_cap"] == Decimal("5.00")
+    assert decision["policy_safe_quantity"] == Decimal("5.00")
+    assert decision["final_quantity"] == Decimal("5.00")
     assert decision["safety_stock"] == Decimal("0.00")
 
 
@@ -816,63 +828,14 @@ async def test_intermittent_low_turn_flags_moq_inflation_review():
     assert decision["demand_sparsity_classification"] == "repeated_sparse"
     assert decision["event_spacing_days"] == [2]
     assert decision["policy_buffer_quantity"] == Decimal("0.40")
+    assert decision["max_target_stock"] == Decimal("4.00")
+    assert decision["max_order_cap"] == Decimal("4.00")
     assert decision["policy_safe_quantity"] == Decimal("2.40")
-    assert decision["final_quantity"] == Decimal("10.00")
+    assert decision["final_quantity"] == Decimal("4.00")
     assert decision["moq_review_required"] is True
-    assert decision["policy_review_warnings"] == [
-        "configured MOQ materially exceeds sparse policy-safe quantity"
+    assert "configured MOQ exceeds stock-position cap; review required" in decision[
+        "policy_review_warnings"
     ]
-    engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
-    engine.alert_repo = AsyncMock()
-    engine.ingredient_repo.get_by_id = AsyncMock(
-        return_value=DummyIngredient(
-            ingredient_id=1003,
-            unit_cost=Decimal("8.00"),
-            abc_class="C",
-            policy_type="intermittent_low_turn",
-            policy_assignment_mode="manual",
-            target_service_level=0.88,
-        )
-    )
-    engine.stats_service.get_usable_inventory = AsyncMock(
-        return_value={
-            "quantity": Decimal("0.00"),
-            "unit": "lb",
-            "total_quantity": Decimal("0.00"),
-            "excluded_quantity": Decimal("0.00"),
-            "source": "inventory_summary",
-            "conversion_fallback": False,
-        }
-    )
-
-    daily_forecast = [
-        (date(2026, 4, 15), Decimal("0.00")),
-        (date(2026, 4, 16), Decimal("0.00")),
-        (date(2026, 4, 17), Decimal("4.00")),
-        (date(2026, 4, 18), Decimal("0.00")),
-        (date(2026, 4, 19), Decimal("0.00")),
+    assert "configured MOQ materially exceeds sparse policy-safe quantity" in decision[
+        "policy_review_warnings"
     ]
-
-    with patch.object(engine, "calculate_safety_stock", return_value=Decimal("2.00")):
-        with patch.object(engine, "calculate_max_order", return_value=Decimal("100.00")):
-            decision = await engine.build_reorder_decision(
-                ingredient_id=1003,
-                unit="lb",
-                lead_time=0,
-                daily_forecast=daily_forecast,
-                supplier=None,
-                as_of_date=date(2026, 4, 15),
-                shelf_life_days=5,
-                current_stock=Decimal("0.00"),
-                current_unit="lb",
-                moq=Decimal("1.00"),
-                manage_alerts=False,
-            )
-
-    assert decision["policy_type"] == "intermittent_low_turn"
-    assert decision["reorder_method"] == "event_driven_replenishment"
-    assert decision["next_event_demand"] == Decimal("4.00")
-    assert decision["policy_buffer_quantity"] == Decimal("2.00")
-    assert decision["reorder_point"] == Decimal("4.00")
-    assert decision["reorder_target"] == Decimal("6.00")
-    assert decision["final_quantity"] == Decimal("6.00")

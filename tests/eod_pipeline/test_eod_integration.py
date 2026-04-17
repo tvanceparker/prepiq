@@ -238,6 +238,98 @@ class TestEODPipelineIntegration:
         assert "suggested_packs_to_order" in result[0]
 
     @pytest.mark.asyncio
+    async def test_eod_generate_suggested_purchase_orders_uses_stable_reorder_public_contract(
+        self, mock_db_session, restaurant_id, sample_suppliers
+    ):
+        service = EODService(mock_db_session, restaurant_id, "master")
+        supplier = sample_suppliers[0]
+        ingredient_forecast = {
+            1001: {
+                "unit": "lb",
+                "daily_breakdown": [
+                    (date(2026, 4, 15) + timedelta(days=index), Decimal("1.50"))
+                    for index in range(5)
+                ],
+            }
+        }
+
+        service.ingredient_supplier_repo.get_all_by_ingredient_id = AsyncMock(
+            return_value=[supplier]
+        )
+        service.supplier_repo.get_by_id = AsyncMock(
+            return_value=MagicMock(name="Primary Supplier")
+        )
+        service.ingredient_repo.get_by_id = AsyncMock(
+            return_value=MagicMock(name="Test Ingredient")
+        )
+        service.inventory_repo.get_inventory_by_ingredient = AsyncMock(
+            return_value=MagicMock(
+                quantity_on_hand=Decimal("4.00"),
+                shelf_life_days=7,
+                unit="lb",
+            )
+        )
+        service.reorder_engine.choose_supplier_option = AsyncMock(
+            return_value={
+                "supplier": supplier,
+                "reason_code": "preferred_best_cadence",
+                "preferred_supplier_available": True,
+                "selected_supplier_priority": getattr(supplier, "supplier_priority", None),
+                "selected_supplier_preferred": True,
+                "pricing_available": True,
+            }
+        )
+        service.reorder_engine.build_reorder_decision = AsyncMock(
+            return_value={
+                "current_stock": Decimal("4.00"),
+                "current_unit": "lb",
+                "lead_demand": Decimal("3.00"),
+                "shelf_demand": Decimal("2.00"),
+                "total_demand": Decimal("5.00"),
+                "safety_stock": Decimal("1.00"),
+                "reorder_point": Decimal("4.00"),
+                "reorder_target": Decimal("6.00"),
+                "raw_order_quantity": Decimal("2.00"),
+                "buffered_quantity": Decimal("2.00"),
+                "moq": Decimal("1.00"),
+                "moq_floor": Decimal("1.00"),
+                "max_allowed": Decimal("100.00"),
+                "final_quantity": Decimal("2.00"),
+                "should_reorder": True,
+                "service_level_z": Decimal("1.65"),
+                "abc_class": "A",
+                "abc_multiplier": Decimal("1.0"),
+                "abc_defaulted": False,
+            }
+        )
+        service.reorder_engine.build_explanation_payload = MagicMock(
+            return_value={"summary": "ok"}
+        )
+
+        result = await service.generate_suggested_purchase_orders(
+            ingredient_forecast,
+            run_date=date(2026, 4, 15),
+        )
+
+        service.reorder_engine.build_reorder_decision.assert_awaited_once()
+        decision_kwargs = service.reorder_engine.build_reorder_decision.await_args.kwargs
+        assert set(decision_kwargs.keys()) == {
+            "ingredient_id",
+            "unit",
+            "lead_time",
+            "daily_forecast",
+            "supplier",
+            "as_of_date",
+            "shelf_life_days",
+            "current_stock",
+            "current_unit",
+            "moq",
+            "manage_alerts",
+        }
+        service.reorder_engine.build_explanation_payload.assert_called_once()
+        assert result[0]["explanation"] == {"summary": "ok"}
+
+    @pytest.mark.asyncio
     async def test_inventory_stats_to_reorder_engine_integration(
         self, mock_db_session, restaurant_id
     ):

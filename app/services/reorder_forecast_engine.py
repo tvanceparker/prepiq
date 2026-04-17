@@ -607,6 +607,70 @@ class ReorderForecastEngine:
             as_of_date=as_of_date,
         )
 
+    def _build_stock_position_cap_context(
+        self,
+        *,
+        inventory_position: Decimal,
+        lead_demand: Decimal,
+        shelf_demand: Decimal,
+        safety_stock: Decimal,
+        max_allowed: Decimal,
+    ) -> Dict[str, Decimal]:
+        max_target_stock = (
+            self._to_decimal(lead_demand)
+            + self._to_decimal(safety_stock)
+            + self._to_decimal(shelf_demand)
+        ).quantize(Decimal("0.01"))
+        max_order_cap = max(
+            max_target_stock - self._to_decimal(inventory_position),
+            Decimal("0.00"),
+        ).quantize(Decimal("0.01"))
+        effective_constraint_cap = min(max_order_cap, max_allowed).quantize(
+            Decimal("0.01")
+        )
+        return {
+            "max_target_stock": max_target_stock,
+            "max_order_cap": max_order_cap,
+            "effective_constraint_cap": effective_constraint_cap,
+        }
+
+    def _build_moq_review_context(
+        self,
+        *,
+        policy_type: str,
+        policy_safe_quantity: Decimal,
+        moq_floor: Decimal,
+        effective_constraint_cap: Decimal,
+        final_quantity: Decimal,
+    ) -> Dict[str, Any]:
+        cap_warning = None
+        if policy_type == "fresh_perishable":
+            if moq_floor > self._to_decimal(policy_safe_quantity):
+                cap_warning = "configured MOQ exceeds waste-safe cap; review required"
+        elif moq_floor > self._to_decimal(effective_constraint_cap):
+            cap_warning = "configured MOQ exceeds stock-position cap; review required"
+
+        moq_review_required = bool(cap_warning)
+        policy_review_warnings = [cap_warning] if cap_warning else []
+
+        if policy_type == "intermittent_low_turn":
+            intermittent_review_flags = self._build_intermittent_review_flags(
+                policy_safe_quantity=policy_safe_quantity,
+                moq_floor=moq_floor,
+                final_quantity=final_quantity,
+            )
+            moq_review_required = (
+                moq_review_required or intermittent_review_flags["moq_review_required"]
+            )
+            for warning in intermittent_review_flags["policy_review_warnings"]:
+                if warning not in policy_review_warnings:
+                    policy_review_warnings.append(warning)
+
+        return {
+            "moq_review_required": moq_review_required,
+            "policy_review_warnings": policy_review_warnings,
+        }
+
     async def build_reorder_decision(
         self,
         *,
@@ -718,12 +782,24 @@ class ReorderForecastEngine:
         )
         inventory_position = inventory_position_context["inventory_position"]
         max_allowed = await self.calculate_max_order(ingredient_id, current_stock)
-        policy_safe_quantity = min(policy_safe_quantity, max_allowed).quantize(
-            Decimal("0.01")
+        cap_context = self._build_stock_position_cap_context(
+            inventory_position=inventory_position,
+            lead_demand=lead_demand,
+            shelf_demand=shelf_demand,
+            safety_stock=safety_stock,
+            max_allowed=max_allowed,
         )
-        buffered_quantity = min(policy_capped_quantity, max_allowed).quantize(
-            Decimal("0.01")
-        )
+        max_target_stock = cap_context["max_target_stock"]
+        max_order_cap = cap_context["max_order_cap"]
+        effective_constraint_cap = cap_context["effective_constraint_cap"]
+        policy_safe_quantity = min(
+            policy_safe_quantity,
+            effective_constraint_cap,
+        ).quantize(Decimal("0.01"))
+        buffered_quantity = min(
+            policy_capped_quantity,
+            effective_constraint_cap,
+        ).quantize(Decimal("0.01"))
         moq_floor = (
             moq.quantize(Decimal("0.01"))
             if reorder_target > 0
@@ -736,18 +812,16 @@ class ReorderForecastEngine:
             )
         else:
             proposed_quantity = max(buffered_quantity, moq_floor)
-            final_quantity = min(proposed_quantity, max_allowed)
+            final_quantity = min(proposed_quantity, effective_constraint_cap)
             final_quantity = max(final_quantity, Decimal("0.00")).quantize(
                 Decimal("0.01")
             )
-        intermittent_review_flags = (
-            self._build_intermittent_review_flags(
-                policy_safe_quantity=policy_safe_quantity,
-                moq_floor=moq_floor,
-                final_quantity=final_quantity,
-            )
-            if policy_context["policy_type"] == "intermittent_low_turn"
-            else {"moq_review_required": False, "policy_review_warnings": []}
+        review_context = self._build_moq_review_context(
+            policy_type=policy_context["policy_type"],
+            policy_safe_quantity=policy_safe_quantity,
+            moq_floor=moq_floor,
+            effective_constraint_cap=effective_constraint_cap,
+            final_quantity=final_quantity,
         )
         trigger_met = bool(
             policy_quantities.get("trigger_met", inventory_position < reorder_point)
@@ -762,7 +836,7 @@ class ReorderForecastEngine:
         )
 
         logger.debug(
-            "[REORDER] Decision ingredient=%s policy=%s abc=%s current=%s%s inventory_position=%s lead_demand=%s shelf_demand=%s reserve=%s moq=%s proposed=%s max_allowed=%s final=%s",
+            "[REORDER] Decision ingredient=%s policy=%s abc=%s current=%s%s inventory_position=%s lead_demand=%s shelf_demand=%s reserve=%s moq=%s proposed=%s max_order_cap=%s max_allowed=%s final=%s",
             ingredient_id,
             policy_context["policy_type"],
             abc_class,
@@ -774,6 +848,7 @@ class ReorderForecastEngine:
             safety_stock,
             moq,
             proposed_quantity,
+            max_order_cap,
             max_allowed,
             final_quantity,
         )
@@ -802,6 +877,8 @@ class ReorderForecastEngine:
             "moq": moq,
             "moq_floor": moq_floor,
             "max_allowed": max_allowed,
+            "max_target_stock": max_target_stock,
+            "max_order_cap": max_order_cap,
             "final_quantity": final_quantity,
             "should_reorder": should_reorder,
             "skip_reason": (
@@ -875,10 +952,9 @@ class ReorderForecastEngine:
             ),
             "event_spacing_days": policy_quantities.get("event_spacing_days") or [],
             "days_until_next_event": policy_quantities.get("days_until_next_event"),
-            "moq_review_required": intermittent_review_flags["moq_review_required"],
-            "policy_review_warnings": intermittent_review_flags[
-                "policy_review_warnings"
-            ],
+            "moq_review_required": review_context["moq_review_required"],
+            "review_required": review_context["moq_review_required"],
+            "policy_review_warnings": review_context["policy_review_warnings"],
             "usable_until_date": usable_until_date,
             "inventory_source": inventory_source,
             "inventory_conversion_fallback": inventory_conversion_fallback,
@@ -926,9 +1002,11 @@ class ReorderForecastEngine:
                 f"Fresh-perishable ordering uses a shelf-life-capped window of {decision.get('usable_window_days') or 0} day(s). "
                 f"Forecast use {decision.get('forecast_use') or Decimal('0.00')} plus small reserve {decision.get('policy_buffer_quantity') or Decimal('0.00')} "
                 f"sets target stock {decision['reorder_target']}. Inventory position {decision.get('inventory_position') or Decimal('0.00')} "
-                f"produced raw order {decision['raw_order_quantity']}; spoilage cap and max-stock safeguards reduced the spoilage-safe quantity to {decision.get('policy_safe_quantity') or Decimal('0.00')}. "
+                f"produced raw order {decision['raw_order_quantity']}; spoilage cap, stock-position cap, and max-stock safeguards reduced the spoilage-safe quantity to {decision.get('policy_safe_quantity') or Decimal('0.00')}. "
                 f"Final pre-pack quantity is {decision['final_quantity']} {current_unit}, then {packs_to_order} pack(s) from {supplier_name} total {total_quantity_ordered} {supplier_unit}."
             )
+            if decision.get("moq_review_required"):
+                summary += " Configured MOQ exceeds the waste-safe cap and should be reviewed."
             if (
                 self._to_decimal(total_quantity_ordered) > self._to_decimal(decision.get("policy_safe_quantity"))
                 and self._to_decimal(total_quantity_ordered) > self._to_decimal(decision.get("final_quantity"))
@@ -1067,6 +1145,7 @@ class ReorderForecastEngine:
                 "shelf_demand": self._to_float(decision["shelf_demand"]),
                 "safety_stock": self._to_float(decision["safety_stock"]),
                 "reorder_target": self._to_float(decision["reorder_target"]),
+                "max_target_stock": self._to_float(decision.get("max_target_stock")),
                 "effective_lead_days": decision.get("effective_lead_days"),
                 "coverage_days": decision.get("coverage_days"),
                 "protection_window_days": decision.get("protection_window_days"),
@@ -1074,6 +1153,8 @@ class ReorderForecastEngine:
             "quantity_factors": {
                 "raw_order_quantity": self._to_float(decision["raw_order_quantity"]),
                 "buffered_quantity": self._to_float(decision["buffered_quantity"]),
+                "policy_safe_quantity": self._to_float(decision.get("policy_safe_quantity")),
+                "max_order_cap": self._to_float(decision.get("max_order_cap")),
                 "final_quantity_before_pack_rounding": self._to_float(decision["final_quantity"]),
                 "converted_quantity_needed": self._to_float(converted_quantity_needed),
                 "pack_size": int(pack_size or 1),
@@ -1132,6 +1213,7 @@ class ReorderForecastEngine:
                 "inventory_conversion_fallback": decision.get(
                     "inventory_conversion_fallback", False
                 ),
+                "review_required": decision.get("review_required", False),
                 "cadence_warnings": warning_list,
             },
         }
