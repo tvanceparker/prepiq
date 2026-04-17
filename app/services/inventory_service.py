@@ -20,6 +20,7 @@ from app.repositories.inventory_deduction_discrepancies_repo import InventoryDed
 from app.repositories.ingredient_forecast_breakdown_repo import IngredientForecastBreakdownRepository
 from app.repositories.forecast_run_ledger_repo import ForecastRunLedgerRepository
 from app.repositories.forecasts_repo import ForecastRepository
+from app.services.inventory_stats_service import InventoryStatsService
 from app.services.utils.unit_conversion import convert_unit, round_decimal
 from app.services.utils.purchase_order_note_helper import (
     build_purchase_order_explanation_item,
@@ -859,22 +860,27 @@ class InventoryService:
 
             today = date.today()
 
-            decision = await reorder_engine.build_reorder_decision(
-                ingredient_id=ingredient_id,
-                lead_demand=Decimal("0.00"),
-                shelf_demand=Decimal("0.00"),
-                total_demand=Decimal("0.00"),
-                unit=unit,
-                lead_time=lead_time,
-                daily_forecast=daily_forecast,
-                supplier=supplier,
-                as_of_date=today,
-                shelf_life_days=shelf_life,
-                current_stock=current_stock,
-                current_unit=inventory_unit or supplier_unit,
-                moq=min_order_quantity,
-                manage_alerts=True,
-            )
+            try:
+                decision = await reorder_engine.build_reorder_decision(
+                    ingredient_id=ingredient_id,
+                    unit=unit,
+                    lead_time=lead_time,
+                    daily_forecast=daily_forecast,
+                    supplier=supplier,
+                    as_of_date=today,
+                    shelf_life_days=shelf_life,
+                    current_stock=current_stock,
+                    current_unit=inventory_unit or supplier_unit,
+                    moq=min_order_quantity,
+                    manage_alerts=True,
+                )
+            except ValueError as exc:
+                logger.warning(
+                    "[PO_SUGGEST] Skip ingredient=%s due to invalid replenishment policy configuration: %s",
+                    ingredient_id,
+                    exc,
+                )
+                continue
 
             if not decision["should_reorder"]:
                 continue
@@ -1192,6 +1198,7 @@ class InventoryService:
         self.ingredient_forecast_breakdown_repo = IngredientForecastBreakdownRepository(db, restaurant_id)
         self.forecast_run_ledger_repo = ForecastRunLedgerRepository(db, restaurant_id)
         self.forecast_repo = ForecastRepository(db, restaurant_id)
+        self.inventory_stats = InventoryStatsService(db, restaurant_id, subscription_tier)
 
         print(f"Inventory Service: restaurant {self.restaurant_id}")
 
@@ -2398,7 +2405,7 @@ class InventoryService:
         total_remaining = Decimal("0")
 
         for lot in available_lots:
-            remaining = await self._compute_lot_remaining(lot)
+            remaining = await self.inventory_stats.get_lot_remaining(lot)
             try:
                 remaining_in_inventory_unit = Decimal(
                     str(convert_unit(remaining, lot.unit, inventory_unit))
@@ -2443,23 +2450,6 @@ class InventoryService:
         if notes:
             note_parts.append(notes.strip())
         return " ".join(part for part in note_parts if part)
-
-    async def _compute_lot_remaining(self, lot) -> Decimal:
-        """Compute remaining quantity for a lot using usage logs (no status filtering)."""
-        usage_logs = await self.inventory_usage_log_repo.get_all_by_lot_id(lot.lot_id)
-        used_quantity = wasted_quantity = added_quantity = Decimal("0.00")
-
-        for log in usage_logs:
-            qty = Decimal(log.used_quantity or 0)
-            if log.usage_type in {"sale", "batch_production", "batch_output"}:
-                used_quantity += qty
-            elif log.usage_type in {"waste", "spoilage", "manual_adjustment"}:
-                wasted_quantity += qty
-            elif log.usage_type == "manual_addition":
-                added_quantity += qty
-
-        lot_qty = Decimal(lot.quantity or 0)
-        return lot_qty - used_quantity - wasted_quantity + added_quantity
 
     async def view_inventory(self) -> List[dict]:
         inventory_items = await self.inventory_repo.get_all()

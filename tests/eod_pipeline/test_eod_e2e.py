@@ -134,7 +134,30 @@ class TestEODPipelineE2E:
         service.reorder_engine.classify_abc_item = AsyncMock(return_value="A")
         service.reorder_engine.calculate_safety_stock = AsyncMock(return_value=Decimal("5.00"))
         service.reorder_engine.calculate_max_order = AsyncMock(return_value=Decimal("100.00"))
-        service.reorder_engine.suggest_reorder_quantity = AsyncMock(return_value=Decimal("30.00"))
+        service.reorder_engine.build_reorder_decision = AsyncMock(
+            return_value={
+                "current_stock": Decimal("20.00"),
+                "current_unit": "lb",
+                "lead_demand": Decimal("15.00"),
+                "shelf_demand": Decimal("0.00"),
+                "total_demand": Decimal("15.00"),
+                "safety_stock": Decimal("5.00"),
+                "reorder_point": Decimal("20.00"),
+                "reorder_target": Decimal("20.00"),
+                "raw_order_quantity": Decimal("30.00"),
+                "buffered_quantity": Decimal("30.00"),
+                "moq": Decimal("1.00"),
+                "moq_floor": Decimal("1.00"),
+                "max_allowed": Decimal("100.00"),
+                "final_quantity": Decimal("30.00"),
+                "should_reorder": True,
+                "service_level_z": Decimal("1.65"),
+                "abc_class": "A",
+                "abc_multiplier": Decimal("1.0"),
+                "abc_defaulted": False,
+            }
+        )
+        service.reorder_engine.build_explanation_payload = MagicMock(return_value={"summary": "ok"})
         service.reorder_engine.alert_repo = AsyncMock()
         service.reorder_engine.ingredient_repo.get_by_id = AsyncMock(
             side_effect=lambda id: next(ing for ing in sample_ingredients if ing.ingredient_id == id)

@@ -126,7 +126,12 @@ export interface Ingredient {
   name: string;
   category?: string;
   unit?: string;
-  policy_type?: 'fresh_perishable' | 'stable_stocked' | 'recipe_dependent' | 'intermittent_low_turn' | null;
+  policy_type?:
+    | 'fresh_perishable'
+    | 'stable_stocked'
+    | 'recipe_dependent'
+    | 'intermittent_low_turn'
+    | null;
   policy_assignment_mode?: 'system' | 'manual' | null;
   target_service_level?: number | null;
   service_level_z?: number | null;

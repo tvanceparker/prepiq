@@ -83,7 +83,31 @@ The current service aggregates metadata such as:
 - average confidence score across forecasts generated in a run
 - latest forecast version found in the run batch
 
+`ForecastingEngine` now also records forecast strategy metadata per menu item on the persisted `forecasts` row:
+
+- `model_type_used`
+- `model_source`
+- `model_metadata`
+
 This metadata should be preserved in client displays and future assistant responses.
+
+## Current Model Stack
+
+`ForecastingEngine` now makes the menu-item forecast path explicit instead of relying on one implicit fallback branch.
+
+The current ordered stack is:
+
+- `gbm_primary`: use the trained or loaded H2O GBM model when it is available
+- `baseline`: use history-driven weekday and recent-mean blending when a usable GBM path is not available
+- `intermittent`: use a sparse-demand path when the item has many zero-sales days
+- `fallback`: emit zero-demand output when no usable history exists
+
+The chosen path is explainable in two ways:
+
+- the engine stores `model_type_used` and `model_source`
+- `model_metadata` carries selection reason, metrics, and history summary
+
+The daily forecast breakdown schema remains unchanged, so existing downstream consumers can continue using the same breakdown rows.
 
 ## Forecast Engines
 
@@ -92,6 +116,7 @@ This metadata should be preserved in client displays and future assistant respon
 Role:
 
 - advanced forecasting pipeline
+- explicit per-item strategy selection across GBM, baseline, intermittent, and fallback paths
 - confidence scoring
 - breakdown generation
 - ledger-aware pipeline behavior

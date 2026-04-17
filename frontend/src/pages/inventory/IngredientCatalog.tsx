@@ -57,7 +57,7 @@ export default function IngredientCatalog() {
       unit: '',
       category: '',
       policy_type: null,
-      policy_assignment_mode: 'system',
+      policy_assignment_mode: null,
       target_service_level: null,
       policy_override_reason: '',
       suppliers: [],

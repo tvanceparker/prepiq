@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,6 +14,11 @@ class DummyIngredient:
         self.ingredient_id = ingredient_id
         self.abc_class = abc_class
         self.name = f"Ingredient {ingredient_id}"
+        self.policy_type = "stable_stocked"
+        self.policy_assignment_mode = "manual"
+        self.target_service_level = 0.95
+        self.service_level_z = None
+        self.policy_override_reason = None
 
 
 @pytest.mark.asyncio
@@ -57,16 +63,32 @@ async def test_build_reorder_decision_returns_reusable_factor_breakdown():
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=DummyIngredient(ingredient_id=1001, abc_class="B")
     )
+    engine.stats_service.get_average_daily_usage = AsyncMock(return_value=Decimal("2.00"))
+    engine.stats_service.get_usable_inventory = AsyncMock(
+        return_value={
+            "quantity": Decimal("5.00"),
+            "unit": "lb",
+            "total_quantity": Decimal("5.00"),
+            "excluded_quantity": Decimal("0.00"),
+            "source": "inventory_summary",
+            "conversion_fallback": False,
+        }
+    )
+    daily_forecast = [
+        (date(2026, 4, 15) + timedelta(days=index), Decimal("5.00"))
+        for index in range(5)
+    ]
 
     with patch.object(engine, "calculate_safety_stock", return_value=Decimal("3.00")):
         with patch.object(engine, "calculate_max_order", return_value=Decimal("95.00")):
             decision = await engine.build_reorder_decision(
                 ingredient_id=1001,
-                lead_demand=Decimal("10.00"),
-                shelf_demand=Decimal("15.00"),
-                total_demand=Decimal("25.00"),
                 unit="lb",
                 lead_time=3,
+                daily_forecast=daily_forecast,
+                supplier=None,
+                as_of_date=date(2026, 4, 15),
+                shelf_life_days=5,
                 current_stock=Decimal("5.00"),
                 current_unit="lb",
                 moq=Decimal("10.00"),
@@ -74,15 +96,315 @@ async def test_build_reorder_decision_returns_reusable_factor_breakdown():
             )
 
     assert decision["abc_class"] == "B"
-    assert decision["abc_multiplier"] == Decimal("1.1")
-    assert decision["reorder_point"] == Decimal("13.00")
-    assert decision["reorder_target"] == Decimal("28.00")
-    assert decision["raw_order_quantity"] == Decimal("23.00")
-    assert decision["buffered_quantity"] == Decimal("25.30")
+    assert decision["abc_multiplier"] is None
+    assert decision["reorder_point"] == Decimal("18.00")
+    assert decision["reorder_target"] == Decimal("18.00")
+    assert decision["raw_order_quantity"] == Decimal("13.00")
+    assert decision["buffered_quantity"] == Decimal("13.00")
     assert decision["moq_floor"] == Decimal("10.00")
-    assert decision["final_quantity"] == Decimal("25.30")
+    assert decision["final_quantity"] == Decimal("13.00")
     assert decision["should_reorder"] is True
     assert decision["abc_defaulted"] is False
+
+
+@pytest.mark.asyncio
+async def test_build_explanation_payload_for_fresh_perishable_surfaces_assumptions_and_pack_warning():
+    engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.alert_repo = AsyncMock()
+    engine.ingredient_repo.get_by_id = AsyncMock(
+        return_value=SimpleNamespace(
+            ingredient_id=2001,
+            abc_class="A",
+            name="Berries",
+            policy_type="fresh_perishable",
+            policy_assignment_mode="manual",
+            target_service_level=0.92,
+            service_level_z=None,
+            policy_override_reason=None,
+        )
+    )
+    engine.stats_service.get_usable_inventory = AsyncMock(
+        return_value={
+            "quantity": Decimal("0.00"),
+            "unit": "lb",
+            "total_quantity": Decimal("0.00"),
+            "excluded_quantity": Decimal("0.00"),
+            "source": "inventory_summary",
+            "conversion_fallback": False,
+        }
+    )
+
+    daily_forecast = [
+        (date(2026, 4, 15) + timedelta(days=index), Decimal("1.00"))
+        for index in range(3)
+    ]
+
+    with patch.object(engine, "calculate_max_order", return_value=Decimal("100.00")):
+        decision = await engine.build_reorder_decision(
+            ingredient_id=2001,
+            unit="lb",
+            lead_time=0,
+            daily_forecast=daily_forecast,
+            supplier=SimpleNamespace(spoilage_rate=None),
+            as_of_date=date(2026, 4, 15),
+            shelf_life_days=3,
+            current_stock=Decimal("0.00"),
+            current_unit="lb",
+            moq=Decimal("5.00"),
+            manage_alerts=False,
+        )
+
+    payload = engine.build_explanation_payload(
+        decision=decision,
+        supplier_selection={
+            "reason_code": "preferred_lowest_priority",
+            "preferred_supplier_available": True,
+            "selected_supplier_priority": 1,
+            "selected_supplier_preferred": True,
+            "pricing_available": True,
+        },
+        supplier_name="Fresh Vendor",
+        inventory_unit="lb",
+        supplier_unit="lb",
+        converted_quantity_needed=decision["final_quantity"],
+        pack_size=4,
+        quantity_per_pack_item=Decimal("2.00"),
+        packs_to_order=1,
+        total_quantity_ordered=Decimal("8.00"),
+        assumption_flags={"inventory_source": "inventory_summary"},
+    )
+
+    assert "Fresh-perishable ordering uses a shelf-life-capped window" in payload["summary"]
+    assert "Pack rounding pushes the ordered quantity above the spoilage-safe quantity" in payload["summary"]
+    warnings = payload["assumption_flags"]["cadence_warnings"]
+    assert "inbound quantity unavailable; assumed zero" in warnings
+    assert "backorders unavailable; assumed zero" in warnings
+    assert "pack rounding exceeds spoilage-safe quantity" in warnings
+
+
+@pytest.mark.asyncio
+async def test_build_explanation_payload_for_stable_stocked_uses_reorder_point_summary():
+    engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.alert_repo = AsyncMock()
+    engine.ingredient_repo.get_by_id = AsyncMock(
+        return_value=DummyIngredient(ingredient_id=1001, abc_class="B")
+    )
+    engine.stats_service.get_average_daily_usage = AsyncMock(return_value=Decimal("2.00"))
+    engine.stats_service.get_usable_inventory = AsyncMock(
+        return_value={
+            "quantity": Decimal("5.00"),
+            "unit": "lb",
+            "total_quantity": Decimal("5.00"),
+            "excluded_quantity": Decimal("0.00"),
+            "source": "inventory_summary",
+            "conversion_fallback": False,
+        }
+    )
+    daily_forecast = [
+        (date(2026, 4, 15) + timedelta(days=index), Decimal("5.00"))
+        for index in range(5)
+    ]
+
+    with patch.object(engine, "calculate_safety_stock", return_value=Decimal("3.00")):
+        with patch.object(engine, "calculate_max_order", return_value=Decimal("95.00")):
+            decision = await engine.build_reorder_decision(
+                ingredient_id=1001,
+                unit="lb",
+                lead_time=3,
+                daily_forecast=daily_forecast,
+                supplier=None,
+                as_of_date=date(2026, 4, 15),
+                shelf_life_days=5,
+                current_stock=Decimal("5.00"),
+                current_unit="lb",
+                moq=Decimal("10.00"),
+                manage_alerts=False,
+            )
+
+    payload = engine.build_explanation_payload(
+        decision=decision,
+        supplier_selection={
+            "reason_code": "fallback_lowest_priority",
+            "preferred_supplier_available": False,
+            "selected_supplier_priority": 2,
+            "selected_supplier_preferred": False,
+            "pricing_available": True,
+        },
+        supplier_name="Dry Goods Vendor",
+        inventory_unit="lb",
+        supplier_unit="lb",
+        converted_quantity_needed=decision["final_quantity"],
+        pack_size=1,
+        quantity_per_pack_item=Decimal("1.00"),
+        packs_to_order=13,
+        total_quantity_ordered=Decimal("13.00"),
+        assumption_flags={"inventory_source": "inventory_summary"},
+    )
+
+    assert "Stable-stocked ordering uses reorder point" in payload["summary"]
+    assert "safety stock 3.00" in payload["summary"]
+    warnings = payload["assumption_flags"]["cadence_warnings"]
+    assert "inbound quantity unavailable; assumed zero" in warnings
+    assert "backorders unavailable; assumed zero" in warnings
+
+
+@pytest.mark.asyncio
+async def test_build_explanation_payload_for_recipe_dependent_uses_dependency_summary():
+    engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.alert_repo = AsyncMock()
+    engine.ingredient_repo.get_by_id = AsyncMock(
+        return_value=SimpleNamespace(
+            ingredient_id=3001,
+            abc_class="B",
+            name="Sauce Base",
+            policy_type="recipe_dependent",
+            policy_assignment_mode="manual",
+            target_service_level=0.90,
+            service_level_z=None,
+            policy_override_reason=None,
+        )
+    )
+    engine.recipe_ingredient_repo.get_all_by_reference_id_and_type = AsyncMock(
+        return_value=[SimpleNamespace(recipe_id=7001)]
+    )
+    engine.batch_recipe_ingredient_repo.get_all_by_reference_id_and_type = AsyncMock(
+        return_value=[SimpleNamespace(batch_recipe_id=8001)]
+    )
+    engine.menu_item_recipe_repo.get_by_recipe = AsyncMock(
+        return_value=[SimpleNamespace(menu_item_id=9001)]
+    )
+    engine.stats_service.get_usable_inventory = AsyncMock(
+        return_value={
+            "quantity": Decimal("1.00"),
+            "unit": "lb",
+            "total_quantity": Decimal("1.00"),
+            "excluded_quantity": Decimal("0.00"),
+            "source": "inventory_summary",
+            "conversion_fallback": False,
+        }
+    )
+
+    daily_forecast = [
+        (date(2026, 4, 15), Decimal("2.00")),
+        (date(2026, 4, 16), Decimal("4.00")),
+        (date(2026, 4, 17), Decimal("1.00")),
+    ]
+
+    with patch.object(engine, "calculate_max_order", return_value=Decimal("100.00")):
+        decision = await engine.build_reorder_decision(
+            ingredient_id=3001,
+            unit="lb",
+            lead_time=2,
+            daily_forecast=daily_forecast,
+            supplier=None,
+            as_of_date=date(2026, 4, 15),
+            shelf_life_days=10,
+            current_stock=Decimal("1.00"),
+            current_unit="lb",
+            moq=Decimal("1.00"),
+            manage_alerts=False,
+        )
+
+    payload = engine.build_explanation_payload(
+        decision=decision,
+        supplier_selection={
+            "reason_code": "fallback_lowest_priority",
+            "preferred_supplier_available": False,
+            "selected_supplier_priority": 2,
+            "selected_supplier_preferred": False,
+            "pricing_available": True,
+        },
+        supplier_name="Prep Vendor",
+        inventory_unit="lb",
+        supplier_unit="lb",
+        converted_quantity_needed=decision["final_quantity"],
+        pack_size=1,
+        quantity_per_pack_item=Decimal("1.00"),
+        packs_to_order=9,
+        total_quantity_ordered=Decimal("9.00"),
+        assumption_flags={"inventory_source": "inventory_summary"},
+    )
+
+    assert "Recipe-dependent ordering uses forecast-owned ingredient net requirement" in payload["summary"]
+    assert "Dependency mode mixed" in payload["summary"]
+
+
+@pytest.mark.asyncio
+async def test_build_explanation_payload_for_intermittent_surfaces_moq_review_warning():
+    engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.alert_repo = AsyncMock()
+    engine.ingredient_repo.get_by_id = AsyncMock(
+        return_value=SimpleNamespace(
+            ingredient_id=3002,
+            abc_class="C",
+            name="Special Spice",
+            policy_type="intermittent_low_turn",
+            policy_assignment_mode="manual",
+            target_service_level=0.88,
+            service_level_z=None,
+            policy_override_reason=None,
+        )
+    )
+    engine.stats_service.get_usable_inventory = AsyncMock(
+        return_value={
+            "quantity": Decimal("0.00"),
+            "unit": "lb",
+            "total_quantity": Decimal("0.00"),
+            "excluded_quantity": Decimal("0.00"),
+            "source": "inventory_summary",
+            "conversion_fallback": False,
+        }
+    )
+
+    daily_forecast = [
+        (date(2026, 4, 15), Decimal("0.00")),
+        (date(2026, 4, 16), Decimal("2.00")),
+        (date(2026, 4, 17), Decimal("0.00")),
+        (date(2026, 4, 18), Decimal("2.00")),
+        (date(2026, 4, 19), Decimal("0.00")),
+    ]
+
+    with patch.object(engine, "calculate_safety_stock", return_value=Decimal("5.00")):
+        with patch.object(engine, "calculate_max_order", return_value=Decimal("100.00")):
+            decision = await engine.build_reorder_decision(
+                ingredient_id=3002,
+                unit="lb",
+                lead_time=0,
+                daily_forecast=daily_forecast,
+                supplier=None,
+                as_of_date=date(2026, 4, 15),
+                shelf_life_days=5,
+                current_stock=Decimal("0.00"),
+                current_unit="lb",
+                moq=Decimal("10.00"),
+                manage_alerts=False,
+            )
+
+    payload = engine.build_explanation_payload(
+        decision=decision,
+        supplier_selection={
+            "reason_code": "fallback_lowest_priority",
+            "preferred_supplier_available": False,
+            "selected_supplier_priority": 2,
+            "selected_supplier_preferred": False,
+            "pricing_available": True,
+        },
+        supplier_name="Reserve Vendor",
+        inventory_unit="lb",
+        supplier_unit="lb",
+        converted_quantity_needed=decision["final_quantity"],
+        pack_size=6,
+        quantity_per_pack_item=Decimal("2.00"),
+        packs_to_order=1,
+        total_quantity_ordered=Decimal("12.00"),
+        assumption_flags={"inventory_source": "inventory_summary"},
+    )
+
+    assert "Intermittent low-turn ordering uses next sparse event" in payload["summary"]
+    assert "Configured MOQ materially exceeds the sparse policy-safe quantity and should be reviewed" in payload["summary"]
+    warnings = payload["assumption_flags"]["cadence_warnings"]
+    assert "configured MOQ materially exceeds sparse policy-safe quantity" in warnings
+    assert "pack rounding exceeds sparse policy-safe quantity" in warnings
 
 
 @pytest.mark.asyncio

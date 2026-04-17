@@ -4,6 +4,7 @@ import asyncio
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+import math
 
 import numpy as np
 import pandas as pd
@@ -99,6 +100,7 @@ class ForecastingEngine:
         self.latest_ingredient_breakdown: List[Dict[str, Any]] = []
         self.latest_aggregated_ingredient_demand: Dict[int, Dict[str, Any]] = {}
         self.menu_item_confidence: Dict[int, Optional[float]] = {}
+        self.latest_forecast_model_metadata: Dict[int, Dict[str, Any]] = {}
 
     async def initialize(self) -> None:
         """Retained for compatibility with callers; advanced pipeline requires no warm-up."""
@@ -360,6 +362,514 @@ class ForecastingEngine:
             return None
 
         return round(sum(components) / len(components), 3)
+
+    async def _get_menu_item_sales_history(
+        self, menu_item_id: int, lookback_days: int = 90
+    ) -> List[Any]:
+        sales = await self.sales_repo.get_sales_between_dates(
+            start_date=date.today() - timedelta(days=lookback_days),
+            end_date=date.today(),
+        )
+        return [sale for sale in sales if sale.menu_item_id == menu_item_id]
+
+    async def _summarize_sales_history(self, sales_history: List[Any]) -> Dict[str, Any]:
+        daily_sales = await self._prepare_sales_dataframe(sales_history)
+        if daily_sales.empty:
+            return {
+                "history_days": 0,
+                "nonzero_days": 0,
+                "recent_nonzero_days": 0,
+                "intermittent_ratio": 1.0,
+                "mean_daily_demand": 0.0,
+                "mean_nonzero_demand": 0.0,
+                "recent_mean_demand": 0.0,
+                "max_daily_demand": 0.0,
+                "total_units": 0.0,
+                "has_recent_demand": False,
+            }
+
+        quantity_series = pd.to_numeric(
+            daily_sales["quantity_sold"], errors="coerce"
+        ).fillna(0.0)
+        nonzero_series = quantity_series[quantity_series > 0]
+        recent_series = quantity_series.tail(min(len(quantity_series), 14))
+        recent_nonzero_series = recent_series[recent_series > 0]
+
+        history_days = int(len(quantity_series))
+        nonzero_days = int(len(nonzero_series))
+
+        return {
+            "history_days": history_days,
+            "nonzero_days": nonzero_days,
+            "recent_nonzero_days": int(len(recent_nonzero_series)),
+            "intermittent_ratio": (
+                round(1 - (nonzero_days / history_days), 4) if history_days else 1.0
+            ),
+            "mean_daily_demand": float(quantity_series.mean()) if history_days else 0.0,
+            "mean_nonzero_demand": float(nonzero_series.mean()) if nonzero_days else 0.0,
+            "recent_mean_demand": float(recent_series.mean()) if len(recent_series) else 0.0,
+            "max_daily_demand": float(quantity_series.max()) if history_days else 0.0,
+            "total_units": float(quantity_series.sum()) if history_days else 0.0,
+            "has_recent_demand": bool(len(recent_nonzero_series) > 0),
+        }
+
+    def _select_non_gbm_strategy(
+        self,
+        history_summary: Dict[str, Any],
+        *,
+        model_source: Optional[str] = None,
+        selection_reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        nonzero_days = int(history_summary.get("nonzero_days") or 0)
+        recent_nonzero_days = int(history_summary.get("recent_nonzero_days") or 0)
+        intermittent_ratio = float(history_summary.get("intermittent_ratio") or 1.0)
+
+        if nonzero_days <= 0:
+            return {
+                "model_type_used": "fallback",
+                "model_source": model_source or "cold_start_fallback",
+                "selection_reason": selection_reason
+                or "No sales history is available, so the forecast falls back to zero-demand output.",
+            }
+
+        if intermittent_ratio >= 0.6 or recent_nonzero_days <= 3:
+            return {
+                "model_type_used": "intermittent",
+                "model_source": model_source or "intermittent_profile",
+                "selection_reason": selection_reason
+                or "Demand is sparse across the lookback window, so the intermittent path is used.",
+            }
+
+        return {
+            "model_type_used": "baseline",
+            "model_source": model_source or "historical_baseline",
+            "selection_reason": selection_reason
+            or "A usable GBM model is not available, so the baseline history-driven forecast is used.",
+        }
+
+    async def select_forecast_strategy(
+        self,
+        menu_item_id: int,
+        horizon_days: int = 14,
+        *,
+        model: Any | None = None,
+        model_source: Optional[str] = None,
+        metrics: Optional[Dict[str, Optional[float]]] = None,
+        sales_history: Optional[List[Any]] = None,
+    ) -> Dict[str, Any]:
+        del horizon_days
+
+        sales_history = (
+            sales_history
+            if sales_history is not None
+            else await self._get_menu_item_sales_history(menu_item_id)
+        )
+        history_summary = await self._summarize_sales_history(sales_history)
+
+        if model is not None:
+            return {
+                "model_type_used": "gbm_primary",
+                "model_source": model_source or "loaded_h2o",
+                "selection_reason": "A trained H2O GBM model is available and remains the primary forecast path.",
+                "metrics": metrics or {},
+                "history_summary": history_summary,
+            }
+
+        strategy = self._select_non_gbm_strategy(
+            history_summary,
+            model_source=model_source,
+        )
+        strategy["metrics"] = metrics or {}
+        strategy["history_summary"] = history_summary
+        return strategy
+
+    @staticmethod
+    def _build_future_dates(horizon_days: int) -> List[date]:
+        return [date.today() + timedelta(days=offset) for offset in range(horizon_days)]
+
+    @staticmethod
+    def _generate_zero_forecast(future_dates: List[date]) -> List[Dict[str, Any]]:
+        return [
+            {"forecast_date": forecast_date, "predicted_quantity": 0.0}
+            for forecast_date in future_dates
+        ]
+
+    async def _generate_baseline_forecast(
+        self,
+        menu_item_id: int,
+        horizon_days: int,
+        *,
+        sales_history: Optional[List[Any]] = None,
+        future_dates: Optional[List[date]] = None,
+    ) -> List[Dict[str, Any]]:
+        sales_history = (
+            sales_history
+            if sales_history is not None
+            else await self._get_menu_item_sales_history(menu_item_id)
+        )
+        future_dates = future_dates or self._build_future_dates(horizon_days)
+
+        daily_sales = await self._prepare_sales_dataframe(sales_history)
+        if daily_sales.empty:
+            return self._generate_zero_forecast(future_dates)
+
+        quantity_series = pd.to_numeric(
+            daily_sales["quantity_sold"], errors="coerce"
+        ).fillna(0.0)
+        weekday_means = quantity_series.groupby(quantity_series.index.dayofweek).mean().to_dict()
+        last_14_mean = float(quantity_series.tail(min(len(quantity_series), 14)).mean())
+        last_7_mean = float(quantity_series.tail(min(len(quantity_series), 7)).mean())
+        recent_mean = (last_7_mean * 0.6) + (last_14_mean * 0.4)
+
+        baseline_result: List[Dict[str, Any]] = []
+        for forecast_date in future_dates:
+            day_of_week = pd.Timestamp(forecast_date).dayofweek
+            weekday_mean = float(weekday_means.get(day_of_week, recent_mean))
+            prediction = max(0.0, (weekday_mean * 0.65) + (recent_mean * 0.35))
+            baseline_result.append(
+                {
+                    "forecast_date": forecast_date,
+                    "predicted_quantity": prediction,
+                }
+            )
+
+        logger.info(
+            "[FORECAST] Baseline forecast for menu_item %s: %s",
+            menu_item_id,
+            baseline_result,
+        )
+        return baseline_result
+
+    async def _generate_intermittent_forecast(
+        self,
+        menu_item_id: int,
+        horizon_days: int,
+        *,
+        sales_history: Optional[List[Any]] = None,
+        future_dates: Optional[List[date]] = None,
+    ) -> List[Dict[str, Any]]:
+        sales_history = (
+            sales_history
+            if sales_history is not None
+            else await self._get_menu_item_sales_history(menu_item_id)
+        )
+        future_dates = future_dates or self._build_future_dates(horizon_days)
+
+        daily_sales = await self._prepare_sales_dataframe(sales_history)
+        if daily_sales.empty:
+            return self._generate_zero_forecast(future_dates)
+
+        quantity_series = pd.to_numeric(
+            daily_sales["quantity_sold"], errors="coerce"
+        ).fillna(0.0)
+        nonzero_series = quantity_series[quantity_series > 0]
+        if nonzero_series.empty:
+            return self._generate_zero_forecast(future_dates)
+
+        avg_nonzero_demand = float(nonzero_series.mean())
+        avg_interval = float(len(quantity_series)) / float(len(nonzero_series))
+        daily_rate = avg_nonzero_demand / max(avg_interval, 1.0)
+        occurrence_probability_by_dow = (
+            (quantity_series > 0)
+            .groupby(quantity_series.index.dayofweek)
+            .mean()
+            .to_dict()
+        )
+        size_by_dow = nonzero_series.groupby(nonzero_series.index.dayofweek).mean().to_dict()
+        default_occurrence_probability = float(len(nonzero_series)) / float(len(quantity_series))
+        cap_quantity = max(float(nonzero_series.iloc[-1]), avg_nonzero_demand * 1.5)
+
+        intermittent_result: List[Dict[str, Any]] = []
+        for forecast_date in future_dates:
+            day_of_week = pd.Timestamp(forecast_date).dayofweek
+            occurrence_probability = float(
+                occurrence_probability_by_dow.get(
+                    day_of_week,
+                    default_occurrence_probability,
+                )
+            )
+            mean_size = float(size_by_dow.get(day_of_week, avg_nonzero_demand))
+            prediction = (occurrence_probability * mean_size * 0.6) + (daily_rate * 0.4)
+            intermittent_result.append(
+                {
+                    "forecast_date": forecast_date,
+                    "predicted_quantity": max(0.0, min(prediction, cap_quantity)),
+                }
+            )
+
+        logger.info(
+            "[FORECAST] Intermittent forecast for menu_item %s: %s",
+            menu_item_id,
+            intermittent_result,
+        )
+        return intermittent_result
+
+    async def _generate_primary_gbm_forecast(
+        self,
+        menu_item_id: int,
+        horizon_days: int,
+        *,
+        model: Any | None,
+        future_dates: Optional[List[date]] = None,
+    ) -> List[Dict[str, Any]]:
+        if model is None:
+            return []
+
+        future_dates = future_dates or self._build_future_dates(horizon_days)
+        df = pd.DataFrame({"date": future_dates})
+        df["date"] = pd.to_datetime(df["date"])
+        df["day_of_week"] = df["date"].dt.dayofweek
+        df["day"] = df["date"].dt.day
+        df["month"] = df["date"].dt.month
+        df["year"] = df["date"].dt.year
+
+        features_df = df[["day_of_week", "day", "month", "year"]].copy()
+
+        try:
+            future_weather_map: Dict[date, Dict[str, float]] = {}
+            if getattr(self, "db", None):
+                from app.integrations.weather.open_meteo_adapter import (
+                    fetch_forecast_for_range,
+                )
+
+                restaurant = await self.restaurant_repo.get_by_id(self.restaurant_id)
+                if (
+                    restaurant
+                    and getattr(restaurant, "latitude", None) is not None
+                    and getattr(restaurant, "longitude", None) is not None
+                ):
+                    start_dt = date.today()
+                    end_dt = date.today() + timedelta(days=horizon_days - 1)
+                    future_weather_map = await fetch_forecast_for_range(
+                        float(restaurant.latitude),
+                        float(restaurant.longitude),
+                        start_dt,
+                        end_dt,
+                    )
+
+            try:
+                from app.repositories.weather_data_repo import WeatherDataRepository
+
+                weather_repo = WeatherDataRepository(self.db, self.restaurant_id)
+                observed_rows = await weather_repo.get_range(
+                    self.restaurant_id,
+                    date.today() - timedelta(days=7),
+                    date.today(),
+                )
+                observed_rows = sorted(observed_rows, key=lambda row: row.weather_date)
+                past_temps = [
+                    float(row.temperature)
+                    for row in observed_rows
+                    if getattr(row, "temperature", None) is not None
+                ]
+                past_precips = [
+                    float(row.precipitation_mm)
+                    for row in observed_rows
+                    if getattr(row, "precipitation_mm", None) is not None
+                ]
+            except Exception:
+                past_temps = []
+                past_precips = []
+
+            future_temps = [
+                future_weather_map.get(forecast_date, {}).get("temperature")
+                if future_weather_map
+                else None
+                for forecast_date in future_dates
+            ]
+            future_precips = [
+                future_weather_map.get(forecast_date, {}).get("precipitation_mm")
+                if future_weather_map
+                else 0.0
+                for forecast_date in future_dates
+            ]
+
+            combined_temps = list(past_temps) if past_temps else [0.0]
+            temp_lag_1_list: List[float] = []
+            temp_roll_7_list: List[float] = []
+            for index, future_temp in enumerate(future_temps):
+                previous_temp = combined_temps[-1] if combined_temps else 0.0
+                temp_lag_1_list.append(previous_temp)
+                window = (
+                    combined_temps + [temp for temp in future_temps[:index] if temp is not None]
+                )[-7:]
+                temp_roll_7_list.append(
+                    float(sum(window) / len(window)) if window else 0.0
+                )
+                combined_temps.append(
+                    future_temp if future_temp is not None else previous_temp
+                )
+
+            combined_precips = list(past_precips) if past_precips else [0.0]
+            precip_lag_1_list: List[float] = []
+            for future_precip in future_precips:
+                previous_precip = combined_precips[-1] if combined_precips else 0.0
+                precip_lag_1_list.append(previous_precip)
+                combined_precips.append(future_precip if future_precip is not None else 0.0)
+
+            features_df = features_df.reset_index(drop=True)
+            features_df["temp_lag_1"] = temp_lag_1_list[: len(features_df)]
+            features_df["temp_roll_7"] = temp_roll_7_list[: len(features_df)]
+            features_df["precip_lag_1"] = precip_lag_1_list[: len(features_df)]
+
+            h2o_frame = h2o.H2OFrame(features_df)
+            predictions = model.predict(h2o_frame).as_data_frame().values.flatten()
+            result = [
+                {
+                    "forecast_date": forecast_date,
+                    "predicted_quantity": max(0.0, float(prediction)),
+                }
+                for forecast_date, prediction in zip(future_dates, predictions)
+            ]
+            logger.info(
+                "[FORECAST] H2O forecast for menu_item %s: %s",
+                menu_item_id,
+                result,
+            )
+            return result
+        except Exception as exc:
+            logger.error(
+                "Error generating forecast with H2O model for %s: %s",
+                menu_item_id,
+                exc,
+            )
+            return []
+
+    async def generate_forecast_with_metadata(
+        self,
+        menu_item_id: int,
+        horizon_days: int = 14,
+        *,
+        strategy_metadata: Optional[Dict[str, Any]] = None,
+        model: Any | None = None,
+        sales_history: Optional[List[Any]] = None,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        sales_history = (
+            sales_history
+            if sales_history is not None
+            else await self._get_menu_item_sales_history(menu_item_id)
+        )
+        strategy = (
+            dict(strategy_metadata)
+            if strategy_metadata is not None
+            else await self.select_forecast_strategy(
+                menu_item_id,
+                horizon_days=horizon_days,
+                model=model,
+                sales_history=sales_history,
+            )
+        )
+        future_dates = self._build_future_dates(horizon_days)
+
+        model_type_used = strategy.get("model_type_used")
+        if model_type_used == "gbm_primary":
+            forecast_rows = await self._generate_primary_gbm_forecast(
+                menu_item_id,
+                horizon_days,
+                model=model,
+                future_dates=future_dates,
+            )
+            if forecast_rows:
+                return forecast_rows, strategy
+
+            fallback_strategy = self._select_non_gbm_strategy(
+                strategy.get("history_summary")
+                or await self._summarize_sales_history(sales_history),
+                model_source="gbm_error_fallback",
+                selection_reason="Primary H2O GBM forecasting failed, so the engine fell back to a non-GBM path.",
+            )
+            fallback_strategy["metrics"] = strategy.get("metrics") or {}
+            fallback_strategy["history_summary"] = (
+                strategy.get("history_summary")
+                or await self._summarize_sales_history(sales_history)
+            )
+            strategy = fallback_strategy
+            model_type_used = strategy.get("model_type_used")
+
+        if model_type_used == "baseline":
+            return (
+                await self._generate_baseline_forecast(
+                    menu_item_id,
+                    horizon_days,
+                    sales_history=sales_history,
+                    future_dates=future_dates,
+                ),
+                strategy,
+            )
+
+        if model_type_used == "intermittent":
+            return (
+                await self._generate_intermittent_forecast(
+                    menu_item_id,
+                    horizon_days,
+                    sales_history=sales_history,
+                    future_dates=future_dates,
+                ),
+                strategy,
+            )
+
+        return self._generate_zero_forecast(future_dates), strategy
+
+    def _json_safe_value(self, value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                str(key): self._json_safe_value(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [self._json_safe_value(item) for item in value]
+        if isinstance(value, tuple):
+            return [self._json_safe_value(item) for item in value]
+        if isinstance(value, (date, datetime)):
+            return value.isoformat()
+        if isinstance(value, Decimal):
+            return float(value)
+        if isinstance(value, np.integer):
+            return int(value)
+        if isinstance(value, np.floating):
+            value = float(value)
+        if isinstance(value, float):
+            if math.isnan(value) or not math.isfinite(value):
+                return None
+            return round(value, 6)
+        return value
+
+    def _serialize_forecast_strategy_metadata(
+        self,
+        strategy_metadata: Optional[Dict[str, Any]],
+        confidence_score: Optional[float],
+    ) -> Optional[Dict[str, Any]]:
+        if not strategy_metadata and confidence_score is None:
+            return None
+
+        serialized = self._json_safe_value(strategy_metadata or {})
+        if not isinstance(serialized, dict):
+            serialized = {}
+        if confidence_score is not None:
+            serialized["confidence_score"] = self._json_safe_value(confidence_score)
+        return serialized or None
+
+    def _build_persisted_forecast_strategy(
+        self, forecast: Any
+    ) -> Dict[str, Any]:
+        strategy = {}
+        raw_metadata = getattr(forecast, "model_metadata", None)
+        if isinstance(raw_metadata, dict):
+            strategy.update(raw_metadata)
+
+        model_type_used = getattr(forecast, "model_type_used", None)
+        if model_type_used:
+            strategy.setdefault("model_type_used", model_type_used)
+
+        model_source = getattr(forecast, "model_source", None)
+        if model_source:
+            strategy.setdefault("model_source", model_source)
+
+        confidence_score = getattr(forecast, "confidence_score", None)
+        if confidence_score is not None:
+            strategy["confidence_score"] = float(confidence_score)
+
+        return strategy
 
     @log_method("Should Retrain Forecast Model")
     async def should_retrain_model(
@@ -865,179 +1375,21 @@ class ForecastingEngine:
     async def generate_forecast(
         self, menu_item_id: int, horizon_days: int = 14
     ) -> List[Dict[str, Any]]:
-        model = load_model(self.restaurant_id, menu_item_id)
-
-        future_dates = [date.today() + timedelta(days=i) for i in range(horizon_days)]
-        df = pd.DataFrame({"date": future_dates})
-        df["date"] = pd.to_datetime(df["date"])
-        df["day_of_week"] = df["date"].dt.dayofweek
-        df["day"] = df["date"].dt.day
-        df["month"] = df["date"].dt.month
-        df["year"] = df["date"].dt.year
-
-        features_df = df[["day_of_week", "day", "month", "year"]].copy()
-
-        if model is not None:
-            try:
-                future_weather_map: Dict[date, Dict[str, float]] = {}
-                if getattr(self, "db", None):
-                    from app.integrations.weather.open_meteo_adapter import (
-                        fetch_forecast_for_range,
-                    )
-
-                    restaurant = await self.restaurant_repo.get_by_id(self.restaurant_id)
-                    if (
-                        restaurant
-                        and getattr(restaurant, "latitude", None) is not None
-                        and getattr(restaurant, "longitude", None) is not None
-                    ):
-                        start_dt = date.today()
-                        end_dt = date.today() + timedelta(days=horizon_days - 1)
-                        future_weather_map = await fetch_forecast_for_range(
-                            float(restaurant.latitude),
-                            float(restaurant.longitude),
-                            start_dt,
-                            end_dt,
-                        )
-
-                try:
-                    from app.repositories.weather_data_repo import WeatherDataRepository
-
-                    weather_repo = WeatherDataRepository(self.db, self.restaurant_id)
-                    observed_rows = await weather_repo.get_range(
-                        self.restaurant_id,
-                        date.today() - timedelta(days=7),
-                        date.today(),
-                    )
-                    observed_rows = sorted(
-                        observed_rows, key=lambda r: r.weather_date
-                    )
-                    past_temps = [
-                        float(r.temperature)
-                        for r in observed_rows
-                        if getattr(r, "temperature", None) is not None
-                    ]
-                    past_precips = [
-                        float(r.precipitation_mm)
-                        for r in observed_rows
-                        if getattr(r, "precipitation_mm", None) is not None
-                    ]
-                except Exception:
-                    past_temps = []
-                    past_precips = []
-
-                future_temps = [
-                    future_weather_map.get(d, {}).get("temperature")
-                    if future_weather_map
-                    else None
-                    for d in future_dates
-                ]
-                future_precips = [
-                    future_weather_map.get(d, {}).get("precipitation_mm")
-                    if future_weather_map
-                    else 0.0
-                    for d in future_dates
-                ]
-
-                combined_temps = list(past_temps) if past_temps else [0.0]
-                temp_lag_1_list: List[float] = []
-                temp_roll_7_list: List[float] = []
-                for idx, ft in enumerate(future_temps):
-                    prev_temp = combined_temps[-1] if combined_temps else 0.0
-                    temp_lag_1_list.append(prev_temp)
-                    window = (
-                        combined_temps + [t for t in future_temps[:idx] if t is not None]
-                    )[-7:]
-                    temp_roll_7_list.append(
-                        float(sum(window) / len(window)) if window else 0.0
-                    )
-                    combined_temps.append(ft if ft is not None else prev_temp)
-
-                combined_precips = list(past_precips) if past_precips else [0.0]
-                precip_lag_1_list: List[float] = []
-                for idx, fp in enumerate(future_precips):
-                    prev_prec = combined_precips[-1] if combined_precips else 0.0
-                    precip_lag_1_list.append(prev_prec)
-                    combined_precips.append(fp if fp is not None else 0.0)
-
-                features_df = features_df.reset_index(drop=True)
-                features_df["temp_lag_1"] = temp_lag_1_list[: len(features_df)]
-                features_df["temp_roll_7"] = temp_roll_7_list[: len(features_df)]
-                features_df["precip_lag_1"] = precip_lag_1_list[: len(features_df)]
-
-                h2o_frame = h2o.H2OFrame(features_df)
-                preds = model.predict(h2o_frame).as_data_frame().values.flatten()
-                result = [
-                    {
-                        "forecast_date": day,
-                        "predicted_quantity": max(0.0, float(pred)),
-                    }
-                    for day, pred in zip(future_dates, preds)
-                ]
-                logger.info("[FORECAST] H2O forecast for menu_item %s: %s", menu_item_id, result)
-                return result
-            except Exception as exc:
-                logger.error(
-                    "Error generating forecast with H2O model for %s: %s",
-                    menu_item_id,
-                    exc,
-                )
-
-        sales = await self.sales_repo.get_sales_between_dates(
-            start_date=date.today() - timedelta(days=90), end_date=date.today()
-        )
-        item_sales = [s for s in sales if s.menu_item_id == menu_item_id]
-        if not item_sales:
-            fallback = [
-                {"forecast_date": d, "predicted_quantity": 0.0} for d in future_dates
-            ]
-            logger.info(
-                "[FORECAST] Fallback forecast (no history) for menu_item %s: %s",
-                menu_item_id,
-                fallback,
-            )
-            return fallback
-
-        df_sales = pd.DataFrame(
-            {
-                "date": [s.sale_timestamp.date() for s in item_sales],
-                "quantity_sold": [s.quantity_sold for s in item_sales],
-            }
-        )
-
-        daily = df_sales.groupby("date")["quantity_sold"].sum().reset_index()
-        daily["date"] = pd.to_datetime(daily["date"]).dt.date
-        daily["dow"] = pd.to_datetime(daily["date"]).dt.dayofweek
-
-        weekday_means = daily.groupby("dow")["quantity_sold"].mean().to_dict()
-        last_n_mean = (
-            daily.sort_values("date").tail(14)["quantity_sold"].mean()
-            if not daily.empty
-            else 0.0
-        )
-
-        fallback_result = []
-        for d in future_dates:
-            dow = pd.to_datetime(d).dayofweek
-            wm = weekday_means.get(dow, last_n_mean or 0.0)
-            pred = 0.6 * wm + 0.4 * (last_n_mean or 0.0)
-            fallback_result.append(
-                {
-                    "forecast_date": d,
-                    "predicted_quantity": float(max(pred, 0.0)),
-                }
-            )
-
-        logger.info(
-            "[FORECAST] Fallback blended forecast for menu_item %s: %s",
+        forecast_rows, strategy_metadata = await self.generate_forecast_with_metadata(
             menu_item_id,
-            fallback_result,
+            horizon_days=horizon_days,
+            model=load_model(self.restaurant_id, menu_item_id),
         )
-        return fallback_result
+        self.latest_forecast_model_metadata[menu_item_id] = strategy_metadata
+        return forecast_rows
 
     @log_method("Write Forecast Results (Advanced)")
     async def write_forecast_results(
-        self, menu_item_id: int, forecast_data: List[Dict[str, Any]], confidence_score: Optional[float]
+        self,
+        menu_item_id: int,
+        forecast_data: List[Dict[str, Any]],
+        confidence_score: Optional[float],
+        strategy_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         if not forecast_data:
             return
@@ -1053,6 +1405,12 @@ class ForecastingEngine:
             if confidence_score is not None
             else self.menu_item_confidence.get(menu_item_id)
         )
+        resolved_strategy = strategy_metadata or self.latest_forecast_model_metadata.get(
+            menu_item_id
+        )
+        resolved_strategy = (
+            resolved_strategy if isinstance(resolved_strategy, dict) else {}
+        )
 
         forecast_payload = {
             "menu_item_id": menu_item_id,
@@ -1063,6 +1421,12 @@ class ForecastingEngine:
             "adjusted_quantity": total_adjusted_quantity,
             "used_in_order_generation": 0,
             "forecast_version": 1,
+            "model_type_used": resolved_strategy.get("model_type_used"),
+            "model_source": resolved_strategy.get("model_source"),
+            "model_metadata": self._serialize_forecast_strategy_metadata(
+                resolved_strategy,
+                resolved_confidence,
+            ),
         }
 
         existing = await self.forecast_repo.get_by_period_and_menu_item(
@@ -1086,7 +1450,7 @@ class ForecastingEngine:
             await self.forecast_breakdown_repo.create(breakdown_payload)
 
     @log_method("Prepare Sales DataFrame")
-    def _prepare_sales_dataframe(self, sales_history: List[Any]) -> pd.DataFrame:
+    async def _prepare_sales_dataframe(self, sales_history: List[Any]) -> pd.DataFrame:
         if not sales_history:
             return pd.DataFrame(columns=["quantity_sold"])
 
@@ -1505,6 +1869,25 @@ class ForecastingEngine:
         for data in menu_item_forecast.values():
             data["daily_breakdown"].sort(key=lambda item: item[0])
 
+        for menu_item_id, data in menu_item_forecast.items():
+            latest_forecast = await self.forecast_repo.get_latest_forecast_for_item(
+                menu_item_id
+            )
+            if not latest_forecast:
+                continue
+
+            confidence_score = getattr(latest_forecast, "confidence_score", None)
+            if confidence_score is not None:
+                data["confidence_score"] = float(confidence_score)
+                self.menu_item_confidence[menu_item_id] = float(confidence_score)
+
+            strategy_metadata = self._build_persisted_forecast_strategy(
+                latest_forecast
+            )
+            if strategy_metadata:
+                data["forecast_strategy"] = strategy_metadata
+                self.latest_forecast_model_metadata[menu_item_id] = strategy_metadata
+
         batch_data = await self.generate_batch_recipe_breakdown(menu_item_forecast)
         ingredient_data = await self.generate_ingredient_breakdown(
             convert_forecast_dict_to_list(menu_item_forecast),
@@ -1680,30 +2063,49 @@ class ForecastingEngine:
                     if retrain:
                         model, metrics = await self.train_menu_item_model(menu_item_id)
                         self.accuracy_metrics[menu_item_id] = metrics or {}
+                        model_source = (
+                            "trained_h2o"
+                            if model is not None
+                            else "fallback_after_failed_train"
+                        )
                         logger.info(
                             "[FORECAST] Menu item %s model_source=%s metrics=%s",
                             menu_item_id,
-                            "trained" if model is not None else "fallback_after_failed_train",
+                            model_source,
                             self.accuracy_metrics[menu_item_id],
                         )
                     else:
                         model = load_model(self.restaurant_id, menu_item_id)
                         metrics = await self._compute_forecast_accuracy_metrics(menu_item_id)
                         self.accuracy_metrics[menu_item_id] = metrics or {}
+                        model_source = (
+                            "loaded_h2o"
+                            if model is not None
+                            else "fallback_without_model"
+                        )
                         logger.info(
                             "[FORECAST] Menu item %s model_source=%s metrics=%s",
                             menu_item_id,
-                            "loaded" if model is not None else "fallback_without_model",
+                            model_source,
                             self.accuracy_metrics[menu_item_id],
                         )
 
-                    if model is None:
-                        logger.debug(
-                            "[FORECAST] Using fallback forecast for menu_item %s (model missing)",
-                            menu_item_id,
-                        )
-
-                    forecast_rows = await self.generate_forecast(menu_item_id, horizon_days)
+                    sales_history = await self._get_menu_item_sales_history(menu_item_id)
+                    strategy_metadata = await self.select_forecast_strategy(
+                        menu_item_id,
+                        horizon_days=horizon_days,
+                        model=model,
+                        model_source=model_source,
+                        metrics=self.accuracy_metrics.get(menu_item_id),
+                        sales_history=sales_history,
+                    )
+                    forecast_rows, strategy_metadata = await self.generate_forecast_with_metadata(
+                        menu_item_id,
+                        horizon_days=horizon_days,
+                        strategy_metadata=strategy_metadata,
+                        model=model,
+                        sales_history=sales_history,
+                    )
                     if not forecast_rows:
                         continue
 
@@ -1711,14 +2113,31 @@ class ForecastingEngine:
                         self.accuracy_metrics.get(menu_item_id)
                     )
                     self.menu_item_confidence[menu_item_id] = confidence_score
+                    strategy_metadata = dict(strategy_metadata)
+                    strategy_metadata["confidence_score"] = confidence_score
+                    self.latest_forecast_model_metadata[menu_item_id] = strategy_metadata
 
-                    await self.write_forecast_results(menu_item_id, forecast_rows, confidence_score)
+                    logger.info(
+                        "[FORECAST] Menu item %s strategy=%s model_source=%s reason=%s",
+                        menu_item_id,
+                        strategy_metadata.get("model_type_used"),
+                        strategy_metadata.get("model_source"),
+                        strategy_metadata.get("selection_reason"),
+                    )
+
+                    await self.write_forecast_results(
+                        menu_item_id,
+                        forecast_rows,
+                        confidence_score,
+                        strategy_metadata,
+                    )
 
                     menu_item_forecast[menu_item_id] = {
                         "daily_breakdown": [
                             (row["forecast_date"], row["predicted_quantity"]) for row in forecast_rows
                         ],
                         "confidence_score": confidence_score,
+                        "forecast_strategy": strategy_metadata,
                     }
 
                     # Update progress

@@ -174,9 +174,10 @@ const IngredientDialog = ({ open, onClose, ingredient, setIngredient, onSave }) 
                     select
                     SelectProps={{ native: true }}
                     fullWidth
-                    value={ingredient?.order_schedule_type || 'ad_hoc'}
+                    value={ingredient?.order_schedule_type || ''}
                     onChange={handleChange('order_schedule_type')}
                   >
+                    <option value="">Unset</option>
                     {SCHEDULE_OPTIONS.map(option => (
                       <option key={option.value} value={option.value}>
                         {option.label}
@@ -208,9 +209,10 @@ const IngredientDialog = ({ open, onClose, ingredient, setIngredient, onSave }) 
                     select
                     SelectProps={{ native: true }}
                     fullWidth
-                    value={ingredient?.cadence_source || 'manual'}
+                    value={ingredient?.cadence_source || ''}
                     onChange={handleChange('cadence_source')}
                   >
+                    <option value="">Unset</option>
                     {CADENCE_SOURCE_OPTIONS.map(option => (
                       <option key={option.value} value={option.value}>
                         {option.label}
@@ -247,9 +249,7 @@ const IngredientDialog = ({ open, onClose, ingredient, setIngredient, onSave }) 
                     fullWidth
                     inputProps={{ min: 0 }}
                     value={ingredient?.pack_size ?? ''}
-                    onChange={handleChange('pack_size', v =>
-                      v === '' ? null : parseInt(v, 10)
-                    )}
+                    onChange={handleChange('pack_size', v => (v === '' ? null : parseInt(v, 10)))}
                   />
                 </Grid>
                 <Grid item xs={12} md={6}>

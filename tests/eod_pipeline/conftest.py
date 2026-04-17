@@ -140,6 +140,9 @@ def sample_ingredients():
             name="Ground Beef",
             unit="lb",
             abc_class="A",
+            policy_type="stable_stocked",
+            policy_assignment_mode="manual",
+            target_service_level=Decimal("0.9500"),
         ),
         Ingredient(
             ingredient_id=1002,
@@ -147,6 +150,9 @@ def sample_ingredients():
             name="Lettuce",
             unit="head",
             abc_class="B",
+            policy_type="fresh_perishable",
+            policy_assignment_mode="manual",
+            target_service_level=Decimal("0.9200"),
         ),
         Ingredient(
             ingredient_id=1003,
@@ -154,6 +160,9 @@ def sample_ingredients():
             name="Tomato",
             unit="lb",
             abc_class="C",
+            policy_type="fresh_perishable",
+            policy_assignment_mode="manual",
+            target_service_level=Decimal("0.9000"),
         ),
     ]
 
@@ -324,10 +333,32 @@ def mock_reorder_engine():
     """Mock reorder engine with common methods."""
     engine = AsyncMock()
     engine.classify_all_ingredients = AsyncMock()
-    engine.suggest_reorder_quantity = AsyncMock(return_value=Decimal("10.00"))
     engine.classify_abc_item = AsyncMock(return_value="A")
     engine.calculate_safety_stock = AsyncMock(return_value=Decimal("5.00"))
-    engine.calculate_reorder_point = AsyncMock(return_value=Decimal("15.00"))
+    engine.build_reorder_decision = AsyncMock(
+        return_value={
+            "current_stock": Decimal("5.00"),
+            "current_unit": "lb",
+            "lead_demand": Decimal("5.00"),
+            "shelf_demand": Decimal("5.00"),
+            "total_demand": Decimal("10.00"),
+            "safety_stock": Decimal("5.00"),
+            "reorder_point": Decimal("10.00"),
+            "reorder_target": Decimal("15.00"),
+            "raw_order_quantity": Decimal("10.00"),
+            "buffered_quantity": Decimal("10.00"),
+            "moq": Decimal("5.00"),
+            "moq_floor": Decimal("5.00"),
+            "max_allowed": Decimal("100.00"),
+            "final_quantity": Decimal("10.00"),
+            "should_reorder": True,
+            "service_level_z": Decimal("1.65"),
+            "abc_class": "A",
+            "abc_multiplier": Decimal("1.0"),
+            "abc_defaulted": False,
+        }
+    )
+    engine.build_explanation_payload = MagicMock(return_value={"summary": "ok"})
     return engine
 
 

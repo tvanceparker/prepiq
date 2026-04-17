@@ -549,9 +549,9 @@ class TestEODServiceUnit:
             return {
                 "current_stock": Decimal("5.00"),
                 "current_unit": "lb",
-                "lead_demand": kwargs["lead_demand"],
-                "shelf_demand": kwargs["shelf_demand"],
-                "total_demand": kwargs["total_demand"],
+                "lead_demand": Decimal("0.00"),
+                "shelf_demand": Decimal("0.00"),
+                "total_demand": Decimal("0.00"),
                 "safety_stock": Decimal("0.00"),
                 "reorder_point": Decimal("0.00"),
                 "reorder_target": Decimal("0.00"),
@@ -575,12 +575,9 @@ class TestEODServiceUnit:
         result = await service.generate_suggested_purchase_orders(ingredient_forecast)
 
         assert result == []
-        assert captured_call["lead_demand"] == Decimal("0.00")
-        assert captured_call["shelf_demand"] == Decimal("0.00")
-        assert captured_call["total_demand"] == Decimal("0.00")
-        assert isinstance(captured_call["lead_demand"], Decimal)
-        assert isinstance(captured_call["shelf_demand"], Decimal)
-        assert isinstance(captured_call["total_demand"], Decimal)
+    assert captured_call["daily_forecast"] == []
+    assert captured_call["lead_time"] == sample_suppliers[0].lead_time_days
+    assert captured_call["shelf_life_days"] == 7
 
     @pytest.mark.asyncio
     async def test_generate_suggested_purchase_orders_falls_back_to_supplier_shelf_life(

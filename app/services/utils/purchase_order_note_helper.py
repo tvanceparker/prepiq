@@ -1,6 +1,15 @@
 import json
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
+
+
+def _json_note_default(value: Any) -> Any:
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    raise TypeError(f"Object of type {value.__class__.__name__} is not JSON serializable")
 
 
 def build_purchase_order_review_context(
@@ -53,7 +62,7 @@ def serialize_purchase_order_notes(
         "system_note": cleaned_system_note,
         "review_context": review_context,
     }
-    return json.dumps(envelope, separators=(",", ":"))
+    return json.dumps(envelope, separators=(",", ":"), default=_json_note_default)
 
 
 def parse_purchase_order_notes(raw_notes: Optional[str]) -> Dict[str, Any]:

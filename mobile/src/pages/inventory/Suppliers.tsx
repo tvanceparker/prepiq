@@ -68,10 +68,10 @@ export default function Suppliers(): React.JSX.Element {
     cost_per_unit: '',
     lead_time_days: '',
     review_period_days: '',
-    order_schedule_type: 'ad_hoc',
+    order_schedule_type: '',
     allowed_order_days: '',
     allowed_delivery_days: '',
-    cadence_source: 'manual',
+    cadence_source: '',
     cadence_confidence_score: '',
     spoilage_rate: '',
     shelf_life_days: '',
@@ -255,10 +255,10 @@ export default function Suppliers(): React.JSX.Element {
       cost_per_unit: ing.cost_per_unit?.toString() || '',
       lead_time_days: ing.lead_time_days?.toString() || '',
       review_period_days: ing.review_period_days?.toString() || '',
-      order_schedule_type: ing.order_schedule_type || 'ad_hoc',
+      order_schedule_type: ing.order_schedule_type || '',
       allowed_order_days: formatDayList(ing.allowed_order_days),
       allowed_delivery_days: formatDayList(ing.allowed_delivery_days),
-      cadence_source: ing.cadence_source || 'manual',
+      cadence_source: ing.cadence_source || '',
       cadence_confidence_score: ing.cadence_confidence_score?.toString() || '',
       spoilage_rate: ing.spoilage_rate?.toString() || '',
       shelf_life_days: ing.shelf_life_days?.toString() || '',
@@ -944,9 +944,7 @@ export default function Suppliers(): React.JSX.Element {
                   <TextInput
                     label="Review Period (days)"
                     value={ingredientForm.review_period_days}
-                    onChangeText={v =>
-                      setIngredientForm(f => ({ ...f, review_period_days: v }))
-                    }
+                    onChangeText={v => setIngredientForm(f => ({ ...f, review_period_days: v }))}
                     mode="outlined"
                     keyboardType="number-pad"
                     style={styles.halfInput}
@@ -974,9 +972,7 @@ export default function Suppliers(): React.JSX.Element {
                   <TextInput
                     label="Allowed Order Days"
                     value={ingredientForm.allowed_order_days}
-                    onChangeText={v =>
-                      setIngredientForm(f => ({ ...f, allowed_order_days: v }))
-                    }
+                    onChangeText={v => setIngredientForm(f => ({ ...f, allowed_order_days: v }))}
                     mode="outlined"
                     placeholder="mon, wed, fri"
                     style={styles.halfInput}
@@ -985,9 +981,7 @@ export default function Suppliers(): React.JSX.Element {
                   <TextInput
                     label="Allowed Delivery Days"
                     value={ingredientForm.allowed_delivery_days}
-                    onChangeText={v =>
-                      setIngredientForm(f => ({ ...f, allowed_delivery_days: v }))
-                    }
+                    onChangeText={v => setIngredientForm(f => ({ ...f, allowed_delivery_days: v }))}
                     mode="outlined"
                     placeholder="tue, thu, sat"
                     style={styles.halfInput}

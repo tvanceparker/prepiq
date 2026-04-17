@@ -89,6 +89,26 @@ This keeps EOD status and sales/forecast views aligned.
 
 The same forecast trust model also affects purchase-order suggestion behavior, so EOD status should not be interpreted in isolation from the forecasting and purchasing docs.
 
+## Forecast And Reorder Responsibilities
+
+Current code keeps EOD as orchestration only.
+
+`EODService` is responsible for:
+
+- launching the forecast run
+- reusing finalized output when available
+- invoking reorder suggestion generation
+- persisting purchase-order suggestions and created POs
+
+`EODService` is not where model choice or reorder-policy math now lives.
+
+Those responsibilities are split as follows:
+
+- `ForecastingEngine` selects the forecast strategy per menu item and persists the chosen model metadata on the forecast row
+- `ReorderForecastEngine` resolves forecast demand, usable inventory, cadence timing, and then dispatches into the policy-specific replenishment method
+
+This separation matters because EOD should remain the batch coordinator rather than becoming a second implementation of forecast or replenishment logic.
+
 ## Operational Guidance
 
 One of the most useful current EOD features is generated operator guidance.

@@ -189,6 +189,64 @@ def normalize_ingredient_policy_settings(payload: dict) -> dict:
             payload.get("policy_override_reason")
         )
 
+    policy_type = normalized.get(
+        "policy_type",
+        normalize_policy_type(payload.get("policy_type"))
+        if "policy_type" in payload
+        else None,
+    )
+    policy_assignment_mode = normalized.get(
+        "policy_assignment_mode",
+        normalize_policy_assignment_mode(payload.get("policy_assignment_mode"))
+        if "policy_assignment_mode" in payload
+        else None,
+    )
+    target_service_level = normalized.get(
+        "target_service_level",
+        _coerce_optional_float(
+            payload.get("target_service_level"),
+            field_name="target_service_level",
+            minimum=0.0,
+            maximum=0.9999,
+        )
+        if "target_service_level" in payload
+        else None,
+    )
+    service_level_z = normalized.get(
+        "service_level_z",
+        _coerce_optional_float(
+            payload.get("service_level_z"),
+            field_name="service_level_z",
+            minimum=0.0,
+        )
+        if "service_level_z" in payload
+        else None,
+    )
+    policy_override_reason = normalized.get(
+        "policy_override_reason",
+        _coerce_blank(payload.get("policy_override_reason"))
+        if "policy_override_reason" in payload
+        else None,
+    )
+
+    has_policy_metadata = any(
+        value is not None
+        for value in (
+            policy_assignment_mode,
+            target_service_level,
+            service_level_z,
+            policy_override_reason,
+        )
+    )
+    if policy_type is None and has_policy_metadata:
+        raise ValueError(
+            "policy_type is required when policy assignment or service-level settings are provided"
+        )
+    if policy_type is not None and target_service_level is None and service_level_z is None:
+        raise ValueError(
+            "target_service_level or service_level_z is required when policy_type is set"
+        )
+
     return normalized
 
 
@@ -288,6 +346,9 @@ def resolve_cadence(
     normalized_lead_time = max(int(lead_time_days or 0), 0)
 
     if normalized_order_schedule_type is None:
+        warnings.append(
+            "no supplier cadence schedule configured; treating cadence as ad_hoc"
+        )
         normalized_order_schedule_type = (
             "fixed_days_of_week" if normalized_order_days else "ad_hoc"
         )

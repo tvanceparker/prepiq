@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -400,6 +401,28 @@ async def test_get_purchase_order_detail_parses_review_context_and_stale_eta(inv
     assert result['expected_delivery_stale'] is True
     assert result['review_context']['source_type'] == 'eod_auto'
     assert result['review_context']['explanation_items'][0]['ingredient_name'] == 'Garlic'
+
+
+def test_serialize_purchase_order_notes_serializes_review_context_dates_and_decimals():
+    notes = serialize_purchase_order_notes(
+        system_note='[EOD_AUTO run_date=2026-04-12 supplier_id=301]',
+        review_context={
+            'source_type': 'eod_auto',
+            'source_run_date': date(2026, 4, 12),
+            'explanation_items': [
+                {
+                    'ingredient_id': 101,
+                    'quantity_to_order': Decimal('12.50'),
+                    'usable_until_date': date(2026, 4, 14),
+                }
+            ],
+        },
+    )
+
+    parsed = json.loads(notes)
+    assert parsed['review_context']['source_run_date'] == '2026-04-12'
+    assert parsed['review_context']['explanation_items'][0]['quantity_to_order'] == 12.5
+    assert parsed['review_context']['explanation_items'][0]['usable_until_date'] == '2026-04-14'
 
 
 @pytest.mark.asyncio

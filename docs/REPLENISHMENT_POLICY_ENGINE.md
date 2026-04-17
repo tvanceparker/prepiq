@@ -113,8 +113,10 @@ The current live path now resolves:
 - next order and delivery timing
 - effective lead days from the current date to the next feasible delivery
 - policy-driven service levels
+- forecast demand as a separate input from the replenishment method
 - coverage capping when shelf life is shorter than the cadence protection window
 - usable stock from available lots, excluding inventory that expires before the replenishment window
+- explicit policy-method dispatch inside `ReorderForecastEngine`
 
 This is now active in:
 
@@ -130,16 +132,26 @@ Existing inventory and supplier editors now expose:
 
 This was done in the existing surfaces rather than creating a second settings area, so configuration stays close to the purchasing workflow it affects.
 
-## How The New Engine Is Intended To Work
+## How The Current Engine Works
 
-The full reorder-engine refactor is not complete in this slice, but the intended flow is:
+The reorder-engine dispatch is now explicit in current code. The live flow is:
 
 1. Determine the ingredient policy.
 2. Resolve usable stock instead of raw on-hand alone, using available lots and expiry timing.
 3. Resolve supplier cadence and next feasible delivery timing.
-4. Size protection demand using lead time plus cadence-aware review coverage.
-5. Apply spoilage-aware caps and packaging constraints.
-6. Return explanation metadata that shows both policy reasoning and cadence reasoning.
+4. Build forecast demand context separately from the replenishment method.
+5. Dispatch into the policy-specific quantity method.
+6. Apply MOQ, packaging, and max-stock constraints.
+7. Return explanation metadata that shows policy, cadence, demand source, and usable-stock reasoning.
+
+The current policy dispatch methods are:
+
+- `fresh_perishable` -> `perishable_window`
+- `stable_stocked` -> `continuous_review`
+- `recipe_dependent` -> `coverage_order_up_to`
+- `intermittent_low_turn` -> `event_driven_replenishment`
+
+This means `policy_type` now changes the method that sizes the order, not just the labels attached to a single generic formula.
 
 ## Schedule Semantics
 
@@ -172,13 +184,13 @@ That is the production-grade behavior the new cadence layer is designed to unloc
 
 ## Relationship To ABC
 
-ABC still matters, but it should be an overlay rather than the primary selector for replenishment behavior.
+ABC still matters, but it should be a classification and explanation layer rather than a hardcoded quantity buffer.
 
 The intended rule is:
 
 - policy determines the replenishment pattern
 - cadence determines the feasible timing
-- ABC adjusts service posture and review intensity
+- ABC informs prioritization and operator review without silently changing order math through fixed multipliers
 
 That makes the system easier to tune and easier to explain to operators.
 
@@ -194,9 +206,12 @@ Implemented now:
 - cadence-aware supplier selection and protection-window sizing in the live reorder path
 - aligned cadence-aware calculations in both manual preview and EOD suggestion flows
 - usable-stock projection in the live reorder path so expiring lots can be excluded before comparing stock to reorder point
+- explicit policy configuration in the live reorder path; the engine no longer guesses policy type or service level from hardcoded defaults
+- explicit policy-specific reorder dispatch with separate demand source and reorder method metadata
 - unit tests for cadence normalization, supplier selection, and forecast-driven reorder decisions
 
 Still to do:
 
-- tune policy defaults and overlays against real restaurant behavior
+- backfill explicit policy and service-level configuration across live restaurant data
+- decide whether ABC should gain a configurable overlay later instead of fixed code-level multipliers
 - expand explanation UIs so users can see more cadence fields directly without relying only on summary text

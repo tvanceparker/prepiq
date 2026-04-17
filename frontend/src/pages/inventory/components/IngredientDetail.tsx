@@ -116,10 +116,10 @@ export default function IngredientDetail({
           quantity_per_pack_item: '',
           lead_time_days: '',
           review_period_days: '',
-          order_schedule_type: 'ad_hoc',
+          order_schedule_type: '',
           allowed_order_days: '',
           allowed_delivery_days: '',
-          cadence_source: 'manual',
+          cadence_source: '',
           cadence_confidence_score: '',
           preferred: false,
         },
@@ -363,10 +363,7 @@ export default function IngredientDetail({
               size="small"
               value={localData.target_service_level ?? ''}
               onChange={e =>
-                handleChange(
-                  'target_service_level',
-                  e.target.value === '' ? null : e.target.value
-                )
+                handleChange('target_service_level', e.target.value === '' ? null : e.target.value)
               }
               disabled={!editable}
             />
@@ -429,7 +426,11 @@ export default function IngredientDetail({
                 />
                 <Chip label={supplier.unit || 'No unit'} size="small" variant="outlined" />
                 <Chip
-                  label={(supplier.order_schedule_type || 'ad_hoc').replace(/_/g, ' ')}
+                  label={
+                    supplier.order_schedule_type
+                      ? supplier.order_schedule_type.replace(/_/g, ' ')
+                      : 'cadence unset'
+                  }
                   size="small"
                   variant="outlined"
                 />
@@ -535,12 +536,13 @@ export default function IngredientDetail({
                   label="Order Schedule"
                   select
                   SelectProps={{ native: true }}
-                  value={supplier.order_schedule_type || 'ad_hoc'}
+                  value={supplier.order_schedule_type || ''}
                   onChange={e => handleSupplierChange(i, 'order_schedule_type', e.target.value)}
                   fullWidth
                   size="small"
                   disabled={!editable}
                 >
+                  <option value="">Unset</option>
                   {SCHEDULE_OPTIONS.map(option => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -554,12 +556,13 @@ export default function IngredientDetail({
                   label="Cadence Source"
                   select
                   SelectProps={{ native: true }}
-                  value={supplier.cadence_source || 'manual'}
+                  value={supplier.cadence_source || ''}
                   onChange={e => handleSupplierChange(i, 'cadence_source', e.target.value)}
                   fullWidth
                   size="small"
                   disabled={!editable}
                 >
+                  <option value="">Unset</option>
                   {CADENCE_SOURCE_OPTIONS.map(option => (
                     <option key={option.value} value={option.value}>
                       {option.label}

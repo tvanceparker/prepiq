@@ -686,6 +686,62 @@ class EODService:
         await self.ledger_repo.mark_stage_complete(ledger, 'forecast_completed', int((datetime.utcnow()-t0).total_seconds()*1000))
         return ingredient_forecast
 
+    async def _bootstrap_reorder_policy_config(
+        self,
+        run_date: date,
+        ledger,
+        ingredient_forecast: Dict[int, dict],
+    ) -> Dict[str, Any]:
+        empty_summary = {
+            "updated_count": 0,
+            "skipped_count": 0,
+            "failed_count": 0,
+            "updated_ingredient_ids": [],
+            "failed_items": [],
+        }
+        try:
+            summary = await self.reorder_engine.bootstrap_missing_policy_config(
+                ingredient_forecast=ingredient_forecast,
+                as_of_date=run_date,
+            )
+        except Exception as exc:
+            logger.warning(
+                "[EOD] Policy bootstrap failed unexpectedly date=%s error=%s",
+                run_date,
+                exc,
+                exc_info=True,
+            )
+            with contextlib.suppress(Exception):
+                await self.ledger_repo.append_error(
+                    ledger,
+                    "policy_bootstrap",
+                    f"unexpected bootstrap failure: {exc}",
+                )
+            return empty_summary
+
+        logger.info(
+            "[EOD] Policy bootstrap summary date=%s updated=%s skipped=%s failed=%s",
+            run_date,
+            summary["updated_count"],
+            summary["skipped_count"],
+            summary["failed_count"],
+        )
+        for failed_item in summary["failed_items"]:
+            ingredient_id = failed_item.get("ingredient_id")
+            reason = failed_item.get("reason") or "unknown bootstrap failure"
+            logger.warning(
+                "[EOD] Policy bootstrap could not assign ingredient=%s reason=%s",
+                ingredient_id,
+                reason,
+            )
+            with contextlib.suppress(Exception):
+                await self.ledger_repo.append_error(
+                    ledger,
+                    "policy_bootstrap",
+                    f"ingredient {ingredient_id}: {reason}",
+                )
+        return summary
+
     async def _stage_reorder(
         self,
         run_date: date,
@@ -706,6 +762,11 @@ class EODService:
             await self.ledger_repo.mark_stage_complete(ledger, 'reorder_completed', 0)
             return 0
         t0 = datetime.utcnow()
+        await self._bootstrap_reorder_policy_config(
+            run_date,
+            ledger,
+            ingredient_forecast,
+        )
         await self.reorder_engine.classify_all_ingredients()
         suggestions = await self.generate_suggested_purchase_orders(
             ingredient_forecast,
@@ -859,7 +920,7 @@ class EODService:
                 )
                 continue
 
-            remaining_quantity = await self._compute_lot_remaining(lot)
+            remaining_quantity = await self.inventory_stats.get_lot_remaining(lot)
             if remaining_quantity <= 0:
                 if lot.status != LotStatus.expired:
                     await self.inventory_lot_repo.update(
@@ -924,26 +985,6 @@ class EODService:
             target_date,
             self.restaurant_id,
         )
-
-    async def _compute_lot_remaining(self, lot) -> Decimal:
-        """Compute remaining quantity for a lot from usage logs."""
-        usage_logs = await self.inventory_usage_log_repo.get_all_by_lot_id(lot.lot_id)
-        used_quantity = Decimal("0.00")
-        wasted_quantity = Decimal("0.00")
-        added_quantity = Decimal("0.00")
-
-        for log in usage_logs:
-            qty = Decimal(str(log.used_quantity or 0))
-            usage_type = getattr(log.usage_type, "value", log.usage_type)
-            if usage_type in {"sale", "batch_production", "batch_output"}:
-                used_quantity += qty
-            elif usage_type in {"waste", "spoilage", "manual_adjustment"}:
-                wasted_quantity += qty
-            elif usage_type == "manual_addition":
-                added_quantity += qty
-
-        lot_qty = Decimal(str(lot.quantity or 0))
-        return lot_qty - used_quantity - wasted_quantity + added_quantity
 
     async def generate_forecast(
         self,
@@ -1041,22 +1082,27 @@ class EODService:
             )
             unit = ingredient_forecast[ingredient_id].get("unit", "?")
 
-            decision = await self.reorder_engine.build_reorder_decision(
-                ingredient_id=ingredient_id,
-                lead_demand=Decimal("0.00"),
-                shelf_demand=Decimal("0.00"),
-                total_demand=Decimal("0.00"),
-                unit=unit,
-                lead_time=lead_time,
-                daily_forecast=daily_forecast,
-                supplier=supplier,
-                as_of_date=effective_run_date,
-                shelf_life_days=shelf_life,
-                current_stock=current_stock,
-                current_unit=inventory_unit or supplier_unit,
-                moq=min_order_quantity,
-                manage_alerts=True,
-            )
+            try:
+                decision = await self.reorder_engine.build_reorder_decision(
+                    ingredient_id=ingredient_id,
+                    unit=unit,
+                    lead_time=lead_time,
+                    daily_forecast=daily_forecast,
+                    supplier=supplier,
+                    as_of_date=effective_run_date,
+                    shelf_life_days=shelf_life,
+                    current_stock=current_stock,
+                    current_unit=inventory_unit or supplier_unit,
+                    moq=min_order_quantity,
+                    manage_alerts=True,
+                )
+            except ValueError as exc:
+                logger.warning(
+                    "[EOD] Skip ingredient=%s due to invalid replenishment policy configuration: %s",
+                    ingredient_id,
+                    exc,
+                )
+                continue
 
             logger.debug(
                 f"[EOD] Suggested reorder qty ingredient={ingredient_id} qty={decision['final_quantity']}"

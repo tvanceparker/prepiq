@@ -178,7 +178,7 @@ class InventoryStatsService:
             == "available"
         )
 
-    async def _compute_lot_remaining(self, lot: Any) -> Decimal:
+    async def get_lot_remaining(self, lot: Any) -> Decimal:
         usage_logs = await self.inventory_usage_log_repo.get_all_by_lot_id(lot.lot_id)
         used_quantity = Decimal("0.00")
         wasted_quantity = Decimal("0.00")
@@ -256,7 +256,7 @@ class InventoryStatsService:
         eligible_lot_count = 0
 
         for lot in available_lots:
-            remaining = await self._compute_lot_remaining(lot)
+            remaining = await self.get_lot_remaining(lot)
             if remaining <= 0:
                 continue
 

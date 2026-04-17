@@ -407,8 +407,11 @@ export interface POReorderExplanation {
     service_level_z: number | null;
     target_service_level?: number | null;
     service_level_source?: string | null;
+    demand_source?: string | null;
+    reorder_method?: string | null;
     policy_type?: string | null;
     policy_assignment_mode?: string | null;
+    policy_buffer_quantity?: number | null;
     abc_class: string;
     abc_multiplier: number | null;
     moq: number | null;

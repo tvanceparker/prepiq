@@ -1,6 +1,6 @@
 # db/models/forecasts_orm.py
 
-from sqlalchemy import Column, Integer, Date, DateTime, DECIMAL, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, Date, DateTime, DECIMAL, Boolean, ForeignKey, JSON, String
 from app.db.session import Base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -22,6 +22,9 @@ class Forecast(Base):
     adjusted_quantity = Column(DECIMAL(10, 2), nullable=True)
     used_in_order_generation = Column(Boolean, default=False)
     forecast_version = Column(Integer, default=1)
+    model_type_used = Column(String(32), nullable=True)
+    model_source = Column(String(32), nullable=True)
+    model_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     restaurant = relationship("Restaurant", back_populates="forecasts")

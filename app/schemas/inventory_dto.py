@@ -211,8 +211,11 @@ class POPolicyFactorsDTO(BaseModel):
     service_level_z: Optional[float] = None
     target_service_level: Optional[float] = None
     service_level_source: Optional[str] = None
+    demand_source: Optional[str] = None
+    reorder_method: Optional[str] = None
     policy_type: Optional[str] = None
     policy_assignment_mode: Optional[str] = None
+    policy_buffer_quantity: Optional[float] = None
     abc_class: str
     abc_multiplier: Optional[float] = None
     moq: Optional[float] = None
