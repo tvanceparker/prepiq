@@ -17,6 +17,7 @@ Copilot should read this file before generating or modifying code.
 - **ForecastAgent:** Handles forecasting logic, forecast accuracy, and EOD analysis.
 - **DocsAgent:** Keeps AGENTS.md, README, and implementation-facing docs synchronized with schema and architecture changes.
 - **DatabaseAgent:** Expert in database design, tenant scoping, ORM patterns, and query structure.
+- **OperationsAgent:** Expert in SMB restaurant operations, workflows, ordering and purchasing practices, inventory replenishment, and practical day-to-day operator constraints.
 
 ## 1. Repository Overview
 
