@@ -11,6 +11,8 @@ Copilot should read this file before generating or modifying code.
 
 ## Active AI Agent Roles
 
+These roles are conceptual guidance profiles for reasoning and implementation decisions in this repository. They are not automatically registered as callable runtime subagents unless the surrounding agent tooling explicitly supports and configures them.
+
 - **BackendAgent:** Expert in FastAPI, SQLAlchemy async, repository/service patterns, and backend orchestration.
 - **FrontendAgent:** Specialist in React 18, TanStack Query, TypeScript hygiene, and frontend architecture cleanup.
 - **MobileAgent:** Focused on React Native parity, navigation, and API-aligned mobile UX.
