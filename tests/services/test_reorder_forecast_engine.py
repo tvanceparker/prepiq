@@ -222,6 +222,112 @@ async def test_build_reorder_decision_from_forecast_uses_cadence_window_and_shel
 
 
 @pytest.mark.asyncio
+async def test_build_reorder_decision_preserves_public_payload_contract():
+    engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.alert_repo = AsyncMock()
+    engine.ingredient_repo.get_by_id = AsyncMock(
+        return_value=DummyIngredient(
+            ingredient_id=1010,
+            unit_cost=Decimal("2.50"),
+            abc_class="B",
+            policy_type="stable_stocked",
+            policy_assignment_mode="manual",
+            target_service_level=0.95,
+        )
+    )
+    engine.stats_service.get_usable_inventory = AsyncMock(
+        return_value={
+            "quantity": Decimal("5.00"),
+            "unit": "lb",
+            "total_quantity": Decimal("5.00"),
+            "excluded_quantity": Decimal("0.00"),
+            "source": "inventory_summary",
+            "conversion_fallback": False,
+        }
+    )
+
+    daily_forecast = [
+        (date(2026, 4, 15) + timedelta(days=index), Decimal("5.00"))
+        for index in range(5)
+    ]
+
+    with patch.object(engine, "calculate_safety_stock", return_value=Decimal("3.00")):
+        with patch.object(engine, "calculate_max_order", return_value=Decimal("95.00")):
+            decision = await engine.build_reorder_decision(
+                ingredient_id=1010,
+                unit="lb",
+                lead_time=3,
+                daily_forecast=daily_forecast,
+                supplier=None,
+                as_of_date=date(2026, 4, 15),
+                shelf_life_days=5,
+                current_stock=Decimal("5.00"),
+                current_unit="lb",
+                moq=Decimal("10.00"),
+                manage_alerts=False,
+            )
+
+    expected_keys = {
+        "ingredient_id",
+        "current_stock",
+        "total_stock",
+        "excluded_expiring_stock",
+        "lead_demand",
+        "shelf_demand",
+        "total_demand",
+        "safety_stock",
+        "reorder_point",
+        "reorder_target",
+        "raw_order_quantity",
+        "buffered_quantity",
+        "moq",
+        "moq_floor",
+        "max_allowed",
+        "final_quantity",
+        "should_reorder",
+        "skip_reason",
+        "service_level_z",
+        "abc_class",
+        "abc_defaulted",
+        "demand_source",
+        "reorder_method",
+        "policy_buffer_quantity",
+        "policy_type",
+        "policy_assignment_mode",
+        "target_service_level",
+        "service_level_source",
+        "policy_override_reason",
+        "policy_inferred",
+        "effective_lead_days",
+        "coverage_days",
+        "uncapped_coverage_days",
+        "coverage_capped_by_shelf_life",
+        "demand_event_count",
+        "next_event_demand",
+        "inventory_position",
+        "inbound_quantity",
+        "backorder_quantity",
+        "assumption_warnings",
+        "policy_safe_quantity",
+        "usable_until_date",
+        "inventory_source",
+        "inventory_conversion_fallback",
+        "next_order_date",
+        "next_delivery_date",
+        "days_until_next_order",
+        "review_period_days",
+        "protection_window_days",
+        "allowed_order_days",
+        "allowed_delivery_days",
+        "cadence_source",
+        "cadence_confidence_score",
+        "cadence_warnings",
+    }
+
+    assert expected_keys.issubset(decision.keys())
+
+
+@pytest.mark.asyncio
 async def test_bootstrap_missing_policy_config_assigns_fresh_perishable_for_short_shelf_life():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
     ingredient = DummyIngredient(

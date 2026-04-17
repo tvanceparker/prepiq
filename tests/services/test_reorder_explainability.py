@@ -249,6 +249,91 @@ async def test_build_explanation_payload_for_stable_stocked_uses_reorder_point_s
 
 
 @pytest.mark.asyncio
+async def test_build_explanation_payload_preserves_public_structure():
+    engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.alert_repo = AsyncMock()
+    engine.ingredient_repo.get_by_id = AsyncMock(
+        return_value=DummyIngredient(ingredient_id=1011, abc_class="B")
+    )
+    engine.stats_service.get_usable_inventory = AsyncMock(
+        return_value={
+            "quantity": Decimal("5.00"),
+            "unit": "lb",
+            "total_quantity": Decimal("5.00"),
+            "excluded_quantity": Decimal("0.00"),
+            "source": "inventory_summary",
+            "conversion_fallback": False,
+        }
+    )
+    daily_forecast = [
+        (date(2026, 4, 15) + timedelta(days=index), Decimal("5.00"))
+        for index in range(5)
+    ]
+
+    with patch.object(engine, "calculate_safety_stock", return_value=Decimal("3.00")):
+        with patch.object(engine, "calculate_max_order", return_value=Decimal("95.00")):
+            decision = await engine.build_reorder_decision(
+                ingredient_id=1011,
+                unit="lb",
+                lead_time=3,
+                daily_forecast=daily_forecast,
+                supplier=None,
+                as_of_date=date(2026, 4, 15),
+                shelf_life_days=5,
+                current_stock=Decimal("5.00"),
+                current_unit="lb",
+                moq=Decimal("10.00"),
+                manage_alerts=False,
+            )
+
+    payload = engine.build_explanation_payload(
+        decision=decision,
+        supplier_selection={
+            "reason_code": "fallback_lowest_priority",
+            "preferred_supplier_available": False,
+            "selected_supplier_priority": 2,
+            "selected_supplier_preferred": False,
+            "pricing_available": True,
+        },
+        supplier_name="Dry Goods Vendor",
+        inventory_unit="lb",
+        supplier_unit="lb",
+        converted_quantity_needed=decision["final_quantity"],
+        pack_size=1,
+        quantity_per_pack_item=Decimal("1.00"),
+        packs_to_order=13,
+        total_quantity_ordered=Decimal("13.00"),
+        assumption_flags={"inventory_source": "inventory_summary"},
+    )
+
+    assert set(payload.keys()) == {
+        "summary",
+        "why_reorder",
+        "quantity_factors",
+        "policy_factors",
+        "supplier_factors",
+        "assumption_flags",
+    }
+    assert {"current_stock", "reorder_point", "reorder_target"}.issubset(
+        payload["why_reorder"].keys()
+    )
+    assert {
+        "raw_order_quantity",
+        "final_quantity_before_pack_rounding",
+        "total_quantity_ordered",
+    }.issubset(payload["quantity_factors"].keys())
+    assert {"policy_type", "reorder_method", "max_allowed"}.issubset(
+        payload["policy_factors"].keys()
+    )
+    assert {"selected_supplier", "selection_rule", "pricing_available"}.issubset(
+        payload["supplier_factors"].keys()
+    )
+    assert {"inventory_source", "cadence_warnings"}.issubset(
+        payload["assumption_flags"].keys()
+    )
+
+
+@pytest.mark.asyncio
 async def test_build_explanation_payload_for_recipe_dependent_uses_dependency_summary():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
     engine.alert_repo = AsyncMock()

@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,60 +9,15 @@ from app.repositories.recipe_ingredients_repo import RecipeIngredientRepository
 from app.repositories.batch_recipe_ingredients_repo import BatchRecipeIngredientRepository
 from app.repositories.menu_item_recipes_repo import MenuItemRecipeRepository
 from app.services.inventory_stats_service import InventoryStatsService
+from app.services.reorder import (
+    ReorderContextBuilder,
+    ReorderPolicyBootstrapHelper,
+    ReorderPolicyMathHelper,
+)
 from app.repositories.alerts_repo import AlertRepository
 from app.core.logging import logger
 from app.utils.logger_helpers import log_method
-from app.utils.replenishment_policy import resolve_cadence
 import math
-from statistics import NormalDist
-
-
-POLICY_BOOTSTRAP_TARGET_SERVICE_LEVELS = {
-    "fresh_perishable": Decimal("0.9000"),
-    "stable_stocked": Decimal("0.9500"),
-    "recipe_dependent": Decimal("0.9300"),
-    "intermittent_low_turn": Decimal("0.8800"),
-}
-POLICY_BOOTSTRAP_FRESH_SHELF_LIFE_DAYS = 5
-POLICY_BOOTSTRAP_PERISHABLE_HINTS = (
-    "arugula",
-    "basil",
-    "bread",
-    "cilantro",
-    "cream",
-    "fillet",
-    "fish",
-    "herb",
-    "lettuce",
-    "milk",
-    "parsley",
-    "salmon",
-    "scallop",
-    "seafood",
-    "shrimp",
-    "spinach",
-    "yogurt",
-)
-POLICY_BOOTSTRAP_PERISHABLE_CATEGORY_HINTS = (
-    "bakery",
-    "dairy",
-    "produce",
-    "seafood",
-)
-POLICY_BOOTSTRAP_PREP_COMPONENT_HINTS = (
-    "aioli",
-    "base",
-    "broth",
-    "dough",
-    "dressing",
-    "marinade",
-    "prep",
-    "reduction",
-    "sauce",
-    "slaw",
-    "soup",
-    "stock",
-)
 
 
 class ReorderForecastEngine:
@@ -91,6 +46,9 @@ class ReorderForecastEngine:
         self.stats_service = InventoryStatsService(db, restaurant_id)
         self.alert_repo = AlertRepository(db,restaurant_id)
         self._abc_cache: Dict[int, str] = {}
+        self.policy_bootstrap = ReorderPolicyBootstrapHelper(self)
+        self.context_builder = ReorderContextBuilder(self)
+        self.policy_math = ReorderPolicyMathHelper(self)
 
     @staticmethod
     def _to_float(value: Optional[Decimal]) -> Optional[float]:
@@ -162,23 +120,10 @@ class ReorderForecastEngine:
         return normalized or None
 
     def _has_complete_policy_config(self, ingredient: Optional[Any]) -> bool:
-        if ingredient is None:
-            return False
-        policy_type = self._normalize_policy_type_value(
-            getattr(ingredient, "policy_type", None)
-        )
-        if not policy_type:
-            return False
-
-        return (
-            self._normalize_floatlike(getattr(ingredient, "target_service_level", None))
-            is not None
-            or self._normalize_floatlike(getattr(ingredient, "service_level_z", None))
-            is not None
-        )
+        return self.policy_bootstrap.has_complete_policy_config(ingredient)
 
     def _needs_policy_bootstrap(self, ingredient: Optional[Any]) -> bool:
-        return not self._has_complete_policy_config(ingredient)
+        return self.policy_bootstrap.needs_policy_bootstrap(ingredient)
 
     def _resolve_bootstrap_shelf_life_days(
         self,
@@ -186,14 +131,10 @@ class ReorderForecastEngine:
         inventory: Optional[Any],
         supplier: Optional[Any],
     ) -> Optional[int]:
-        for source in (
-            getattr(inventory, "shelf_life_days", None) if inventory is not None else None,
-            getattr(supplier, "shelf_life_days", None) if supplier is not None else None,
-        ):
-            normalized = self._normalize_priority(source)
-            if normalized is not None and normalized > 0:
-                return normalized
-        return None
+        return self.policy_bootstrap.resolve_bootstrap_shelf_life_days(
+            inventory=inventory,
+            supplier=supplier,
+        )
 
     def _ingredient_matches_any_hint(
         self,
@@ -201,16 +142,10 @@ class ReorderForecastEngine:
         *,
         hints: tuple[str, ...],
     ) -> bool:
-        haystack = " ".join(
-            filter(
-                None,
-                [
-                    self._normalize_textlike(getattr(ingredient, "name", None)),
-                    self._normalize_textlike(getattr(ingredient, "category", None)),
-                ],
-            )
+        return self.policy_bootstrap.ingredient_matches_any_hint(
+            ingredient,
+            hints=hints,
         )
-        return any(hint in haystack for hint in hints)
 
     def _looks_clearly_perishable(
         self,
@@ -218,24 +153,13 @@ class ReorderForecastEngine:
         *,
         shelf_life_days: Optional[int],
     ) -> bool:
-        if (
-            shelf_life_days is not None
-            and shelf_life_days <= POLICY_BOOTSTRAP_FRESH_SHELF_LIFE_DAYS
-        ):
-            return True
-        return self._ingredient_matches_any_hint(
+        return self.policy_bootstrap.looks_clearly_perishable(
             ingredient,
-            hints=(
-                *POLICY_BOOTSTRAP_PERISHABLE_HINTS,
-                *POLICY_BOOTSTRAP_PERISHABLE_CATEGORY_HINTS,
-            ),
+            shelf_life_days=shelf_life_days,
         )
 
     def _looks_like_prep_component(self, ingredient: Any) -> bool:
-        return self._ingredient_matches_any_hint(
-            ingredient,
-            hints=POLICY_BOOTSTRAP_PREP_COMPONENT_HINTS,
-        )
+        return self.policy_bootstrap.looks_like_prep_component(ingredient)
 
     def _assess_bootstrap_sparse_demand(
         self,
@@ -243,43 +167,10 @@ class ReorderForecastEngine:
         daily_forecast: List[Any],
         as_of_date: date,
     ) -> Dict[str, Any]:
-        window_days = max(len(daily_forecast), 1)
-        forecast_points = self._window_forecast_points(
-            daily_forecast,
-            start_date=as_of_date,
-            window_days=window_days,
-        )
-        positive_point_count = sum(1 for _, qty in forecast_points if qty > 0)
-        positive_point_ratio = (
-            positive_point_count / max(len(forecast_points), 1)
-            if forecast_points
-            else 0.0
-        )
-        sparsity_context = self._assess_demand_sparsity(
+        return self.policy_bootstrap.assess_bootstrap_sparse_demand(
             daily_forecast=daily_forecast,
             as_of_date=as_of_date,
-            demand_context={"uncapped_coverage_days": window_days},
         )
-        average_spacing_days = None
-        if sparsity_context["event_spacing_days"]:
-            average_spacing_days = sum(sparsity_context["event_spacing_days"]) / len(
-                sparsity_context["event_spacing_days"]
-            )
-
-        is_sparse = positive_point_count > 0 and (
-            positive_point_ratio <= 0.25
-            or (positive_point_count <= 2 and len(forecast_points) >= 7)
-            or (average_spacing_days is not None and average_spacing_days >= 4)
-        )
-
-        return {
-            **sparsity_context,
-            "window_days": len(forecast_points),
-            "positive_point_count": positive_point_count,
-            "positive_point_ratio": positive_point_ratio,
-            "average_spacing_days": average_spacing_days,
-            "is_sparse": is_sparse,
-        }
 
     async def _infer_policy_type_for_bootstrap(
         self,
@@ -290,44 +181,16 @@ class ReorderForecastEngine:
         as_of_date: date,
         shelf_life_days: Optional[int],
     ) -> tuple[str, str]:
-        # Freshness wins over recipe dependency in bootstrap because short shelf life
-        # is the harder operational constraint when the system has incomplete config.
-        if self._looks_clearly_perishable(
-            ingredient,
-            shelf_life_days=shelf_life_days,
-        ):
-            if (
-                shelf_life_days is not None
-                and shelf_life_days <= POLICY_BOOTSTRAP_FRESH_SHELF_LIFE_DAYS
-            ):
-                return "fresh_perishable", f"shelf_life_days={shelf_life_days}"
-            return "fresh_perishable", "perishable ingredient hint"
-
-        dependency_context = await self._build_recipe_dependency_context(ingredient_id)
-        if dependency_context["batch_recipe_count"] > 0:
-            return "recipe_dependent", "batch recipe dependency"
-        if (
-            dependency_context["recipe_count"] > 0
-            and self._looks_like_prep_component(ingredient)
-        ):
-            return "recipe_dependent", "prep-component recipe dependency"
-
-        sparsity_context = self._assess_bootstrap_sparse_demand(
+        return await self.policy_bootstrap.infer_policy_type_for_bootstrap(
+            ingredient=ingredient,
+            ingredient_id=ingredient_id,
             daily_forecast=daily_forecast,
             as_of_date=as_of_date,
+            shelf_life_days=shelf_life_days,
         )
-        if sparsity_context["is_sparse"]:
-            return (
-                "intermittent_low_turn",
-                f"sparse forecast events ratio={sparsity_context['positive_point_ratio']:.2f}",
-            )
-
-        return "stable_stocked", "stable-stock fallback"
 
     def _default_target_service_level_for_policy(self, policy_type: str) -> Decimal:
-        return POLICY_BOOTSTRAP_TARGET_SERVICE_LEVELS[policy_type].quantize(
-            Decimal("0.0001")
-        )
+        return self.policy_bootstrap.default_target_service_level_for_policy(policy_type)
 
     def _build_policy_bootstrap_reason(
         self,
@@ -337,16 +200,12 @@ class ReorderForecastEngine:
         missing_service_level: bool,
         inference_reason: Optional[str],
     ) -> str:
-        if missing_policy_type:
-            return (
-                f"EOD bootstrap inferred policy_type={policy_type}"
-                f" ({inference_reason or 'policy inference'})."
-            )
-        if missing_service_level:
-            return (
-                f"EOD bootstrap filled missing service-level defaults for policy_type={policy_type}."
-            )
-        return "EOD bootstrap reviewed replenishment policy configuration."
+        return self.policy_bootstrap.build_policy_bootstrap_reason(
+            policy_type=policy_type,
+            missing_policy_type=missing_policy_type,
+            missing_service_level=missing_service_level,
+            inference_reason=inference_reason,
+        )
 
     async def _build_bootstrap_policy_update(
         self,
@@ -358,66 +217,14 @@ class ReorderForecastEngine:
         suppliers: List[Any],
         inventory: Optional[Any],
     ) -> Dict[str, Any]:
-        existing_policy_type = self._normalize_policy_type_value(
-            getattr(ingredient, "policy_type", None)
-        )
-        existing_assignment_mode = self._normalize_assignment_mode(
-            getattr(ingredient, "policy_assignment_mode", None)
-        )
-        has_service_level = (
-            self._normalize_floatlike(getattr(ingredient, "target_service_level", None))
-            is not None
-            or self._normalize_floatlike(getattr(ingredient, "service_level_z", None))
-            is not None
-        )
-        missing_policy_type = not existing_policy_type
-        missing_service_level = not has_service_level
-
-        if not (missing_policy_type or missing_service_level):
-            return {}
-
-        supplier_selection = await self.choose_supplier_option(
-            suppliers,
+        return await self.policy_bootstrap.build_bootstrap_policy_update(
+            ingredient=ingredient,
+            ingredient_id=ingredient_id,
+            daily_forecast=daily_forecast,
             as_of_date=as_of_date,
-        )
-        selected_supplier = supplier_selection["supplier"] if supplier_selection else None
-        shelf_life_days = self._resolve_bootstrap_shelf_life_days(
+            suppliers=suppliers,
             inventory=inventory,
-            supplier=selected_supplier,
         )
-
-        inference_reason = None
-        policy_type = existing_policy_type
-        if missing_policy_type:
-            policy_type, inference_reason = await self._infer_policy_type_for_bootstrap(
-                ingredient=ingredient,
-                ingredient_id=ingredient_id,
-                daily_forecast=daily_forecast,
-                as_of_date=as_of_date,
-                shelf_life_days=shelf_life_days,
-            )
-
-        update_payload: Dict[str, Any] = {}
-        if missing_policy_type:
-            update_payload["policy_type"] = policy_type
-            update_payload["policy_assignment_mode"] = "system"
-
-        if missing_service_level:
-            update_payload["target_service_level"] = (
-                self._default_target_service_level_for_policy(policy_type)
-            )
-            if not missing_policy_type and existing_assignment_mode is None:
-                update_payload["policy_assignment_mode"] = "system"
-
-        if not self._normalize_textlike(getattr(ingredient, "policy_override_reason", None)):
-            update_payload["policy_override_reason"] = self._build_policy_bootstrap_reason(
-                policy_type=policy_type,
-                missing_policy_type=missing_policy_type,
-                missing_service_level=missing_service_level,
-                inference_reason=inference_reason,
-            )
-
-        return update_payload
 
     @log_method("Reorder: Bootstrap Missing Policy Config")
     async def bootstrap_missing_policy_config(
@@ -491,55 +298,10 @@ class ReorderForecastEngine:
         *,
         shelf_life_days: Optional[int],
     ) -> Dict[str, Any]:
-        ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
-        configured_policy = getattr(ingredient, "policy_type", None)
-        policy_type = self._normalize_policy_type_value(configured_policy)
-        if not policy_type:
-            raise ValueError(
-                f"ingredient {ingredient_id} missing policy_type; configure an explicit replenishment policy"
-            )
-
-        policy_assignment_mode = self._normalize_assignment_mode(
-            getattr(ingredient, "policy_assignment_mode", None)
+        return await self.context_builder.resolve_policy_context(
+            ingredient_id,
+            shelf_life_days=shelf_life_days,
         )
-        override_target_service_level = self._normalize_floatlike(
-            getattr(ingredient, "target_service_level", None)
-        )
-        override_service_level_z = self._normalize_floatlike(
-            getattr(ingredient, "service_level_z", None)
-        )
-
-        if override_service_level_z is None and override_target_service_level is None:
-            raise ValueError(
-                f"ingredient {ingredient_id} missing target_service_level/service_level_z for policy {policy_type}"
-            )
-
-        if override_service_level_z is not None:
-            service_level_z = Decimal(str(override_service_level_z)).quantize(
-                Decimal("0.0001")
-            )
-            target_service_level = Decimal(
-                str(NormalDist().cdf(float(service_level_z)))
-            ).quantize(Decimal("0.0001"))
-            service_level_source = "ingredient_override"
-        else:
-            target_service_level = Decimal(str(override_target_service_level)).quantize(
-                Decimal("0.0001")
-            )
-            service_level_z = Decimal(
-                str(NormalDist().inv_cdf(float(target_service_level)))
-            ).quantize(Decimal("0.0001"))
-            service_level_source = "ingredient_target"
-
-        return {
-            "policy_type": policy_type,
-            "policy_assignment_mode": policy_assignment_mode,
-            "target_service_level": target_service_level,
-            "service_level_z": service_level_z,
-            "service_level_source": service_level_source,
-            "policy_override_reason": getattr(ingredient, "policy_override_reason", None),
-            "policy_inferred": policy_assignment_mode == "system",
-        }
 
     def _resolve_supplier_cadence_context(
         self,
@@ -548,66 +310,11 @@ class ReorderForecastEngine:
         as_of_date: Optional[date],
         default_lead_time_days: Optional[int] = None,
     ) -> Dict[str, Any]:
-        lead_time_days = self._normalize_priority(getattr(supplier, "lead_time_days", None))
-        if lead_time_days is None:
-            lead_time_days = max(int(default_lead_time_days or 0), 0)
-
-        review_period_days = self._normalize_priority(
-            getattr(supplier, "review_period_days", None)
-        )
-        order_schedule_type = getattr(supplier, "order_schedule_type", None)
-        if not isinstance(order_schedule_type, (str, type(None))):
-            order_schedule_type = None
-        allowed_order_days = getattr(supplier, "allowed_order_days", None)
-        if not isinstance(allowed_order_days, (list, tuple, str, type(None))):
-            allowed_order_days = None
-        allowed_delivery_days = getattr(supplier, "allowed_delivery_days", None)
-        if not isinstance(allowed_delivery_days, (list, tuple, str, type(None))):
-            allowed_delivery_days = None
-
-        cadence = resolve_cadence(
+        return self.context_builder.resolve_supplier_cadence_context(
+            supplier,
             as_of_date=as_of_date,
-            lead_time_days=lead_time_days,
-            review_period_days=review_period_days,
-            order_schedule_type=order_schedule_type,
-            allowed_order_days=allowed_order_days,
-            allowed_delivery_days=allowed_delivery_days,
+            default_lead_time_days=default_lead_time_days,
         )
-        next_delivery_date = cadence.next_delivery_date
-        next_order_date = cadence.next_order_date
-        anchor_date = as_of_date or date.today()
-        effective_lead_days = max(
-            (next_delivery_date - anchor_date).days if next_delivery_date else lead_time_days,
-            0,
-        )
-        cadence_source = getattr(supplier, "cadence_source", None)
-        if not isinstance(cadence_source, (str, type(None))):
-            cadence_source = None
-
-        return {
-            "cadence": cadence,
-            "lead_time_days": lead_time_days,
-            "effective_lead_days": effective_lead_days,
-            "review_period_days": cadence.review_period_days,
-            "order_schedule_type": cadence.order_schedule_type,
-            "allowed_order_days": list(cadence.allowed_order_days),
-            "allowed_delivery_days": list(cadence.allowed_delivery_days),
-            "next_order_date": next_order_date,
-            "next_delivery_date": next_delivery_date,
-            "days_until_next_order": cadence.days_until_next_order,
-            "protection_window_days": cadence.protection_window_days,
-            "warnings": list(cadence.warnings),
-            "cadence_source": cadence_source,
-            "cadence_confidence_score": self._normalize_floatlike(
-                getattr(supplier, "cadence_confidence_score", None)
-            ),
-            "explicit_cadence": bool(
-                review_period_days
-                or order_schedule_type
-                or allowed_order_days
-                or allowed_delivery_days
-            ),
-        }
 
     def _sum_forecast_window(
         self,
@@ -616,17 +323,11 @@ class ReorderForecastEngine:
         start_date: date,
         window_days: int,
     ) -> Decimal:
-        if window_days <= 0:
-            return Decimal("0.00")
-        end_date = start_date + timedelta(days=window_days)
-        total = Decimal("0.00")
-        for forecast_day, quantity in daily_forecast:
-            normalized_day = self._normalize_date_value(forecast_day)
-            if normalized_day is None:
-                continue
-            if start_date <= normalized_day < end_date:
-                total += self._to_decimal(quantity)
-        return total.quantize(Decimal("0.01"))
+        return self.context_builder.sum_forecast_window(
+            daily_forecast,
+            start_date=start_date,
+            window_days=window_days,
+        )
 
     def _window_forecast_points(
         self,
@@ -635,20 +336,11 @@ class ReorderForecastEngine:
         start_date: date,
         window_days: int,
     ) -> List[Any]:
-        if window_days <= 0:
-            return []
-
-        end_date = start_date + timedelta(days=window_days)
-        points = []
-        for forecast_day, quantity in daily_forecast:
-            normalized_day = self._normalize_date_value(forecast_day)
-            if normalized_day is None:
-                continue
-            if start_date <= normalized_day < end_date:
-                points.append((normalized_day, self._to_decimal(quantity)))
-
-        points.sort(key=lambda item: item[0])
-        return points
+        return self.context_builder.window_forecast_points(
+            daily_forecast,
+            start_date=start_date,
+            window_days=window_days,
+        )
 
     async def _build_demand_context(
         self,
@@ -662,186 +354,37 @@ class ReorderForecastEngine:
         current_unit: str,
         current_stock: Decimal,
     ) -> Dict[str, Any]:
-        cadence_context = self._resolve_supplier_cadence_context(
-            supplier,
+        return await self.context_builder.build_demand_context(
+            ingredient_id=ingredient_id,
+            daily_forecast=daily_forecast,
+            supplier=supplier,
             as_of_date=as_of_date,
-            default_lead_time_days=lead_time,
+            lead_time=lead_time,
+            shelf_life_days=shelf_life_days,
+            current_unit=current_unit,
+            current_stock=current_stock,
         )
-        effective_lead_days = cadence_context["effective_lead_days"]
-        normalized_shelf_life_days = (
-            max(int(shelf_life_days), 0) if shelf_life_days is not None else None
-        )
-
-        uncapped_coverage_days = max(
-            cadence_context["protection_window_days"],
-            effective_lead_days,
-        )
-        if uncapped_coverage_days == 0 and supplier is None and normalized_shelf_life_days:
-            uncapped_coverage_days = normalized_shelf_life_days
-
-        coverage_days = uncapped_coverage_days
-        coverage_capped_by_shelf_life = False
-        if normalized_shelf_life_days is not None and normalized_shelf_life_days > 0:
-            if coverage_days > normalized_shelf_life_days:
-                coverage_days = normalized_shelf_life_days
-                coverage_capped_by_shelf_life = True
-
-        if coverage_days == 0 and supplier is None and normalized_shelf_life_days:
-            coverage_days = normalized_shelf_life_days
-
-        lead_window_days = min(effective_lead_days, coverage_days)
-        lead_points = self._window_forecast_points(
-            daily_forecast,
-            start_date=as_of_date,
-            window_days=lead_window_days,
-        )
-        protection_lead_points = self._window_forecast_points(
-            daily_forecast,
-            start_date=as_of_date,
-            window_days=effective_lead_days,
-        )
-        coverage_points = self._window_forecast_points(
-            daily_forecast,
-            start_date=as_of_date,
-            window_days=coverage_days,
-        )
-        protection_points = self._window_forecast_points(
-            daily_forecast,
-            start_date=as_of_date,
-            window_days=uncapped_coverage_days,
-        )
-
-        lead_demand = sum((qty for _, qty in lead_points), Decimal("0.00")).quantize(
-            Decimal("0.01")
-        )
-        protection_lead_demand = sum(
-            (qty for _, qty in protection_lead_points),
-            Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
-        total_demand = sum((qty for _, qty in coverage_points), Decimal("0.00")).quantize(
-            Decimal("0.01")
-        )
-        protection_total_demand = sum(
-            (qty for _, qty in protection_points),
-            Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
-        shelf_demand = max(total_demand - lead_demand, Decimal("0.00")).quantize(
-            Decimal("0.01")
-        )
-        positive_points = [(day, qty) for day, qty in coverage_points if qty > 0]
-        next_event_demand = (
-            positive_points[0][1] if positive_points else Decimal("0.00")
-        ).quantize(Decimal("0.01"))
-        average_daily_demand = (
-            (total_demand / Decimal(str(coverage_days))).quantize(Decimal("0.01"))
-            if coverage_days
-            else Decimal("0.00")
-        )
-        max_daily_demand = max(
-            (qty for _, qty in coverage_points),
-            default=Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
-
-        usable_until_date = cadence_context["next_delivery_date"] or (
-            as_of_date + timedelta(days=effective_lead_days)
-        )
-        usable_inventory = await self.stats_service.get_usable_inventory(
-            ingredient_id,
-            usable_until_date=usable_until_date,
-        )
-        usable_stock = self._to_decimal(usable_inventory["quantity"])
-        usable_unit = usable_inventory.get("unit") or current_unit
-
-        return {
-            "demand_source": "forecast_daily_breakdown",
-            "cadence_context": cadence_context,
-            "effective_lead_days": effective_lead_days,
-            "lead_window_days": lead_window_days,
-            "coverage_days": coverage_days,
-            "uncapped_coverage_days": uncapped_coverage_days,
-            "coverage_capped_by_shelf_life": coverage_capped_by_shelf_life,
-            "lead_demand": lead_demand,
-            "protection_lead_demand": protection_lead_demand,
-            "shelf_demand": shelf_demand,
-            "total_demand": total_demand,
-            "protection_total_demand": protection_total_demand,
-            "average_daily_demand": average_daily_demand,
-            "max_daily_demand": max_daily_demand,
-            "demand_event_count": len(positive_points),
-            "next_event_demand": next_event_demand,
-            "effective_shelf_life_days": normalized_shelf_life_days,
-            "usable_until_date": usable_until_date,
-            "current_stock": usable_stock,
-            "current_unit": usable_unit,
-            "total_stock": self._to_decimal(usable_inventory.get("total_quantity")),
-            "excluded_expiring_stock": self._to_decimal(
-                usable_inventory.get("excluded_quantity")
-            ),
-            "inventory_source": usable_inventory.get("source") or "inventory_summary",
-            "inventory_conversion_fallback": bool(
-                usable_inventory.get("conversion_fallback")
-            ),
-            "fallback_stock": current_stock,
-        }
 
     def _build_inventory_position_context(
         self,
         *,
         demand_context: Dict[str, Any],
     ) -> Dict[str, Any]:
-        usable_stock = self._to_decimal(demand_context.get("current_stock"))
-        inbound_quantity = Decimal("0.00")
-        backorder_quantity = Decimal("0.00")
-        inventory_position = (usable_stock + inbound_quantity - backorder_quantity).quantize(
-            Decimal("0.01")
+        return self.context_builder.build_inventory_position_context(
+            demand_context=demand_context,
         )
-        assumption_warnings = [
-            "inbound quantity unavailable; assumed zero",
-            "backorders unavailable; assumed zero",
-        ]
-
-        return {
-            "usable_stock": usable_stock,
-            "inbound_quantity": inbound_quantity,
-            "backorder_quantity": backorder_quantity,
-            "inventory_position": inventory_position,
-            "inbound_quantity_assumed_zero": True,
-            "backorder_quantity_assumed_zero": True,
-            "assumption_warnings": assumption_warnings,
-        }
 
     @staticmethod
     def _zero_policy_quantities(reorder_method: str) -> Dict[str, Any]:
-        zero = Decimal("0.00")
-        return {
-            "reorder_point": zero,
-            "reorder_target": zero,
-            "raw_order_quantity": zero,
-            "policy_capped_quantity": zero,
-            "policy_buffer_quantity": zero,
-            "policy_safe_quantity": zero,
-            "safety_stock": zero,
-            "trigger_met": False,
-            "reorder_method": reorder_method,
-        }
+        return ReorderPolicyMathHelper.zero_policy_quantities(reorder_method)
 
     def _resolve_fresh_perishable_window(
         self,
         *,
         demand_context: Dict[str, Any],
     ) -> int:
-        effective_shelf_life_days = demand_context.get("effective_shelf_life_days")
-        if not effective_shelf_life_days:
-            return 0
-        protection_window_days = int(demand_context.get("uncapped_coverage_days") or 0)
-        if protection_window_days <= 0:
-            protection_window_days = int(effective_shelf_life_days)
-        return max(
-            min(
-                int(effective_shelf_life_days),
-                protection_window_days,
-            ),
-            0,
+        return self.policy_math.resolve_fresh_perishable_window(
+            demand_context=demand_context,
         )
 
     def _compute_perishable_reserve(
@@ -850,13 +393,10 @@ class ReorderForecastEngine:
         forecast_use: Decimal,
         usable_window_days: int,
     ) -> Decimal:
-        forecast_use = self._to_decimal(forecast_use)
-        if forecast_use <= 0 or usable_window_days <= 0:
-            return Decimal("0.00")
-        average_daily_demand = (forecast_use / Decimal(str(usable_window_days))).quantize(
-            Decimal("0.01")
+        return self.policy_math.compute_perishable_reserve(
+            forecast_use=forecast_use,
+            usable_window_days=usable_window_days,
         )
-        return min(average_daily_demand, forecast_use).quantize(Decimal("0.01"))
 
     def _resolve_fresh_spoilage_cap(
         self,
@@ -866,26 +406,11 @@ class ReorderForecastEngine:
         supplier: Optional[Any],
         as_of_date: date,
     ) -> Decimal:
-        if effective_shelf_life_days is None or int(effective_shelf_life_days) <= 0:
-            return Decimal("0.00")
-        historical_spoilage_rate = max(
-            self._to_decimal(
-                getattr(supplier, "spoilage_rate", None) if supplier is not None else None
-            ),
-            Decimal("0.00"),
-        )
-        base_freshness_buffer = Decimal("0.10")
-        freshness_buffer = max(
-            base_freshness_buffer - min(historical_spoilage_rate, base_freshness_buffer),
-            Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
-        shelf_life_demand = self._sum_forecast_window(
+        return self.policy_math.resolve_fresh_spoilage_cap(
             daily_forecast,
-            start_date=as_of_date,
-            window_days=int(effective_shelf_life_days),
-        )
-        return (shelf_life_demand * (Decimal("1.00") + freshness_buffer)).quantize(
-            Decimal("0.01")
+            effective_shelf_life_days=effective_shelf_life_days,
+            supplier=supplier,
+            as_of_date=as_of_date,
         )
 
     def _build_fresh_perishable_decision(
@@ -897,61 +422,13 @@ class ReorderForecastEngine:
         supplier: Optional[Any],
         as_of_date: date,
     ) -> Dict[str, Any]:
-        usable_window_days = self._resolve_fresh_perishable_window(
+        return self.policy_math.build_fresh_perishable_decision(
             demand_context=demand_context,
-        )
-        if usable_window_days <= 0:
-            return {
-                **self._zero_policy_quantities("perishable_window"),
-                "usable_window_days": usable_window_days,
-                "spoilage_cap_quantity": Decimal("0.00"),
-                "reserve_type": "perishable_reserve",
-            }
-
-        forecast_use = self._sum_forecast_window(
-            daily_forecast,
-            start_date=as_of_date,
-            window_days=usable_window_days,
-        )
-        perishable_reserve = self._compute_perishable_reserve(
-            forecast_use=forecast_use,
-            usable_window_days=usable_window_days,
-        )
-        inventory_position = inventory_position_context["inventory_position"]
-        target_stock = (forecast_use + perishable_reserve).quantize(Decimal("0.01"))
-        raw_order_quantity = max(
-            target_stock - inventory_position,
-            Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
-        spoilage_cap_quantity = self._resolve_fresh_spoilage_cap(
             daily_forecast=daily_forecast,
-            effective_shelf_life_days=demand_context.get("effective_shelf_life_days"),
+            inventory_position_context=inventory_position_context,
             supplier=supplier,
             as_of_date=as_of_date,
         )
-        policy_capped_quantity = min(raw_order_quantity, spoilage_cap_quantity).quantize(
-            Decimal("0.01")
-        )
-        protection_window_days = int(demand_context.get("uncapped_coverage_days") or 0)
-        return {
-            "reorder_point": target_stock,
-            "reorder_target": target_stock,
-            "raw_order_quantity": raw_order_quantity,
-            "policy_capped_quantity": policy_capped_quantity,
-            "policy_safe_quantity": policy_capped_quantity,
-            "policy_buffer_quantity": perishable_reserve,
-            "safety_stock": Decimal("0.00"),
-            "trigger_met": raw_order_quantity > 0,
-            "reorder_method": "perishable_window",
-            "usable_window_days": usable_window_days,
-            "forecast_use": forecast_use,
-            "spoilage_cap_quantity": spoilage_cap_quantity,
-            "reserve_type": "perishable_reserve",
-            "coverage_days": usable_window_days,
-            "coverage_capped_by_shelf_life": bool(
-                protection_window_days and usable_window_days < protection_window_days
-            ),
-        }
 
     async def _compute_stable_safety_stock(
         self,
@@ -960,9 +437,9 @@ class ReorderForecastEngine:
         lead_time: int,
         service_level_z: Decimal,
     ) -> Decimal:
-        return await self.calculate_safety_stock(
-            ingredient_id,
-            lead_time,
+        return await self.policy_math.compute_stable_safety_stock(
+            ingredient_id=ingredient_id,
+            lead_time=lead_time,
             service_level_z=service_level_z,
         )
 
@@ -974,93 +451,18 @@ class ReorderForecastEngine:
         inventory_position_context: Dict[str, Any],
         service_level_z: Decimal,
     ) -> Dict[str, Any]:
-        lead_demand = self._to_decimal(demand_context.get("protection_lead_demand"))
-        protection_window_demand = self._to_decimal(
-            demand_context.get("protection_total_demand")
-        )
-        if protection_window_demand <= 0:
-            return self._zero_policy_quantities("continuous_review")
-
-        safety_stock = await self._compute_stable_safety_stock(
+        return await self.policy_math.build_stable_stocked_decision(
             ingredient_id=ingredient_id,
-            lead_time=int(demand_context.get("effective_lead_days") or 0),
+            demand_context=demand_context,
+            inventory_position_context=inventory_position_context,
             service_level_z=service_level_z,
         )
-        reorder_point = (lead_demand + safety_stock).quantize(Decimal("0.01"))
-        reorder_target = (protection_window_demand + safety_stock).quantize(
-            Decimal("0.01")
-        )
-        inventory_position = inventory_position_context["inventory_position"]
-        trigger_met = inventory_position <= reorder_point
-        raw_order_quantity = (
-            max(reorder_target - inventory_position, Decimal("0.00"))
-            if trigger_met
-            else Decimal("0.00")
-        ).quantize(Decimal("0.01"))
-        return {
-            "reorder_point": reorder_point,
-            "reorder_target": reorder_target,
-            "raw_order_quantity": raw_order_quantity,
-            "policy_capped_quantity": raw_order_quantity,
-            "policy_safe_quantity": raw_order_quantity,
-            "policy_buffer_quantity": safety_stock.quantize(Decimal("0.01")),
-            "safety_stock": safety_stock.quantize(Decimal("0.01")),
-            "trigger_met": trigger_met,
-            "reorder_method": "continuous_review",
-            "reserve_type": "stable_safety_stock",
-            "coverage_days": int(demand_context.get("uncapped_coverage_days") or 0),
-        }
 
     async def _build_recipe_dependency_context(
         self,
         ingredient_id: int,
     ) -> Dict[str, Any]:
-        recipe_links = await self.recipe_ingredient_repo.get_all_by_reference_id_and_type(
-            "ingredient",
-            ingredient_id,
-        )
-        batch_links = await self.batch_recipe_ingredient_repo.get_all_by_reference_id_and_type(
-            "ingredient",
-            ingredient_id,
-        )
-
-        recipe_ids = {
-            getattr(link, "recipe_id", None)
-            for link in recipe_links
-            if getattr(link, "recipe_id", None) is not None
-        }
-        batch_recipe_ids = {
-            getattr(link, "batch_recipe_id", None)
-            for link in batch_links
-            if getattr(link, "batch_recipe_id", None) is not None
-        }
-        menu_item_ids = set()
-        menu_linked_recipe_ids = set()
-        for recipe_id in recipe_ids:
-            menu_links = await self.menu_item_recipe_repo.get_by_recipe(recipe_id)
-            if not menu_links:
-                continue
-            menu_linked_recipe_ids.add(recipe_id)
-            for menu_link in menu_links:
-                menu_item_id = getattr(menu_link, "menu_item_id", None)
-                if menu_item_id is not None:
-                    menu_item_ids.add(menu_item_id)
-
-        if menu_linked_recipe_ids and batch_recipe_ids:
-            dependency_mode = "mixed"
-        elif batch_recipe_ids:
-            dependency_mode = "batch_only"
-        elif menu_linked_recipe_ids:
-            dependency_mode = "menu_only"
-        else:
-            dependency_mode = "unknown"
-
-        return {
-            "dependency_mode": dependency_mode,
-            "recipe_count": len(recipe_ids),
-            "batch_recipe_count": len(batch_recipe_ids),
-            "menu_item_count": len(menu_item_ids),
-        }
+        return await self.policy_math.build_recipe_dependency_context(ingredient_id)
 
     def _compute_recipe_requirement_guard(
         self,
@@ -1068,29 +470,10 @@ class ReorderForecastEngine:
         demand_context: Dict[str, Any],
         dependency_context: Dict[str, Any],
     ) -> Dict[str, Decimal]:
-        average_daily_demand = self._to_decimal(demand_context.get("average_daily_demand"))
-        daily_peak_quantity = self._to_decimal(demand_context.get("max_daily_demand"))
-        menu_guard_quantity = min(average_daily_demand, daily_peak_quantity).quantize(
-            Decimal("0.01")
+        return self.policy_math.compute_recipe_requirement_guard(
+            demand_context=demand_context,
+            dependency_context=dependency_context,
         )
-        batch_guard_quantity = daily_peak_quantity.quantize(Decimal("0.01"))
-        dependency_mode = dependency_context.get("dependency_mode")
-
-        if dependency_mode == "batch_only":
-            recipe_guard_quantity = batch_guard_quantity
-        elif dependency_mode == "mixed":
-            recipe_guard_quantity = max(
-                menu_guard_quantity,
-                batch_guard_quantity,
-            ).quantize(Decimal("0.01"))
-        else:
-            recipe_guard_quantity = menu_guard_quantity
-
-        return {
-            "recipe_guard_quantity": recipe_guard_quantity,
-            "menu_guard_quantity": menu_guard_quantity,
-            "batch_guard_quantity": batch_guard_quantity,
-        }
 
     async def _build_recipe_dependent_decision(
         self,
@@ -1099,63 +482,11 @@ class ReorderForecastEngine:
         demand_context: Dict[str, Any],
         inventory_position_context: Dict[str, Any],
     ) -> Dict[str, Any]:
-        dependency_context = await self._build_recipe_dependency_context(ingredient_id)
-        net_requirement_quantity = self._to_decimal(
-            demand_context.get("protection_total_demand")
-        )
-        guard_context = self._compute_recipe_requirement_guard(
+        return await self.policy_math.build_recipe_dependent_decision(
+            ingredient_id=ingredient_id,
             demand_context=demand_context,
-            dependency_context=dependency_context,
+            inventory_position_context=inventory_position_context,
         )
-        recipe_guard_quantity = guard_context["recipe_guard_quantity"]
-        coverage_days = int(demand_context.get("uncapped_coverage_days") or 0)
-        reorder_method = "recipe_net_requirement_order_up_to"
-
-        if net_requirement_quantity <= 0:
-            return {
-                **self._zero_policy_quantities(reorder_method),
-                "reserve_type": "recipe_dependency_guard",
-                "coverage_days": coverage_days,
-                "coverage_capped_by_shelf_life": False,
-                "recipe_dependency_mode": dependency_context["dependency_mode"],
-                "recipe_count": dependency_context["recipe_count"],
-                "batch_recipe_count": dependency_context["batch_recipe_count"],
-                "menu_item_count": dependency_context["menu_item_count"],
-                "net_requirement_quantity": net_requirement_quantity,
-                "menu_guard_quantity": guard_context["menu_guard_quantity"],
-                "batch_guard_quantity": guard_context["batch_guard_quantity"],
-            }
-
-        inventory_position = inventory_position_context["inventory_position"]
-        target_stock = (net_requirement_quantity + recipe_guard_quantity).quantize(
-            Decimal("0.01")
-        )
-        raw_order_quantity = max(
-            target_stock - inventory_position,
-            Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
-
-        return {
-            "reorder_point": net_requirement_quantity,
-            "reorder_target": target_stock,
-            "raw_order_quantity": raw_order_quantity,
-            "policy_capped_quantity": raw_order_quantity,
-            "policy_safe_quantity": raw_order_quantity,
-            "policy_buffer_quantity": recipe_guard_quantity,
-            "safety_stock": Decimal("0.00"),
-            "trigger_met": raw_order_quantity > 0,
-            "reorder_method": reorder_method,
-            "reserve_type": "recipe_dependency_guard",
-            "coverage_days": coverage_days,
-            "coverage_capped_by_shelf_life": False,
-            "recipe_dependency_mode": dependency_context["dependency_mode"],
-            "recipe_count": dependency_context["recipe_count"],
-            "batch_recipe_count": dependency_context["batch_recipe_count"],
-            "menu_item_count": dependency_context["menu_item_count"],
-            "net_requirement_quantity": net_requirement_quantity,
-            "menu_guard_quantity": guard_context["menu_guard_quantity"],
-            "batch_guard_quantity": guard_context["batch_guard_quantity"],
-        }
 
     def _assess_demand_sparsity(
         self,
@@ -1164,37 +495,11 @@ class ReorderForecastEngine:
         as_of_date: date,
         demand_context: Dict[str, Any],
     ) -> Dict[str, Any]:
-        protection_window_days = int(
-            demand_context.get("uncapped_coverage_days")
-            or demand_context.get("coverage_days")
-            or demand_context.get("effective_lead_days")
-            or 0
+        return self.policy_math.assess_demand_sparsity(
+            daily_forecast=daily_forecast,
+            as_of_date=as_of_date,
+            demand_context=demand_context,
         )
-        if protection_window_days <= 0:
-            protection_window_days = 1
-        forecast_points = self._window_forecast_points(
-            daily_forecast,
-            start_date=as_of_date,
-            window_days=protection_window_days,
-        )
-        positive_points = [(day, qty) for day, qty in forecast_points if qty > 0]
-        event_spacing_days = [
-            (positive_points[index][0] - positive_points[index - 1][0]).days
-            for index in range(1, len(positive_points))
-        ]
-        if len(positive_points) <= 1:
-            sparsity_classification = "single_event"
-        else:
-            sparsity_classification = "repeated_sparse"
-
-        return {
-            "event_count": len(positive_points),
-            "event_spacing_days": event_spacing_days,
-            "days_until_next_event": (
-                (positive_points[0][0] - as_of_date).days if positive_points else None
-            ),
-            "sparsity_classification": sparsity_classification,
-        }
 
     def _compute_sparse_guard_quantity(
         self,
@@ -1202,17 +507,10 @@ class ReorderForecastEngine:
         demand_context: Dict[str, Any],
         sparsity_context: Dict[str, Any],
     ) -> Decimal:
-        trigger_quantity = self._to_decimal(demand_context.get("next_event_demand"))
-        if trigger_quantity <= 0 or sparsity_context.get("event_count", 0) <= 1:
-            return Decimal("0.00")
-
-        average_daily_demand = self._to_decimal(demand_context.get("average_daily_demand"))
-        max_daily_demand = self._to_decimal(demand_context.get("max_daily_demand"))
-        peak_delta = max(max_daily_demand - trigger_quantity, Decimal("0.00"))
-        return min(
-            average_daily_demand,
-            peak_delta if peak_delta > 0 else average_daily_demand,
-        ).quantize(Decimal("0.01"))
+        return self.policy_math.compute_sparse_guard_quantity(
+            demand_context=demand_context,
+            sparsity_context=sparsity_context,
+        )
 
     def _build_intermittent_review_flags(
         self,
@@ -1221,29 +519,11 @@ class ReorderForecastEngine:
         moq_floor: Decimal,
         final_quantity: Decimal,
     ) -> Dict[str, Any]:
-        policy_safe_quantity = self._to_decimal(policy_safe_quantity)
-        moq_floor = self._to_decimal(moq_floor)
-        final_quantity = self._to_decimal(final_quantity)
-        materially_inflated = False
-        if final_quantity > policy_safe_quantity:
-            if policy_safe_quantity <= 0:
-                materially_inflated = final_quantity > 0 and moq_floor > 0
-            else:
-                materially_inflated = (
-                    final_quantity >= (policy_safe_quantity * Decimal("1.50")).quantize(
-                        Decimal("0.01")
-                    )
-                    or (final_quantity - policy_safe_quantity) >= Decimal("1.00")
-                )
-
-        return {
-            "moq_review_required": materially_inflated,
-            "policy_review_warnings": (
-                ["configured MOQ materially exceeds sparse policy-safe quantity"]
-                if materially_inflated
-                else []
-            ),
-        }
+        return self.policy_math.build_intermittent_review_flags(
+            policy_safe_quantity=policy_safe_quantity,
+            moq_floor=moq_floor,
+            final_quantity=final_quantity,
+        )
 
     def _build_intermittent_low_turn_decision(
         self,
@@ -1253,60 +533,12 @@ class ReorderForecastEngine:
         inventory_position_context: Dict[str, Any],
         as_of_date: date,
     ) -> Dict[str, Any]:
-        trigger_quantity = self._to_decimal(demand_context.get("next_event_demand"))
-        sparsity_context = self._assess_demand_sparsity(
+        return self.policy_math.build_intermittent_low_turn_decision(
+            demand_context=demand_context,
             daily_forecast=daily_forecast,
+            inventory_position_context=inventory_position_context,
             as_of_date=as_of_date,
-            demand_context=demand_context,
         )
-        reorder_method = "sparse_event_replenishment"
-        coverage_days = int(demand_context.get("uncapped_coverage_days") or 0)
-
-        if trigger_quantity <= 0:
-            return {
-                **self._zero_policy_quantities(reorder_method),
-                "reserve_type": "sparse_event_guard",
-                "coverage_days": coverage_days,
-                "coverage_capped_by_shelf_life": False,
-                "demand_sparsity_classification": sparsity_context[
-                    "sparsity_classification"
-                ],
-                "event_spacing_days": sparsity_context["event_spacing_days"],
-                "days_until_next_event": sparsity_context["days_until_next_event"],
-            }
-
-        sparse_guard_quantity = self._compute_sparse_guard_quantity(
-            demand_context=demand_context,
-            sparsity_context=sparsity_context,
-        )
-        inventory_position = inventory_position_context["inventory_position"]
-        target_stock = (trigger_quantity + sparse_guard_quantity).quantize(
-            Decimal("0.01")
-        )
-        raw_order_quantity = max(
-            target_stock - inventory_position,
-            Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
-
-        return {
-            "reorder_point": trigger_quantity,
-            "reorder_target": target_stock,
-            "raw_order_quantity": raw_order_quantity,
-            "policy_capped_quantity": raw_order_quantity,
-            "policy_safe_quantity": raw_order_quantity,
-            "policy_buffer_quantity": sparse_guard_quantity,
-            "safety_stock": Decimal("0.00"),
-            "trigger_met": raw_order_quantity > 0,
-            "reorder_method": reorder_method,
-            "reserve_type": "sparse_event_guard",
-            "coverage_days": coverage_days,
-            "coverage_capped_by_shelf_life": False,
-            "demand_sparsity_classification": sparsity_context[
-                "sparsity_classification"
-            ],
-            "event_spacing_days": sparsity_context["event_spacing_days"],
-            "days_until_next_event": sparsity_context["days_until_next_event"],
-        }
 
     async def _dispatch_policy_quantities(
         self,
@@ -1349,11 +581,6 @@ class ReorderForecastEngine:
                 as_of_date=as_of_date,
             )
 
-        safety_stock = await self._compute_stable_safety_stock(
-            ingredient_id=ingredient_id,
-            lead_time=int(demand_context.get("effective_lead_days") or 0),
-            service_level_z=service_level_z,
-        )
         raise ValueError(f"unsupported replenishment policy_type: {policy_type}")
 
     async def _get_abc_context(self, ingredient_id: int) -> Dict[str, Any]:
@@ -1375,51 +602,10 @@ class ReorderForecastEngine:
         *,
         as_of_date: Optional[date] = None,
     ) -> Optional[Dict[str, Any]]:
-        if not suppliers:
-            return None
-
-        supplier_contexts = [
-            (supplier, self._resolve_supplier_cadence_context(supplier, as_of_date=as_of_date))
-            for supplier in suppliers
-        ]
-        preferred_suppliers = [item for item in supplier_contexts if bool(getattr(item[0], "preferred", False))]
-        candidate_pool = preferred_suppliers or supplier_contexts
-        candidate_scope = "preferred" if preferred_suppliers else "fallback"
-        use_cadence = any(context[1]["explicit_cadence"] for context in candidate_pool)
-
-        def sort_key(item: Any) -> Any:
-            supplier, cadence_context = item
-            priority = self._normalize_priority(getattr(supplier, "supplier_priority", None))
-            if use_cadence:
-                return (
-                    cadence_context["next_delivery_date"] or date.max,
-                    cadence_context["next_order_date"] or date.max,
-                    priority is None,
-                    priority if priority is not None else float("inf"),
-                )
-            return (
-                priority is None,
-                priority if priority is not None else float("inf"),
-            )
-
-        selected_supplier, cadence_context = min(candidate_pool, key=sort_key)
-        reason_code = (
-            f"{candidate_scope}_best_cadence"
-            if use_cadence
-            else f"{candidate_scope}_lowest_priority"
+        return await self.context_builder.choose_supplier_option(
+            suppliers,
+            as_of_date=as_of_date,
         )
-
-        return {
-            "supplier": selected_supplier,
-            "cadence_context": cadence_context,
-            "reason_code": reason_code,
-            "preferred_supplier_available": bool(preferred_suppliers),
-            "selected_supplier_priority": self._normalize_priority(
-                getattr(selected_supplier, "supplier_priority", None)
-            ),
-            "selected_supplier_preferred": bool(getattr(selected_supplier, "preferred", False)),
-            "pricing_available": getattr(selected_supplier, "cost_per_unit", None) is not None,
-        }
 
     async def build_reorder_decision(
         self,
