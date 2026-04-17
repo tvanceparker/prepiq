@@ -7,6 +7,7 @@ import {
   PurchaseOrderItem,
   PurchaseOrderItemAddResult,
   PurchaseOrderItemDeleteResult,
+  PurchaseOrderDeleteResult,
   PurchaseOrderReceiptRequest,
   PurchaseOrderItemUpdateResult,
   PurchaseOrderReceiptSummary,
@@ -76,6 +77,10 @@ export async function removeItemFromPurchaseOrder(
   order_item_id: number
 ): Promise<PurchaseOrderItemDeleteResult> {
   return del(`/inventory/purchase_orders/${order_id}/items/${order_item_id}`);
+}
+
+export async function deletePurchaseOrder(order_id: number): Promise<PurchaseOrderDeleteResult> {
+  return del(`/inventory/purchase_orders/${order_id}`);
 }
 
 export async function updatePurchaseOrderItem(

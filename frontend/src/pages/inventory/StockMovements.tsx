@@ -32,6 +32,10 @@ import {
   ToggleButtonGroup,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import NorthEastIcon from '@mui/icons-material/NorthEast';
+import SouthWestIcon from '@mui/icons-material/SouthWest';
+import TimelineIcon from '@mui/icons-material/Timeline';
+import HistoryEduIcon from '@mui/icons-material/HistoryEdu';
 
 const today = new Date().toISOString().slice(0, 10);
 const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -141,6 +145,41 @@ export default function StockMovementsPage() {
     () => Array.from(new Set(historyItems.map(item => item.status))).sort(),
     [historyItems]
   );
+
+  const movementSummary = useMemo(() => {
+    const inboundCount = filteredMovements.filter(item => item.quantity > 0).length;
+    const outboundCount = filteredMovements.filter(item => item.quantity < 0).length;
+    const netQuantity = filteredMovements.reduce(
+      (sum, item) => sum + Number(item.quantity || 0),
+      0
+    );
+
+    return {
+      total: filteredMovements.length,
+      inboundCount,
+      outboundCount,
+      netQuantity,
+    };
+  }, [filteredMovements]);
+
+  const historySummary = useMemo(() => {
+    const resolvedCount = filteredHistory.filter(item => item.status === 'Resolved').length;
+    const acknowledgedCount = filteredHistory.filter(item => item.status === 'Acknowledged').length;
+    const activeCount = filteredHistory.filter(item => item.status === 'Active').length;
+
+    return {
+      total: filteredHistory.length,
+      resolvedCount,
+      acknowledgedCount,
+      activeCount,
+    };
+  }, [filteredHistory]);
+
+  const pageTitle = viewMode === 'movements' ? 'Stock Movements' : 'Discrepancy History';
+  const pageDescription =
+    viewMode === 'movements'
+      ? 'Track every inventory increase and decrease in one place, with filters that make additions, removals, and source context easy to scan.'
+      : 'Review blocked deduction events, what triggered them, and how operators resolved them over time.';
 
   const movementColumns = useMemo<MRT_ColumnDef<StockMovement>[]>(
     () => [
@@ -316,64 +355,252 @@ export default function StockMovementsPage() {
   );
 
   return (
-    <Box sx={{ p: 2 }}>
-      <Paper sx={{ p: 3, bgcolor: 'background.paper' }} elevation={0}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-          <Typography variant="h5">
-            {viewMode === 'movements' ? 'Stock Movements' : 'Discrepancy History'}
-          </Typography>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
-            Adjust Inventory
-          </Button>
-        </Stack>
-        <Typography variant="body2" color="text.secondary" gutterBottom>
-          {viewMode === 'movements'
-            ? 'Track all inventory movements including purchases, sales, waste, and batch production'
-            : 'Review blocked deductions and how they were acknowledged or resolved over time'}
-        </Typography>
-
-        <ToggleButtonGroup
-          value={viewMode}
-          exclusive
-          onChange={(_, nextValue) => {
-            if (nextValue) setViewMode(nextValue);
+    <Box sx={{ p: 3, bgcolor: 'background.default' }}>
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 2.5,
+          p: { xs: 2.5, md: 3 },
+          borderRadius: 4,
+          position: 'relative',
+          overflow: 'hidden',
+          color: 'common.white',
+          background: 'linear-gradient(135deg, #0c4a6e 0%, #0f766e 48%, #22d3ee 100%)',
+        }}
+      >
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'radial-gradient(circle at top right, rgba(255,255,255,0.18), transparent 34%), radial-gradient(circle at bottom left, rgba(8,47,73,0.42), transparent 42%)',
           }}
-          size="small"
-          sx={{ mt: 2, mb: 1 }}
+        />
+        <Stack
+          direction={{ xs: 'column', lg: 'row' }}
+          justifyContent="space-between"
+          spacing={3}
+          sx={{ position: 'relative' }}
         >
-          <ToggleButton value="movements">Movements</ToggleButton>
-          <ToggleButton value="discrepancies">Discrepancies</ToggleButton>
-        </ToggleButtonGroup>
+          <Box sx={{ maxWidth: 760 }}>
+            <Typography variant="overline" sx={{ letterSpacing: 1.6, opacity: 0.88 }}>
+              Inventory Ledger
+            </Typography>
+            <Typography variant="h3" sx={{ mt: 0.5, fontWeight: 800, lineHeight: 1.05 }}>
+              {pageTitle}
+            </Typography>
+            <Typography variant="body1" sx={{ mt: 1.25, maxWidth: 640, opacity: 0.92 }}>
+              {pageDescription}
+            </Typography>
 
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} my={3} alignItems="center">
-          <TextField
-            label="Start Date"
-            type="date"
-            value={startDate}
-            onChange={e => setStartDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            size="small"
-          />
-          <TextField
-            label="End Date"
-            type="date"
-            value={endDate}
-            onChange={e => setEndDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            size="small"
-          />
-          <Autocomplete
-            options={ingredientOptions}
-            getOptionLabel={option => option.ingredient_name}
-            value={ingredient}
-            onChange={(_, value) => setIngredient(value)}
-            sx={{ minWidth: 250 }}
-            size="small"
-            renderInput={params => <TextField {...params} label="Filter by Ingredient" />}
-            isOptionEqualToValue={(left, right) => left.ingredient_id === right.ingredient_id}
-          />
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2.25 }}>
+              {viewMode === 'movements' ? (
+                <>
+                  <Chip
+                    icon={<TimelineIcon sx={{ color: 'inherit !important' }} />}
+                    label={`${movementSummary.total} movement rows`}
+                    sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'common.white' }}
+                  />
+                  <Chip
+                    icon={<NorthEastIcon sx={{ color: 'inherit !important' }} />}
+                    label={`${movementSummary.inboundCount} inbound`}
+                    sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'common.white' }}
+                  />
+                  <Chip
+                    icon={<SouthWestIcon sx={{ color: 'inherit !important' }} />}
+                    label={`${movementSummary.outboundCount} outbound`}
+                    sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'common.white' }}
+                  />
+                </>
+              ) : (
+                <>
+                  <Chip
+                    icon={<HistoryEduIcon sx={{ color: 'inherit !important' }} />}
+                    label={`${historySummary.total} history rows`}
+                    sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'common.white' }}
+                  />
+                  <Chip
+                    label={`${historySummary.activeCount} active`}
+                    sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'common.white' }}
+                  />
+                  <Chip
+                    label={`${historySummary.resolvedCount} resolved`}
+                    sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'common.white' }}
+                  />
+                </>
+              )}
+            </Stack>
+          </Box>
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            <Button
+              variant="outlined"
+              size="large"
+              onClick={() => refreshData()}
+              sx={{
+                px: 3,
+                py: 1.5,
+                borderRadius: 2.5,
+                color: 'common.white',
+                borderColor: 'rgba(255,255,255,0.52)',
+                bgcolor: 'rgba(255,255,255,0.08)',
+                '&:hover': {
+                  borderColor: 'rgba(255,255,255,0.78)',
+                  bgcolor: 'rgba(255,255,255,0.14)',
+                },
+              }}
+            >
+              Refresh Ledger
+            </Button>
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<AddIcon />}
+              onClick={() => setDialogOpen(true)}
+              sx={{
+                px: 3.5,
+                py: 1.5,
+                borderRadius: 2.5,
+                bgcolor: '#ecfeff',
+                color: '#0f4c5c',
+                boxShadow: '0 18px 36px rgba(8, 47, 73, 0.22)',
+                '&:hover': { bgcolor: '#ffffff' },
+              }}
+            >
+              Adjust Inventory
+            </Button>
+          </Stack>
         </Stack>
+      </Paper>
 
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2.5,
+          mb: 2,
+          borderRadius: 3,
+          bgcolor: 'background.paper',
+        }}
+      >
+        <Stack spacing={2.5}>
+          <Stack
+            direction={{ xs: 'column', lg: 'row' }}
+            justifyContent="space-between"
+            spacing={2}
+            alignItems={{ lg: 'center' }}
+          >
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700}>
+                Filters and Scope
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Narrow the ledger by date range, ingredient, and movement type without leaving the
+                page.
+              </Typography>
+            </Box>
+            <ToggleButtonGroup
+              value={viewMode}
+              exclusive
+              onChange={(_, nextValue) => {
+                if (nextValue) setViewMode(nextValue);
+              }}
+              size="small"
+              sx={{
+                bgcolor: 'rgba(12,74,110,0.06)',
+                borderRadius: 2,
+                '& .MuiToggleButton-root': {
+                  px: 2,
+                  border: 0,
+                  color: 'text.secondary',
+                },
+                '& .Mui-selected': {
+                  bgcolor: 'rgba(15,118,110,0.14) !important',
+                  color: '#0f4c5c !important',
+                  fontWeight: 700,
+                },
+              }}
+            >
+              <ToggleButton value="movements">Movements</ToggleButton>
+              <ToggleButton value="discrepancies">Discrepancies</ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
+
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }}>
+            <TextField
+              label="Start Date"
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              size="small"
+            />
+            <TextField
+              label="End Date"
+              type="date"
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              size="small"
+            />
+            <Autocomplete
+              options={ingredientOptions}
+              getOptionLabel={option => option.ingredient_name}
+              value={ingredient}
+              onChange={(_, value) => setIngredient(value)}
+              sx={{ minWidth: 250, flex: 1 }}
+              size="small"
+              renderInput={params => <TextField {...params} label="Filter by Ingredient" />}
+              isOptionEqualToValue={(left, right) => left.ingredient_id === right.ingredient_id}
+            />
+          </Stack>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' },
+              gap: 1.5,
+            }}
+          >
+            <Paper
+              variant="outlined"
+              sx={{ p: 1.5, borderRadius: 2.5, bgcolor: 'rgba(34,211,238,0.05)' }}
+            >
+              <Typography variant="caption" color="text.secondary">
+                Visible Window
+              </Typography>
+              <Typography variant="h6" fontWeight={700}>
+                {startDate} to {endDate}
+              </Typography>
+            </Paper>
+            <Paper
+              variant="outlined"
+              sx={{ p: 1.5, borderRadius: 2.5, bgcolor: 'rgba(15,118,110,0.05)' }}
+            >
+              <Typography variant="caption" color="text.secondary">
+                Ingredient Scope
+              </Typography>
+              <Typography variant="h6" fontWeight={700}>
+                {ingredient?.ingredient_name || 'All ingredients'}
+              </Typography>
+            </Paper>
+            <Paper
+              variant="outlined"
+              sx={{ p: 1.5, borderRadius: 2.5, bgcolor: 'rgba(12,74,110,0.05)' }}
+            >
+              <Typography variant="caption" color="text.secondary">
+                {viewMode === 'movements' ? 'Net Visible Quantity' : 'Open Issues In View'}
+              </Typography>
+              <Typography variant="h6" fontWeight={700}>
+                {viewMode === 'movements'
+                  ? `${movementSummary.netQuantity > 0 ? '+' : ''}${movementSummary.netQuantity.toFixed(2)}`
+                  : historySummary.activeCount + historySummary.acknowledgedCount}
+              </Typography>
+            </Paper>
+          </Box>
+        </Stack>
+      </Paper>
+
+      <Paper sx={{ p: 2.5, bgcolor: 'background.paper', borderRadius: 3 }} elevation={0}>
         {viewMode === 'movements' ? (
           <Stack direction="row" spacing={1} mb={2} flexWrap="wrap" gap={1}>
             <Chip
@@ -381,6 +608,7 @@ export default function StockMovementsPage() {
               color={!typeFilter ? 'primary' : 'default'}
               onClick={() => setTypeFilter(null)}
               size="small"
+              sx={{ fontWeight: !typeFilter ? 700 : 500 }}
             />
             {allTypes.map(type => (
               <Chip
@@ -388,7 +616,7 @@ export default function StockMovementsPage() {
                 label={type}
                 color={typeFilter === type ? 'primary' : 'default'}
                 onClick={() => setTypeFilter(type)}
-                sx={{ textTransform: 'capitalize' }}
+                sx={{ textTransform: 'capitalize', fontWeight: typeFilter === type ? 700 : 500 }}
                 size="small"
               />
             ))}
@@ -400,6 +628,7 @@ export default function StockMovementsPage() {
               color={!historyStatusFilter ? 'primary' : 'default'}
               onClick={() => setHistoryStatusFilter(null)}
               size="small"
+              sx={{ fontWeight: !historyStatusFilter ? 700 : 500 }}
             />
             {allHistoryStatuses.map(status => (
               <Chip
@@ -408,6 +637,7 @@ export default function StockMovementsPage() {
                 color={historyStatusFilter === status ? 'primary' : 'default'}
                 onClick={() => setHistoryStatusFilter(status)}
                 size="small"
+                sx={{ fontWeight: historyStatusFilter === status ? 700 : 500 }}
               />
             ))}
           </Stack>
@@ -418,7 +648,7 @@ export default function StockMovementsPage() {
             <CircularProgress />
           </Box>
         ) : viewMode === 'movements' && error ? (
-          <Typography color="error">{error}</Typography>
+          <Alert severity="error">{error}</Alert>
         ) : viewMode === 'movements' ? (
           <MaterialReactTable
             columns={movementColumns}
@@ -434,15 +664,26 @@ export default function StockMovementsPage() {
               pagination: { pageSize: 25, pageIndex: 0 },
               sorting: [{ id: 'date', desc: true }],
             }}
+            muiTablePaperProps={{
+              elevation: 0,
+              sx: {
+                borderRadius: 2.5,
+                border: '1px solid',
+                borderColor: 'divider',
+                overflow: 'hidden',
+              },
+            }}
             muiTableBodyRowProps={({ row }) => ({
               sx: {
                 backgroundColor:
-                  row.original.quantity < 0 ? 'rgba(211, 47, 47, 0.04)' : 'rgba(56, 142, 60, 0.04)',
+                  row.original.quantity < 0
+                    ? 'rgba(211, 47, 47, 0.04)'
+                    : 'rgba(15, 118, 110, 0.05)',
               },
             })}
             muiTableHeadCellProps={{
               sx: {
-                backgroundColor: theme.palette.action.selected,
+                backgroundColor: 'rgba(12,74,110,0.06)',
                 fontWeight: 'bold',
               },
             }}
@@ -452,7 +693,7 @@ export default function StockMovementsPage() {
             <CircularProgress />
           </Box>
         ) : historyError ? (
-          <Typography color="error">{historyError}</Typography>
+          <Alert severity="error">{historyError}</Alert>
         ) : (
           <MaterialReactTable
             columns={historyColumns}
@@ -468,19 +709,28 @@ export default function StockMovementsPage() {
               pagination: { pageSize: 25, pageIndex: 0 },
               sorting: [{ id: 'last_updated', desc: true }],
             }}
+            muiTablePaperProps={{
+              elevation: 0,
+              sx: {
+                borderRadius: 2.5,
+                border: '1px solid',
+                borderColor: 'divider',
+                overflow: 'hidden',
+              },
+            }}
             muiTableBodyRowProps={({ row }) => ({
               sx: {
                 backgroundColor:
                   row.original.status === 'Resolved'
-                    ? 'rgba(56, 142, 60, 0.04)'
+                    ? 'rgba(15, 118, 110, 0.05)'
                     : row.original.status === 'Acknowledged'
-                      ? 'rgba(237, 108, 2, 0.06)'
+                      ? 'rgba(14, 165, 233, 0.06)'
                       : 'rgba(211, 47, 47, 0.04)',
               },
             })}
             muiTableHeadCellProps={{
               sx: {
-                backgroundColor: theme.palette.action.selected,
+                backgroundColor: 'rgba(12,74,110,0.06)',
                 fontWeight: 'bold',
               },
             }}
@@ -489,9 +739,30 @@ export default function StockMovementsPage() {
       </Paper>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Adjust Inventory</DialogTitle>
+        <DialogTitle sx={{ p: 0 }}>
+          <Box
+            sx={{
+              px: 3,
+              py: 2.25,
+              color: 'common.white',
+              background: 'linear-gradient(135deg, #0f4c5c 0%, #0891b2 100%)',
+            }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 800 }}>
+              Adjust Inventory
+            </Typography>
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+              Record a stock increase, decrease, waste event, or spoilage note directly into the
+              movement ledger.
+            </Typography>
+          </Box>
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="info" sx={{ mt: 1 }}>
+              Added and removed stock will appear in the ledger with clear direction labels so the
+              adjustment history stays readable.
+            </Alert>
             <Autocomplete
               options={ingredientOptions}
               getOptionLabel={option => option.ingredient_name}

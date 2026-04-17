@@ -227,6 +227,51 @@ async def test_update_purchase_order_status_refreshes_stale_expected_delivery_on
 
 
 @pytest.mark.asyncio
+async def test_delete_purchase_order_deletes_draft(inventory_service):
+    inventory_service.purchase_order_repo.get_by_id.return_value = MagicMock(
+        order_id=55,
+        status='cart',
+    )
+    inventory_service.purchase_order_repo.delete.return_value = True
+
+    result = await inventory_service.delete_purchase_order(55)
+
+    inventory_service.purchase_order_repo.delete.assert_awaited_once_with(55)
+    assert result == {
+        'order_id': 55,
+        'deleted': True,
+        'status_before_delete': 'cart',
+        'message': 'Draft purchase order 55 deleted successfully.',
+    }
+
+
+@pytest.mark.asyncio
+async def test_delete_purchase_order_rejects_non_draft(inventory_service):
+    inventory_service.purchase_order_repo.get_by_id.return_value = MagicMock(
+        order_id=55,
+        status='pending',
+    )
+
+    with pytest.raises(ValueError, match='only draft purchase orders can be modified'):
+        await inventory_service.delete_purchase_order(55)
+
+    inventory_service.purchase_order_repo.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_remove_item_from_purchase_order_rejects_non_draft(inventory_service):
+    inventory_service.purchase_order_repo.get_by_id.return_value = MagicMock(
+        order_id=55,
+        status='pending',
+    )
+
+    with pytest.raises(ValueError, match='only draft purchase orders can be modified'):
+        await inventory_service.remove_item_from_purchase_order(55, 11)
+
+    inventory_service.purchase_order_item_repo.get_by_id.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_create_purchase_orders_from_suggestions_passes_review_context(
     inventory_service,
 ):

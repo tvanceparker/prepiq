@@ -157,6 +157,13 @@ class PurchaseOrderItemDeleteResultDTO(BaseModel):
     order_total_price: float
 
 
+class PurchaseOrderDeleteResultDTO(BaseModel):
+    order_id: int
+    deleted: bool
+    status_before_delete: str
+    message: str
+
+
 class LastEodDateDTO(BaseModel):
     last_eod_run_date: Optional[date] = None
 

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -42,6 +42,7 @@ import {
   addItemToPurchaseOrder,
   updatePurchaseOrderItem,
   removeItemFromPurchaseOrder,
+  deletePurchaseOrder,
   updatePurchaseOrderStatus,
   receivePurchaseOrder,
   getIngredientNames,
@@ -188,6 +189,7 @@ export default function PurchaseOrders() {
   const qc = useQueryClient();
   const [status, setStatus] = useState<PurchaseOrderStatus>('cart');
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
+  const [confirmDeleteDraft, setConfirmDeleteDraft] = useState(false);
   const [receiptDraft, setReceiptDraft] = useState<ReceiptDraft | null>(null);
 
   // Wizard State
@@ -222,6 +224,12 @@ export default function PurchaseOrders() {
     message: string,
     severity: 'success' | 'info' | 'warning' | 'error' = 'success'
   ) => setSnackbar({ open: true, message, severity });
+
+  useEffect(() => {
+    if (!selectedOrder || selectedOrder.status !== 'cart') {
+      setConfirmDeleteDraft(false);
+    }
+  }, [selectedOrder]);
 
   const formatReceiptSummary = (summary: PurchaseOrderReceiptSummary): string => {
     if (summary.receipt_mode === 'already_received') {
@@ -279,18 +287,25 @@ export default function PurchaseOrders() {
     enabled: !!selectedIngredient && wizardOpen && wizardMode === 'ingredient',
   });
 
+  const refreshSelectedOrder = useCallback(async () => {
+    if (!selectedOrder) {
+      return;
+    }
+
+    const updated =
+      (await getPurchaseOrders({ status }))?.find(
+        order => order.order_id === selectedOrder.order_id
+      ) || null;
+    setSelectedOrder(updated);
+  }, [selectedOrder, status]);
+
   // Mutations
   const addItemMut = useMutation({
     mutationFn: (args: { order_id: number; item: Partial<PurchaseOrderItem> }) =>
       addItemToPurchaseOrder(args.order_id, args.item),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['purchase_orders'] });
-      if (selectedOrder) {
-        const updated =
-          (await getPurchaseOrders({ status }))?.find(o => o.order_id === selectedOrder.order_id) ||
-          null;
-        setSelectedOrder(updated);
-      }
+      await refreshSelectedOrder();
       showToast('Item added.');
     },
   });
@@ -300,12 +315,7 @@ export default function PurchaseOrders() {
       removeItemFromPurchaseOrder(args.order_id, args.order_item_id),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['purchase_orders'] });
-      if (selectedOrder) {
-        const updated =
-          (await getPurchaseOrders({ status }))?.find(o => o.order_id === selectedOrder.order_id) ||
-          null;
-        setSelectedOrder(updated);
-      }
+      await refreshSelectedOrder();
       showToast('Item removed.', 'info');
     },
   });
@@ -318,13 +328,21 @@ export default function PurchaseOrders() {
     }) => updatePurchaseOrderItem(args.order_id, args.order_item_id, args.updates),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['purchase_orders'] });
-      if (selectedOrder) {
-        const updated =
-          (await getPurchaseOrders({ status }))?.find(o => o.order_id === selectedOrder.order_id) ||
-          null;
-        setSelectedOrder(updated);
-      }
+      await refreshSelectedOrder();
       showToast('Item updated.');
+    },
+  });
+
+  const deleteOrderMut = useMutation({
+    mutationFn: (orderId: number) => deletePurchaseOrder(orderId),
+    onSuccess: async data => {
+      await qc.invalidateQueries({ queryKey: ['purchase_orders'] });
+      setSelectedOrder(prev => (prev?.order_id === data.order_id ? null : prev));
+      setConfirmDeleteDraft(false);
+      showToast(data.message, 'info');
+    },
+    onError: (err: any) => {
+      showToast(err?.response?.data?.detail || err?.message || 'Failed to delete draft', 'error');
     },
   });
 
@@ -1643,7 +1661,8 @@ export default function PurchaseOrders() {
                     Current Draft
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Adjust quantities here, then submit once the draft looks right.
+                    Adjust quantities here, then submit once the draft looks right. Scratch drafts
+                    can be deleted in one step.
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={1}>
@@ -1672,6 +1691,25 @@ export default function PurchaseOrders() {
                 </Stack>
               </Stack>
 
+              {confirmDeleteDraft && (
+                <Alert
+                  severity="warning"
+                  sx={{ mb: 2 }}
+                  action={
+                    <Button
+                      color="inherit"
+                      size="small"
+                      onClick={() => setConfirmDeleteDraft(false)}
+                    >
+                      Keep Draft
+                    </Button>
+                  }
+                >
+                  Deleting this draft removes every line item in the order. Use this when the draft
+                  was only temporary or built by mistake.
+                </Alert>
+              )}
+
               <Stack spacing={1.25}>
                 {order.items.length === 0 ? (
                   <Paper
@@ -1689,6 +1727,15 @@ export default function PurchaseOrders() {
                     <Typography variant="body2">
                       Add ingredients on the left and they will stay anchored here while you build.
                     </Typography>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      startIcon={<DeleteIcon />}
+                      sx={{ mt: 1.5 }}
+                      onClick={() => setConfirmDeleteDraft(true)}
+                    >
+                      Delete Empty Draft
+                    </Button>
                   </Paper>
                 ) : (
                   order.items.map(item => (
@@ -1756,6 +1803,25 @@ export default function PurchaseOrders() {
                 >
                   Submit Draft
                 </Button>
+                <Button
+                  variant={confirmDeleteDraft ? 'contained' : 'outlined'}
+                  color="error"
+                  startIcon={<DeleteIcon />}
+                  onClick={() => {
+                    if (!confirmDeleteDraft) {
+                      setConfirmDeleteDraft(true);
+                      return;
+                    }
+                    deleteOrderMut.mutate(order.order_id);
+                  }}
+                  disabled={deleteOrderMut.isPending}
+                >
+                  {deleteOrderMut.isPending
+                    ? 'Deleting...'
+                    : confirmDeleteDraft
+                      ? 'Confirm Delete Draft'
+                      : 'Delete Draft'}
+                </Button>
                 <Button variant="text" color="inherit" onClick={() => setSelectedOrder(null)}>
                   Close
                 </Button>
@@ -1788,36 +1854,108 @@ export default function PurchaseOrders() {
 
   return (
     <Box sx={{ p: 3, bgcolor: 'background.default' }}>
-      {/* Header */}
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Box>
-          <Typography variant="h4">Purchase Orders</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Create and manage supplier purchase orders
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={1.5}>
-          <Button
-            variant="outlined"
-            size="large"
-            startIcon={<PlayArrowIcon />}
-            onClick={openReorderPreviewWorkspace}
-            disabled={generateMut.isPending}
-            sx={{ px: 3, py: 1.5, borderRadius: 2 }}
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 2.5,
+          p: { xs: 2.5, md: 3 },
+          borderRadius: 4,
+          position: 'relative',
+          overflow: 'hidden',
+          color: 'common.white',
+          background: 'linear-gradient(135deg, #8a3b12 0%, #c65a18 45%, #f4a340 100%)',
+        }}
+      >
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'radial-gradient(circle at top right, rgba(255,255,255,0.22), transparent 35%), radial-gradient(circle at bottom left, rgba(120,53,15,0.45), transparent 40%)',
+          }}
+        />
+        <Stack
+          direction={{ xs: 'column', lg: 'row' }}
+          justifyContent="space-between"
+          spacing={3}
+          sx={{ position: 'relative' }}
+        >
+          <Box sx={{ maxWidth: 760 }}>
+            <Typography variant="overline" sx={{ letterSpacing: 1.6, opacity: 0.88 }}>
+              Inventory Workspace
+            </Typography>
+            <Typography variant="h3" sx={{ mt: 0.5, fontWeight: 800, lineHeight: 1.05 }}>
+              Purchase Orders
+            </Typography>
+            <Typography variant="body1" sx={{ mt: 1.25, maxWidth: 620, opacity: 0.92 }}>
+              Build draft orders, review supplier context in one place, and only submit when the
+              order is actually ready to place.
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2.25 }}>
+              <Chip
+                label={`${orderCountsByStatus.cart} drafts`}
+                sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'common.white' }}
+              />
+              <Chip
+                label={`${orderCountsByStatus.pending} pending`}
+                sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'common.white' }}
+              />
+              <Chip
+                label={`${orderCountsByStatus.delivered} delivered`}
+                sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'common.white' }}
+              />
+            </Stack>
+          </Box>
+
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.5}
+            alignItems={{ sm: 'flex-start' }}
+            sx={{ minWidth: { lg: 340 } }}
           >
-            {generateMut.isPending ? 'Opening Preview...' : 'Open Reorder Preview'}
-          </Button>
-          <Button
-            variant="contained"
-            size="large"
-            startIcon={<AddIcon />}
-            onClick={() => setWizardOpen(true)}
-            sx={{ px: 4, py: 1.5, borderRadius: 2, boxShadow: 3, '&:hover': { boxShadow: 6 } }}
-          >
-            New Order
-          </Button>
+            <Button
+              variant="outlined"
+              size="large"
+              startIcon={<PlayArrowIcon />}
+              onClick={openReorderPreviewWorkspace}
+              disabled={generateMut.isPending}
+              sx={{
+                px: 3,
+                py: 1.5,
+                borderRadius: 2.5,
+                color: 'common.white',
+                borderColor: 'rgba(255,255,255,0.5)',
+                bgcolor: 'rgba(255,255,255,0.08)',
+                '&:hover': {
+                  borderColor: 'rgba(255,255,255,0.75)',
+                  bgcolor: 'rgba(255,255,255,0.14)',
+                },
+              }}
+            >
+              {generateMut.isPending ? 'Opening Preview...' : 'Open Reorder Preview'}
+            </Button>
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<AddIcon />}
+              onClick={() => setWizardOpen(true)}
+              sx={{
+                px: 4,
+                py: 1.5,
+                borderRadius: 2.5,
+                bgcolor: '#fff7ed',
+                color: '#8a3b12',
+                boxShadow: '0 18px 36px rgba(92, 36, 8, 0.22)',
+                '&:hover': {
+                  bgcolor: '#ffffff',
+                },
+              }}
+            >
+              New Order
+            </Button>
+          </Stack>
         </Stack>
-      </Stack>
+      </Paper>
 
       {/* Tabs */}
       <Tabs
@@ -1852,11 +1990,19 @@ export default function PurchaseOrders() {
             bgcolor: 'background.paper',
             maxHeight: 600,
             overflow: 'auto',
+            borderRadius: 3,
           }}
           elevation={0}
         >
-          <Typography variant="subtitle1" sx={{ mb: 1 }}>
-            Orders ({orders.length})
+          <Typography variant="subtitle1" sx={{ mb: 0.5, fontWeight: 700 }}>
+            Supplier Queues
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {status === 'cart'
+              ? 'Open a draft workspace, adjust lines, or remove a scratch draft entirely.'
+              : status === 'pending'
+                ? 'Pending orders stay grouped by supplier until they are received.'
+                : 'Delivered orders remain available as a receipt and review ledger.'}
           </Typography>
           <Divider sx={{ mb: 1 }} />
           {isLoading ? (
@@ -1871,26 +2017,83 @@ export default function PurchaseOrders() {
             <Stack spacing={1}>
               {groupedBySupplier.map(([supplier, list]) => (
                 <Box key={supplier}>
-                  <Typography variant="caption" color="text.secondary">
-                    {supplier} • {list.length}
-                  </Typography>
-                  <Stack spacing={0.5}>
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    sx={{ mb: 0.75 }}
+                  >
+                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                      {supplier}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={`${list.length} order${list.length === 1 ? '' : 's'}`}
+                      variant="outlined"
+                    />
+                  </Stack>
+                  <Stack spacing={0.75}>
                     {list.map(po => (
                       <Button
                         key={po.order_id}
-                        variant={selectedOrder?.order_id === po.order_id ? 'contained' : 'outlined'}
+                        variant="text"
                         size="small"
                         onClick={() => setSelectedOrder(po)}
-                        sx={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                        sx={{
+                          justifyContent: 'space-between',
+                          alignItems: 'stretch',
+                          textAlign: 'left',
+                          textTransform: 'none',
+                          p: 1.5,
+                          borderRadius: 2.5,
+                          border: '1px solid',
+                          borderColor:
+                            selectedOrder?.order_id === po.order_id ? 'primary.main' : 'divider',
+                          bgcolor:
+                            selectedOrder?.order_id === po.order_id
+                              ? 'rgba(198,90,24,0.10)'
+                              : 'background.default',
+                        }}
                       >
-                        <Box>
-                          <Typography variant="body2">
-                            #{po.order_id} • {dayjs(po.order_date).format('MMM D')}
+                        <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+                          <Typography variant="body2" fontWeight={700}>
+                            {po.status === 'cart'
+                              ? 'Draft'
+                              : po.status === 'pending'
+                                ? 'Pending'
+                                : 'Delivered'}{' '}
+                            #{po.order_id}
                           </Typography>
-                          <Typography variant="caption">
+                          <Typography variant="caption" color="text.secondary">
+                            {dayjs(po.order_date).format('MMM D, YYYY')} • {po.items.length} line
+                            {po.items.length === 1 ? '' : 's'}
+                          </Typography>
+                        </Stack>
+                        <Stack alignItems="flex-end" spacing={0.75}>
+                          <Chip
+                            size="small"
+                            label={
+                              po.status === 'cart'
+                                ? 'Draft'
+                                : po.status === 'pending'
+                                  ? 'Awaiting Receipt'
+                                  : 'Delivered'
+                            }
+                            color={
+                              po.status === 'pending'
+                                ? 'warning'
+                                : po.status === 'delivered'
+                                  ? 'success'
+                                  : 'default'
+                            }
+                            variant={
+                              selectedOrder?.order_id === po.order_id ? 'filled' : 'outlined'
+                            }
+                          />
+                          <Typography variant="body2" fontWeight={700} color="primary.main">
                             ${po.total_order_price.toFixed(2)}
                           </Typography>
-                        </Box>
+                        </Stack>
                       </Button>
                     ))}
                   </Stack>
@@ -1900,7 +2103,7 @@ export default function PurchaseOrders() {
           )}
         </Paper>
 
-        <Paper sx={{ p: 2, flex: 1, bgcolor: 'background.paper' }} elevation={0}>
+        <Paper sx={{ p: 2, flex: 1, bgcolor: 'background.paper', borderRadius: 3 }} elevation={0}>
           <Box
             sx={{
               display: 'flex',
@@ -1912,10 +2115,12 @@ export default function PurchaseOrders() {
             }}
           >
             <ShoppingCartIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
-            <Typography variant="body1">Select an order to open the review dialog</Typography>
+            <Typography variant="body1" fontWeight={700}>
+              Select an order to open its workspace
+            </Typography>
             <Typography variant="body2" sx={{ mt: 1, textAlign: 'center', maxWidth: 320 }}>
-              Drafts and pending orders now use a focused review surface instead of the old flat
-              editor.
+              Drafts stay editable, pending orders stay receipt-ready, and delivered orders keep the
+              original review context for later reference.
             </Typography>
           </Box>
         </Paper>
@@ -1928,27 +2133,52 @@ export default function PurchaseOrders() {
         fullWidth
         PaperProps={{ sx: { minHeight: 620 } }}
       >
-        <DialogTitle sx={{ pb: 1 }}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
-            <Stack direction="row" alignItems="center" spacing={2}>
-              <ShoppingCartIcon color="primary" />
-              <Box>
-                <Typography variant="h6">
-                  {selectedOrder ? `Purchase Order #${selectedOrder.order_id}` : 'Purchase Order'}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Review the order, its ETA, and the original reorder explanation in one place.
-                </Typography>
-              </Box>
+        <DialogTitle sx={{ p: 0 }}>
+          <Box
+            sx={{
+              px: 3,
+              py: 2.5,
+              color: 'common.white',
+              background: 'linear-gradient(135deg, #9a3412 0%, #d97706 100%)',
+            }}
+          >
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              alignItems={{ md: 'center' }}
+              justifyContent="space-between"
+              spacing={2}
+            >
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 44,
+                    height: 44,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(255,255,255,0.14)',
+                  }}
+                >
+                  <ShoppingCartIcon />
+                </Box>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                    {selectedOrder ? `Purchase Order #${selectedOrder.order_id}` : 'Purchase Order'}
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    Review the order, its ETA, and the original reorder explanation in one place.
+                  </Typography>
+                </Box>
+              </Stack>
+              {selectedOrder && (
+                <Chip
+                  sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'common.white' }}
+                  label={selectedOrder.status === 'cart' ? 'Draft Workspace' : 'Order Review'}
+                />
+              )}
             </Stack>
-            {selectedOrder && (
-              <Chip
-                color={selectedOrder.status === 'pending' ? 'warning' : 'primary'}
-                variant="outlined"
-                label={selectedOrder.status === 'cart' ? 'Draft Review' : 'Order Review'}
-              />
-            )}
-          </Stack>
+          </Box>
         </DialogTitle>
         <DialogContent dividers sx={{ minHeight: 460 }}>
           {selectedOrder && <ItemEditor order={selectedOrder} />}

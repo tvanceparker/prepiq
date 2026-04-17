@@ -201,6 +201,13 @@ export interface PurchaseOrderItemDeleteResult {
   order_total_price: number;
 }
 
+export interface PurchaseOrderDeleteResult {
+  order_id: number;
+  deleted: boolean;
+  status_before_delete: string;
+  message: string;
+}
+
 export interface LastEodDateResponse {
   last_eod_run_date: string | null;
 }

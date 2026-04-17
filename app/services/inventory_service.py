@@ -136,6 +136,38 @@ class InventoryService:
             ),
         }
 
+    def _normalize_inventory_usage_entry(
+        self,
+        *,
+        usage_type: str,
+        quantity: Union[Decimal, float, int],
+    ) -> tuple[str, Decimal]:
+        normalized_quantity = Decimal(str(quantity))
+        if usage_type == "manual_addition":
+            return "manual_adjustment", normalized_quantity * Decimal("-1")
+        return usage_type, normalized_quantity
+
+    def _split_manual_adjustment_quantity(
+        self,
+        quantity: Union[Decimal, float, int],
+    ) -> tuple[Decimal, Decimal]:
+        normalized_quantity = Decimal(str(quantity))
+        if normalized_quantity < 0:
+            return abs(normalized_quantity), Decimal("0.00")
+        return Decimal("0.00"), normalized_quantity
+
+    async def _get_purchase_order_or_raise(self, order_id: int):
+        purchase_order = await self.purchase_order_repo.get_by_id(order_id)
+        if not purchase_order:
+            raise ValueError(f"Purchase order {order_id} not found.")
+        return purchase_order
+
+    def _ensure_purchase_order_is_draft(self, purchase_order, *, action: str) -> None:
+        if getattr(purchase_order, "status", None) != "cart":
+            raise ValueError(
+                f"Cannot {action} purchase order {purchase_order.order_id}: only draft purchase orders can be modified."
+            )
+
     # --- Purchase Orders ---
     async def create_purchase_order(
         self,
@@ -519,20 +551,36 @@ class InventoryService:
         """
         Remove an item from a purchase order.
         """
-        from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
-        from app.repositories.purchase_orders_repo import PurchaseOrderRepository
+        purchase_order = await self._get_purchase_order_or_raise(order_id)
+        self._ensure_purchase_order_is_draft(purchase_order, action="remove items from")
 
-        poi_repo = PurchaseOrderItemRepository(self.db, self.restaurant_id)
-        po_repo = PurchaseOrderRepository(self.db, self.restaurant_id)
+        item = await self.purchase_order_item_repo.get_by_id(order_item_id)
+        if not item or item.order_id != order_id:
+            raise ValueError(f"Purchase order item {order_item_id} not found for order {order_id}.")
 
-        await poi_repo.delete(order_item_id)
+        await self.purchase_order_item_repo.delete(order_item_id)
 
         # Recalculate order total after removal
-        items = await poi_repo.get_by_field("order_id", order_id)
+        items = await self.purchase_order_item_repo.get_by_field("order_id", order_id)
         new_total = sum(float(it.total_item_price) for it in items)
-        await po_repo.update(order_id, {"total_order_price": new_total})
+        await self.purchase_order_repo.update(order_id, {"total_order_price": new_total})
 
         return {"order_item_id": order_item_id, "removed": True, "order_total_price": new_total}
+
+    async def delete_purchase_order(self, order_id: int) -> dict:
+        """
+        Delete a draft purchase order and its items.
+        """
+        purchase_order = await self._get_purchase_order_or_raise(order_id)
+        self._ensure_purchase_order_is_draft(purchase_order, action="delete")
+
+        deleted = await self.purchase_order_repo.delete(order_id)
+        return {
+            "order_id": order_id,
+            "deleted": bool(deleted),
+            "status_before_delete": purchase_order.status,
+            "message": f"Draft purchase order {order_id} deleted successfully.",
+        }
 
     async def update_purchase_order_item(self, order_id: int, order_item_id: int, updates: dict) -> dict:
         """
@@ -1938,9 +1986,13 @@ class InventoryService:
                 movement_type = "Spoilage"
                 source_dest = "Expired"
             elif usage_type == "manual_adjustment":
-                # Could be positive or negative - assume the sign in used_quantity is correct
-                quantity = float(log.used_quantity)
-                movement_type = "Manual Adjustment"
+                quantity = float(log.used_quantity) * -1
+                if quantity > 0:
+                    movement_type = "Manual Stock Added"
+                elif quantity < 0:
+                    movement_type = "Manual Stock Removed"
+                else:
+                    movement_type = "Manual Adjustment"
                 source_dest = "Manual Entry"
             else:
                 # Default for unknown types
@@ -2060,6 +2112,8 @@ class InventoryService:
                 "notes": log.notes,
             }
             for log in logs
+            if getattr(getattr(log, "usage_type", None), "value", getattr(log, "usage_type", None)) != "manual_adjustment"
+            or Decimal(str(log.used_quantity or 0)) > 0
         ]
 
     async def get_wasted_usage_logs(self, lot_id: int) -> list[dict]:
@@ -2326,14 +2380,18 @@ class InventoryService:
                 )
 
                 # Step 6: Log the adjustment
+                log_usage_type, log_quantity = self._normalize_inventory_usage_entry(
+                    usage_type=usage_type,
+                    quantity=requested_qty,
+                )
                 usage_log_entry = {
                     "restaurant_id": self.restaurant_id,
                     "inventory_id": inventory_id,
                     "lot_id": lot_id,
                     "ingredient_id": inventory_item.ingredient_id,
-                    "used_quantity": requested_qty,
+                    "used_quantity": log_quantity,
                     "unit": inventory_item.unit,
-                    "usage_type": usage_type,
+                    "usage_type": log_usage_type,
                     "reference_type": "lot",
                     "reference_id": reference_id,
                     "notes": notes,
@@ -2412,14 +2470,18 @@ class InventoryService:
                         available_lots=available_lots,
                         lot_id=lot_id,
                     )
+                    log_usage_type, log_quantity = self._normalize_inventory_usage_entry(
+                        usage_type="manual_addition",
+                        quantity=delta,
+                    )
                     await self.inventory_usage_log_repo.create({
                         "restaurant_id": self.restaurant_id,
                         "inventory_id": inventory_id,
                         "lot_id": destination_lot.lot_id,
                         "ingredient_id": log_ingredient_id,
-                        "used_quantity": delta,
+                        "used_quantity": log_quantity,
                         "unit": inventory_item.unit,
-                        "usage_type": "manual_addition",
+                        "usage_type": log_usage_type,
                         "reference_type": "other",
                         "reference_id": None,
                         "notes": reconciliation_notes,
@@ -2621,10 +2683,12 @@ class InventoryService:
                 qty = Decimal(log.used_quantity or 0)
                 if log.usage_type in {"sale", "batch_production", "batch_output"}:
                     used_quantity += qty
-                elif log.usage_type in {"waste", "spoilage", "manual_adjustment"}:
+                elif log.usage_type in {"waste", "spoilage"}:
                     wasted_quantity += qty
-                elif log.usage_type == "manual_addition":
-                    added_quantity += qty
+                elif log.usage_type == "manual_adjustment":
+                    added_adjustment, removed_adjustment = self._split_manual_adjustment_quantity(qty)
+                    added_quantity += added_adjustment
+                    wasted_quantity += removed_adjustment
 
             # Calculate remaining quantity for the lot
             remaining_quantity = lot_qty - used_quantity - wasted_quantity + added_quantity

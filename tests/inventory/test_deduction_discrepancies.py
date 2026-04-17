@@ -410,8 +410,48 @@ async def test_set_inventory_current_stock_adds_delta_to_selected_lot(mock_db):
     service.inventory_usage_log_repo.create.assert_awaited_once()
     created_payload = service.inventory_usage_log_repo.create.await_args.args[0]
     assert created_payload['lot_id'] == 500
-    assert created_payload['usage_type'] == 'manual_addition'
-    assert created_payload['used_quantity'] == Decimal('3')
+    assert created_payload['usage_type'] == 'manual_adjustment'
+    assert created_payload['used_quantity'] == Decimal('-3')
+    service.inventory_repo.update.assert_awaited_once_with(12, {'quantity_on_hand': 7.0})
+
+
+@pytest.mark.asyncio
+async def test_handle_inventory_adjustment_normalizes_manual_addition_to_signed_adjustment(mock_db):
+    service = InventoryService(mock_db, 1, 'full', employee_id=7)
+    service.db.begin = MagicMock(return_value=_AsyncBegin())
+    service.inventory_repo = AsyncMock()
+    service.inventory_lot_repo = AsyncMock()
+    service.inventory_usage_log_repo = AsyncMock()
+    service.inventory_stats = AsyncMock()
+    service.alert_repo = AsyncMock()
+    service.resolve_manual_inventory_review_flags = AsyncMock(return_value=0)
+    service.inventory_stats.get_lot_remaining = AsyncMock(side_effect=[Decimal('4')])
+
+    inventory_item = SimpleNamespace(inventory_id=12, ingredient_id=101, unit='lb')
+    lot = SimpleNamespace(
+        lot_id=500,
+        ingredient_id=101,
+        unit='lb',
+        delivery_date=datetime(2026, 3, 30).date(),
+        status=SimpleNamespace(value='available'),
+    )
+    service.inventory_repo.get_by_id.return_value = inventory_item
+    service.inventory_lot_repo.get_inventory_lots_by_inventory_and_restaurant.return_value = [lot]
+
+    result = await service.handle_inventory_adjustment(
+        inventory_id=12,
+        lot_id=500,
+        adjustment_quantity=Decimal('3'),
+        usage_type='manual_addition',
+        notes='Manual add during review',
+    )
+
+    assert result['success'] is True
+    assert result['current_quantity_on_hand'] == 7.0
+    created_payload = service.inventory_usage_log_repo.create.await_args.args[0]
+    assert created_payload['lot_id'] == 500
+    assert created_payload['usage_type'] == 'manual_adjustment'
+    assert created_payload['used_quantity'] == Decimal('-3')
     service.inventory_repo.update.assert_awaited_once_with(12, {'quantity_on_hand': 7.0})
 
 

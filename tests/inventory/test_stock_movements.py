@@ -100,3 +100,52 @@ async def test_get_stock_movements_distinguishes_po_and_manual_receipts(inventor
     assert manual_movement['purchase_order_item_id'] is None
     assert manual_movement['source_or_destination'] == 'Manual Entry'
     assert manual_movement['notes'] == 'Manual lot receipt'
+
+
+@pytest.mark.asyncio
+async def test_get_stock_movements_labels_signed_manual_adjustments(inventory_service):
+    added_log = MagicMock(
+        used_date=date(2026, 3, 28),
+        ingredient_id=101,
+        lot_id=401,
+        used_quantity=Decimal('-3.00'),
+        unit='lb',
+        usage_type='manual_adjustment',
+        reference_id=None,
+        notes='Count reconciliation added stock',
+    )
+    removed_log = MagicMock(
+        used_date=date(2026, 3, 29),
+        ingredient_id=101,
+        lot_id=401,
+        used_quantity=Decimal('2.00'),
+        unit='lb',
+        usage_type='manual_adjustment',
+        reference_id=None,
+        notes='Count reconciliation removed stock',
+    )
+
+    inventory_service.ingredient_repo.get_all.return_value = [
+        MagicMock(ingredient_id=101, name='Tomatoes'),
+    ]
+    inventory_service.batch_recipe_repo.get_all.return_value = []
+    inventory_service.db.execute = AsyncMock(
+        side_effect=[_ExecuteResult([]), _ExecuteResult([added_log, removed_log])]
+    )
+
+    movements = await inventory_service.get_stock_movements(
+        start_date=date(2026, 3, 28),
+        end_date=date(2026, 3, 29),
+    )
+
+    added_movement = next(m for m in movements if m['notes'] == 'Count reconciliation added stock')
+    assert added_movement['type'] == 'Manual Stock Added'
+    assert added_movement['quantity'] == 3.0
+    assert added_movement['source_or_destination'] == 'Manual Entry'
+
+    removed_movement = next(
+        m for m in movements if m['notes'] == 'Count reconciliation removed stock'
+    )
+    assert removed_movement['type'] == 'Manual Stock Removed'
+    assert removed_movement['quantity'] == -2.0
+    assert removed_movement['source_or_destination'] == 'Manual Entry'

@@ -189,10 +189,13 @@ class InventoryStatsService:
             usage_type = getattr(log.usage_type, "value", log.usage_type)
             if usage_type in {"sale", "batch_production", "batch_output"}:
                 used_quantity += qty
-            elif usage_type in {"waste", "spoilage", "manual_adjustment"}:
+            elif usage_type in {"waste", "spoilage"}:
                 wasted_quantity += qty
-            elif usage_type == "manual_addition":
-                added_quantity += qty
+            elif usage_type == "manual_adjustment":
+                if qty < 0:
+                    added_quantity += abs(qty)
+                else:
+                    wasted_quantity += qty
 
         lot_qty = Decimal(str(lot.quantity or 0))
         return (lot_qty - used_quantity - wasted_quantity + added_quantity).quantize(

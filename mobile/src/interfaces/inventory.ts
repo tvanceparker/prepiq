@@ -165,6 +165,13 @@ export interface PurchaseOrderItem {
   total_item_price: number;
 }
 
+export interface PurchaseOrderDeleteResult {
+  order_id: number;
+  deleted: boolean;
+  status_before_delete: string;
+  message: string;
+}
+
 export interface PurchaseOrderReviewItem {
   ingredient_id: number;
   ingredient_name: string;

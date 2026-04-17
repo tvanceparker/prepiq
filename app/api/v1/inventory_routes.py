@@ -23,6 +23,7 @@ from app.schemas.inventory_dto import (
     PurchaseOrderItemAddResultDTO,
     PurchaseOrderItemUpdateResultDTO,
     PurchaseOrderItemDeleteResultDTO,
+    PurchaseOrderDeleteResultDTO,
     InventoryDeductionDiscrepancyDTO,
     InventoryDiscrepancyHistoryItemDTO,
     PurchaseOrderItemUpdateDTO,
@@ -146,7 +147,24 @@ async def remove_item_from_purchase_order(
     """
     Remove an item from a purchase order.
     """
-    return await inventory_service.remove_item_from_purchase_order(order_id, order_item_id)
+    try:
+        return await inventory_service.remove_item_from_purchase_order(order_id, order_item_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.delete("/purchase_orders/{order_id}", response_model=PurchaseOrderDeleteResultDTO)
+async def delete_purchase_order(
+    order_id: int,
+    inventory_service: InventoryService = Depends(get_inventory_service),
+):
+    """
+    Delete a draft purchase order.
+    """
+    try:
+        return await inventory_service.delete_purchase_order(order_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 @router.post("/purchase_orders/generate-suggestions", response_model=POSuggestionsResponseDTO)
 async def generate_po_suggestions(
@@ -531,6 +549,8 @@ async def adjust_inventory(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=response["message"]
             )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -554,6 +574,8 @@ async def set_current_stock(
         if response["success"]:
             return response
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=response["message"])
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
