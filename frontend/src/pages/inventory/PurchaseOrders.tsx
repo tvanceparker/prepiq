@@ -2103,87 +2103,43 @@ export default function PurchaseOrders() {
           )}
         </Paper>
 
-        <Paper sx={{ p: 2, flex: 1, bgcolor: 'background.paper', borderRadius: 3 }} elevation={0}>
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              py: 8,
-              color: 'text.secondary',
-            }}
-          >
-            <ShoppingCartIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
-            <Typography variant="body1" fontWeight={700}>
-              Select an order to open its workspace
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 1, textAlign: 'center', maxWidth: 320 }}>
-              Drafts stay editable, pending orders stay receipt-ready, and delivered orders keep the
-              original review context for later reference.
-            </Typography>
-          </Box>
+        <Paper
+          sx={{
+            p: selectedOrder ? 0 : 2,
+            flex: 1,
+            bgcolor: 'background.paper',
+            borderRadius: 3,
+            overflow: 'hidden',
+          }}
+          elevation={0}
+        >
+          {selectedOrder ? (
+            <Box sx={{ p: 2 }}>
+              <ItemEditor order={selectedOrder} />
+            </Box>
+          ) : (
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                py: 8,
+                color: 'text.secondary',
+              }}
+            >
+              <ShoppingCartIcon sx={{ fontSize: 48, mb: 2, opacity: 0.5 }} />
+              <Typography variant="body1" fontWeight={700}>
+                Select an order to open its workspace
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 1, textAlign: 'center', maxWidth: 320 }}>
+                Drafts stay editable, pending orders stay receipt-ready, and delivered orders keep
+                the original review context for later reference.
+              </Typography>
+            </Box>
+          )}
         </Paper>
       </Stack>
-
-      <Dialog
-        open={!!selectedOrder}
-        onClose={() => setSelectedOrder(null)}
-        maxWidth="lg"
-        fullWidth
-        PaperProps={{ sx: { minHeight: 620 } }}
-      >
-        <DialogTitle sx={{ p: 0 }}>
-          <Box
-            sx={{
-              px: 3,
-              py: 2.5,
-              color: 'common.white',
-              background: 'linear-gradient(135deg, #9a3412 0%, #d97706 100%)',
-            }}
-          >
-            <Stack
-              direction={{ xs: 'column', md: 'row' }}
-              alignItems={{ md: 'center' }}
-              justifyContent="space-between"
-              spacing={2}
-            >
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 44,
-                    height: 44,
-                    borderRadius: 2,
-                    bgcolor: 'rgba(255,255,255,0.14)',
-                  }}
-                >
-                  <ShoppingCartIcon />
-                </Box>
-                <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                    {selectedOrder ? `Purchase Order #${selectedOrder.order_id}` : 'Purchase Order'}
-                  </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    Review the order, its ETA, and the original reorder explanation in one place.
-                  </Typography>
-                </Box>
-              </Stack>
-              {selectedOrder && (
-                <Chip
-                  sx={{ bgcolor: 'rgba(255,255,255,0.16)', color: 'common.white' }}
-                  label={selectedOrder.status === 'cart' ? 'Draft Workspace' : 'Order Review'}
-                />
-              )}
-            </Stack>
-          </Box>
-        </DialogTitle>
-        <DialogContent dividers sx={{ minHeight: 460 }}>
-          {selectedOrder && <ItemEditor order={selectedOrder} />}
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={!!receiptDraft} onClose={closeReceiptDialog} fullWidth maxWidth="md">
         <DialogTitle>Receive Order</DialogTitle>
