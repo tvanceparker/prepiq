@@ -1,84 +1,63 @@
 // src/pages/settings/IntegrationSettings.tsx
-import React, { useState, useEffect, useContext } from 'react';
+import React from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import {
   Text,
   useTheme,
   Card,
   Button,
-  Switch,
   List,
   Divider,
   Snackbar,
   ActivityIndicator,
   Chip,
-  TextInput,
-  Portal,
-  Dialog,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '../../api';
-import { AuthContext } from '../../contexts/AuthContext';
-
-interface IntegrationConfig {
-  pos_provider: string | null;
-  weather_api_key: string | null;
-  stripe_enabled: boolean;
-  stripe_terminal_enabled: boolean;
-}
+import type { POSProvider } from '../../interfaces/pos';
+import { useIntegrationSettings } from './hooks/useIntegrationSettings';
 
 export default function IntegrationSettings() {
   const theme = useTheme();
-  const queryClient = useQueryClient();
-  const { tier } = useContext(AuthContext);
+  const {
+    posSettings,
+    posStatus,
+    isLoading,
+    isStatusLoading,
+    posError,
+    isUpdatingMode,
+    isDisconnecting,
+    isSyncing,
+    snackbar,
+    closeSnackbar,
+    handleEnableExternal,
+    handleProviderChange,
+    handleDisconnect,
+    handleSync,
+    showWebSetupMessage,
+  } = useIntegrationSettings();
 
-  const [dialogType, setDialogType] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState('');
-  const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
+  const selectedProvider: POSProvider =
+    posSettings?.pos_provider && posSettings.pos_provider !== 'none'
+      ? posSettings.pos_provider
+      : 'square';
 
-  // Fetch integration config
-  const { data: config, isLoading } = useQuery<IntegrationConfig>({
-    queryKey: ['integrations'],
-    queryFn: async () => {
-      const res = await api.get('/settings/integrations');
-      return res.data;
-    },
-  });
+  if (isLoading) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
 
-  // Update integration
-  const updateMutation = useMutation({
-    mutationFn: async (data: Partial<IntegrationConfig>) => {
-      const res = await api.patch('/settings/integrations', data);
-      return res.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['integrations'] });
-      setSnackbar({ visible: true, message: 'Settings updated' });
-    },
-    onError: (err: any) => {
-      setSnackbar({ visible: true, message: err?.message || 'Failed to update' });
-    },
-  });
-
-  const handleToggle = (key: keyof IntegrationConfig, value: boolean) => {
-    updateMutation.mutate({ [key]: value });
-  };
-
-  const handleSaveApiKey = () => {
-    if (dialogType === 'weather') {
-      updateMutation.mutate({ weather_api_key: apiKey || null });
-    }
-    setDialogType(null);
-    setApiKey('');
-  };
-
-  const openDialog = (type: string, currentValue?: string | null) => {
-    setDialogType(type);
-    setApiKey(currentValue || '');
-  };
-
-  const isFull = tier === 'full';
+  if (posError) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
+        <Text variant="bodyMedium" style={{ color: theme.colors.error }}>
+          Failed to load POS settings. Please try again.
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -92,177 +71,134 @@ export default function IntegrationSettings() {
         variant="bodyMedium"
         style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}
       >
-        Manage third-party service connections
+        Manage the supported external POS connection and sync status.
       </Text>
 
-      {isLoading ? (
-        <ActivityIndicator style={styles.loader} size="large" />
-      ) : (
-        <>
-          {/* POS Integration */}
-          <Card style={styles.card} mode="outlined">
-            <Card.Title
-              title="POS System"
-              titleVariant="titleMedium"
-              left={() => (
-                <MaterialCommunityIcons
-                  name="point-of-sale"
-                  size={24}
-                  color={theme.colors.primary}
-                  style={{ marginLeft: 16 }}
-                />
-              )}
-              right={() => (
-                <Chip compact mode={config?.pos_provider ? 'flat' : 'outlined'}>
-                  {config?.pos_provider || 'Not Connected'}
-                </Chip>
-              )}
+      <Card style={styles.card} mode="outlined">
+        <Card.Title
+          title="External POS"
+          titleVariant="titleMedium"
+          left={() => (
+            <MaterialCommunityIcons
+              name="point-of-sale"
+              size={24}
+              color={theme.colors.primary}
+              style={{ marginLeft: 16 }}
             />
-            <Card.Content>
-              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                Connect your POS system to sync orders and sales data automatically.
-              </Text>
-            </Card.Content>
-            <Card.Actions>
-              <Button
-                mode="outlined"
-                onPress={() =>
-                  setSnackbar({ visible: true, message: 'POS setup available in web app' })
-                }
-              >
-                Configure POS
-              </Button>
-            </Card.Actions>
-          </Card>
+          )}
+          right={() => (
+            <Chip compact mode={posStatus?.connected ? 'flat' : 'outlined'}>
+              {posStatus?.connected ? 'Connected' : 'Not Connected'}
+            </Chip>
+          )}
+        />
+        <Card.Content>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            PrepIQ v1 supports external POS ingestion only. Choose the active provider, review sync
+            status, and finish provider authorization in the web app.
+          </Text>
 
-          {/* Weather API */}
-          {isFull && (
-            <Card style={styles.card} mode="outlined">
-              <Card.Title
-                title="Weather Integration"
-                titleVariant="titleMedium"
-                left={() => (
-                  <MaterialCommunityIcons
-                    name="weather-partly-cloudy"
-                    size={24}
-                    color={theme.colors.primary}
-                    style={{ marginLeft: 16 }}
-                  />
-                )}
-                right={() => (
-                  <Chip compact mode={config?.weather_api_key ? 'flat' : 'outlined'}>
-                    {config?.weather_api_key ? 'Connected' : 'Not Set'}
-                  </Chip>
-                )}
-              />
+          <View style={styles.providerRow}>
+            <Chip
+              selected={selectedProvider === 'square'}
+              onPress={() => handleProviderChange('square')}
+              disabled={isUpdatingMode}
+            >
+              Square
+            </Chip>
+            <Chip disabled>Toast</Chip>
+            <Chip disabled>Clover</Chip>
+          </View>
+
+          {posSettings?.pos_mode !== 'external' && (
+            <Card style={[styles.noticeCard, { backgroundColor: theme.colors.surfaceVariant }]}>
               <Card.Content>
                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                  Weather data improves forecast accuracy by factoring in local conditions.
+                  This restaurant is not yet set to external POS mode.
                 </Text>
-              </Card.Content>
-              <Card.Actions>
                 <Button
-                  mode="outlined"
-                  onPress={() => openDialog('weather', config?.weather_api_key)}
+                  mode="contained"
+                  style={styles.noticeAction}
+                  onPress={() => handleEnableExternal(selectedProvider)}
+                  loading={isUpdatingMode}
+                  disabled={isUpdatingMode}
                 >
-                  {config?.weather_api_key ? 'Update API Key' : 'Add API Key'}
+                  Enable External Mode
                 </Button>
-              </Card.Actions>
+              </Card.Content>
             </Card>
           )}
 
-          {/* Data Sync Status */}
-          <Card style={styles.card} mode="outlined">
-            <Card.Title
-              title="Data Sync"
-              titleVariant="titleMedium"
-              left={() => (
-                <MaterialCommunityIcons
-                  name="sync"
-                  size={24}
-                  color={theme.colors.primary}
-                  style={{ marginLeft: 16 }}
-                />
-              )}
-            />
-            <Card.Content>
-              <List.Item
-                title="Last Sync"
-                description="Automatic sync runs every hour"
-                right={() => (
-                  <Chip compact icon="check-circle">
-                    Active
-                  </Chip>
-                )}
-              />
-              <Divider />
-              <List.Item
-                title="EOD Processing"
-                description="End-of-day summaries"
-                right={() => (
-                  <Chip compact icon="calendar-check">
-                    Enabled
-                  </Chip>
-                )}
-              />
-            </Card.Content>
-          </Card>
+          <Divider style={styles.divider} />
 
-          {/* Info Card */}
-          <Card
-            style={[styles.card, { backgroundColor: theme.colors.surfaceVariant }]}
-            mode="contained"
+          <List.Item
+            title="Provider"
+            description={selectedProvider === 'square' ? 'Square' : selectedProvider || 'None'}
+          />
+          <Divider />
+          <List.Item
+            title="Connection"
+            description={
+              isStatusLoading
+                ? 'Loading status...'
+                : posStatus?.connected
+                  ? `Merchant: ${posStatus.merchant_id || 'Connected'}`
+                  : 'Finish provider authorization in the web app.'
+            }
+            right={() => (isStatusLoading ? <ActivityIndicator size="small" /> : null)}
+          />
+          <Divider />
+          <List.Item
+            title="Last Sync"
+            description={
+              posStatus?.last_sync ? new Date(posStatus.last_sync).toLocaleString() : 'Never'
+            }
+          />
+          <Divider />
+          <List.Item
+            title="Sync Scope"
+            description={`Orders ${posStatus?.sync_orders ? 'on' : 'off'} • Payments ${posStatus?.sync_payments ? 'on' : 'off'} • Menu ${posStatus?.sync_menu ? 'on' : 'off'}`}
+          />
+        </Card.Content>
+        <Card.Actions>
+          <Button mode="outlined" onPress={showWebSetupMessage}>
+            Open in Web App
+          </Button>
+          <Button
+            mode="outlined"
+            onPress={handleSync}
+            loading={isSyncing}
+            disabled={isSyncing || !posStatus?.connected}
           >
-            <Card.Content>
-              <View style={styles.infoRow}>
-                <List.Icon icon="information" color={theme.colors.primary} />
-                <Text variant="bodySmall" style={{ flex: 1, color: theme.colors.onSurfaceVariant }}>
-                  PrepIQ v1 focuses this screen on external POS connection and sync visibility.
-                  Internal payment-terminal workflows are intentionally out of the active launch
-                  surface.
-                </Text>
-              </View>
-            </Card.Content>
-          </Card>
-        </>
-      )}
+            Sync Now
+          </Button>
+          <Button
+            mode="text"
+            onPress={handleDisconnect}
+            loading={isDisconnecting}
+            disabled={isDisconnecting || !posStatus?.connected}
+          >
+            Disconnect
+          </Button>
+        </Card.Actions>
+      </Card>
 
-      {/* API Key Dialog */}
-      <Portal>
-        <Dialog visible={!!dialogType} onDismiss={() => setDialogType(null)}>
-          <Dialog.Title>{dialogType === 'weather' ? 'Weather API Key' : 'API Key'}</Dialog.Title>
-          <Dialog.Content>
-            <TextInput
-              label="API Key"
-              value={apiKey}
-              onChangeText={setApiKey}
-              mode="outlined"
-              secureTextEntry
-              placeholder="Enter your API key"
-            />
-            <Text
-              variant="bodySmall"
-              style={{ marginTop: 8, color: theme.colors.onSurfaceVariant }}
-            >
-              {dialogType === 'weather'
-                ? 'Get your API key from OpenWeatherMap or your weather provider.'
-                : 'Enter your API key from the provider dashboard.'}
-            </Text>
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setDialogType(null)}>Cancel</Button>
-            <Button mode="contained" onPress={handleSaveApiKey}>
-              Save
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
-
-      <Snackbar
-        visible={snackbar.visible}
-        onDismiss={() => setSnackbar({ ...snackbar, visible: false })}
-        duration={3000}
+      <Card
+        style={[styles.card, { backgroundColor: theme.colors.surfaceVariant }]}
+        mode="contained"
       >
+        <Card.Content>
+          <View style={styles.infoRow}>
+            <List.Icon icon="information" color={theme.colors.primary} />
+            <Text variant="bodySmall" style={{ flex: 1, color: theme.colors.onSurfaceVariant }}>
+              Internal POS terminals, cash drawers, and Stripe reader workflows are intentionally
+              out of the active v1 mobile surface.
+            </Text>
+          </View>
+        </Card.Content>
+      </Card>
+
+      <Snackbar visible={snackbar.visible} onDismiss={closeSnackbar} duration={3000}>
         {snackbar.message}
       </Snackbar>
     </ScrollView>
@@ -286,8 +222,30 @@ const styles = StyleSheet.create({
   loader: {
     marginTop: 64,
   },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
   card: {
     marginBottom: 16,
+  },
+  providerRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 16,
+  },
+  noticeCard: {
+    marginTop: 16,
+  },
+  noticeAction: {
+    marginTop: 12,
+    alignSelf: 'flex-start',
+  },
+  divider: {
+    marginVertical: 16,
   },
   infoRow: {
     flexDirection: 'row',

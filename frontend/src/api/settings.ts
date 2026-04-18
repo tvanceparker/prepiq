@@ -50,17 +50,13 @@ export const changePassword = async ({
 export const getPOSModeSettings = async (): Promise<POSModeSettings> => get('/settings/pos/mode');
 
 export const updatePOSModeSettings = async (params: {
-  pos_mode: 'internal' | 'external';
+  pos_mode: 'none' | 'external';
   pos_provider?: string | null;
-  cash_drawer_enabled?: boolean;
 }): Promise<POSModeSettings> => {
   const queryParams = new URLSearchParams();
   queryParams.set('pos_mode', params.pos_mode);
   if (params.pos_provider) {
     queryParams.set('pos_provider', params.pos_provider);
-  }
-  if (params.cash_drawer_enabled !== undefined) {
-    queryParams.set('cash_drawer_enabled', String(params.cash_drawer_enabled));
   }
   return put(`/settings/pos/mode?${queryParams.toString()}`, {});
 };

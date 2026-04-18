@@ -98,7 +98,6 @@ export function useIntegrationSettings() {
     updateModeMutation.mutate({
       pos_mode: newMode,
       pos_provider: 'square',
-      cash_drawer_enabled: posSettingsQuery.data?.cash_drawer_enabled ?? true,
     });
   };
 
@@ -107,7 +106,6 @@ export function useIntegrationSettings() {
     updateModeMutation.mutate({
       pos_mode: 'external',
       pos_provider: provider,
-      cash_drawer_enabled: posSettingsQuery.data?.cash_drawer_enabled ?? true,
     });
   };
 

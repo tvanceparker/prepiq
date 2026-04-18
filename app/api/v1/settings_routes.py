@@ -177,24 +177,18 @@ async def get_pos_mode_settings(
 @router.put("/pos/mode")
 @log_route("Update POS Mode Settings")
 async def update_pos_mode_settings(
-    pos_mode: str = Query(..., description="POS mode: internal or external"),
+    pos_mode: str = Query(..., description="POS mode: none or external"),
     pos_provider: str = Query(None, description="Provider for external mode: square, toast, clover"),
-    cash_drawer_enabled: bool = Query(True, description="Enable cash drawer tracking"),
-    terminal_payments_enabled: bool = Query(None, description="Use Stripe Terminal readers when available"),
-    preferred_terminal_reader_id: int = Query(None, description="Default Stripe Terminal reader id"),
     settings_service: SettingsService = Depends(get_settings_service)
 ):
     """
     Update restaurant POS mode configuration.
-    - internal: Use PrepIQ as the primary POS
+    - none: no POS provider configured
     - external: Use external POS (Square, Toast, Clover)
     """
     return await settings_service.update_pos_mode_settings(
         pos_mode=pos_mode,
         pos_provider=pos_provider,
-        cash_drawer_enabled=cash_drawer_enabled,
-        terminal_payments_enabled=terminal_payments_enabled,
-        preferred_terminal_reader_id=preferred_terminal_reader_id,
     )
 
 

@@ -1,6 +1,6 @@
 -- scripts/migrations/seed_restaurant_master.sql
 -- Seed data for Restaurant ID 5: Perrine Heights Kitchen (Master Tier)
--- Master tier: Full POS, devices, payments, nested batches, all features
+-- Master tier: external POS metadata, devices, payments, nested batches, all features
 -- 
 -- Run: mysql -u user -p database < scripts/migrations/seed_restaurant_master.sql
 -- After seeding: python scripts/backfill_weather.py --start 2025-06-25 --end 2025-12-24
@@ -37,7 +37,6 @@ DELETE FROM batch_recipes WHERE restaurant_id = 5 OR batch_recipe_id BETWEEN 501
 DELETE FROM ingredient_supplier WHERE restaurant_id = 5 OR ingredient_supplier_id BETWEEN 501 AND 599;
 DELETE FROM ingredients WHERE restaurant_id = 5 OR ingredient_id BETWEEN 501 AND 599;
 DELETE FROM supplier WHERE restaurant_id = 5 OR supplier_id BETWEEN 501 AND 599;
-DELETE FROM stripe_terminal_readers WHERE restaurant_id = 5 OR reader_id BETWEEN 501 AND 599;
 DELETE FROM devices WHERE restaurant_id = 5 OR device_id BETWEEN 501 AND 599;
 DELETE FROM supplier_preferences WHERE restaurant_id = 5;
 DELETE FROM role_permissions WHERE restaurant_id = 5;
@@ -55,7 +54,7 @@ INSERT INTO restaurants (
     expiry_date, forecast_length, hours_of_operation, tax_rate, timezone,
     eod_run_when_closed, eod_run_after_close_mins, sales_channels, last_eod_run_date,
     settings, has_pos_display, has_kitchen_display, default_ui_layout,
-    pos_provider, pos_connected, pos_mode, stripe_terminal_location_id, cash_drawer_enabled
+    pos_provider, pos_connected, pos_mode
 ) VALUES (
     5, 'Perrine Heights Kitchen', '208-555-0105', '1234 Perrine Bridge Rd', 'Twin Falls', 'ID', '83301',
     42.5637, -114.4609, 'master', 'info@perrineheights.com', 'active',
@@ -64,7 +63,7 @@ INSERT INTO restaurants (
     6.00, 'America/Boise', TRUE, 60,
     '["in-house", "take-out", "delivery", "catering"]', NULL,
     '{"enable_kds_routing": true, "auto_inventory_deduction": true}', TRUE, TRUE, 'kds',
-    'none', FALSE, 'internal', 'loc_perrine_heights', TRUE
+    'square', TRUE, 'external'
 );
 
 -- ============================================================================
@@ -559,16 +558,16 @@ INSERT INTO order_item_modifiers (
 -- ============================================================================
 INSERT INTO payments (
     payment_id, order_id, restaurant_id, payment_timestamp, amount,
-    tip_amount, cash_tendered, change_given, terminal_reader_id,
+    tip_amount, cash_tendered, change_given,
     currency, method, provider, provider_payment_id, status, payment_metadata
 ) VALUES
-(501, 501, 5, '2025-12-24 13:15:00', 46.64, 8.00, NULL, NULL, 501,
+(501, 501, 5, '2025-12-24 13:15:00', 46.64, 8.00, NULL, NULL,
  'USD', 'card', 'stripe', 'pi_501_test', 'succeeded', '{}'),
-(502, 502, 5, '2025-12-24 12:45:00', 37.63, 6.00, NULL, NULL, 501,
+(502, 502, 5, '2025-12-24 12:45:00', 37.63, 6.00, NULL, NULL,
  'USD', 'card', 'stripe', 'pi_502_test', 'succeeded', '{}'),
-(503, 503, 5, '2025-12-24 19:30:00', 29.15, 5.00, NULL, NULL, 501,
+(503, 503, 5, '2025-12-24 19:30:00', 29.15, 5.00, NULL, NULL,
  'USD', 'card', 'stripe', 'pi_503_test', 'succeeded', '{}'),
-(504, 506, 5, '2025-12-24 18:00:00', 24.38, 0.00, NULL, NULL, 501,
+(504, 506, 5, '2025-12-24 18:00:00', 24.38, 0.00, NULL, NULL,
  'USD', 'card', 'stripe', 'pi_504_test', 'refunded', '{"refund_reason": "Order cancelled"}');
 
 -- ============================================================================
@@ -576,30 +575,20 @@ INSERT INTO payments (
 -- ============================================================================
 INSERT INTO devices (
     device_id, restaurant_id, name, device_type, device_metadata, device_settings,
-    device_fingerprint
+    fingerprint_hash
 ) VALUES
 (501, 5, 'Kitchen Display 1', 'kitchen_display',
  '{"location": "main_kitchen", "screen_size": "24inch"}',
  '{"screen_timeout": 300, "order_alert_sound": true}',
- 'kds-001-perrine'),
+ 'sha256:kds-001-perrine'),
 (502, 5, 'Counter POS', 'pos_terminal',
  '{"location": "front_counter"}',
  '{"receipt_printer": true, "cash_drawer": true}',
- 'pos-001-perrine'),
+ 'sha256:pos-001-perrine'),
 (503, 5, 'Manager Tablet', 'management',
  '{"location": "office"}',
  '{}',
- 'mgr-001-perrine');
-
--- ============================================================================
--- STRIPE TERMINAL READERS (Master tier with internal POS)
--- ============================================================================
-INSERT INTO stripe_terminal_readers (
-    reader_id, restaurant_id, stripe_reader_id, label, device_type,
-    serial_number, status, ip_address, last_seen_at, registered_at
-) VALUES
-(501, 5, 'tmr_perrine_001', 'Counter Reader', 'bbpos_wisepos_e',
- 'WPEPOS-001-PERRINE', 'online', '192.168.1.100', '2025-12-24 20:00:00', '2024-06-01 10:00:00');
+ 'sha256:mgr-001-perrine');
 
 -- ============================================================================
 -- SUPPLIER PREFERENCES (Master tier - no supplier_preference_id, restaurant_id is PK)
@@ -621,9 +610,8 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- 3. Generate 6 months of sales data programmatically for realistic forecasting
 --
 -- Notes:
--- - Master tier includes: all Pro features + devices, payments, modifiers, POS
+-- - Master tier includes: all Pro features + devices, payments, modifiers, and external POS metadata
 -- - Herb Chimichurri batch references Garlic Confit batch (nested batch support)
 -- - Batch-produced inventory lots have NULL ingredient_supplier_id
--- - Stripe terminal reader is configured for internal POS mode
 -- - order_item_modifiers.target_type uses 'ingredient' not 'batch' per ORM enum
 -- ============================================================================

@@ -63,7 +63,7 @@ CREATE TABLE `alerts` (
   KEY `alerts_ibfk_2` (`employee_id`),
   CONSTRAINT `alerts_ibfk_1` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`),
   CONSTRAINT `alerts_ibfk_2` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=540 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=541 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -147,83 +147,6 @@ CREATE TABLE `batch_recipes` (
   KEY `restaurant_id` (`restaurant_id`),
   CONSTRAINT `batch_recipes_ibfk_1` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=505 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `cash_drawer_sessions`
---
-
-DROP TABLE IF EXISTS `cash_drawer_sessions`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `cash_drawer_sessions` (
-  `session_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `restaurant_id` int(11) NOT NULL,
-  `device_id` bigint(20) DEFAULT NULL,
-  `opened_by_employee_id` int(11) NOT NULL,
-  `opened_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `opening_float` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `closed_by_employee_id` int(11) DEFAULT NULL,
-  `closed_at` datetime DEFAULT NULL,
-  `closing_float` decimal(10,2) DEFAULT NULL,
-  `expected_cash` decimal(10,2) DEFAULT NULL,
-  `actual_cash` decimal(10,2) DEFAULT NULL,
-  `variance` decimal(10,2) DEFAULT NULL,
-  `cash_sales_total` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `card_sales_total` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `tip_total` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `status` enum('open','closed') NOT NULL DEFAULT 'open',
-  `notes` text DEFAULT NULL,
-  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`session_id`),
-  KEY `fk_cds_opened_by` (`opened_by_employee_id`),
-  KEY `fk_cds_closed_by` (`closed_by_employee_id`),
-  KEY `idx_cds_restaurant_status` (`restaurant_id`,`status`),
-  KEY `idx_cds_opened_at` (`opened_at`),
-  KEY `idx_cds_device` (`device_id`),
-  KEY `idx_cds_open_sessions` (`restaurant_id`,`status`,`device_id`),
-  CONSTRAINT `fk_cds_closed_by` FOREIGN KEY (`closed_by_employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_cds_device` FOREIGN KEY (`device_id`) REFERENCES `devices` (`device_id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_cds_opened_by` FOREIGN KEY (`opened_by_employee_id`) REFERENCES `employees` (`employee_id`),
-  CONSTRAINT `fk_cds_restaurant` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `cash_drawer_transactions`
---
-
-DROP TABLE IF EXISTS `cash_drawer_transactions`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `cash_drawer_transactions` (
-  `transaction_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `session_id` bigint(20) NOT NULL,
-  `restaurant_id` int(11) NOT NULL,
-  `transaction_type` enum('cash_sale','card_sale','cash_refund','card_refund','pay_in','pay_out','no_sale') NOT NULL,
-  `amount` decimal(10,2) NOT NULL,
-  `tip_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `payment_id` int(11) DEFAULT NULL,
-  `order_id` int(11) DEFAULT NULL,
-  `employee_id` int(11) DEFAULT NULL,
-  `note` varchar(500) DEFAULT NULL,
-  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`transaction_id`),
-  KEY `fk_cdt_payment` (`payment_id`),
-  KEY `fk_cdt_order` (`order_id`),
-  KEY `fk_cdt_employee` (`employee_id`),
-  KEY `idx_cdt_session` (`session_id`),
-  KEY `idx_cdt_restaurant` (`restaurant_id`),
-  KEY `idx_cdt_type` (`transaction_type`),
-  KEY `idx_cdt_created` (`created_at`),
-  KEY `idx_cdt_daily` (`restaurant_id`,`created_at`),
-  CONSTRAINT `fk_cdt_employee` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_cdt_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`order_id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_cdt_payment` FOREIGN KEY (`payment_id`) REFERENCES `payments` (`payment_id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_cdt_restaurant` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_cdt_session` FOREIGN KEY (`session_id`) REFERENCES `cash_drawer_sessions` (`session_id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -414,7 +337,7 @@ CREATE TABLE `eod_run_ledger` (
   PRIMARY KEY (`eod_ledger_id`),
   UNIQUE KEY `uq_eod_run_ledger_restaurant_date` (`restaurant_id`,`run_date`),
   KEY `idx_eod_ledger_rest_date_running` (`restaurant_id`,`run_date`,`running`)
-) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -960,7 +883,6 @@ CREATE TABLE `payments` (
   `tip_amount` decimal(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Tip/gratuity amount',
   `cash_tendered` decimal(10,2) DEFAULT NULL COMMENT 'Amount of cash given by customer (for cash payments)',
   `change_given` decimal(10,2) DEFAULT NULL COMMENT 'Change returned to customer (for cash payments)',
-  `terminal_reader_id` bigint(20) DEFAULT NULL COMMENT 'FK to stripe_terminal_readers for card-present payments',
   `currency` varchar(10) DEFAULT 'USD',
   `method` varchar(50) DEFAULT NULL,
   `provider` varchar(50) DEFAULT NULL,
@@ -970,8 +892,6 @@ CREATE TABLE `payments` (
   PRIMARY KEY (`payment_id`),
   KEY `order_id` (`order_id`),
   KEY `payments_restaurant_fk` (`restaurant_id`),
-  KEY `fk_payments_terminal_reader` (`terminal_reader_id`),
-  CONSTRAINT `fk_payments_terminal_reader` FOREIGN KEY (`terminal_reader_id`) REFERENCES `stripe_terminal_readers` (`reader_id`) ON DELETE SET NULL,
   CONSTRAINT `payments_order_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`order_id`) ON DELETE CASCADE,
   CONSTRAINT `payments_restaurant_fk` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=505 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
@@ -1257,9 +1177,7 @@ CREATE TABLE `restaurants` (
   `pos_sync_orders` tinyint(1) DEFAULT 1,
   `pos_sync_payments` tinyint(1) DEFAULT 1,
   `pos_sync_menu` tinyint(1) DEFAULT 0,
-  `pos_mode` enum('none','internal','external') NOT NULL DEFAULT 'none' COMMENT 'POS operation mode: none=no POS, internal=PrepIQ POS, external=Square/Toast/Clover',
-  `stripe_terminal_location_id` varchar(255) DEFAULT NULL COMMENT 'Stripe Terminal Location ID for reader registration',
-  `cash_drawer_enabled` tinyint(1) NOT NULL DEFAULT 0 COMMENT 'Whether cash drawer tracking is enabled for this restaurant',
+  `pos_mode` enum('none','external') NOT NULL DEFAULT 'none' COMMENT 'POS operation mode: none=no POS, external=Square/Toast/Clover',
   `latitude` decimal(9,6) DEFAULT NULL,
   `longitude` decimal(9,6) DEFAULT NULL,
   PRIMARY KEY (`restaurant_id`),
@@ -1374,34 +1292,6 @@ CREATE TABLE `spoilage_data` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `stripe_terminal_readers`
---
-
-DROP TABLE IF EXISTS `stripe_terminal_readers`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `stripe_terminal_readers` (
-  `reader_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `restaurant_id` int(11) NOT NULL,
-  `stripe_reader_id` varchar(255) NOT NULL COMMENT 'Stripe reader ID (e.g., tmr_xxx)',
-  `label` varchar(100) DEFAULT NULL COMMENT 'Human-readable label (e.g., Front Counter Reader)',
-  `device_type` varchar(50) DEFAULT NULL COMMENT 'Reader model (e.g., stripe_s700, bbpos_wisepos_e)',
-  `serial_number` varchar(100) DEFAULT NULL,
-  `status` varchar(32) NOT NULL DEFAULT 'offline' COMMENT 'Reader status: online, offline',
-  `ip_address` varchar(45) DEFAULT NULL COMMENT 'Reader IP address on local network',
-  `last_seen_at` datetime DEFAULT NULL,
-  `registered_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`reader_id`),
-  UNIQUE KEY `uk_stripe_reader` (`stripe_reader_id`),
-  KEY `idx_str_restaurant` (`restaurant_id`),
-  KEY `idx_str_status` (`status`),
-  CONSTRAINT `fk_str_restaurant` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=502 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Stripe Terminal physical card readers';
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
 -- Table structure for table `supplier`
 --
 
@@ -1500,4 +1390,4 @@ CREATE TABLE `weather_data` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2026-04-17 16:40:04
+-- Dump completed on 2026-04-18 15:42:38

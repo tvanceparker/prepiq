@@ -40,7 +40,7 @@ Important attributes:
 - `settings`
 - `last_eod_run_date`
 - external POS fields such as `pos_provider`, `pos_connected`, `pos_last_sync`
-- internal POS fields such as `pos_mode`, `stripe_terminal_location_id`, `cash_drawer_enabled`
+- POS mode state such as `pos_mode`
 
 ### Menu And Recipe System
 
@@ -148,7 +148,7 @@ Purpose:
 - store scheduled shifts and edits
 - track actual clock events and insights
 
-### Internal POS And Devices
+### Orders, Payments, And Devices
 
 Primary entities:
 
@@ -157,17 +157,13 @@ Primary entities:
 - `OrderItemModifier`
 - `Payment`
 - `Device`
-- `StripeTerminalReader`
-- `CashDrawerSession`
-- `CashDrawerTransaction`
 - `POSItemMapping`
 - `POSMerchantMapping`
 
 Purpose:
 
-- support internal POS flows
+- support order and payment records
 - capture payments and device registration
-- track cash drawer operations and reader setup
 - map external POS items into PrepIQ entities
 
 ### Supporting Operational Data

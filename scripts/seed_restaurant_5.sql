@@ -34,7 +34,6 @@ INSERT INTO restaurants (
     pos_sync_orders,
     pos_sync_payments,
     pos_sync_menu,
-    cash_drawer_enabled,
     settings
 ) VALUES (
     5,
@@ -60,13 +59,12 @@ INSERT INTO restaurants (
     1,
     1,
     'auto',
-    'internal',
-    'none',
-    0,
+    'external',
+    'square',
     1,
     1,
     1,
-    0,
+    1,
     1,
     '{}'
 );

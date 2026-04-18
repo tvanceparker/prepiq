@@ -200,7 +200,7 @@ class TestOrderService:
 
     @pytest.mark.asyncio
     async def test_get_menu_items_pro_tier(self, order_service, mock_repos):
-        """Test menu items retrieval for pro tier"""
+        """Test menu items retrieval for legacy pro tier normalized to full."""
         # Create a proper mock item with attributes
         mock_item = MagicMock()
         mock_item.menu_item_id = 1
@@ -215,11 +215,11 @@ class TestOrderService:
         result = await order_service.get_menu_items()
 
         assert len(result) == 1
-        assert result[0]['tier'] == 'pro'
+        assert result[0]['tier'] == 'full'
         assert result[0]['menu_item_id'] == 1
         assert result[0]['name'] == 'Burger'
         assert result[0]['price'] == 10.99
-        # Pro tier currently doesn't include recipe_snapshot in the basic implementation
+        # Legacy pro normalizes to full, but the payload remains the lightweight menu shape.
 
     @pytest.mark.asyncio
     async def test_get_sales_channels(self, order_service, mock_repos):

@@ -35,10 +35,6 @@ class Employee(Base):
     prep_schedules = relationship("PrepSchedule", back_populates="employee")
     alerts = relationship("Alert", back_populates="employee")
     orders = relationship("Order", back_populates="employee")
-    # Cash drawer relationships
-    opened_drawer_sessions = relationship("CashDrawerSession", foreign_keys="CashDrawerSession.opened_by_employee_id", back_populates="opened_by")
-    closed_drawer_sessions = relationship("CashDrawerSession", foreign_keys="CashDrawerSession.closed_by_employee_id", back_populates="closed_by")
-    cash_drawer_transactions = relationship("CashDrawerTransaction", back_populates="employee")
 
     def __repr__(self):
         return f"<Employee(id={self.employee_id}, name={self.name}, role_id={self.role_id})>"

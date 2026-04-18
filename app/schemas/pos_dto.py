@@ -10,7 +10,7 @@ from enum import Enum
 
 class POSMode(str, Enum):
     """Restaurant POS mode - must pick one."""
-    INTERNAL = "internal"  # PrepIQ's own POS
+    NONE = "none"
     EXTERNAL = "external"  # Square, Toast, Clover, etc.
 
 
@@ -391,18 +391,12 @@ class POSModeUpdateRequest(BaseModel):
     """Request to update restaurant POS mode."""
     pos_mode: POSMode
     pos_provider: Optional[str] = None  # For external mode: square, toast, clover
-    cash_drawer_enabled: bool = True
 
 
 class POSModeResponse(BaseModel):
     """Response for POS mode settings."""
     pos_mode: str
     pos_provider: Optional[str]
-    cash_drawer_enabled: bool
-    stripe_terminal_location_id: Optional[str]
-    has_terminal_readers: bool
-    terminal_payments_enabled: Optional[bool] = None
-    preferred_terminal_reader_id: Optional[int] = None
 
 
 # POS Item Mapping DTOs

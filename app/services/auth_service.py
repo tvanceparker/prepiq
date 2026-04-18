@@ -7,6 +7,7 @@ from app.utils.security import verify_password, create_access_token, create_devi
 from app.utils.logger_helpers import log_method
 from app.core.logging import logger
 from datetime import datetime
+import hashlib
 from jose import jwt
 from app.utils.security import SECRET_KEY, ALGORITHM
 from sqlalchemy import select
@@ -85,12 +86,13 @@ class AuthService:
     async def register_device(self, device_name: str, device_type: str, device_fingerprint: str, restaurant_id: int):
         """Register a new device and return device token"""
         devices_repo = DevicesRepository(self.db, restaurant_id)
+        fingerprint_hash = hashlib.sha256(device_fingerprint.encode("utf-8")).hexdigest()
         
         device_data = {
             "restaurant_id": restaurant_id,
             "name": device_name,
             "device_type": device_type,
-            "device_fingerprint": device_fingerprint
+            "fingerprint_hash": fingerprint_hash,
         }
         
         device = await devices_repo.create(device_data)
@@ -101,7 +103,7 @@ class AuthService:
             "device_id": device.device_id,
             "device_type": device.device_type,
             "restaurant_id": restaurant_id,
-            "fingerprint": device_fingerprint
+            "fingerprint_hash": fingerprint_hash,
         })
         
         return {

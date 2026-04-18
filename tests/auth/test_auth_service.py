@@ -1,5 +1,6 @@
 import pytest
 import asyncio
+import hashlib
 from unittest.mock import AsyncMock, MagicMock, patch
 from types import SimpleNamespace
 from app.services.auth_service import AuthService
@@ -110,11 +111,11 @@ class TestAuthService:
         mock_device = MagicMock()
         mock_device.device_id = 123
         mock_device.device_type = 'pos_terminal'
-        mock_device.device_fingerprint = 'test-fingerprint'
 
         # Mock devices repository
         mock_devices_repo = AsyncMock()
         mock_devices_repo.create.return_value = mock_device
+        expected_hash = hashlib.sha256('test-fingerprint'.encode('utf-8')).hexdigest()
 
         with (patch('app.services.auth_service.DevicesRepository') as mock_devices_class,
               patch('app.services.auth_service.create_device_token') as mock_create_token):
@@ -133,8 +134,19 @@ class TestAuthService:
             assert result['device_token'] == 'mock-device-token'
             assert result['device_type'] == 'pos_terminal'
 
-            mock_devices_repo.create.assert_called_once()
-            mock_create_token.assert_called_once()
+            mock_devices_repo.create.assert_called_once_with({
+                'restaurant_id': 1,
+                'name': 'Test Terminal',
+                'device_type': 'pos_terminal',
+                'fingerprint_hash': expected_hash,
+            })
+            mock_create_token.assert_called_once_with({
+                'sub': 'device_123',
+                'device_id': 123,
+                'device_type': 'pos_terminal',
+                'restaurant_id': 1,
+                'fingerprint_hash': expected_hash,
+            })
 
     @pytest.mark.asyncio
     async def test_log_activity_success(self, auth_service):

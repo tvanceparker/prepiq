@@ -17,7 +17,6 @@ class Payment(Base):
     tip_amount = Column(DECIMAL(10, 2), nullable=False, default=0.00)
     cash_tendered = Column(DECIMAL(10, 2), nullable=True)
     change_given = Column(DECIMAL(10, 2), nullable=True)
-    terminal_reader_id = Column(BigInteger, ForeignKey("stripe_terminal_readers.reader_id"), nullable=True)
     currency = Column(String(10), default='USD')
     method = Column(String(50), nullable=True)
     provider = Column(String(50), nullable=True)
@@ -28,5 +27,3 @@ class Payment(Base):
     # Relationships
     order = relationship("Order", back_populates="payments")
     restaurant = relationship("Restaurant", back_populates="payments")
-    terminal_reader = relationship("StripeTerminalReader", back_populates="payments")
-    cash_drawer_transactions = relationship("CashDrawerTransaction", back_populates="payment")

@@ -1,6 +1,6 @@
 # app/db/models/devices_orm.py
 
-from sqlalchemy import Column, BigInteger, String, JSON, ForeignKey, TIMESTAMP
+from sqlalchemy import Column, BigInteger, String, JSON, ForeignKey, TIMESTAMP, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.session import Base
@@ -15,9 +15,11 @@ class Device(Base):
     device_type = Column(String(64), nullable=False)  # e.g., 'pos_terminal', 'kitchen_display', 'printer'
     device_metadata = Column(JSON, nullable=True)
     device_settings = Column(JSON, nullable=True)  # Device-specific settings overrides
-    device_fingerprint = Column(String(255), nullable=True)  # Unique device identifier
+    fingerprint_hash = Column(String(255), nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+    is_active = Column(Boolean, nullable=True, server_default="1")
+    last_seen_at = Column(TIMESTAMP, nullable=True)
+    biometric_capability = Column(String(20), nullable=True)
 
     restaurant = relationship("Restaurant", back_populates="devices")
-    cash_drawer_sessions = relationship("CashDrawerSession", back_populates="device")

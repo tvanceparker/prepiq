@@ -3,7 +3,7 @@
 Historically ``main.py`` imported every ``*_orm`` file to ensure SQLAlchemy's
 class registry was populated. Test modules often import ``app.db.models`` but
 not ``main``, so string-based relationship targets (for example
-``relationship("CashDrawerSession")`` on ``Device``) could not be resolved and
+``relationship("Order")`` on ``Restaurant``) could not be resolved and
 mapper configuration failed. Importing every module when this package is first
 loaded keeps the registry in sync without requiring the rest of the app to
 manually enumerate files.

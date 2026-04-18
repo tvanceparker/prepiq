@@ -28,4 +28,3 @@ class Order(Base):
     employee = relationship("Employee", back_populates="orders")
     order_items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     payments = relationship("Payment", back_populates="order", cascade="all, delete-orphan")
-    cash_drawer_transactions = relationship("CashDrawerTransaction", back_populates="order")

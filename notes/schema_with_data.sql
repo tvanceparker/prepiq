@@ -765,7 +765,7 @@ CREATE TABLE `alerts` (
   KEY `alerts_ibfk_2` (`employee_id`),
   CONSTRAINT `alerts_ibfk_1` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`),
   CONSTRAINT `alerts_ibfk_2` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=540 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=541 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1107,7 +1107,8 @@ INSERT INTO `alerts` VALUES
 (536,5,NULL,'system','LowStock','Low stock alert: \'Short Rib\' stock is at 0.00 which is below the reorder point (40.80).','2026-04-17 22:33:37',NULL,'Active',0,'{\"ingredient_id\": 503, \"current_stock\": 0.0, \"reorder_point\": 40.8}','warning'),
 (537,5,NULL,'system','LowStock','Low stock alert: \'Risotto Rice\' stock is at 145.00 which is below the reorder point (527.93).','2026-04-17 22:33:37',NULL,'Active',0,'{\"ingredient_id\": 505, \"current_stock\": 145.0, \"reorder_point\": 527.93}','warning'),
 (538,5,NULL,'system','LowStock','Low stock alert: \'Focaccia Bread\' stock is at 0.00 which is below the reorder point (666.00).','2026-04-17 22:33:37',NULL,'Active',0,'{\"ingredient_id\": 507, \"current_stock\": 0.0, \"reorder_point\": 666.0}','warning'),
-(539,5,NULL,'system','LowStock','Low stock alert: \'Parmesan\' stock is at 100.00 which is below the reorder point (277.65).','2026-04-17 22:33:37',NULL,'Active',0,'{\"ingredient_id\": 508, \"current_stock\": 100.0, \"reorder_point\": 277.65}','warning');
+(539,5,NULL,'system','LowStock','Low stock alert: \'Parmesan\' stock is at 100.00 which is below the reorder point (277.65).','2026-04-17 22:33:37',NULL,'Active',0,'{\"ingredient_id\": 508, \"current_stock\": 100.0, \"reorder_point\": 277.65}','warning'),
+(540,2,NULL,'system','MissingSalesData','No sales data found for 2026-04-18 for restaurant 2','2026-04-18 20:52:28',NULL,'Active',0,'{}','urgent');
 /*!40000 ALTER TABLE `alerts` ENABLE KEYS */;
 UNLOCK TABLES;
 COMMIT;
@@ -1306,107 +1307,6 @@ INSERT INTO `batch_recipes` VALUES
 (503,5,'Herb Chimichurri','Fresh herb sauce with garlic confit',90.00,'oz',20,5,1),
 (504,5,'Truffle Butter','Compound butter with truffle oil',60.00,'oz',15,7,1);
 /*!40000 ALTER TABLE `batch_recipes` ENABLE KEYS */;
-UNLOCK TABLES;
-COMMIT;
-SET AUTOCOMMIT=@OLD_AUTOCOMMIT;
-
---
--- Table structure for table `cash_drawer_sessions`
---
-
-DROP TABLE IF EXISTS `cash_drawer_sessions`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `cash_drawer_sessions` (
-  `session_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `restaurant_id` int(11) NOT NULL,
-  `device_id` bigint(20) DEFAULT NULL,
-  `opened_by_employee_id` int(11) NOT NULL,
-  `opened_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `opening_float` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `closed_by_employee_id` int(11) DEFAULT NULL,
-  `closed_at` datetime DEFAULT NULL,
-  `closing_float` decimal(10,2) DEFAULT NULL,
-  `expected_cash` decimal(10,2) DEFAULT NULL,
-  `actual_cash` decimal(10,2) DEFAULT NULL,
-  `variance` decimal(10,2) DEFAULT NULL,
-  `cash_sales_total` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `card_sales_total` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `tip_total` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `status` enum('open','closed') NOT NULL DEFAULT 'open',
-  `notes` text DEFAULT NULL,
-  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`session_id`),
-  KEY `fk_cds_opened_by` (`opened_by_employee_id`),
-  KEY `fk_cds_closed_by` (`closed_by_employee_id`),
-  KEY `idx_cds_restaurant_status` (`restaurant_id`,`status`),
-  KEY `idx_cds_opened_at` (`opened_at`),
-  KEY `idx_cds_device` (`device_id`),
-  KEY `idx_cds_open_sessions` (`restaurant_id`,`status`,`device_id`),
-  CONSTRAINT `fk_cds_closed_by` FOREIGN KEY (`closed_by_employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_cds_device` FOREIGN KEY (`device_id`) REFERENCES `devices` (`device_id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_cds_opened_by` FOREIGN KEY (`opened_by_employee_id`) REFERENCES `employees` (`employee_id`),
-  CONSTRAINT `fk_cds_restaurant` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `cash_drawer_sessions`
---
-
-SET @OLD_AUTOCOMMIT=@@AUTOCOMMIT, @@AUTOCOMMIT=0;
-LOCK TABLES `cash_drawer_sessions` WRITE;
-/*!40000 ALTER TABLE `cash_drawer_sessions` DISABLE KEYS */;
-/*!40000 ALTER TABLE `cash_drawer_sessions` ENABLE KEYS */;
-UNLOCK TABLES;
-COMMIT;
-SET AUTOCOMMIT=@OLD_AUTOCOMMIT;
-
---
--- Table structure for table `cash_drawer_transactions`
---
-
-DROP TABLE IF EXISTS `cash_drawer_transactions`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `cash_drawer_transactions` (
-  `transaction_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `session_id` bigint(20) NOT NULL,
-  `restaurant_id` int(11) NOT NULL,
-  `transaction_type` enum('cash_sale','card_sale','cash_refund','card_refund','pay_in','pay_out','no_sale') NOT NULL,
-  `amount` decimal(10,2) NOT NULL,
-  `tip_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `payment_id` int(11) DEFAULT NULL,
-  `order_id` int(11) DEFAULT NULL,
-  `employee_id` int(11) DEFAULT NULL,
-  `note` varchar(500) DEFAULT NULL,
-  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`transaction_id`),
-  KEY `fk_cdt_payment` (`payment_id`),
-  KEY `fk_cdt_order` (`order_id`),
-  KEY `fk_cdt_employee` (`employee_id`),
-  KEY `idx_cdt_session` (`session_id`),
-  KEY `idx_cdt_restaurant` (`restaurant_id`),
-  KEY `idx_cdt_type` (`transaction_type`),
-  KEY `idx_cdt_created` (`created_at`),
-  KEY `idx_cdt_daily` (`restaurant_id`,`created_at`),
-  CONSTRAINT `fk_cdt_employee` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_cdt_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`order_id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_cdt_payment` FOREIGN KEY (`payment_id`) REFERENCES `payments` (`payment_id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_cdt_restaurant` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_cdt_session` FOREIGN KEY (`session_id`) REFERENCES `cash_drawer_sessions` (`session_id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `cash_drawer_transactions`
---
-
-SET @OLD_AUTOCOMMIT=@@AUTOCOMMIT, @@AUTOCOMMIT=0;
-LOCK TABLES `cash_drawer_transactions` WRITE;
-/*!40000 ALTER TABLE `cash_drawer_transactions` DISABLE KEYS */;
-/*!40000 ALTER TABLE `cash_drawer_transactions` ENABLE KEYS */;
 UNLOCK TABLES;
 COMMIT;
 SET AUTOCOMMIT=@OLD_AUTOCOMMIT;
@@ -2971,7 +2871,7 @@ CREATE TABLE `eod_run_ledger` (
   PRIMARY KEY (`eod_ledger_id`),
   UNIQUE KEY `uq_eod_run_ledger_restaurant_date` (`restaurant_id`,`run_date`),
   KEY `idx_eod_ledger_rest_date_running` (`restaurant_id`,`run_date`,`running`)
-) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -2998,7 +2898,8 @@ INSERT INTO `eod_run_ledger` VALUES
 (16,5,'2026-04-10',0,NULL,'2026-04-13 08:06:14','2026-04-13 08:14:00',1,1,1,0,1,1,'{\"sales_deducted\": 246}','[]','2026-04-13 07:27:13','2026-04-13 08:14:00'),
 (17,5,'2026-04-11',0,NULL,'2026-04-13 08:26:13','2026-04-13 08:27:08',1,1,1,0,1,1,'{\"sales_deducted\": 406}','[]','2026-04-13 08:26:13','2026-04-13 08:27:08'),
 (18,5,'2026-04-12',0,NULL,'2026-04-16 15:25:18','2026-04-16 15:26:04',1,1,1,0,1,1,'{\"sales_deducted\": 226}','[]','2026-04-16 14:28:59','2026-04-16 15:26:04'),
-(19,5,'2026-04-13',0,NULL,'2026-04-17 22:32:16','2026-04-17 22:33:37',1,1,1,0,1,1,'{\"sales_deducted\": 218}','[]','2026-04-17 22:32:16','2026-04-17 22:33:37');
+(19,5,'2026-04-13',0,NULL,'2026-04-17 22:32:16','2026-04-17 22:33:37',1,1,1,0,1,1,'{\"sales_deducted\": 218}','[]','2026-04-17 22:32:16','2026-04-17 22:33:37'),
+(20,2,'2026-04-18',0,NULL,'2026-04-18 20:52:28','2026-04-18 20:52:28',0,0,0,0,0,1,'{}','[]','2026-04-18 20:52:28','2026-04-18 20:52:28');
 /*!40000 ALTER TABLE `eod_run_ledger` ENABLE KEYS */;
 UNLOCK TABLES;
 COMMIT;
@@ -10381,7 +10282,6 @@ CREATE TABLE `payments` (
   `tip_amount` decimal(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Tip/gratuity amount',
   `cash_tendered` decimal(10,2) DEFAULT NULL COMMENT 'Amount of cash given by customer (for cash payments)',
   `change_given` decimal(10,2) DEFAULT NULL COMMENT 'Change returned to customer (for cash payments)',
-  `terminal_reader_id` bigint(20) DEFAULT NULL COMMENT 'FK to stripe_terminal_readers for card-present payments',
   `currency` varchar(10) DEFAULT 'USD',
   `method` varchar(50) DEFAULT NULL,
   `provider` varchar(50) DEFAULT NULL,
@@ -10391,8 +10291,6 @@ CREATE TABLE `payments` (
   PRIMARY KEY (`payment_id`),
   KEY `order_id` (`order_id`),
   KEY `payments_restaurant_fk` (`restaurant_id`),
-  KEY `fk_payments_terminal_reader` (`terminal_reader_id`),
-  CONSTRAINT `fk_payments_terminal_reader` FOREIGN KEY (`terminal_reader_id`) REFERENCES `stripe_terminal_readers` (`reader_id`) ON DELETE SET NULL,
   CONSTRAINT `payments_order_fk` FOREIGN KEY (`order_id`) REFERENCES `orders` (`order_id`) ON DELETE CASCADE,
   CONSTRAINT `payments_restaurant_fk` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=505 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
@@ -10406,10 +10304,10 @@ SET @OLD_AUTOCOMMIT=@@AUTOCOMMIT, @@AUTOCOMMIT=0;
 LOCK TABLES `payments` WRITE;
 /*!40000 ALTER TABLE `payments` DISABLE KEYS */;
 INSERT INTO `payments` VALUES
-(501,501,5,'2025-12-24 13:15:00',46.64,0.00,NULL,NULL,NULL,'USD','card',NULL,NULL,'succeeded',NULL),
-(502,502,5,'2025-12-24 12:45:00',37.63,0.00,NULL,NULL,NULL,'USD','card',NULL,NULL,'succeeded',NULL),
-(503,503,5,'2025-12-24 19:30:00',29.15,0.00,NULL,NULL,NULL,'USD','card',NULL,NULL,'succeeded',NULL),
-(504,506,5,'2025-12-24 18:00:00',24.38,0.00,NULL,NULL,NULL,'USD','card',NULL,NULL,'refunded',NULL);
+(501,501,5,'2025-12-24 13:15:00',46.64,0.00,NULL,NULL,'USD','card',NULL,NULL,'succeeded',NULL),
+(502,502,5,'2025-12-24 12:45:00',37.63,0.00,NULL,NULL,'USD','card',NULL,NULL,'succeeded',NULL),
+(503,503,5,'2025-12-24 19:30:00',29.15,0.00,NULL,NULL,'USD','card',NULL,NULL,'succeeded',NULL),
+(504,506,5,'2025-12-24 18:00:00',24.38,0.00,NULL,NULL,'USD','card',NULL,NULL,'refunded',NULL);
 /*!40000 ALTER TABLE `payments` ENABLE KEYS */;
 UNLOCK TABLES;
 COMMIT;
@@ -11176,9 +11074,7 @@ CREATE TABLE `restaurants` (
   `pos_sync_orders` tinyint(1) DEFAULT 1,
   `pos_sync_payments` tinyint(1) DEFAULT 1,
   `pos_sync_menu` tinyint(1) DEFAULT 0,
-  `pos_mode` enum('none','internal','external') NOT NULL DEFAULT 'none' COMMENT 'POS operation mode: none=no POS, internal=PrepIQ POS, external=Square/Toast/Clover',
-  `stripe_terminal_location_id` varchar(255) DEFAULT NULL COMMENT 'Stripe Terminal Location ID for reader registration',
-  `cash_drawer_enabled` tinyint(1) NOT NULL DEFAULT 0 COMMENT 'Whether cash drawer tracking is enabled for this restaurant',
+  `pos_mode` enum('none','external') NOT NULL DEFAULT 'none' COMMENT 'POS operation mode: none=no POS, external=Square/Toast/Clover',
   `latitude` decimal(9,6) DEFAULT NULL,
   `longitude` decimal(9,6) DEFAULT NULL,
   PRIMARY KEY (`restaurant_id`),
@@ -11195,11 +11091,11 @@ SET @OLD_AUTOCOMMIT=@@AUTOCOMMIT, @@AUTOCOMMIT=0;
 LOCK TABLES `restaurants` WRITE;
 /*!40000 ALTER TABLE `restaurants` DISABLE KEYS */;
 INSERT INTO `restaurants` VALUES
-(1,'The restaurant','(208) 565-3585','123 Main St.','Some City','Idaho','23423','master','\"[{\\\"day\\\": \\\"Monday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Tuesday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Wednesday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Thursday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Friday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Saturday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Sunday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}]\"','example@example.com','inactive',NULL,7,NULL,NULL,1,60,'[\"in-house\", \"take-out\"]',NULL,'{}',0,0,'auto','none',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'internal',NULL,0,NULL,NULL),
-(2,'Basic Test Restaurant','(208) 555-8685','123 Main St','Twin Falls','ID','83301','basic','\"[{\\\"day\\\": \\\"Monday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"21:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Tuesday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"21:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Wednesday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"21:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Thursday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"21:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Friday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Saturday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"12:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Sunday\\\", \\\"open_time\\\": null, \\\"close_time\\\": null, \\\"is_closed\\\": true}]\"','contact@example.com','active','2025-08-18',14,7.75,'America/Los_Angeles',1,60,'[\"in-house\", \"doordash\", \"take-out\"]','2026-01-22','{}',0,0,'auto','none',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'none',NULL,0,42.562966,-114.460871),
-(3,'Canyon Rim Grill','208-555-3300','1250 Blue Lakes Blvd N','Twin Falls','ID','83301','basic','{\"monday\":{\"open\":\"11:00\",\"close\":\"21:00\"},\"tuesday\":{\"open\":\"11:00\",\"close\":\"21:00\"},\"wednesday\":{\"open\":\"11:00\",\"close\":\"21:00\"},\"thursday\":{\"open\":\"11:00\",\"close\":\"21:00\"},\"friday\":{\"open\":\"11:00\",\"close\":\"22:00\"},\"saturday\":{\"open\":\"11:00\",\"close\":\"22:00\"},\"sunday\":{\"open\":\"11:00\",\"close\":\"20:00\"}}','info@canyonrim.test','active','2027-06-25',7,6.00,'America/Boise',1,45,'[\"in-house\", \"takeout\", \"doordash\"]',NULL,'{}',0,1,'auto','none',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'internal',NULL,0,42.597000,-114.459700),
-(4,'Snake River Taqueria','208-555-4400','210 Falls Ave','Twin Falls','ID','83301','pro','{\"sunday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"monday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"tuesday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"wednesday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"thursday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"friday\":{\"open\":\"10:30\",\"close\":\"22:00\"},\"saturday\":{\"open\":\"10:30\",\"close\":\"22:00\"}}','info@snakerivertaq.test','active','2027-06-25',14,6.00,'America/Boise',1,60,'[\"in-house\", \"takeout\", \"doordash\"]',NULL,'{}',1,1,'auto','none',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'internal',NULL,0,42.588500,-114.460200),
-(5,'Perrine Heights Kitchen','208-555-5500','401 Shoshone St N','Twin Falls','ID','83301','master','{\"monday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"tuesday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"wednesday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"thursday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"friday\":{\"open\":\"10:00\",\"close\":\"23:00\"},\"saturday\":{\"open\":\"10:00\",\"close\":\"23:00\"},\"sunday\":{\"open\":\"10:00\",\"close\":\"20:00\"}}','info@perrineheights.test','active','2027-12-25',21,6.00,'America/Boise',1,60,'[\"in-house\", \"takeout\", \"doordash\"]',NULL,'{}',1,1,'auto','square',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'external',NULL,1,42.563700,-114.460900);
+(1,'The restaurant','(208) 565-3585','123 Main St.','Some City','Idaho','23423','master','\"[{\\\"day\\\": \\\"Monday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Tuesday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Wednesday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Thursday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Friday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Saturday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Sunday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}]\"','example@example.com','inactive',NULL,7,NULL,NULL,1,60,'[\"in-house\", \"take-out\"]',NULL,'{}',0,0,'auto','none',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'none',NULL,NULL),
+(2,'Basic Test Restaurant','(208) 555-8685','123 Main St','Twin Falls','ID','83301','basic','\"[{\\\"day\\\": \\\"Monday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"21:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Tuesday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"21:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Wednesday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"21:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Thursday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"21:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Friday\\\", \\\"open_time\\\": \\\"09:00\\\", \\\"close_time\\\": \\\"23:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Saturday\\\", \\\"open_time\\\": \\\"08:00\\\", \\\"close_time\\\": \\\"12:00\\\", \\\"is_closed\\\": false}, {\\\"day\\\": \\\"Sunday\\\", \\\"open_time\\\": null, \\\"close_time\\\": null, \\\"is_closed\\\": true}]\"','contact@example.com','active','2025-08-18',14,7.75,'America/Los_Angeles',1,60,'[\"in-house\", \"doordash\", \"take-out\"]','2026-04-18','{}',0,0,'auto','none',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'none',42.562966,-114.460871),
+(3,'Canyon Rim Grill','208-555-3300','1250 Blue Lakes Blvd N','Twin Falls','ID','83301','basic','{\"monday\":{\"open\":\"11:00\",\"close\":\"21:00\"},\"tuesday\":{\"open\":\"11:00\",\"close\":\"21:00\"},\"wednesday\":{\"open\":\"11:00\",\"close\":\"21:00\"},\"thursday\":{\"open\":\"11:00\",\"close\":\"21:00\"},\"friday\":{\"open\":\"11:00\",\"close\":\"22:00\"},\"saturday\":{\"open\":\"11:00\",\"close\":\"22:00\"},\"sunday\":{\"open\":\"11:00\",\"close\":\"20:00\"}}','info@canyonrim.test','active','2027-06-25',7,6.00,'America/Boise',1,45,'[\"in-house\", \"takeout\", \"doordash\"]',NULL,'{}',0,1,'auto','none',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'none',42.597000,-114.459700),
+(4,'Snake River Taqueria','208-555-4400','210 Falls Ave','Twin Falls','ID','83301','pro','{\"sunday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"monday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"tuesday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"wednesday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"thursday\":{\"open\":\"10:30\",\"close\":\"21:00\"},\"friday\":{\"open\":\"10:30\",\"close\":\"22:00\"},\"saturday\":{\"open\":\"10:30\",\"close\":\"22:00\"}}','info@snakerivertaq.test','active','2027-06-25',14,6.00,'America/Boise',1,60,'[\"in-house\", \"takeout\", \"doordash\"]',NULL,'{}',1,1,'auto','none',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'none',42.588500,-114.460200),
+(5,'Perrine Heights Kitchen','208-555-5500','401 Shoshone St N','Twin Falls','ID','83301','master','{\"monday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"tuesday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"wednesday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"thursday\":{\"open\":\"10:00\",\"close\":\"21:00\"},\"friday\":{\"open\":\"10:00\",\"close\":\"23:00\"},\"saturday\":{\"open\":\"10:00\",\"close\":\"23:00\"},\"sunday\":{\"open\":\"10:00\",\"close\":\"20:00\"}}','info@perrineheights.test','active','2027-12-25',21,6.00,'America/Boise',1,60,'[\"in-house\", \"takeout\", \"doordash\"]',NULL,'{}',1,1,'auto','square',0,NULL,NULL,NULL,NULL,NULL,1,NULL,1,1,0,'external',42.563700,-114.460900);
 /*!40000 ALTER TABLE `restaurants` ENABLE KEYS */;
 UNLOCK TABLES;
 COMMIT;
@@ -84917,48 +84813,6 @@ COMMIT;
 SET AUTOCOMMIT=@OLD_AUTOCOMMIT;
 
 --
--- Table structure for table `stripe_terminal_readers`
---
-
-DROP TABLE IF EXISTS `stripe_terminal_readers`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `stripe_terminal_readers` (
-  `reader_id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `restaurant_id` int(11) NOT NULL,
-  `stripe_reader_id` varchar(255) NOT NULL COMMENT 'Stripe reader ID (e.g., tmr_xxx)',
-  `label` varchar(100) DEFAULT NULL COMMENT 'Human-readable label (e.g., Front Counter Reader)',
-  `device_type` varchar(50) DEFAULT NULL COMMENT 'Reader model (e.g., stripe_s700, bbpos_wisepos_e)',
-  `serial_number` varchar(100) DEFAULT NULL,
-  `status` varchar(32) NOT NULL DEFAULT 'offline' COMMENT 'Reader status: online, offline',
-  `ip_address` varchar(45) DEFAULT NULL COMMENT 'Reader IP address on local network',
-  `last_seen_at` datetime DEFAULT NULL,
-  `registered_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`reader_id`),
-  UNIQUE KEY `uk_stripe_reader` (`stripe_reader_id`),
-  KEY `idx_str_restaurant` (`restaurant_id`),
-  KEY `idx_str_status` (`status`),
-  CONSTRAINT `fk_str_restaurant` FOREIGN KEY (`restaurant_id`) REFERENCES `restaurants` (`restaurant_id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=502 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Stripe Terminal physical card readers';
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `stripe_terminal_readers`
---
-
-SET @OLD_AUTOCOMMIT=@@AUTOCOMMIT, @@AUTOCOMMIT=0;
-LOCK TABLES `stripe_terminal_readers` WRITE;
-/*!40000 ALTER TABLE `stripe_terminal_readers` DISABLE KEYS */;
-INSERT INTO `stripe_terminal_readers` VALUES
-(501,5,'STRP-001-PERRINE','Counter Reader','pos_terminal','STRP-001-PERRINE','online',NULL,NULL,'2026-01-22 15:34:13','2026-01-22 15:34:13','2026-01-22 15:34:13');
-/*!40000 ALTER TABLE `stripe_terminal_readers` ENABLE KEYS */;
-UNLOCK TABLES;
-COMMIT;
-SET AUTOCOMMIT=@OLD_AUTOCOMMIT;
-
---
 -- Table structure for table `supplier`
 --
 
@@ -86247,4 +86101,4 @@ SET AUTOCOMMIT=@OLD_AUTOCOMMIT;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
 
--- Dump completed on 2026-04-17 16:40:04
+-- Dump completed on 2026-04-18 15:42:38
