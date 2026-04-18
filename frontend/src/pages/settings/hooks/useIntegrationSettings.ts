@@ -9,14 +9,7 @@ import {
   disconnectPOS,
   triggerPOSSync,
 } from '../../../api/settings';
-import {
-  listTerminalReaders,
-  registerTerminalReader,
-  deleteTerminalReader,
-  syncTerminalReaderStatus,
-  getTerminalLocation,
-} from '../../../api/pos';
-import type { POSMode, POSProvider } from '../../../interfaces/pos';
+import type { POSProvider } from '../../../interfaces/pos';
 
 export interface SnackbarState {
   open: boolean;
@@ -59,20 +52,6 @@ export function useIntegrationSettings() {
     enabled: posSettingsQuery.data?.pos_mode === 'external',
   });
 
-  // Terminal readers query (only when internal mode)
-  const terminalReadersQuery = useQuery({
-    queryKey: ['terminalReaders'],
-    queryFn: () => listTerminalReaders(),
-    enabled: posSettingsQuery.data?.pos_mode === 'internal',
-  });
-
-  // Terminal location query
-  const terminalLocationQuery = useQuery({
-    queryKey: ['terminalLocation'],
-    queryFn: getTerminalLocation,
-    enabled: posSettingsQuery.data?.pos_mode === 'internal',
-  });
-
   // =========================================================================
   // Mutations
   // =========================================================================
@@ -111,37 +90,14 @@ export function useIntegrationSettings() {
     },
   });
 
-  const registerReaderMutation = useMutation({
-    mutationFn: (data: { registration_code: string; label: string }) =>
-      registerTerminalReader(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['terminalReaders'] });
-      showSnackbar('Reader registered successfully', 'success');
-    },
-    onError: (error: any) => {
-      showSnackbar(error?.message || 'Failed to register reader', 'error');
-    },
-  });
-
-  const deleteReaderMutation = useMutation({
-    mutationFn: deleteTerminalReader,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['terminalReaders'] });
-      showSnackbar('Reader removed', 'success');
-    },
-    onError: (error: any) => {
-      showSnackbar(error?.message || 'Failed to remove reader', 'error');
-    },
-  });
-
   // =========================================================================
   // Handlers
   // =========================================================================
 
-  const handleModeChange = (newMode: POSMode) => {
+  const handleModeChange = (newMode: 'external') => {
     updateModeMutation.mutate({
       pos_mode: newMode,
-      pos_provider: newMode === 'external' ? 'square' : null,
+      pos_provider: 'square',
       cash_drawer_enabled: posSettingsQuery.data?.cash_drawer_enabled ?? true,
     });
   };
@@ -152,14 +108,6 @@ export function useIntegrationSettings() {
       pos_mode: 'external',
       pos_provider: provider,
       cash_drawer_enabled: posSettingsQuery.data?.cash_drawer_enabled ?? true,
-    });
-  };
-
-  const handleCashDrawerToggle = () => {
-    updateModeMutation.mutate({
-      pos_mode: posSettingsQuery.data?.pos_mode || 'internal',
-      pos_provider: posSettingsQuery.data?.pos_provider,
-      cash_drawer_enabled: !posSettingsQuery.data?.cash_drawer_enabled,
     });
   };
 
@@ -181,29 +129,6 @@ export function useIntegrationSettings() {
     }
   };
 
-  const handleRegisterReader = (registrationCode: string, label: string) => {
-    if (!registrationCode || !label) return false;
-    registerReaderMutation.mutate({
-      registration_code: registrationCode,
-      label: label,
-    });
-    return true;
-  };
-
-  const handleDeleteReader = (readerId: number) => {
-    deleteReaderMutation.mutate(readerId);
-  };
-
-  const handleSyncReaderStatus = async (readerId: number) => {
-    try {
-      await syncTerminalReaderStatus(readerId);
-      queryClient.invalidateQueries({ queryKey: ['terminalReaders'] });
-      showSnackbar('Reader status synced', 'success');
-    } catch (error) {
-      showSnackbar('Failed to sync reader status', 'error');
-    }
-  };
-
   const handleSync = () => {
     syncMutation.mutate();
   };
@@ -220,13 +145,10 @@ export function useIntegrationSettings() {
     // Data
     posSettings: posSettingsQuery.data,
     posStatus: posStatusQuery.data,
-    terminalReaders: terminalReadersQuery.data?.readers || [],
-    terminalLocation: terminalLocationQuery.data,
 
     // Loading states
     isLoading: posSettingsQuery.isLoading,
     isStatusLoading: posStatusQuery.isLoading,
-    isReadersLoading: terminalReadersQuery.isLoading,
 
     // Error states
     posError: posSettingsQuery.error,
@@ -235,8 +157,6 @@ export function useIntegrationSettings() {
     isUpdatingMode: updateModeMutation.isPending,
     isDisconnecting: disconnectMutation.isPending,
     isSyncing: syncMutation.isPending,
-    isRegisteringReader: registerReaderMutation.isPending,
-    isDeletingReader: deleteReaderMutation.isPending,
 
     // Snackbar
     snackbar,
@@ -245,11 +165,7 @@ export function useIntegrationSettings() {
     // Handlers
     handleModeChange,
     handleProviderChange,
-    handleCashDrawerToggle,
     handleConnectPOS,
-    handleRegisterReader,
-    handleDeleteReader,
-    handleSyncReaderStatus,
     handleSync,
     handleDisconnect,
 

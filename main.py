@@ -22,9 +22,7 @@ from app.api.v1 import (
     settings_routes,
     alert_routes,
     orders_routes,
-    pos_routes,
     pos_webhooks,
-    kitchen_routes,
 )
 from app.api.v1 import pos_mappings_routes
 from app.utils.eod_runner import run_eod_jobs
@@ -128,8 +126,6 @@ app.add_middleware(
 app.add_middleware(AuthExtractionMiddleware)
 
 # Include routers after app creation
-app.include_router(kitchen_routes.router, prefix="/api/v1")
-app.include_router(pos_routes.router, prefix="/api/v1")
 app.include_router(pos_webhooks.router, prefix="/api/v1")  # POS webhook routes
 app.include_router(pos_mappings_routes.router, prefix="/api/v1")  # POS mappings routes
 app.include_router(orders_routes.router, prefix="/api/v1")
@@ -146,9 +142,3 @@ app.include_router(inventory_routes.router, prefix="/api/v1")
 app.include_router(settings_routes.router, prefix="/api/v1")
 app.include_router(alert_routes.router, prefix="/api/v1")
 app.include_router(auth_routes.router, prefix="/api/v1")
-
-from app.sockets.kitchen_ws import router as kitchen_ws_router
-from app.sockets.pos_ws import router as pos_ws_router
-
-app.include_router(kitchen_ws_router)
-app.include_router(pos_ws_router)
