@@ -1,7 +1,7 @@
 # app/schemas/dashboard_dto.py
 
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List, Dict
+from typing import Any, Dict, List, Optional
 
 class MenuItemCreate(BaseModel):
     name: str
@@ -47,6 +47,14 @@ class SalesConflictOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SalesUploadRowErrorOut(BaseModel):
+    row_number: int
+    code: str
+    message: str
+    row_data: Dict[str, Any] = Field(default_factory=dict)
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ---- Dashboard output DTOs ----
 class ForecastedSalesBasic(BaseModel):
     forecasted_quantity: int
@@ -86,6 +94,23 @@ class DailyOverviewOut(BaseModel):
 class EodUploadResponse(BaseModel):
     message: str
     data: List[SaleOut]
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SalesUploadResponse(BaseModel):
+    import_id: str
+    source: str
+    overwrite: bool
+    attempted_rows: int
+    inserted_rows: int
+    skipped_rows: int
+    duplicate_rows: int
+    overwritten_rows: int
+    sale_dates: List[str] = Field(default_factory=list)
+    channels: List[Optional[str]] = Field(default_factory=list)
+    row_errors: List[SalesUploadRowErrorOut] = Field(default_factory=list)
+    message: str
+    data: List[SaleOut] = Field(default_factory=list)
     model_config = ConfigDict(from_attributes=True)
 
 

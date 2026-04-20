@@ -31,6 +31,7 @@ export default function IntegrationSettings() {
   const {
     posSettings,
     posStatus,
+    lastSyncResult,
     isLoading,
     isStatusLoading,
     posError,
@@ -45,6 +46,13 @@ export default function IntegrationSettings() {
     handleSync,
     handleDisconnect,
   } = useIntegrationSettings();
+
+  const syncSummarySeverity =
+    lastSyncResult?.status === 'failed'
+      ? 'error'
+      : lastSyncResult?.status === 'partial'
+        ? 'warning'
+        : 'success';
 
   if (isLoading) {
     return (
@@ -169,6 +177,59 @@ export default function IntegrationSettings() {
                   {isSyncing ? 'Syncing...' : 'Sync Now'}
                 </Button>
               </Box>
+
+              {lastSyncResult && (
+                <Alert severity={syncSummarySeverity} sx={{ mt: 2 }}>
+                  <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                    Latest Sync Result
+                  </Typography>
+                  <Typography variant="body2">{lastSyncResult.message}</Typography>
+                  <Typography variant="body2" sx={{ mt: 1 }}>
+                    Orders fetched: {lastSyncResult.total_orders_fetched} • Ingested:{' '}
+                    {lastSyncResult.total_orders_ingested} • Failed:{' '}
+                    {lastSyncResult.total_orders_failed} • Duplicates:{' '}
+                    {lastSyncResult.duplicate_orders}
+                  </Typography>
+
+                  {lastSyncResult.failed_orders.length > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="caption" fontWeight={700} display="block">
+                        Failed Orders
+                      </Typography>
+                      {lastSyncResult.failed_orders.map((failure, index) => (
+                        <Typography
+                          key={`${failure.external_id || 'unknown'}-${index}`}
+                          variant="body2"
+                        >
+                          {failure.external_id || 'Unknown order'}: {failure.reason}
+                        </Typography>
+                      ))}
+                    </Box>
+                  )}
+
+                  {lastSyncResult.unmapped_items.length > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="caption" fontWeight={700} display="block">
+                        Unmapped Items
+                      </Typography>
+                      <Typography variant="body2">
+                        {lastSyncResult.unmapped_items.join(', ')}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {lastSyncResult.deduction_failures.length > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="caption" fontWeight={700} display="block">
+                        Deduction Failures
+                      </Typography>
+                      <Typography variant="body2">
+                        {lastSyncResult.deduction_failures.join(', ')}
+                      </Typography>
+                    </Box>
+                  )}
+                </Alert>
+              )}
             </>
           )}
 

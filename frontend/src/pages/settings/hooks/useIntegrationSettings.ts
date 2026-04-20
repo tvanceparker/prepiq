@@ -9,7 +9,7 @@ import {
   disconnectPOS,
   triggerPOSSync,
 } from '../../../api/settings';
-import type { POSProvider } from '../../../interfaces/pos';
+import type { POSProvider, POSSyncSummary } from '../../../interfaces/pos';
 
 export interface SnackbarState {
   open: boolean;
@@ -26,6 +26,7 @@ export function useIntegrationSettings() {
     message: '',
     severity: 'info',
   });
+  const [lastSyncResult, setLastSyncResult] = useState<POSSyncSummary | null>(null);
 
   const showSnackbar = (message: string, severity: SnackbarState['severity'] = 'info') => {
     setSnackbar({ open: true, message, severity });
@@ -82,11 +83,14 @@ export function useIntegrationSettings() {
   const syncMutation = useMutation({
     mutationFn: () => triggerPOSSync(7),
     onSuccess: data => {
+      setLastSyncResult(data);
       posStatusQuery.refetch();
-      showSnackbar(`Sync complete: ${data.orders_synced} orders synced`, 'success');
+      const severity =
+        data.status === 'failed' ? 'error' : data.status === 'partial' ? 'warning' : 'success';
+      showSnackbar(data.message, severity);
     },
-    onError: () => {
-      showSnackbar('Sync failed', 'error');
+    onError: (error: any) => {
+      showSnackbar(error?.message || 'Sync failed', 'error');
     },
   });
 
@@ -143,6 +147,7 @@ export function useIntegrationSettings() {
     // Data
     posSettings: posSettingsQuery.data,
     posStatus: posStatusQuery.data,
+    lastSyncResult,
 
     // Loading states
     isLoading: posSettingsQuery.isLoading,

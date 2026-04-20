@@ -51,6 +51,29 @@ export interface SaleOutDTO {
   sale_timestamp?: string | null;
 }
 
+export interface SalesUploadRowErrorDTO {
+  row_number: number;
+  code: string;
+  message: string;
+  row_data: Record<string, unknown>;
+}
+
+export interface SalesUploadResponseDTO {
+  import_id: string;
+  source: string;
+  overwrite: boolean;
+  attempted_rows: number;
+  inserted_rows: number;
+  skipped_rows: number;
+  duplicate_rows: number;
+  overwritten_rows: number;
+  sale_dates: string[];
+  channels: Array<string | null>;
+  row_errors: SalesUploadRowErrorDTO[];
+  message: string;
+  data: SaleOutDTO[];
+}
+
 export interface DailyOverviewDTO {
   forecasted_sales_today?: ForecastedSalesBasicDTO | null;
   top_5_items_today: TopForecastedItemDTO[];

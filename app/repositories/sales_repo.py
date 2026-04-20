@@ -1,4 +1,4 @@
-from sqlalchemy import select, func, asc, delete
+from sqlalchemy import select, func, asc, delete, or_
 from app.db.models.sales_orm import Sales
 from datetime import  date, timedelta, datetime, time
 from app.repositories.base_repository import BaseRepository
@@ -98,6 +98,29 @@ class SalesRepository(BaseRepository):
         )
         await self.db.execute(stmt)
         await self.db.commit()
+
+    def _build_channel_conditions(self, channels: Sequence[Optional[str]]):
+        conditions = []
+        for ch in channels:
+            if ch is None:
+                conditions.append(Sales.sales_channel.is_(None))
+            else:
+                conditions.append(Sales.sales_channel == ch)
+        return conditions
+
+    async def create_many(self, sales_rows: Sequence[dict]) -> List[Sales]:
+        if not sales_rows:
+            return []
+
+        sales = []
+        for row in sales_rows:
+            payload = self._to_dict(row)
+            payload["restaurant_id"] = self.restaurant_id
+            sales.append(self.model(**payload))
+
+        self.db.add_all(sales)
+        await self.db.flush()
+        return sales
         
     # In sales_repo.py
     async def sales_exist_for_dates(self, dates: List[date]) -> bool:
@@ -129,14 +152,8 @@ class SalesRepository(BaseRepository):
     async def sales_exist_for_date_and_channels(self, d: date, channels: Sequence[Optional[str]]) -> bool:
         if not channels:
             return False
-        # Build OR conditions for channels including NULL
-        from sqlalchemy import or_, and_
-        conditions = []
-        for ch in channels:
-            if ch is None:
-                conditions.append(Sales.sales_channel.is_(None))
-            else:
-                conditions.append(Sales.sales_channel == ch)
+
+        conditions = self._build_channel_conditions(channels)
         stmt = select(func.count(Sales.sale_id)).where(
             Sales.restaurant_id == self.restaurant_id,
             func.date(Sales.sale_timestamp) == d,
@@ -145,23 +162,38 @@ class SalesRepository(BaseRepository):
         res = await self.db.execute(stmt)
         return (res.scalar() or 0) > 0
 
-    async def delete_sales_for_date_and_channels(self, d: date, channels: Sequence[Optional[str]]):
+    async def count_sales_for_date_and_channels(self, d: date, channels: Sequence[Optional[str]]) -> int:
         if not channels:
-            return
-        from sqlalchemy import or_
-        conditions = []
-        for ch in channels:
-            if ch is None:
-                conditions.append(Sales.sales_channel.is_(None))
-            else:
-                conditions.append(Sales.sales_channel == ch)
+            return 0
+
+        conditions = self._build_channel_conditions(channels)
+        stmt = select(func.count(Sales.sale_id)).where(
+            Sales.restaurant_id == self.restaurant_id,
+            func.date(Sales.sale_timestamp) == d,
+            or_(*conditions),
+        )
+        res = await self.db.execute(stmt)
+        return int(res.scalar() or 0)
+
+    async def delete_sales_for_date_and_channels(
+        self,
+        d: date,
+        channels: Sequence[Optional[str]],
+        auto_commit: bool = True,
+    ) -> int:
+        if not channels:
+            return 0
+
+        conditions = self._build_channel_conditions(channels)
         stmt = delete(Sales).where(
             Sales.restaurant_id == self.restaurant_id,
             func.date(Sales.sale_timestamp) == d,
             or_(*conditions),
         )
-        await self.db.execute(stmt)
-        await self.db.commit()
+        result = await self.db.execute(stmt)
+        if auto_commit:
+            await self.db.commit()
+        return int(result.rowcount or 0)
 
     async def get_sales_by_date_range(self, start_date: date, end_date: date) -> List[Sales]:
         """Get all sales within a date range."""

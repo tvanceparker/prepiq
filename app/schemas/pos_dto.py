@@ -153,6 +153,28 @@ class SalesChannelsResponse(BaseModel):
     sales_channels: List[str]
 
 
+class POSSyncFailureOut(BaseModel):
+    external_id: Optional[str] = None
+    reason: str
+
+
+class POSSyncSummaryOut(BaseModel):
+    sync_id: str
+    provider: str
+    status: str
+    message: str
+    start_date: str
+    end_date: str
+    total_orders_fetched: int
+    total_orders_ingested: int
+    total_orders_failed: int
+    total_items_synced: int
+    duplicate_orders: int = 0
+    failed_orders: List[POSSyncFailureOut] = Field(default_factory=list)
+    unmapped_items: List[str] = Field(default_factory=list)
+    deduction_failures: List[str] = Field(default_factory=list)
+
+
 class SendOrderResponse(BaseModel):
     status: str
 

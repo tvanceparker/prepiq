@@ -1,6 +1,6 @@
 import { get, put, post } from './index';
 import type { RestaurantSettings, AccountInfo } from '../interfaces/settings';
-import type { POSModeSettings, ExternalPOSStatus } from '../interfaces/pos';
+import type { POSModeSettings, ExternalPOSStatus, POSSyncSummary } from '../interfaces/pos';
 
 // Restaurant Settings
 export const getRestaurantSettings = async (): Promise<RestaurantSettings> =>
@@ -91,10 +91,5 @@ export const completePOSOAuth = async (params: {
 export const disconnectPOS = async (): Promise<{ success: boolean; message: string }> =>
   post('/settings/pos/disconnect', {});
 
-export const triggerPOSSync = async (
-  daysBack: number = 7
-): Promise<{
-  success: boolean;
-  orders_synced: number;
-  errors?: string[];
-}> => post(`/settings/pos/sync-now?days_back=${daysBack}`, {});
+export const triggerPOSSync = async (daysBack: number = 7): Promise<POSSyncSummary> =>
+  post(`/settings/pos/sync-now?days_back=${daysBack}`, {});

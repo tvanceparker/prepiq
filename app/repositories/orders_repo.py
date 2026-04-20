@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.db.models.orders_orm import Order
 from app.repositories.base_repository import BaseRepository
+from typing import Optional
 
 
 class OrdersRepository(BaseRepository):
@@ -25,6 +26,17 @@ class OrdersRepository(BaseRepository):
         )
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+    async def get_by_external_id(self, external_id: str) -> Optional[Order]:
+        if not external_id:
+            return None
+
+        stmt = select(Order).where(
+            Order.restaurant_id == self.restaurant_id,
+            Order.external_id == external_id,
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
 
     async def mark_completed_orders_deducted_for_date(self, target_date: date):
         """Set inventory_deduction_state='succeeded' for completed orders on target_date."""

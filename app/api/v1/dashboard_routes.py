@@ -6,6 +6,7 @@ from app.schemas.dashboard_dto import (
     MenuItemUpdate,
     EodSalesEntriesIn,
     SalesConflictOut,
+    SalesUploadResponse,
     DailyOverviewOut,
     SaleOut,
     LiveOperationsOut,
@@ -102,7 +103,7 @@ async def upload_menu_items_csv(
     return created_items
 
 
-@router.post("/upload-sales-data", summary="Upload end-of-day sales data CSV/XLSX",
+@router.post("/upload-sales-data", response_model=SalesUploadResponse, summary="Upload end-of-day sales data CSV/XLSX",
              dependencies=[Depends(check_permissions(["upload_sales"]))])
 @log_route("Upload sales data CSV or XLSX")
 async def upload_sales_data(
@@ -114,19 +115,13 @@ async def upload_sales_data(
     If sales data exists for the dates and overwrite is False, raises 409 conflict.
     """
     try:
-        inserted_sales = await dashboard_service.upload_sales_data(file, overwrite)
+        return await dashboard_service.upload_sales_data(file, overwrite)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except HTTPException:
         raise  # re-raise HTTPExceptions to not mask them
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error")
-
-    # Return typed DTOs
-    return {
-        "message": f"Successfully uploaded {len(inserted_sales)} sales records.",
-        "data": [s.model_dump() if hasattr(s, 'model_dump') else s.__dict__ for s in inserted_sales],
-    }
 
 
 @router.get("/sales-upload-template", summary="Download sales upload template XLSX")
@@ -173,6 +168,7 @@ async def sales_exist(
 
 @router.post(
     "/upload-sales-manual",
+    response_model=SalesUploadResponse,
     summary="Upload end-of-day sales entries for a specific date",
     dependencies=[Depends(check_permissions(["upload_sales"]))],
 )
@@ -185,11 +181,7 @@ async def upload_sales_manual(
     When overwrite=true, existing records on that date are deleted only for channels present in the submitted entries.
     """
     try:
-        result = await dashboard_service.upload_sales_entries(payload)
-        return {
-            "message": f"Successfully uploaded {len(result)} sales records.",
-            "data": [s.model_dump() if hasattr(s, 'model_dump') else s.__dict__ for s in result],
-        }
+        return await dashboard_service.upload_sales_entries(payload)
     except HTTPException:
         raise
     except ValueError as ve:
