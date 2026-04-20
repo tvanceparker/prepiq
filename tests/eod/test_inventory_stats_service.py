@@ -7,7 +7,7 @@ Created on Sun Jun  1 18:29:43 2025
 
 import pytest
 import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from decimal import Decimal
 from datetime import date
 from types import SimpleNamespace
@@ -211,8 +211,12 @@ async def test_get_usable_inventory_projects_partial_lot_usage_before_expiration
     assert result["excluded_quantity"] == Decimal("6.00")
     assert result["projected_waste_quantity"] == Decimal("6.00")
     assert result["fefo_applied"] is True
+    assert result["fallback_used"] is False
     assert result["eligible_lot_count"] == 2
     assert result["source"] == "usable_lot_projection"
+    assert result["projection_start_date"] == date(2026, 4, 15)
+    assert result["projection_end_date"] == date(2026, 4, 17)
+    assert result["unmet_demand_quantity"] == Decimal("0.00")
     early_summary = next(
         item for item in result["lot_projection_summary"] if item["lot_id"] == 10
     )
@@ -323,6 +327,111 @@ async def test_get_usable_inventory_consumes_lots_in_fefo_order(service):
 
 
 @pytest.mark.asyncio
+async def test_get_usable_inventory_prefers_projection_when_forecast_inputs_are_present(
+    service,
+):
+    ingredient_id = 1
+    inventory_mock = MagicMock()
+    inventory_mock.quantity_on_hand = Decimal("6.00")
+    inventory_mock.unit = "lb"
+
+    expiring_lot = SimpleNamespace(
+        lot_id=30,
+        quantity=Decimal("6.00"),
+        unit="lb",
+        status=SimpleNamespace(value="available"),
+        spoilage_expected_date=date(2026, 4, 16),
+        delivery_date=date(2026, 4, 14),
+    )
+
+    service.inventory_repo.get_inventory_by_ingredient.return_value = inventory_mock
+    service.inventory_lot_repo.get_lots_by_ingredient_id.return_value = [expiring_lot]
+    service.inventory_usage_log_repo.get_all_by_lot_id.return_value = []
+
+    with patch.object(
+        service.reorder_lot_projection,
+        "project_usable_inventory",
+        wraps=service.reorder_lot_projection.project_usable_inventory,
+    ) as projection_mock:
+        result = await service.get_usable_inventory(
+            ingredient_id,
+            usable_until_date=date(2026, 4, 17),
+            daily_demand_points=[
+                (date(2026, 4, 15), Decimal("2.00")),
+                (date(2026, 4, 16), Decimal("1.00")),
+            ],
+            projection_start_date=date(2026, 4, 15),
+        )
+
+    projection_mock.assert_called_once()
+    assert result["source"] == "usable_lot_projection"
+    assert result["fallback_used"] is False
+    assert result["fefo_applied"] is True
+    assert result["quantity"] == Decimal("3.00")
+    assert result["projected_waste_quantity"] == Decimal("3.00")
+
+
+@pytest.mark.asyncio
+async def test_get_usable_inventory_uses_delivery_then_lot_id_as_fefo_tiebreakers(service):
+    ingredient_id = 1
+    inventory_mock = MagicMock()
+    inventory_mock.quantity_on_hand = Decimal("3.00")
+    inventory_mock.unit = "lb"
+
+    earliest_delivery_lot = SimpleNamespace(
+        lot_id=40,
+        quantity=Decimal("1.00"),
+        unit="lb",
+        status=SimpleNamespace(value="available"),
+        spoilage_expected_date=date(2026, 4, 18),
+        delivery_date=date(2026, 4, 10),
+    )
+    lower_id_same_delivery_lot = SimpleNamespace(
+        lot_id=38,
+        quantity=Decimal("1.00"),
+        unit="lb",
+        status=SimpleNamespace(value="available"),
+        spoilage_expected_date=date(2026, 4, 18),
+        delivery_date=date(2026, 4, 11),
+    )
+    higher_id_same_delivery_lot = SimpleNamespace(
+        lot_id=39,
+        quantity=Decimal("1.00"),
+        unit="lb",
+        status=SimpleNamespace(value="available"),
+        spoilage_expected_date=date(2026, 4, 18),
+        delivery_date=date(2026, 4, 11),
+    )
+
+    service.inventory_repo.get_inventory_by_ingredient.return_value = inventory_mock
+    service.inventory_lot_repo.get_lots_by_ingredient_id.return_value = [
+        higher_id_same_delivery_lot,
+        lower_id_same_delivery_lot,
+        earliest_delivery_lot,
+    ]
+    service.inventory_usage_log_repo.get_all_by_lot_id.side_effect = [[], [], []]
+
+    result = await service.get_usable_inventory(
+        ingredient_id,
+        usable_until_date=date(2026, 4, 18),
+        daily_demand_points=[
+            (date(2026, 4, 15), Decimal("1.00")),
+            (date(2026, 4, 16), Decimal("1.00")),
+            (date(2026, 4, 17), Decimal("1.00")),
+        ],
+        projection_start_date=date(2026, 4, 15),
+    )
+
+    consume_trace = [
+        item["lot_id"]
+        for item in result["lot_consumption_trace"]
+        if item["action"] == "consume"
+    ]
+
+    assert consume_trace == [40, 38, 39]
+
+
+@pytest.mark.asyncio
 async def test_get_usable_inventory_falls_back_to_summary_when_lots_missing(service):
     ingredient_id = 1
     inventory_mock = MagicMock()
@@ -341,6 +450,51 @@ async def test_get_usable_inventory_falls_back_to_summary_when_lots_missing(serv
     assert result["total_quantity"] == Decimal("9.25")
     assert result["excluded_quantity"] == Decimal("0.00")
     assert result["source"] == "inventory_summary"
+    assert result["fallback_used"] is True
+    assert result["fefo_applied"] is False
+    assert result["lot_projection_summary"] == []
+    assert result["lot_consumption_trace"] == []
+    assert result["projection_start_date"] is None
+    assert result["projection_end_date"] == date(2026, 4, 18)
+    assert result["unmet_demand_quantity"] == Decimal("0.00")
+
+
+@pytest.mark.asyncio
+async def test_get_usable_inventory_conversion_failure_sets_conversion_fallback(service):
+    ingredient_id = 1
+    inventory_mock = MagicMock()
+    inventory_mock.quantity_on_hand = Decimal("4.00")
+    inventory_mock.unit = "kg"
+
+    converted_lot = SimpleNamespace(
+        lot_id=50,
+        quantity=Decimal("4.00"),
+        unit="lb",
+        status=SimpleNamespace(value="available"),
+        spoilage_expected_date=date(2026, 4, 20),
+        delivery_date=date(2026, 4, 14),
+    )
+
+    service.inventory_repo.get_inventory_by_ingredient.return_value = inventory_mock
+    service.inventory_lot_repo.get_lots_by_ingredient_id.return_value = [converted_lot]
+    service.inventory_usage_log_repo.get_all_by_lot_id.return_value = []
+
+    with patch(
+        "app.services.inventory_stats_service.convert_unit",
+        side_effect=RuntimeError("conversion unavailable"),
+    ):
+        result = await service.get_usable_inventory(
+            ingredient_id,
+            usable_until_date=date(2026, 4, 18),
+            daily_demand_points=[(date(2026, 4, 15), Decimal("1.00"))],
+            projection_start_date=date(2026, 4, 15),
+        )
+
+    assert result["conversion_fallback"] is True
+    assert result["source"] == "usable_lot_projection"
+    assert result["fallback_used"] is False
+    assert result["quantity"] == Decimal("4.00")
+    assert result["total_quantity"] == Decimal("4.00")
 
 
 @pytest.mark.asyncio
