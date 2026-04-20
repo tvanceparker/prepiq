@@ -18,3 +18,25 @@ export interface ExternalPOSStatus {
   sync_payments?: boolean;
   sync_menu?: boolean;
 }
+
+export interface POSSyncFailure {
+  external_id?: string | null;
+  reason: string;
+}
+
+export interface POSSyncSummary {
+  sync_id: string;
+  provider: string;
+  status: 'success' | 'partial' | 'failed';
+  message: string;
+  start_date: string;
+  end_date: string;
+  total_orders_fetched: number;
+  total_orders_ingested: number;
+  total_orders_failed: number;
+  total_items_synced: number;
+  duplicate_orders: number;
+  failed_orders: POSSyncFailure[];
+  unmapped_items: string[];
+  deduction_failures: string[];
+}

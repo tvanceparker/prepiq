@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from app.services.settings_service import SettingsService
 from app.services.helpers.pos_integration_service import POSIntegrationService
 from app.api.dependencies import get_settings_service, check_permissions, build_service
+from app.schemas.pos_dto import POSSyncSummaryOut
 from app.schemas.settings_dto import (RestaurantSettingsDTO, UpdateRestaurantSettingsDTO, 
                                       ChangePasswordDTO, ChangeEmailDTO, ChangePhoneDTO,
                                         PreferencesDTO, UpdatePreferencesDTO, AccountInfoDTO,
@@ -149,7 +150,7 @@ async def get_pos_sync_status(
     return status_info
 
 
-@router.post("/pos/sync-now")
+@router.post("/pos/sync-now", response_model=POSSyncSummaryOut)
 @log_route("Trigger POS Sync")
 async def trigger_pos_sync(
     days_back: int = Query(7, description="Number of days to sync backwards"),

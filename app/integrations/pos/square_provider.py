@@ -7,6 +7,7 @@ API Documentation: https://developer.squareup.com/docs
 """
 
 import os
+import asyncio
 import hmac
 import hashlib
 import httpx
@@ -147,7 +148,6 @@ class SquareProvider(BasePOSProvider):
     ) -> Dict[str, Any]:
         """Fetch orders from Square using SearchOrders API."""
         query = {
-            "location_ids": [self.location_id] if self.location_id else None,
             "query": {
                 "filter": {
                     "date_time_filter": {
@@ -163,11 +163,14 @@ class SquareProvider(BasePOSProvider):
             },
             "limit": 100,
         }
+
+        if self.location_id:
+            query["location_ids"] = [self.location_id]
         
         if cursor:
             query["cursor"] = cursor
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.post(
                 f"{self.api_url}/v2/orders/search",
                 json=query,
@@ -185,6 +188,44 @@ class SquareProvider(BasePOSProvider):
                 "orders": data.get("orders", []),
                 "cursor": data.get("cursor"),
             }
+
+    async def fetch_orders_with_retry(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+        cursor: Optional[str] = None,
+        max_retries: int = 3,
+        backoff_factor: int = 2,
+    ) -> Dict[str, Any]:
+        """Fetch orders with simple retry and backoff on transient failures."""
+        attempt = 0
+        last_error: Optional[Exception] = None
+
+        while attempt < max_retries:
+            try:
+                return await self.fetch_orders(start_date, end_date, cursor)
+            except (httpx.TimeoutException, httpx.RequestError, httpx.HTTPStatusError) as exc:
+                status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                retryable = status_code in {429, 503} or status_code is None
+                last_error = exc
+                attempt += 1
+
+                if not retryable or attempt >= max_retries:
+                    raise
+
+                wait_seconds = backoff_factor ** (attempt - 1)
+                logger.warning(
+                    "[Square] fetch_orders retry attempt=%s status=%s waiting=%ss",
+                    attempt,
+                    status_code,
+                    wait_seconds,
+                )
+                await asyncio.sleep(wait_seconds)
+
+        if last_error:
+            raise last_error
+
+        raise RuntimeError("fetch_orders_with_retry exhausted without returning a result")
     
     async def fetch_payments(
         self,
@@ -324,6 +365,7 @@ class SquareProvider(BasePOSProvider):
             "total": total,
             "order_timestamp": external_order.get("created_at"),
             "metadata": {
+                "provider": "square",
                 "square_location_id": external_order.get("location_id"),
                 "square_state": external_order.get("state"),
             }

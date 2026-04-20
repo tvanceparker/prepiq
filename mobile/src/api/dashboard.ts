@@ -5,6 +5,7 @@ import type {
   MenuItemDTO,
   EodSalesEntriesInDTO,
   SalesConflictOutDTO,
+  SalesUploadResponseDTO,
 } from '../interfaces/dashboard';
 
 export const getDailyOverview = () => get<DailyOverviewDTO>('/dashboard/daily_overview');
@@ -76,7 +77,10 @@ export const downloadSalesTemplate = async (defaultDate?: string) => {
   return { blob, filename };
 };
 
-export const uploadSalesData = async (file: any, overwrite = false) => {
+export const uploadSalesData = async (
+  file: any,
+  overwrite = false
+): Promise<SalesUploadResponseDTO> => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('overwrite', overwrite ? 'true' : 'false');
@@ -92,7 +96,7 @@ export const uploadSalesData = async (file: any, overwrite = false) => {
 };
 
 export const uploadSalesManual = async (payload: EodSalesEntriesInDTO) =>
-  post('/dashboard/upload-sales-manual', payload);
+  post<SalesUploadResponseDTO>('/dashboard/upload-sales-manual', payload);
 
 export const checkSalesExist = async (
   sale_date: string,

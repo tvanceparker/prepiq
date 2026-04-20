@@ -95,7 +95,9 @@ export default function BasicOverviewMobile({ data, navigation }: Props & { navi
       };
       // Try upload without overwrite; if server reports conflict, prompt user to overwrite
       try {
-        await uploadSalesData(uploadFile, false);
+        const result = await uploadSalesData(uploadFile, false);
+        setSheetOpen(false);
+        setSnackbar({ visible: true, message: result?.message || 'Sales uploaded successfully' });
       } catch (e: any) {
         const msg = String(e?.message || '');
         if (msg.includes('409')) {
@@ -105,8 +107,6 @@ export default function BasicOverviewMobile({ data, navigation }: Props & { navi
         }
         throw e;
       }
-      setSheetOpen(false);
-      setSnackbar({ visible: true, message: 'Sales uploaded successfully' });
     } catch (e: any) {
       setSnackbar({ visible: true, message: `Upload failed: ${e?.message || e}` });
     }
@@ -141,10 +141,10 @@ export default function BasicOverviewMobile({ data, navigation }: Props & { navi
         return;
       }
       // No conflicts, proceed without overwrite via hook
-      await submit(saleDate, entries as any, false);
+      const result = await submit(saleDate, entries as any, false);
       setSheetOpen(false);
       setQtyById({});
-      setSnackbar({ visible: true, message: 'Manual sales saved' });
+      setSnackbar({ visible: true, message: result?.message || 'Manual sales saved' });
     } catch (e: any) {
       const msg = String(e?.message || e || 'Manual upload failed');
       setSnackbar({ visible: true, message: msg });
@@ -431,11 +431,14 @@ export default function BasicOverviewMobile({ data, navigation }: Props & { navi
                     }))
                     .filter(r => r.id && r.qty && r.qty > 0)
                     .map(r => ({ menu_item_id: r.id, quantity_sold: r.qty }));
-                  await submit(saleDate, entries as any, true);
+                  const result = await submit(saleDate, entries as any, true);
                   setConfirmVisible(false);
                   setSheetOpen(false);
                   setQtyById({});
-                  setSnackbar({ visible: true, message: 'Manual sales overwritten' });
+                  setSnackbar({
+                    visible: true,
+                    message: result?.message || 'Manual sales overwritten',
+                  });
                 } catch (e: any) {
                   setSnackbar({ visible: true, message: String(e?.message || e) });
                 }
@@ -461,11 +464,14 @@ export default function BasicOverviewMobile({ data, navigation }: Props & { navi
               onPress={async () => {
                 if (!pendingFile) return;
                 try {
-                  await uploadSalesData(pendingFile, true);
+                  const result = await uploadSalesData(pendingFile, true);
                   setPendingFile(null);
                   setFileConfirmVisible(false);
                   setSheetOpen(false);
-                  setSnackbar({ visible: true, message: 'Sales file uploaded with overwrite' });
+                  setSnackbar({
+                    visible: true,
+                    message: result?.message || 'Sales file uploaded with overwrite',
+                  });
                 } catch (e: any) {
                   setSnackbar({ visible: true, message: String(e?.message || e) });
                 }

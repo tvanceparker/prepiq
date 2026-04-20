@@ -1,13 +1,14 @@
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, time
 from collections import defaultdict
 import json
 from fastapi import UploadFile,HTTPException
-from typing import Optional, Any
+from typing import Optional, Any, Dict, List
 import openpyxl
 from openpyxl.styles import Protection
 from openpyxl.utils import get_column_letter
 import csv
 from io import StringIO, BytesIO
+from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -32,7 +33,7 @@ from app.utils.logger_helpers import log_method
 from app.core.logging import logger 
 from app.schemas.dashboard_dto import (
     EodSalesEntriesIn, DailyOverviewOut, SaleOut, 
-    ProDailyOverviewOut, DeliveryItemOut, ExpectedDeliveryOut
+    ProDailyOverviewOut, DeliveryItemOut, ExpectedDeliveryOut, SalesUploadResponse
 )
 from typing import Sequence, Optional as Opt
 from app.db.models.purchase_orders_orm import PurchaseOrder
@@ -497,207 +498,419 @@ class DashboardService:
 
         return created
 
+    def _normalize_headers(self, headers):
+        return [header.strip().lower() if isinstance(header, str) else header for header in (headers or [])]
+
+    def _validate_sales_upload_headers(self, headers):
+        header_set = {header for header in headers if header}
+        missing_columns = []
+
+        if not ({"menu_item_id", "menu_item_name"} & header_set):
+            missing_columns.append("menu_item_id or menu_item_name")
+        if "quantity_sold" not in header_set:
+            missing_columns.append("quantity_sold")
+        if "sale_timestamp" not in header_set:
+            missing_columns.append("sale_timestamp")
+
+        if missing_columns:
+            raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
+
+    def _serialize_sales_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        serialized = {}
+        for key, value in row.items():
+            if isinstance(value, (datetime, date)):
+                serialized[key] = value.isoformat()
+            elif isinstance(value, Decimal):
+                serialized[key] = str(value)
+            elif value is None or isinstance(value, (str, int, float, bool)):
+                serialized[key] = value
+            else:
+                serialized[key] = str(value)
+        return serialized
+
+    def _clean_sales_channel(self, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned or None
+        return str(value)
+
+    def _to_sale_out(self, sale: Any) -> SaleOut:
+        sale_timestamp = getattr(sale, "sale_timestamp", None)
+        timestamp_iso = sale_timestamp.isoformat() if sale_timestamp else None
+        return SaleOut(
+            sale_id=getattr(sale, "sale_id", getattr(sale, "id", None)),
+            menu_item_id=getattr(sale, "menu_item_id", None),
+            quantity_sold=getattr(sale, "quantity_sold", 0),
+            sales_channel=getattr(sale, "sales_channel", None),
+            sale_timestamp=timestamp_iso,
+        )
+
+    def _build_sales_upload_response(
+        self,
+        *,
+        source: str,
+        overwrite: bool,
+        attempted_rows: int,
+        inserted_sales: List[Any],
+        duplicate_rows: int,
+        overwritten_rows: int,
+        row_errors: List[Dict[str, Any]],
+        date_channels: Dict[date, set],
+    ) -> SalesUploadResponse:
+        sale_dates = sorted(day.isoformat() for day in date_channels.keys())
+        channels = sorted(
+            {channel for values in date_channels.values() for channel in values},
+            key=lambda value: "" if value is None else str(value).lower(),
+        )
+        data = [self._to_sale_out(sale) for sale in inserted_sales]
+        skipped_rows = max(attempted_rows - len(inserted_sales), 0)
+
+        if attempted_rows == 0:
+            message = "No sales rows were found to import."
+        else:
+            message = f"Imported {len(inserted_sales)} of {attempted_rows} sales rows."
+            if skipped_rows:
+                message += f" Skipped {skipped_rows} row{'s' if skipped_rows != 1 else ''}."
+            if overwritten_rows:
+                message += f" Replaced {overwritten_rows} existing row{'s' if overwritten_rows != 1 else ''}."
+
+        return SalesUploadResponse(
+            import_id=str(uuid4()),
+            source=source,
+            overwrite=overwrite,
+            attempted_rows=attempted_rows,
+            inserted_rows=len(inserted_sales),
+            skipped_rows=skipped_rows,
+            duplicate_rows=duplicate_rows,
+            overwritten_rows=overwritten_rows,
+            sale_dates=sale_dates,
+            channels=channels,
+            row_errors=row_errors,
+            message=message,
+            data=data,
+        )
+
     @log_method("Upload Sales Data")
-    async def upload_sales_data(self, file: UploadFile, overwrite: bool = False):
+    async def upload_sales_data(self, file: UploadFile, overwrite: bool = False) -> SalesUploadResponse:
         contents = await file.read()
-        inserted_sales = []
-        today = datetime.now()
-        sale_dates = set()
-        # Map date -> set of channels present in the upload (None for unspecified)
-        date_channels = {}
-
-        def normalize_headers(headers):
-            return [header.strip().lower() if isinstance(header, str) else header for header in headers]
-
         parsed_rows = []
+        filename = (file.filename or "").lower()
 
-        if file.filename.endswith(".csv"):
-            decoded = contents.decode("utf-8")
+        if filename.endswith(".csv"):
+            decoded = contents.decode("utf-8-sig")
             raw_lines = decoded.splitlines()
             reader = csv.DictReader(raw_lines)
-            reader.fieldnames = normalize_headers(reader.fieldnames)
+            if not reader.fieldnames:
+                raise ValueError("Sales upload file is empty.")
+            reader.fieldnames = self._normalize_headers(reader.fieldnames)
+            self._validate_sales_upload_headers(reader.fieldnames)
 
-            for row in reader:
-                normalized_row = {k.strip().lower(): v for k, v in row.items()}
-                parsed_rows.append(normalized_row)
+            for row_number, row in enumerate(reader, start=2):
+                normalized_row = {}
+                for key, value in (row or {}).items():
+                    if key is None:
+                        continue
+                    normalized_key = key.strip().lower() if isinstance(key, str) else key
+                    normalized_row[normalized_key] = value.strip() if isinstance(value, str) else value
+                parsed_rows.append({"row_number": row_number, "row": normalized_row})
 
-        elif file.filename.endswith(".xlsx"):
+        elif filename.endswith(".xlsx"):
             workbook = openpyxl.load_workbook(filename=BytesIO(contents), read_only=True)
             sheet = workbook.active
-            headers = normalize_headers([cell.value for cell in next(sheet.iter_rows(min_row=1, max_row=1))])
+            try:
+                headers = self._normalize_headers(next(sheet.iter_rows(min_row=1, max_row=1, values_only=True)))
+            except StopIteration as exc:
+                raise ValueError("Sales upload file is empty.") from exc
+            self._validate_sales_upload_headers(headers)
 
-            for row in sheet.iter_rows(min_row=2, values_only=True):
-                row_dict = dict(zip(headers, row))
-                parsed_rows.append(row_dict)
+            for row_number, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
+                parsed_rows.append({"row_number": row_number, "row": dict(zip(headers, row))})
 
         else:
             raise ValueError("Unsupported file format. Please upload CSV or XLSX.")
 
-        # Collect sale dates and per-date channels
-        for row in parsed_rows:
-            timestamp = row.get("sale_timestamp")
-            try:
-                sale_time = datetime.fromisoformat(timestamp) if timestamp else today
-                sale_dates.add(sale_time.date())
-                ch_val = row.get("sales_channel")
-                ch = ch_val if (ch_val is not None and ch_val != "") else None
-                d = sale_time.date()
-                s = date_channels.get(d)
-                if s is None:
-                    s = set()
-                    date_channels[d] = s
-                s.add(ch)
-            except Exception as e:
-                logger.error(f"Skipping row with invalid timestamp '{timestamp}': {e}", exc_info=True)
+        attempted_rows = len(parsed_rows)
+        row_errors = []
+        duplicate_rows = 0
+        date_channels = {}
+        valid_sales_rows = []
+        seen_rows = set()
+        menu_item_cache_by_id = {}
+        menu_item_cache_by_name = {}
 
-        # Check conflicts per date+channel
-        if not overwrite:
-            conflict = False
-            for d, channels in date_channels.items():
-                if await self.sales_repo.sales_exist_for_date_and_channels(d, list(channels)):
-                    conflict = True
-                    break
-            if conflict:
-                raise HTTPException(
-                    status_code=409,
-                    detail="Sales already exist for one or more date/channel combinations in this file. Confirm overwrite to replace those channels."
+        for parsed in parsed_rows:
+            row_number = parsed["row_number"]
+            row = parsed["row"]
+
+            quantity_raw = row.get("quantity_sold")
+            if quantity_raw in (None, ""):
+                continue
+
+            try:
+                quantity_decimal = Decimal(str(quantity_raw))
+            except Exception:
+                row_errors.append(
+                    {
+                        "row_number": row_number,
+                        "code": "invalid_quantity",
+                        "message": "quantity_sold must be a whole number.",
+                        "row_data": self._serialize_sales_row(row),
+                    }
                 )
-        else:
-            # Delete only the channels present in the file for each date
-            for d, channels in date_channels.items():
-                await self.sales_repo.delete_sales_for_date_and_channels(d, list(channels))
-            await self.log_activity(
-                "overwrite_sales_file",
-                {
-                    "dates": [d.isoformat() for d in sale_dates],
-                    "channels": {k.isoformat(): list(v) for k, v in date_channels.items()},
-                },
-            )
+                continue
 
-        # Process each row
-        for row in parsed_rows:
+            if quantity_decimal <= 0:
+                continue
+
+            if quantity_decimal != quantity_decimal.to_integral_value():
+                row_errors.append(
+                    {
+                        "row_number": row_number,
+                        "code": "invalid_quantity",
+                        "message": "quantity_sold must be a whole number.",
+                        "row_data": self._serialize_sales_row(row),
+                    }
+                )
+                continue
+
+            quantity = int(quantity_decimal)
+            timestamp_raw = row.get("sale_timestamp")
+            if timestamp_raw in (None, ""):
+                row_errors.append(
+                    {
+                        "row_number": row_number,
+                        "code": "missing_sale_timestamp",
+                        "message": "sale_timestamp is required for every uploaded sales row.",
+                        "row_data": self._serialize_sales_row(row),
+                    }
+                )
+                continue
+
             try:
-                menu_item_id = None
-                if "menu_item_id" in row and row["menu_item_id"]:
-                    menu_item_id = int(row["menu_item_id"])
-                elif "menu_item_name" in row and row["menu_item_name"]:
-                    item = await self.menu_repo.get_by_name(row["menu_item_name"])
-                    if not item:
-                        logger.error(f"Menu item not found: {row['menu_item_name']}")
-                        continue
-                    menu_item_id = item.id
+                if isinstance(timestamp_raw, datetime):
+                    sale_time = timestamp_raw
+                elif isinstance(timestamp_raw, date):
+                    sale_time = datetime.combine(timestamp_raw, time.min)
+                else:
+                    sale_time = datetime.fromisoformat(str(timestamp_raw).strip())
+            except Exception:
+                row_errors.append(
+                    {
+                        "row_number": row_number,
+                        "code": "invalid_sale_timestamp",
+                        "message": "sale_timestamp must be a valid ISO datetime.",
+                        "row_data": self._serialize_sales_row(row),
+                    }
+                )
+                continue
 
-                if not menu_item_id:
-                    logger.error("Skipping row with missing menu_item_id")
+            sales_channel = self._clean_sales_channel(row.get("sales_channel"))
+            menu_item_name = str(row.get("menu_item_name") or "").strip()
+            menu_item = None
+
+            if row.get("menu_item_id") not in (None, ""):
+                try:
+                    menu_item_id_decimal = Decimal(str(row.get("menu_item_id")))
+                    if menu_item_id_decimal != menu_item_id_decimal.to_integral_value():
+                        raise ValueError()
+                    resolved_menu_item_id = int(menu_item_id_decimal)
+                except Exception:
+                    row_errors.append(
+                        {
+                            "row_number": row_number,
+                            "code": "invalid_menu_item_id",
+                            "message": "menu_item_id must be a whole number when provided.",
+                            "row_data": self._serialize_sales_row(row),
+                        }
+                    )
                     continue
 
-                quantity = int(row["quantity_sold"])
-                timestamp = row.get("sale_timestamp")
-                sale_time = datetime.fromisoformat(timestamp) if timestamp else today
-                sales_channel = row.get("sales_channel")
+                if resolved_menu_item_id not in menu_item_cache_by_id:
+                    menu_item_cache_by_id[resolved_menu_item_id] = await self.menu_repo.get_by_id(resolved_menu_item_id)
+                menu_item = menu_item_cache_by_id[resolved_menu_item_id]
+            elif menu_item_name:
+                normalized_name = menu_item_name.lower()
+                if normalized_name not in menu_item_cache_by_name:
+                    menu_item_cache_by_name[normalized_name] = await self.menu_repo.get_by_name(menu_item_name)
+                menu_item = menu_item_cache_by_name[normalized_name]
+            else:
+                row_errors.append(
+                    {
+                        "row_number": row_number,
+                        "code": "missing_menu_item",
+                        "message": "Each row must include either menu_item_id or menu_item_name.",
+                        "row_data": self._serialize_sales_row(row),
+                    }
+                )
+                continue
 
-                sale_data = {
-                    "restaurant_id": self.restaurant_id,
+            if not menu_item or getattr(menu_item, "restaurant_id", None) != self.restaurant_id:
+                row_errors.append(
+                    {
+                        "row_number": row_number,
+                        "code": "menu_item_not_found",
+                        "message": "The referenced menu item could not be found for this restaurant.",
+                        "row_data": self._serialize_sales_row(row),
+                    }
+                )
+                continue
+
+            menu_item_id = getattr(menu_item, "menu_item_id", getattr(menu_item, "id", None))
+            duplicate_key = (menu_item_id, sales_channel, sale_time.isoformat())
+            if duplicate_key in seen_rows:
+                duplicate_rows += 1
+                continue
+
+            seen_rows.add(duplicate_key)
+            sale_date = sale_time.date()
+            date_channels.setdefault(sale_date, set()).add(sales_channel)
+            valid_sales_rows.append(
+                {
                     "menu_item_id": menu_item_id,
                     "quantity_sold": quantity,
                     "sales_channel": sales_channel,
-                    "sale_timestamp": sale_time
+                    "sale_timestamp": sale_time,
                 }
-
-                sale = await self.sales_repo.create(sale_data)
-                inserted_sales.append(sale)
-                # await self.log_activity("upload_sales_data",sale_data)
-
-            except Exception as e:
-                logger.error(f"Failed to process sales row {row}: {e}", exc_info=True)
-                continue
-
-        # Convert ORM sale objects into Pydantic DTOs for the API layer
-        result_models = []
-        for s in inserted_sales:
-            try:
-                ts = getattr(s, "sale_timestamp", None)
-                ts_iso = ts.isoformat() if ts is not None else None
-            except Exception:
-                ts_iso = None
-            result_models.append(
-                SaleOut(
-                    sale_id=getattr(s, "sale_id", getattr(s, "id", None)),
-                    menu_item_id=getattr(s, "menu_item_id", None),
-                    quantity_sold=getattr(s, "quantity_sold", 0),
-                    sales_channel=getattr(s, "sales_channel", None),
-                    sale_timestamp=ts_iso,
-                )
             )
 
-        return result_models
+        overwritten_rows = 0
+        if valid_sales_rows:
+            if not overwrite:
+                for sale_date, channels in date_channels.items():
+                    if await self.sales_repo.sales_exist_for_date_and_channels(sale_date, list(channels)):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Sales already exist for one or more date/channel combinations in this file. Confirm overwrite to replace those channels.",
+                        )
+            else:
+                for sale_date, channels in date_channels.items():
+                    overwritten_rows += await self.sales_repo.delete_sales_for_date_and_channels(
+                        sale_date,
+                        list(channels),
+                        auto_commit=False,
+                    )
+
+        inserted_sales = await self.sales_repo.create_many(valid_sales_rows)
+        response = self._build_sales_upload_response(
+            source="file",
+            overwrite=overwrite,
+            attempted_rows=attempted_rows,
+            inserted_sales=inserted_sales,
+            duplicate_rows=duplicate_rows,
+            overwritten_rows=overwritten_rows,
+            row_errors=row_errors,
+            date_channels=date_channels,
+        )
+        await self.log_activity(
+            "upload_sales_data",
+            {
+                "import_id": response.import_id,
+                "source": response.source,
+                "overwrite": overwrite,
+                "attempted_rows": response.attempted_rows,
+                "inserted_rows": response.inserted_rows,
+                "skipped_rows": response.skipped_rows,
+                "duplicate_rows": response.duplicate_rows,
+                "overwritten_rows": response.overwritten_rows,
+                "row_error_count": len(response.row_errors),
+            },
+        )
+        return response
 
     @log_method("Upload Sales Entries (Manual JSON)")
-    async def upload_sales_entries(self, payload: EodSalesEntriesIn):
+    async def upload_sales_entries(self, payload: EodSalesEntriesIn) -> SalesUploadResponse:
         """Insert manual EOD sales entries for a single date."""
         try:
             sale_date = datetime.fromisoformat(payload.sale_date).date()
         except Exception:
             raise ValueError("Invalid sale_date; expected YYYY-MM-DD")
 
-        # Determine channels present in this submission
-        channels = []
-        try:
-            channels = list({ (e.sales_channel if getattr(e, 'sales_channel', None) is not None else None) for e in payload.entries })
-        except Exception:
-            channels = [None]
+        attempted_rows = len(payload.entries)
+        row_errors = []
+        duplicate_rows = 0
+        date_channels = {}
+        valid_sales_rows = []
+        seen_rows = set()
+        sale_time = datetime.combine(sale_date, time.min)
 
-        # Overwrite semantics by channel (not entire date)
-        if payload.overwrite:
-            await self.sales_repo.delete_sales_for_date_and_channels(sale_date, channels)
-            await self.log_activity("overwrite_sales_manual", {"sale_date": payload.sale_date, "channels": channels})
-        else:
-            # if existing for any of the channels and not overwrite, raise 409 like file upload
-            if await self.sales_repo.sales_exist_for_date_and_channels(sale_date, channels):
-                raise HTTPException(status_code=409, detail="Sales already exist for that date and channel(s). Confirm overwrite to replace.")
-
-        inserted = []
-        for entry in payload.entries:
-            try:
-                # Ensure menu item exists and belongs to restaurant
-                item = await self.menu_repo.get_by_id(entry.menu_item_id)
-                if not item or item.restaurant_id != self.restaurant_id:
-                    logger.error(f"Menu item not found or unauthorized: {entry.menu_item_id}")
-                    continue
-
-                sale_time = datetime.combine(sale_date, datetime.min.time())
-                sale_data = {
-                    "restaurant_id": self.restaurant_id,
-                    "menu_item_id": entry.menu_item_id,
-                    "quantity_sold": int(entry.quantity_sold),
-                    "sales_channel": entry.sales_channel,
-                    "sale_timestamp": sale_time,
-                }
-                s = await self.sales_repo.create(sale_data)
-                inserted.append(s)
-            except Exception as e:
-                logger.error(f"Failed to insert manual sale entry {entry}: {e}", exc_info=True)
+        for row_number, entry in enumerate(payload.entries, start=1):
+            entry_data = entry.model_dump() if hasattr(entry, "model_dump") else entry.dict()
+            quantity = int(entry.quantity_sold or 0)
+            if quantity <= 0:
                 continue
 
-        # Normalize into Pydantic DTOs
-        result_models = []
-        for s in inserted:
-            try:
-                ts = getattr(s, "sale_timestamp", None)
-                ts_iso = ts.isoformat() if ts is not None else None
-            except Exception:
-                ts_iso = None
-            result_models.append(
-                SaleOut(
-                    sale_id=getattr(s, "sale_id", getattr(s, "id", None)),
-                    menu_item_id=getattr(s, "menu_item_id", None),
-                    quantity_sold=getattr(s, "quantity_sold", 0),
-                    sales_channel=getattr(s, "sales_channel", None),
-                    sale_timestamp=ts_iso,
+            sales_channel = self._clean_sales_channel(entry.sales_channel)
+            duplicate_key = (entry.menu_item_id, sales_channel)
+            if duplicate_key in seen_rows:
+                duplicate_rows += 1
+                continue
+
+            seen_rows.add(duplicate_key)
+            item = await self.menu_repo.get_by_id(entry.menu_item_id)
+            if not item or getattr(item, "restaurant_id", None) != self.restaurant_id:
+                row_errors.append(
+                    {
+                        "row_number": row_number,
+                        "code": "menu_item_not_found",
+                        "message": "The referenced menu item could not be found for this restaurant.",
+                        "row_data": self._serialize_sales_row(entry_data),
+                    }
                 )
+                continue
+
+            date_channels.setdefault(sale_date, set()).add(sales_channel)
+            valid_sales_rows.append(
+                {
+                    "menu_item_id": entry.menu_item_id,
+                    "quantity_sold": quantity,
+                    "sales_channel": sales_channel,
+                    "sale_timestamp": sale_time,
+                }
             )
 
-        return result_models
+        channels = list(date_channels.get(sale_date, set()))
+        overwritten_rows = 0
+        if valid_sales_rows and channels:
+            if payload.overwrite:
+                overwritten_rows = await self.sales_repo.delete_sales_for_date_and_channels(
+                    sale_date,
+                    channels,
+                    auto_commit=False,
+                )
+            elif await self.sales_repo.sales_exist_for_date_and_channels(sale_date, channels):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Sales already exist for that date and channel(s). Confirm overwrite to replace.",
+                )
+
+        inserted = await self.sales_repo.create_many(valid_sales_rows)
+        response = self._build_sales_upload_response(
+            source="manual",
+            overwrite=bool(payload.overwrite),
+            attempted_rows=attempted_rows,
+            inserted_sales=inserted,
+            duplicate_rows=duplicate_rows,
+            overwritten_rows=overwritten_rows,
+            row_errors=row_errors,
+            date_channels=date_channels,
+        )
+        await self.log_activity(
+            "upload_sales_manual",
+            {
+                "import_id": response.import_id,
+                "sale_date": payload.sale_date,
+                "overwrite": bool(payload.overwrite),
+                "attempted_rows": response.attempted_rows,
+                "inserted_rows": response.inserted_rows,
+                "skipped_rows": response.skipped_rows,
+                "duplicate_rows": response.duplicate_rows,
+                "overwritten_rows": response.overwritten_rows,
+                "row_error_count": len(response.row_errors),
+            },
+        )
+        return response
     
     @log_method("Generating Sales Upload Template")
     async def generate_sales_upload_template_xlsx(self, default_date: Optional[str] = None) -> BytesIO:

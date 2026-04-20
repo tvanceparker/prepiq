@@ -147,29 +147,43 @@ export default function BasicOverview({ data }) {
     severity: 'success',
   });
 
-  const { upload, uploading, error, result } = useUploadSalesData();
+  const { upload, uploading, error, result, reset } = useUploadSalesData();
 
   const getTodayDateString = () => new Date().toISOString().slice(0, 10);
   const [templateDate, setTemplateDate] = useState(getTodayDateString());
 
   useEffect(() => {
     if (error) {
+      if (error.message.includes('409')) {
+        return;
+      }
+
       setSnackbar({
         open: true,
         message: `Upload failed: ${error.message}`,
         severity: 'error',
       });
     } else if (result) {
+      const hasWarnings = (result.skipped_rows ?? 0) > 0 || (result.row_errors?.length ?? 0) > 0;
       setSnackbar({
         open: true,
-        message: 'Upload successful!',
-        severity: 'success',
+        message: result.message || 'Upload successful!',
+        severity: hasWarnings ? 'warning' : 'success',
       });
     }
   }, [error, result]);
 
   const closeSnackbar = useCallback(() => {
     setSnackbar(prev => ({ ...prev, open: false }));
+  }, []);
+
+  const handleOpenUploadModal = useCallback(() => {
+    reset();
+    setUploadModalOpen(true);
+  }, [reset]);
+
+  const handleCloseUploadModal = useCallback(() => {
+    setUploadModalOpen(false);
   }, []);
 
   const handleDownloadTemplate = useCallback(() => {
@@ -300,7 +314,7 @@ export default function BasicOverview({ data }) {
               </Button>
               <Button
                 variant="file"
-                onClick={() => setUploadModalOpen(true)}
+                onClick={handleOpenUploadModal}
                 requiredPermission="upload_sales"
                 disabled={uploading}
                 startIcon={uploading ? <CircularProgress size={20} /> : <UploadFileIcon />}
@@ -401,8 +415,12 @@ export default function BasicOverview({ data }) {
 
       <SalesUploadModal
         isOpen={uploadModalOpen}
-        onClose={() => setUploadModalOpen(false)}
+        onClose={handleCloseUploadModal}
         onUpload={upload}
+        onReset={reset}
+        result={result}
+        uploadError={error}
+        uploading={uploading}
       />
 
       <Snackbar

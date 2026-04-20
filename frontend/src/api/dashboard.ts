@@ -6,6 +6,7 @@ import type {
   MenuItemDTO,
   EodSalesEntriesInDTO,
   SalesConflictOutDTO,
+  SalesUploadResponseDTO,
 } from '../interfaces/dashboardInterfaceFrontend';
 import type { LiveOperationsData } from '../interfaces/liveOperations';
 import type { QuickAnalyticsData } from '../interfaces/quickAnalytics';
@@ -70,7 +71,10 @@ export const downloadSalesTemplate = async (defaultDate?: string) => {
   return { blob, filename };
 };
 
-export const uploadSalesData = async (file: File, overwrite = false) => {
+export const uploadSalesData = async (
+  file: File,
+  overwrite = false
+): Promise<SalesUploadResponseDTO> => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('overwrite', overwrite ? 'true' : 'false');
@@ -87,7 +91,7 @@ export const uploadSalesData = async (file: File, overwrite = false) => {
 };
 
 export const uploadSalesManual = (payload: EodSalesEntriesInDTO) =>
-  post('/dashboard/upload-sales-manual', payload);
+  post<SalesUploadResponseDTO>('/dashboard/upload-sales-manual', payload);
 
 export const checkSalesExist = (sale_date: string, channels?: Array<string | null>) => {
   const params = new URLSearchParams({ sale_date });

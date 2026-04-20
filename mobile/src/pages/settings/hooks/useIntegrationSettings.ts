@@ -7,7 +7,7 @@ import {
   triggerPOSSync,
   updatePOSModeSettings,
 } from '../../../api/settings';
-import type { POSProvider } from '../../../interfaces/pos';
+import type { POSProvider, POSSyncSummary } from '../../../interfaces/pos';
 
 export interface SnackbarState {
   visible: boolean;
@@ -17,6 +17,7 @@ export interface SnackbarState {
 export function useIntegrationSettings() {
   const queryClient = useQueryClient();
   const [snackbar, setSnackbar] = useState<SnackbarState>({ visible: false, message: '' });
+  const [lastSyncResult, setLastSyncResult] = useState<POSSyncSummary | null>(null);
 
   const showSnackbar = (message: string) => {
     setSnackbar({ visible: true, message });
@@ -64,11 +65,12 @@ export function useIntegrationSettings() {
   const syncMutation = useMutation({
     mutationFn: () => triggerPOSSync(7),
     onSuccess: data => {
+      setLastSyncResult(data);
       posStatusQuery.refetch();
-      showSnackbar(`Sync complete: ${data.orders_synced} orders synced`);
+      showSnackbar(data.message);
     },
-    onError: () => {
-      showSnackbar('Sync failed');
+    onError: (error: any) => {
+      showSnackbar(error?.message || 'Sync failed');
     },
   });
 
@@ -105,6 +107,7 @@ export function useIntegrationSettings() {
   return {
     posSettings: posSettingsQuery.data,
     posStatus: posStatusQuery.data,
+    lastSyncResult,
     isLoading: posSettingsQuery.isLoading,
     isStatusLoading: posStatusQuery.isLoading,
     posError: posSettingsQuery.error,

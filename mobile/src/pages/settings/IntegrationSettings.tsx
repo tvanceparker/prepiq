@@ -21,6 +21,7 @@ export default function IntegrationSettings() {
   const {
     posSettings,
     posStatus,
+    lastSyncResult,
     isLoading,
     isStatusLoading,
     posError,
@@ -183,6 +184,48 @@ export default function IntegrationSettings() {
         </Card.Actions>
       </Card>
 
+      {lastSyncResult && (
+        <Card style={styles.card} mode="outlined">
+          <Card.Title title="Latest Sync Result" titleVariant="titleMedium" />
+          <Card.Content>
+            <Text variant="bodyMedium">{lastSyncResult.message}</Text>
+            <Text
+              variant="bodySmall"
+              style={{ marginTop: 8, color: theme.colors.onSurfaceVariant }}
+            >
+              Orders fetched: {lastSyncResult.total_orders_fetched} • Ingested:{' '}
+              {lastSyncResult.total_orders_ingested} • Failed: {lastSyncResult.total_orders_failed}{' '}
+              • Duplicates: {lastSyncResult.duplicate_orders}
+            </Text>
+
+            {lastSyncResult.failed_orders.length > 0 && (
+              <View style={styles.summaryBlock}>
+                <Text variant="labelMedium">Failed Orders</Text>
+                {lastSyncResult.failed_orders.map((failure, index) => (
+                  <Text key={`${failure.external_id || 'unknown'}-${index}`} variant="bodySmall">
+                    {failure.external_id || 'Unknown order'}: {failure.reason}
+                  </Text>
+                ))}
+              </View>
+            )}
+
+            {lastSyncResult.unmapped_items.length > 0 && (
+              <View style={styles.summaryBlock}>
+                <Text variant="labelMedium">Unmapped Items</Text>
+                <Text variant="bodySmall">{lastSyncResult.unmapped_items.join(', ')}</Text>
+              </View>
+            )}
+
+            {lastSyncResult.deduction_failures.length > 0 && (
+              <View style={styles.summaryBlock}>
+                <Text variant="labelMedium">Deduction Failures</Text>
+                <Text variant="bodySmall">{lastSyncResult.deduction_failures.join(', ')}</Text>
+              </View>
+            )}
+          </Card.Content>
+        </Card>
+      )}
+
       <Card
         style={[styles.card, { backgroundColor: theme.colors.surfaceVariant }]}
         mode="contained"
@@ -251,5 +294,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  summaryBlock: {
+    marginTop: 12,
   },
 });
