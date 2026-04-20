@@ -188,7 +188,9 @@ class POWhyReorderDTO(BaseModel):
     current_stock: Optional[float] = None
     total_stock: Optional[float] = None
     excluded_expiring_stock: Optional[float] = None
+    projected_waste_quantity: Optional[float] = None
     usable_until_date: Optional[date] = None
+    fefo_applied: bool = False
     current_unit: str
     reorder_point: Optional[float] = None
     lead_demand: Optional[float] = None

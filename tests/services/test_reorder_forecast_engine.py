@@ -151,8 +151,18 @@ async def test_build_reorder_decision_from_forecast_uses_cadence_window_and_shel
             "unit": "lb",
             "total_quantity": Decimal("2.50"),
             "excluded_quantity": Decimal("1.50"),
+            "projected_waste_quantity": Decimal("1.50"),
             "source": "usable_lot_projection",
             "conversion_fallback": False,
+            "fefo_applied": True,
+            "lot_projection_summary": [
+                {
+                    "lot_id": 10,
+                    "consumed_quantity": Decimal("1.00"),
+                    "projected_waste_quantity": Decimal("1.50"),
+                    "usable_quantity": Decimal("1.00"),
+                }
+            ],
         }
     )
 
@@ -201,6 +211,8 @@ async def test_build_reorder_decision_from_forecast_uses_cadence_window_and_shel
     assert decision["inventory_source"] == "usable_lot_projection"
     assert decision["total_stock"] == Decimal("2.50")
     assert decision["excluded_expiring_stock"] == Decimal("1.50")
+    assert decision["projected_waste_quantity"] == Decimal("1.50")
+    assert decision["fefo_applied"] is True
     assert decision["lead_demand"] == Decimal("3.00")
     assert decision["shelf_demand"] == Decimal("0.00")
     assert decision["reorder_point"] == Decimal("4.00")
@@ -221,6 +233,15 @@ async def test_build_reorder_decision_from_forecast_uses_cadence_window_and_shel
     assert decision["buffered_quantity"] == Decimal("2.00")
     assert decision["abc_multiplier"] is None
     assert decision["final_quantity"] == Decimal("2.00")
+
+    usable_inventory_kwargs = engine.stats_service.get_usable_inventory.await_args.kwargs
+    assert usable_inventory_kwargs["projection_start_date"] == date(2026, 4, 15)
+    assert usable_inventory_kwargs["usable_until_date"] == date(2026, 4, 17)
+    assert usable_inventory_kwargs["daily_demand_points"] == [
+        (date(2026, 4, 15), Decimal("1.00")),
+        (date(2026, 4, 16), Decimal("1.00")),
+        (date(2026, 4, 17), Decimal("1.00")),
+    ]
 
 
 @pytest.mark.asyncio
@@ -274,6 +295,7 @@ async def test_build_reorder_decision_preserves_public_payload_contract():
         "current_stock",
         "total_stock",
         "excluded_expiring_stock",
+        "projected_waste_quantity",
         "lead_demand",
         "shelf_demand",
         "total_demand",
@@ -313,6 +335,8 @@ async def test_build_reorder_decision_preserves_public_payload_contract():
         "backorder_quantity",
         "assumption_warnings",
         "policy_safe_quantity",
+        "fefo_applied",
+        "lot_projection_summary",
         "usable_until_date",
         "inventory_source",
         "inventory_conversion_fallback",

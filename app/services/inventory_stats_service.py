@@ -2,7 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 import math
 from statistics import mean, pstdev
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,7 @@ from app.repositories.inventory_lot_repo import InventoryLotRepository
 from app.repositories.inventory_usage_log_repo import InventoryUsageLogRepository
 from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
 from app.repositories.ingredients_repo import IngredientRepository
+from app.services.reorder.lot_projection import ReorderLotProjectionHelper
 from app.services.forecasting_engine import ForecastingEngine
 from app.services.utils.unit_conversion import convert_unit
 from app.core.logging import logger
@@ -41,6 +42,7 @@ class InventoryStatsService:
         self.ingredient_repo = IngredientRepository(db, restaurant_id)
         self.ingredient_supplier_repo = IngredientSupplierRepository(db, restaurant_id)
         self.forecasting_engine = ForecastingEngine(db, restaurant_id)
+        self.reorder_lot_projection = ReorderLotProjectionHelper()
         self._sales_derived_usage_cache: Dict[int, Dict[int, Dict[date, Decimal]]] = {}
 
     async def _get_sales_derived_usage(
@@ -207,6 +209,9 @@ class InventoryStatsService:
         self,
         ingredient_id: int,
         usable_until_date: Optional[date] = None,
+        *,
+        daily_demand_points: Optional[List[Any]] = None,
+        projection_start_date: Optional[date] = None,
     ) -> Dict[str, Any]:
         inventory = await self.inventory_repo.get_inventory_by_ingredient(ingredient_id)
         if not inventory:
@@ -224,6 +229,10 @@ class InventoryStatsService:
                 "conversion_fallback": False,
                 "lot_count": 0,
                 "eligible_lot_count": 0,
+                "projected_waste_quantity": Decimal("0.00"),
+                "lot_projection_summary": [],
+                "lot_consumption_trace": [],
+                "fefo_applied": False,
                 "usable_until_date": usable_until_date,
             }
 
@@ -249,6 +258,10 @@ class InventoryStatsService:
                 "conversion_fallback": False,
                 "lot_count": 0,
                 "eligible_lot_count": 0,
+                "projected_waste_quantity": Decimal("0.00"),
+                "lot_projection_summary": [],
+                "lot_consumption_trace": [],
+                "fefo_applied": False,
                 "usable_until_date": usable_until_date,
             }
 
@@ -257,6 +270,7 @@ class InventoryStatsService:
         excluded_quantity = Decimal("0.00")
         conversion_fallback = False
         eligible_lot_count = 0
+        prepared_lots: List[Dict[str, Any]] = []
 
         for lot in available_lots:
             remaining = await self.get_lot_remaining(lot)
@@ -271,12 +285,69 @@ class InventoryStatsService:
                 remaining_in_inventory_unit = remaining
                 conversion_fallback = True
 
+            prepared_lots.append(
+                {
+                    "lot_id": lot.lot_id,
+                    "delivery_date": getattr(lot, "delivery_date", None),
+                    "spoilage_expected_date": getattr(lot, "spoilage_expected_date", None),
+                    "quantity": remaining_in_inventory_unit,
+                }
+            )
             total_quantity += remaining_in_inventory_unit
+
+        if (
+            usable_until_date is not None
+            and projection_start_date is not None
+            and prepared_lots
+        ):
+            projection = self.reorder_lot_projection.project_usable_inventory(
+                lots=prepared_lots,
+                projection_start_date=projection_start_date,
+                projection_end_date=usable_until_date,
+                daily_demand_points=daily_demand_points,
+            )
+            logger.debug(
+                "[INV STATS] UsableInventory ingredient=%s usable=%s total=%s projected_waste=%s usable_until=%s eligible_lots=%s total_lots=%s fefo=%s",
+                ingredient_id,
+                projection["quantity"],
+                projection["total_quantity"],
+                projection["projected_waste_quantity"],
+                usable_until_date,
+                projection["eligible_lot_count"],
+                len(available_lots),
+                projection["fefo_applied"],
+            )
+            return {
+                "quantity": projection["quantity"],
+                "unit": inventory_unit,
+                "total_quantity": projection["total_quantity"],
+                "excluded_quantity": projection["excluded_quantity"],
+                "projected_waste_quantity": projection["projected_waste_quantity"],
+                "source": "usable_lot_projection",
+                "fallback_used": False,
+                "conversion_fallback": conversion_fallback,
+                "lot_count": len(available_lots),
+                "eligible_lot_count": projection["eligible_lot_count"],
+                "usable_until_date": usable_until_date,
+                "projection_start_date": projection["projection_start_date"],
+                "projection_end_date": projection["projection_end_date"],
+                "projected_remaining_quantity": projection["projected_remaining_quantity"],
+                "projected_consumed_quantity": projection["projected_consumed_quantity"],
+                "lot_projection_summary": projection["lot_projection_summary"],
+                "lot_consumption_trace": projection["lot_consumption_trace"],
+                "fefo_applied": projection["fefo_applied"],
+                "unmet_demand_quantity": projection["unmet_demand_quantity"],
+            }
+
+        for lot in prepared_lots:
+            remaining_in_inventory_unit = Decimal(str(lot["quantity"])).quantize(
+                Decimal("0.01")
+            )
 
             if (
                 usable_until_date is not None
-                and getattr(lot, "spoilage_expected_date", None) is not None
-                and lot.spoilage_expected_date <= usable_until_date
+                and lot.get("spoilage_expected_date") is not None
+                and lot["spoilage_expected_date"] <= usable_until_date
             ):
                 excluded_quantity += remaining_in_inventory_unit
                 continue
@@ -303,11 +374,15 @@ class InventoryStatsService:
             "unit": inventory_unit,
             "total_quantity": total_quantity,
             "excluded_quantity": excluded_quantity,
+            "projected_waste_quantity": excluded_quantity,
             "source": source,
             "fallback_used": False,
             "conversion_fallback": conversion_fallback,
             "lot_count": len(available_lots),
             "eligible_lot_count": eligible_lot_count,
+            "lot_projection_summary": [],
+            "lot_consumption_trace": [],
+            "fefo_applied": False,
             "usable_until_date": usable_until_date,
         }
 

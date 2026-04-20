@@ -273,12 +273,18 @@ class ReorderContextBuilder:
             default=Decimal("0.00"),
         ).quantize(Decimal("0.01"))
 
-        usable_until_date = cadence_context["next_delivery_date"] or (
+        projection_end_date = None
+        if coverage_days > 0:
+            projection_end_date = as_of_date + timedelta(days=coverage_days - 1)
+
+        usable_until_date = projection_end_date or cadence_context["next_delivery_date"] or (
             as_of_date + timedelta(days=effective_lead_days)
         )
         usable_inventory = await self.engine.stats_service.get_usable_inventory(
             ingredient_id,
             usable_until_date=usable_until_date,
+            daily_demand_points=coverage_points,
+            projection_start_date=as_of_date if projection_end_date is not None else None,
         )
         usable_stock = self.engine._to_decimal(usable_inventory["quantity"])
         usable_unit = usable_inventory.get("unit") or current_unit
@@ -309,6 +315,11 @@ class ReorderContextBuilder:
             "excluded_expiring_stock": self.engine._to_decimal(
                 usable_inventory.get("excluded_quantity")
             ),
+            "projected_waste_quantity": self.engine._to_decimal(
+                usable_inventory.get("projected_waste_quantity")
+            ),
+            "fefo_applied": bool(usable_inventory.get("fefo_applied")),
+            "lot_projection_summary": usable_inventory.get("lot_projection_summary") or [],
             "inventory_source": usable_inventory.get("source") or "inventory_summary",
             "inventory_conversion_fallback": bool(
                 usable_inventory.get("conversion_fallback")

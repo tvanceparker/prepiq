@@ -168,18 +168,19 @@ async def test_get_current_inventory_no_inventory(service):
 
 
 @pytest.mark.asyncio
-async def test_get_usable_inventory_excludes_expiring_lots(service):
+async def test_get_usable_inventory_projects_partial_lot_usage_before_expiration(service):
     ingredient_id = 1
     inventory_mock = MagicMock()
-    inventory_mock.quantity_on_hand = Decimal("12.00")
+    inventory_mock.quantity_on_hand = Decimal("17.00")
     inventory_mock.unit = "lb"
 
     early_lot = SimpleNamespace(
         lot_id=10,
-        quantity=Decimal("5.00"),
+        quantity=Decimal("10.00"),
         unit="lb",
         status=SimpleNamespace(value="available"),
-        spoilage_expected_date=date(2026, 4, 17),
+        spoilage_expected_date=date(2026, 4, 16),
+        delivery_date=date(2026, 4, 14),
     )
     durable_lot = SimpleNamespace(
         lot_id=11,
@@ -187,6 +188,7 @@ async def test_get_usable_inventory_excludes_expiring_lots(service):
         unit="lb",
         status=SimpleNamespace(value="available"),
         spoilage_expected_date=date(2026, 4, 21),
+        delivery_date=date(2026, 4, 14),
     )
 
     service.inventory_repo.get_inventory_by_ingredient.return_value = inventory_mock
@@ -195,13 +197,129 @@ async def test_get_usable_inventory_excludes_expiring_lots(service):
 
     result = await service.get_usable_inventory(
         ingredient_id,
-        usable_until_date=date(2026, 4, 18),
+        usable_until_date=date(2026, 4, 17),
+        daily_demand_points=[
+            (date(2026, 4, 15), Decimal("2.00")),
+            (date(2026, 4, 16), Decimal("2.00")),
+            (date(2026, 4, 17), Decimal("0.00")),
+        ],
+        projection_start_date=date(2026, 4, 15),
     )
 
-    assert result["quantity"] == Decimal("7.00")
-    assert result["total_quantity"] == Decimal("12.00")
-    assert result["excluded_quantity"] == Decimal("5.00")
+    assert result["quantity"] == Decimal("11.00")
+    assert result["total_quantity"] == Decimal("17.00")
+    assert result["excluded_quantity"] == Decimal("6.00")
+    assert result["projected_waste_quantity"] == Decimal("6.00")
+    assert result["fefo_applied"] is True
+    assert result["eligible_lot_count"] == 2
     assert result["source"] == "usable_lot_projection"
+    early_summary = next(
+        item for item in result["lot_projection_summary"] if item["lot_id"] == 10
+    )
+    durable_summary = next(
+        item for item in result["lot_projection_summary"] if item["lot_id"] == 11
+    )
+    assert early_summary["consumed_quantity"] == Decimal("4.00")
+    assert early_summary["projected_waste_quantity"] == Decimal("6.00")
+    assert early_summary["usable_quantity"] == Decimal("4.00")
+    assert durable_summary["consumed_quantity"] == Decimal("0.00")
+    assert durable_summary["usable_quantity"] == Decimal("7.00")
+
+
+@pytest.mark.asyncio
+async def test_get_usable_inventory_treats_expiration_day_as_consumable(service):
+    ingredient_id = 1
+    inventory_mock = MagicMock()
+    inventory_mock.quantity_on_hand = Decimal("5.00")
+    inventory_mock.unit = "lb"
+
+    expiring_lot = SimpleNamespace(
+        lot_id=12,
+        quantity=Decimal("5.00"),
+        unit="lb",
+        status=SimpleNamespace(value="available"),
+        spoilage_expected_date=date(2026, 4, 16),
+        delivery_date=date(2026, 4, 14),
+    )
+
+    service.inventory_repo.get_inventory_by_ingredient.return_value = inventory_mock
+    service.inventory_lot_repo.get_lots_by_ingredient_id.return_value = [expiring_lot]
+    service.inventory_usage_log_repo.get_all_by_lot_id.return_value = []
+
+    result = await service.get_usable_inventory(
+        ingredient_id,
+        usable_until_date=date(2026, 4, 16),
+        daily_demand_points=[
+            (date(2026, 4, 15), Decimal("2.00")),
+            (date(2026, 4, 16), Decimal("3.00")),
+        ],
+        projection_start_date=date(2026, 4, 15),
+    )
+
+    assert result["quantity"] == Decimal("5.00")
+    assert result["projected_waste_quantity"] == Decimal("0.00")
+    assert result["lot_projection_summary"][0]["consumed_quantity"] == Decimal("5.00")
+    assert result["lot_projection_summary"][0]["projected_waste_quantity"] == Decimal(
+        "0.00"
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_usable_inventory_consumes_lots_in_fefo_order(service):
+    ingredient_id = 1
+    inventory_mock = MagicMock()
+    inventory_mock.quantity_on_hand = Decimal("8.00")
+    inventory_mock.unit = "lb"
+
+    earlier_expiring_lot = SimpleNamespace(
+        lot_id=20,
+        quantity=Decimal("3.00"),
+        unit="lb",
+        status=SimpleNamespace(value="available"),
+        spoilage_expected_date=date(2026, 4, 16),
+        delivery_date=date(2026, 4, 14),
+    )
+    later_expiring_lot = SimpleNamespace(
+        lot_id=21,
+        quantity=Decimal("5.00"),
+        unit="lb",
+        status=SimpleNamespace(value="available"),
+        spoilage_expected_date=date(2026, 4, 18),
+        delivery_date=date(2026, 4, 14),
+    )
+
+    service.inventory_repo.get_inventory_by_ingredient.return_value = inventory_mock
+    service.inventory_lot_repo.get_lots_by_ingredient_id.return_value = [
+        later_expiring_lot,
+        earlier_expiring_lot,
+    ]
+    service.inventory_usage_log_repo.get_all_by_lot_id.side_effect = [[], []]
+
+    result = await service.get_usable_inventory(
+        ingredient_id,
+        usable_until_date=date(2026, 4, 17),
+        daily_demand_points=[
+            (date(2026, 4, 15), Decimal("2.00")),
+            (date(2026, 4, 16), Decimal("2.00")),
+            (date(2026, 4, 17), Decimal("1.00")),
+        ],
+        projection_start_date=date(2026, 4, 15),
+    )
+
+    first_consumption = next(
+        item for item in result["lot_consumption_trace"] if item["action"] == "consume"
+    )
+    earlier_summary = next(
+        item for item in result["lot_projection_summary"] if item["lot_id"] == 20
+    )
+    later_summary = next(
+        item for item in result["lot_projection_summary"] if item["lot_id"] == 21
+    )
+
+    assert first_consumption["lot_id"] == 20
+    assert earlier_summary["consumed_quantity"] == Decimal("3.00")
+    assert later_summary["consumed_quantity"] == Decimal("2.00")
+    assert result["projected_waste_quantity"] == Decimal("0.00")
 
 
 @pytest.mark.asyncio

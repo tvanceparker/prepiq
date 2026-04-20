@@ -700,9 +700,12 @@ class ReorderForecastEngine:
         current_unit = current_unit or unit or ""
         total_stock = current_stock
         excluded_expiring_stock = Decimal("0.00")
+        projected_waste_quantity = Decimal("0.00")
         usable_until_date = None
         inventory_source = "inventory_summary"
         inventory_conversion_fallback = False
+        fefo_applied = False
+        lot_projection_summary: List[Dict[str, Any]] = []
 
         if moq is None:
             moq = await self.stats_service.get_moq(ingredient_id)
@@ -742,8 +745,14 @@ class ReorderForecastEngine:
         current_unit = demand_context["current_unit"]
         total_stock = demand_context["total_stock"]
         excluded_expiring_stock = demand_context["excluded_expiring_stock"]
+        projected_waste_quantity = demand_context.get(
+            "projected_waste_quantity",
+            excluded_expiring_stock,
+        )
         inventory_source = demand_context["inventory_source"]
         inventory_conversion_fallback = demand_context["inventory_conversion_fallback"]
+        fefo_applied = bool(demand_context.get("fefo_applied"))
+        lot_projection_summary = demand_context.get("lot_projection_summary") or []
         inventory_position_context = self._build_inventory_position_context(
             demand_context=demand_context,
         )
@@ -868,6 +877,7 @@ class ReorderForecastEngine:
             "current_stock": current_stock,
             "total_stock": total_stock,
             "excluded_expiring_stock": excluded_expiring_stock,
+            "projected_waste_quantity": self._to_decimal(projected_waste_quantity),
             "current_unit": current_unit,
             "lead_demand": lead_demand.quantize(Decimal("0.01")),
             "shelf_demand": shelf_demand.quantize(Decimal("0.01")),
@@ -959,6 +969,8 @@ class ReorderForecastEngine:
             "review_required": review_context["moq_review_required"],
             "policy_review_warnings": review_context["policy_review_warnings"],
             "usable_until_date": usable_until_date,
+            "fefo_applied": fefo_applied,
+            "lot_projection_summary": lot_projection_summary,
             "inventory_source": inventory_source,
             "inventory_conversion_fallback": inventory_conversion_fallback,
             "next_order_date": cadence_context["next_order_date"] if cadence_context else None,
@@ -1115,12 +1127,22 @@ class ReorderForecastEngine:
             shelf_life_cap_summary = " Coverage was capped by shelf life before sizing the order."
         usable_stock_summary = ""
         usable_until = self._normalize_date_value(decision.get("usable_until_date"))
-        if self._to_float(decision.get("excluded_expiring_stock")):
-            usable_stock_summary = (
-                f" {self._to_float(decision.get('excluded_expiring_stock')):.2f} stock was excluded because it expires before "
-                f"{usable_until.isoformat() if usable_until else 'the replenishment window'}"
-                "."
-            )
+        projected_waste_quantity = self._to_float(
+            decision.get("projected_waste_quantity", decision.get("excluded_expiring_stock"))
+        )
+        if projected_waste_quantity:
+            if decision.get("fefo_applied"):
+                usable_stock_summary = (
+                    f" {projected_waste_quantity:.2f} stock is projected to expire before it can be consumed by "
+                    f"{usable_until.isoformat() if usable_until else 'the demand window'} when FEFO lot consumption is applied"
+                    "."
+                )
+            else:
+                usable_stock_summary = (
+                    f" {projected_waste_quantity:.2f} stock was excluded because it expires before "
+                    f"{usable_until.isoformat() if usable_until else 'the replenishment window'}"
+                    "."
+                )
         summary = self._build_policy_summary(
             decision=decision,
             supplier_name=supplier_name,
@@ -1139,9 +1161,11 @@ class ReorderForecastEngine:
                 "excluded_expiring_stock": self._to_float(
                     decision.get("excluded_expiring_stock")
                 ),
+                "projected_waste_quantity": projected_waste_quantity,
                 "usable_until_date": self._normalize_date_value(
                     decision.get("usable_until_date")
                 ),
+                "fefo_applied": bool(decision.get("fefo_applied")),
                 "current_unit": decision["current_unit"] or inventory_unit or supplier_unit,
                 "reorder_point": self._to_float(decision["reorder_point"]),
                 "lead_demand": self._to_float(decision["lead_demand"]),

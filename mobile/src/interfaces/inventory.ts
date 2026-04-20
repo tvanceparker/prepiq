@@ -386,7 +386,9 @@ export interface POReorderExplanation {
     current_stock: number | null;
     total_stock?: number | null;
     excluded_expiring_stock?: number | null;
+    projected_waste_quantity?: number | null;
     usable_until_date?: string | null;
+    fefo_applied?: boolean;
     current_unit: string;
     reorder_point: number | null;
     lead_demand: number | null;
