@@ -692,6 +692,7 @@ class InventoryService:
             cached_forecast = await self._load_cached_ingredient_forecast(
                 horizon_days=horizon_days,
                 ledger_finished_at=getattr(ledger, "finished_at", None),
+                forecast_run_date=effective_run_date,
             )
             return cached_forecast, ledger, effective_run_date
 
@@ -1078,62 +1079,195 @@ class InventoryService:
         
         return result
 
+    @staticmethod
+    def _resolve_stock_watch_threshold(
+        *,
+        safety_stock: Union[Decimal, float, int, None],
+        reorder_point: Union[Decimal, float, int, None],
+    ) -> tuple[Optional[float], Optional[str], Optional[str]]:
+        safety_stock_value = float(safety_stock or 0)
+        reorder_point_value = float(reorder_point or 0)
+
+        if safety_stock_value > 0:
+            return safety_stock_value, "safety_stock", "Safety buffer"
+        if reorder_point_value > 0:
+            return reorder_point_value, "reorder_point", "Reorder point"
+        return None, None, None
+
+    @staticmethod
+    def _classify_stock_watch_status(
+        *,
+        current_stock: float,
+        threshold_available: bool,
+        watch_threshold: Optional[float],
+    ) -> str:
+        if current_stock <= 0:
+            return "critical"
+        if not threshold_available or watch_threshold is None or watch_threshold <= 0:
+            return "unavailable"
+        if current_stock <= watch_threshold:
+            return "low"
+        if current_stock <= watch_threshold * 1.5:
+            return "warning"
+        return "ok"
+
     async def get_ingredients_with_stock_levels(self) -> list:
         """
-        Get all ingredients with current stock levels and reorder status.
+        Get all ingredients with current stock levels and forecast-backed stock-watch thresholds.
         """
-        from app.repositories.ingredients_repo import IngredientRepository
-        from app.repositories.inventory_repo import InventoryRepository
-        from app.services.inventory_stats_service import InventoryStatsService
-        
-        ingredient_repo = IngredientRepository(self.db, self.restaurant_id)
-        inventory_repo = InventoryRepository(self.db, self.restaurant_id)
-        stats_service = InventoryStatsService(self.db, self.restaurant_id, self.subscription_tier)
-        
-        ingredients = await ingredient_repo.get_all()
-        result = []
-        
-        for ing in ingredients:
-            inventory = await inventory_repo.get_inventory_by_ingredient(ing.ingredient_id)
-            
-            current_stock = float(inventory.quantity_on_hand) if inventory else 0
-            unit = inventory.unit if inventory else "unit"
-            
-            # Get reorder point
-            try:
-                reorder_point = await stats_service.get_reorder_point(ing.ingredient_id)
-                reorder_point = float(reorder_point) if reorder_point else 0
-            except:
-                reorder_point = 0
-            
-            # Determine status
-            if current_stock <= 0:
-                status = "critical"
-            elif reorder_point > 0 and current_stock <= reorder_point:
-                status = "low"
-            elif reorder_point > 0 and current_stock <= reorder_point * 1.5:
-                status = "warning"
+        from app.core.logging import logger
+        from app.repositories.restaurants_repo import RestaurantRepository
+        from app.services.reorder_forecast_engine import ReorderForecastEngine
+
+        restaurant_repo = RestaurantRepository(self.db, self.restaurant_id)
+        reorder_engine = ReorderForecastEngine(
+            self.db,
+            self.restaurant_id,
+            self.subscription_tier,
+        )
+
+        ingredients = await self.ingredient_repo.get_all(limit=1000)
+        if not ingredients:
+            return []
+
+        ingredient_ids = [ingredient.ingredient_id for ingredient in ingredients]
+        supplier_rows = await self.ingredient_supplier_repo.get_by_ingredient_ids(ingredient_ids)
+        suppliers_by_ingredient: Dict[int, List[Any]] = {}
+        for supplier_row in supplier_rows:
+            suppliers_by_ingredient.setdefault(supplier_row.ingredient_id, []).append(supplier_row)
+
+        restaurant = await restaurant_repo.get_by_id(self.restaurant_id)
+        last_eod_run_date = getattr(restaurant, "last_eod_run_date", None) if restaurant else None
+        horizon_days = max(int(getattr(restaurant, "forecast_length", None) or 30), 1)
+        resolved_cached_run_date = await self._resolve_cached_forecast_run_date(last_eod_run_date)
+        forecast_message: Optional[str] = None
+        ingredient_forecast: Dict[int, Dict[str, Any]] = {}
+
+        if resolved_cached_run_date is None:
+            forecast_message = "No finalized EOD forecast is available for the stock watch yet."
+        else:
+            ledger = await self._get_last_eod_ledger(resolved_cached_run_date)
+            if not ledger or not getattr(ledger, "finalized", False):
+                forecast_message = (
+                    "The latest EOD forecast has not finalized yet, so stock-watch thresholds are unavailable."
+                )
             else:
-                status = "ok"
-            
-            # Count suppliers
-            suppliers = await self.ingredient_supplier_repo.get_all_by_ingredient_id(ing.ingredient_id)
-            
+                ingredient_forecast = await self._load_cached_ingredient_forecast(
+                    horizon_days=horizon_days,
+                    ledger_finished_at=getattr(ledger, "finished_at", None),
+                    forecast_run_date=resolved_cached_run_date,
+                )
+                if not ingredient_forecast:
+                    forecast_message = (
+                        "The latest finalized EOD forecast did not contain reusable ingredient breakdowns for the stock watch."
+                    )
+
+        result = []
+        today = date.today()
+
+        for ing in ingredients:
+            inventory = await self.inventory_repo.get_inventory_by_ingredient(ing.ingredient_id)
+            current_stock = float(getattr(inventory, "quantity_on_hand", 0) or 0)
+            unit = getattr(inventory, "unit", None) or getattr(ing, "unit", None) or "unit"
+            suppliers = suppliers_by_ingredient.get(ing.ingredient_id, [])
+
+            supplier = None
+            if suppliers:
+                supplier_selection = await reorder_engine.choose_supplier_option(suppliers)
+                supplier = supplier_selection["supplier"] if supplier_selection else None
+
+            lead_time = getattr(supplier, "lead_time_days", 0) or 0
+            min_order_quantity = Decimal(
+                str(getattr(supplier, "min_order_quantity", 0) or 0)
+            ).quantize(Decimal("0.01"))
+
+            if inventory and getattr(inventory, "shelf_life_days", None) is not None:
+                shelf_life = inventory.shelf_life_days
+            elif supplier and getattr(supplier, "shelf_life_days", None) is not None:
+                shelf_life = supplier.shelf_life_days
+            elif not suppliers:
+                shelf_life = horizon_days
+            else:
+                shelf_life = 0
+
+            decision = None
+            threshold_message = forecast_message
+            forecast_context = ingredient_forecast.get(ing.ingredient_id, {})
+            daily_forecast = forecast_context.get("daily_breakdown") or []
+            forecast_unit = forecast_context.get("unit") or unit
+
+            if daily_forecast:
+                try:
+                    decision = await reorder_engine.build_reorder_decision(
+                        ingredient_id=ing.ingredient_id,
+                        unit=forecast_unit,
+                        lead_time=lead_time,
+                        daily_forecast=daily_forecast,
+                        supplier=supplier,
+                        as_of_date=today,
+                        shelf_life_days=shelf_life,
+                        current_stock=Decimal(str(current_stock)).quantize(Decimal("0.01")),
+                        current_unit=unit,
+                        moq=min_order_quantity,
+                        manage_alerts=False,
+                    )
+                    threshold_message = None
+                except ValueError as exc:
+                    logger.warning(
+                        "[STOCK_WATCH] Unable to compute threshold ingredient=%s error=%s",
+                        ing.ingredient_id,
+                        exc,
+                    )
+                    threshold_message = f"Policy data is incomplete for this ingredient: {exc}"
+                except Exception:
+                    logger.exception(
+                        "[STOCK_WATCH] Unexpected failure computing threshold ingredient=%s",
+                        ing.ingredient_id,
+                    )
+                    threshold_message = "The stock watch could not calculate a threshold for this ingredient."
+            elif threshold_message is None:
+                threshold_message = "No finalized forecast breakdown is available for this ingredient yet."
+
+            reorder_point = float(decision.get("reorder_point") or 0) if decision else 0.0
+            safety_stock = float(decision.get("safety_stock") or 0) if decision else 0.0
+            watch_threshold, watch_threshold_kind, watch_threshold_label = self._resolve_stock_watch_threshold(
+                safety_stock=safety_stock,
+                reorder_point=reorder_point,
+            )
+            threshold_available = bool(watch_threshold is not None and watch_threshold > 0)
+
+            status = self._classify_stock_watch_status(
+                current_stock=current_stock,
+                threshold_available=threshold_available,
+                watch_threshold=watch_threshold,
+            )
+
+            if not threshold_available and threshold_message is None:
+                threshold_message = (
+                    "This ingredient does not yet have a computed safety buffer or reorder point."
+                )
+
             result.append({
                 "ingredient_id": ing.ingredient_id,
                 "ingredient_name": ing.name,
                 "current_stock": current_stock,
                 "unit": unit,
                 "reorder_point": reorder_point,
+                "safety_stock": safety_stock,
+                "watch_threshold": watch_threshold,
+                "watch_threshold_kind": watch_threshold_kind,
+                "watch_threshold_label": watch_threshold_label,
+                "threshold_available": threshold_available,
+                "threshold_message": threshold_message,
                 "status": status,
                 "supplier_count": len(suppliers),
                 "abc_class": ing.abc_class or "C",
+                "forecast_run_date": resolved_cached_run_date,
             })
-        
-        # Sort by status priority (critical first) then by name
-        status_order = {"critical": 0, "low": 1, "warning": 2, "ok": 3}
+
+        status_order = {"critical": 0, "low": 1, "warning": 2, "unavailable": 3, "ok": 4}
         result.sort(key=lambda x: (status_order.get(x["status"], 4), x["ingredient_name"]))
-        
+
         return result
 
     async def create_purchase_orders_from_suggestions(
@@ -1353,6 +1487,7 @@ class InventoryService:
         *,
         horizon_days: int,
         ledger_finished_at: Optional[datetime],
+        forecast_run_date: Optional[date],
     ) -> Dict[int, Dict[str, Any]]:
         today = date.today()
         end_date = today + timedelta(days=horizon_days)
@@ -1360,7 +1495,7 @@ class InventoryService:
             today,
             end_date,
             created_at_cutoff=ledger_finished_at,
-            forecast_run_date=resolved_cached_run_date,
+            forecast_run_date=forecast_run_date,
         )
 
         if not breakdowns:
@@ -1386,7 +1521,7 @@ class InventoryService:
                 {
                     "daily_breakdown": [],
                     "unit": unit,
-                    "forecast_run_date": resolved_cached_run_date,
+                    "forecast_run_date": forecast_run_date,
                 },
             )
             ingredient_forecast[ingredient_id]["daily_breakdown"].append(
