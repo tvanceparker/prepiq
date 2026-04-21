@@ -32,6 +32,7 @@ from app.schemas.inventory_dto import (
     POSuggestionsResponseDTO,
     CreatePOsFromSuggestionsRequestDTO,
     LastEodDateDTO,
+    IngredientStockLevelDTO,
 )
 from typing import Dict, List, Union
 
@@ -227,7 +228,7 @@ async def get_ingredient_suppliers(
     """
     return await inventory_service.get_ingredient_suppliers(ingredient_id)
 
-@router.get("/ingredients/stock-levels")
+@router.get("/ingredients/stock-levels", response_model=List[IngredientStockLevelDTO])
 async def get_ingredients_stock_levels(
     inventory_service: InventoryService = Depends(get_inventory_service),
 ):

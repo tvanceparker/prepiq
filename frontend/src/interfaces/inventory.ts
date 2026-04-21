@@ -498,7 +498,14 @@ export interface IngredientStockLevel {
   current_stock: number;
   unit: string;
   reorder_point: number;
-  status: 'critical' | 'low' | 'warning' | 'ok';
+  safety_stock: number;
+  watch_threshold: number | null;
+  watch_threshold_kind: 'safety_stock' | 'reorder_point' | null;
+  watch_threshold_label: string | null;
+  threshold_available: boolean;
+  threshold_message?: string | null;
+  forecast_run_date?: string | null;
+  status: 'critical' | 'low' | 'warning' | 'ok' | 'unavailable';
   supplier_count: number;
   abc_class: string;
 }

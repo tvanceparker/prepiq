@@ -33,6 +33,84 @@ import {
   InventoryDeductionDiscrepancy,
 } from '../../interfaces/inventory';
 
+export const formatInventoryNumber = (value: number) =>
+  Number.isFinite(value) ? value.toLocaleString('en-US') : '0';
+
+export const getPackSummary = (item: InventoryItem) => {
+  const packLots = (item.packaging_breakdown || []).filter(
+    lot =>
+      typeof lot.approx_packages_remaining === 'number' &&
+      Number.isFinite(lot.approx_packages_remaining)
+  );
+
+  if (packLots.length === 0) {
+    return null;
+  }
+
+  const totalApproxPackages = packLots.reduce(
+    (sum, lot) => sum + Number(lot.approx_packages_remaining || 0),
+    0
+  );
+
+  if (totalApproxPackages <= 0) {
+    return null;
+  }
+
+  const packProfiles = new Set(
+    packLots.map(
+      lot =>
+        `${lot.pack_size ?? 'na'}:${lot.quantity_per_pack_item ?? 'na'}:${lot.supplier_unit || lot.unit || item.unit}`
+    )
+  );
+
+  if (packProfiles.size === 1) {
+    const sampleLot = packLots[0];
+    const packUnit = sampleLot.supplier_unit || sampleLot.unit || item.unit;
+    const descriptor =
+      sampleLot.pack_size && sampleLot.quantity_per_pack_item
+        ? ` (${formatInventoryNumber(sampleLot.pack_size)} x ${formatInventoryNumber(sampleLot.quantity_per_pack_item)} ${packUnit})`
+        : sampleLot.quantity_per_pack_item
+          ? ` (${formatInventoryNumber(sampleLot.quantity_per_pack_item)} ${packUnit} each)`
+          : '';
+
+    return `~${formatInventoryNumber(totalApproxPackages)} ${
+      totalApproxPackages === 1 ? 'pack' : 'packs'
+    }${descriptor}`;
+  }
+
+  return `~${formatInventoryNumber(totalApproxPackages)} packs across mixed pack sizes`;
+};
+
+export const formatWatchChipLabel = (item: IngredientStockLevel) => {
+  const stockText = `${formatInventoryNumber(item.current_stock)} ${item.unit}`;
+
+  if (!item.watch_threshold) {
+    return `${item.ingredient_name} · ${stockText} · threshold unavailable`;
+  }
+
+  return `${item.ingredient_name} · ${stockText} / ${formatInventoryNumber(item.watch_threshold)} ${
+    item.unit
+  } · ${item.watch_threshold_label || 'Watch threshold'}`;
+};
+
+export const buildReorderBuckets = (stockLevels: IngredientStockLevel[]) => {
+  const belowOrAt: IngredientStockLevel[] = [];
+  const nearing: IngredientStockLevel[] = [];
+
+  stockLevels.forEach(level => {
+    if (level.status === 'critical' || level.status === 'low') {
+      belowOrAt.push(level);
+    } else if (level.status === 'warning') {
+      nearing.push(level);
+    }
+  });
+
+  return {
+    belowOrAt,
+    nearing,
+  };
+};
+
 export default function InventoryTable() {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
@@ -318,30 +396,12 @@ export default function InventoryTable() {
     };
   }, [filteredInventory]);
 
-  const reorderBuckets = useMemo(() => {
-    const belowOrAt: IngredientStockLevel[] = [];
-    const nearing: IngredientStockLevel[] = [];
+  const unavailableWatchCount = useMemo(
+    () => stockLevels.filter(level => !level.threshold_available).length,
+    [stockLevels]
+  );
 
-    stockLevels.forEach(level => {
-      if (
-        level.status === 'critical' ||
-        level.status === 'low' ||
-        level.current_stock <= level.reorder_point
-      ) {
-        belowOrAt.push(level);
-      } else if (level.status === 'warning') {
-        nearing.push(level);
-      }
-    });
-
-    return {
-      belowOrAt,
-      nearing,
-    };
-  }, [stockLevels]);
-
-  const formatNumber = (value: number) =>
-    Number.isFinite(value) ? value.toLocaleString('en-US') : '0';
+  const reorderBuckets = useMemo(() => buildReorderBuckets(stockLevels), [stockLevels]);
 
   const tableGrouping = groupByCategory ? ['category'] : [];
   const panelBorderColor = alpha(theme.palette.divider, isDarkMode ? 0.45 : 0.85);
@@ -441,18 +501,28 @@ export default function InventoryTable() {
         aggregationFn: 'sum',
         Cell: ({ cell }) => {
           if (cell.getIsGrouped()) {
-            return <strong>{cell.getValue<number>()}</strong>;
+            return <strong>{formatInventoryNumber(cell.getValue<number>())}</strong>;
           }
+
           const value = cell.getValue<number>();
+          const packSummary = getPackSummary(cell.row.original);
+
           return (
-            <Typography
-              sx={{
-                fontWeight: 'bold',
-                color: value > 0 ? theme.palette.text.primary : theme.palette.warning.main,
-              }}
-            >
-              {value}
-            </Typography>
+            <Stack spacing={0.25}>
+              <Typography
+                sx={{
+                  fontWeight: 'bold',
+                  color: value > 0 ? theme.palette.text.primary : theme.palette.warning.main,
+                }}
+              >
+                {formatInventoryNumber(value)} {cell.row.original.unit}
+              </Typography>
+              {packSummary && (
+                <Typography variant="caption" color="text.secondary">
+                  {packSummary}
+                </Typography>
+              )}
+            </Stack>
           );
         },
       },
@@ -656,7 +726,7 @@ export default function InventoryTable() {
             </Avatar>
             <Box>
               <Typography variant="h4" fontWeight={700}>
-                {formatNumber(stats.items)}
+                {formatInventoryNumber(stats.items)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Active line items
@@ -687,7 +757,7 @@ export default function InventoryTable() {
             </Avatar>
             <Box>
               <Typography variant="h4" fontWeight={700}>
-                {formatNumber(stats.categories)}
+                {formatInventoryNumber(stats.categories)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Categories represented
@@ -715,7 +785,7 @@ export default function InventoryTable() {
             </Avatar>
             <Box>
               <Typography variant="h4" fontWeight={700}>
-                {formatNumber(stats.lots)}
+                {formatInventoryNumber(stats.lots)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Lots with movement
@@ -746,7 +816,7 @@ export default function InventoryTable() {
             </Avatar>
             <Box>
               <Typography variant="h4" fontWeight={700}>
-                {formatNumber(stats.onHand)}
+                {formatInventoryNumber(stats.onHand)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Units on hand (all)
@@ -788,29 +858,45 @@ export default function InventoryTable() {
             <Stack direction="row" alignItems="center" gap={1} mb={1}>
               <WarningAmberIcon color="warning" />
               <Typography variant="subtitle1" fontWeight={700}>
-                Reorder watch
+                Stock watch
               </Typography>
               {stockLoading && <CircularProgress size={18} thickness={4} />}
             </Stack>
+            <Typography variant="caption" color="text.secondary" display="block" mb={2}>
+              Uses the safety buffer when one is computed and falls back to reorder point when it is
+              not.
+              {unavailableWatchCount > 0
+                ? ` ${unavailableWatchCount} item${unavailableWatchCount === 1 ? '' : 's'} still need a finalized forecast or replenishment policy before they can appear on this watch.`
+                : ''}
+            </Typography>
             {stockError && (
               <Typography variant="body2" color="error">
-                Could not load reorder signals: {stockError.message}
+                Could not load stock-watch signals: {stockError.message}
               </Typography>
             )}
             {!stockLoading && !stockError && (
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                 <Box flex={1}>
                   <Typography variant="body2" color="text.secondary" mb={1}>
-                    At or below MOQ / reorder
+                    At or below watch threshold
                   </Typography>
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     {reorderBuckets.belowOrAt.length === 0 && (
-                      <Chip size="small" label="All good" color="success" variant="outlined" />
+                      <Chip
+                        size="small"
+                        label={
+                          unavailableWatchCount > 0
+                            ? 'No flagged items in the configured watch'
+                            : 'All good'
+                        }
+                        color={unavailableWatchCount > 0 ? 'default' : 'success'}
+                        variant="outlined"
+                      />
                     )}
-                    {reorderBuckets.belowOrAt.slice(0, 8).map(item => (
+                    {reorderBuckets.belowOrAt.map(item => (
                       <Chip
                         key={item.ingredient_id}
-                        label={`${item.ingredient_name} · ${formatNumber(item.current_stock)} ${item.unit}${item.reorder_point ? ` / ${formatNumber(item.reorder_point)}` : ''}`}
+                        label={formatWatchChipLabel(item)}
                         color="warning"
                         variant="filled"
                         sx={{ fontWeight: 600 }}
@@ -820,16 +906,16 @@ export default function InventoryTable() {
                 </Box>
                 <Box flex={1}>
                   <Typography variant="body2" color="text.secondary" mb={1}>
-                    Nearing threshold
+                    Nearing watch threshold
                   </Typography>
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     {reorderBuckets.nearing.length === 0 && (
                       <Chip size="small" label="None nearing" color="default" variant="outlined" />
                     )}
-                    {reorderBuckets.nearing.slice(0, 8).map(item => (
+                    {reorderBuckets.nearing.map(item => (
                       <Chip
                         key={item.ingredient_id}
-                        label={`${item.ingredient_name} · ${formatNumber(item.current_stock)} ${item.unit}${item.reorder_point ? ` / ${formatNumber(item.reorder_point)}` : ''}`}
+                        label={formatWatchChipLabel(item)}
                         color="info"
                         variant="outlined"
                         sx={{ fontWeight: 600 }}

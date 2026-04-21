@@ -168,6 +168,27 @@ class LastEodDateDTO(BaseModel):
     last_eod_run_date: Optional[date] = None
 
 
+WatchThresholdKind = Literal["safety_stock", "reorder_point"]
+
+
+class IngredientStockLevelDTO(BaseModel):
+    ingredient_id: int
+    ingredient_name: str
+    current_stock: float
+    unit: str
+    reorder_point: float = 0
+    safety_stock: float = 0
+    watch_threshold: Optional[float] = None
+    watch_threshold_kind: Optional[WatchThresholdKind] = None
+    watch_threshold_label: Optional[str] = None
+    threshold_available: bool = False
+    threshold_message: Optional[str] = None
+    status: Literal["critical", "low", "warning", "ok", "unavailable"]
+    supplier_count: int
+    abc_class: str
+    forecast_run_date: Optional[date] = None
+
+
 class InventoryForecastStateDTO(BaseModel):
     forecast_source: Literal["cached", "fresh"]
     forecast_source_type: Literal["eod", "on_demand"]
