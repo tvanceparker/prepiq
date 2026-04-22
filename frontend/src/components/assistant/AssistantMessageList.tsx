@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Chip, Stack, Typography } from '@mui/material';
+import { Box, Stack, Typography } from '@mui/material';
 
 import type { AssistantChatMessage } from '../../interfaces/assistant';
 
@@ -26,14 +26,6 @@ export default function AssistantMessageList({ messages }: AssistantMessageListP
           <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
             {message.content}
           </Typography>
-
-          {message.role === 'assistant' && message.retrievalMode && (
-            <Chip
-              size="small"
-              label={message.retrievalMode}
-              sx={{ mt: 1, bgcolor: 'background.paper' }}
-            />
-          )}
 
           {message.role === 'assistant' && message.warnings && message.warnings.length > 0 && (
             <Box sx={{ mt: 1 }}>

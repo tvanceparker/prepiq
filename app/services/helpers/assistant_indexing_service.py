@@ -130,6 +130,10 @@ class AssistantIndexingService:
         raw_text = path.read_text(encoding="utf-8", errors="ignore")
         content_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
         relative_path = str(path.relative_to(self.repo_root))
+        existing = await self.documents_repo.get_by_source(source_type, relative_path)
+        if existing and existing.content_hash == content_hash and existing.index_status in READY_INDEX_STATUSES:
+            return False, None
+
         document, warning = await self._upsert_document_and_chunks(
             source_type=source_type,
             display_name=path.name,
@@ -142,8 +146,8 @@ class AssistantIndexingService:
             is_uploaded=False,
             openai_client=openai_client,
         )
-        should_count = bool(document and document.content_hash == content_hash and document.source_path == relative_path)
-        return should_count and document.index_status in READY_INDEX_STATUSES, warning
+        changed = bool(document and document.content_hash == content_hash and document.source_path == relative_path)
+        return changed and document.index_status in READY_INDEX_STATUSES, warning
 
     async def _upsert_document_and_chunks(
         self,

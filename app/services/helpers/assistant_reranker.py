@@ -36,6 +36,31 @@ STOPWORDS = {
 SOURCE_PRIORITY = {
     "docs": 1.0,
     "notes": 0.8,
+    "upload": 0.9,
+}
+
+
+DOMAIN_PATH_BOOSTS = {
+    "reorder": {
+        "docs/REPLENISHMENT_POLICY_ENGINE.md",
+        "docs/INVENTORY_DEDUCTION_AND_PO.md",
+        "docs/core-workflows.md",
+        "docs/rag-ingestion-guide.md",
+    },
+    "inventory": {
+        "docs/INVENTORY_DEDUCTION_AND_PO.md",
+        "docs/database-map.md",
+        "docs/core-workflows.md",
+    },
+    "forecast": {
+        "docs/FORECASTING_SYSTEM.md",
+        "docs/core-workflows.md",
+    },
+    "assistant": {
+        "docs/ASSISTANT_IMPLEMENTATION_STATUS.md",
+        "docs/ASSISTANT_RETRIEVAL_DESIGN.md",
+        "docs/rag-ingestion-guide.md",
+    },
 }
 
 
@@ -75,6 +100,7 @@ class AssistantReranker:
 
             source_type = candidate.get("source_type", "docs")
             source_priority = SOURCE_PRIORITY.get(source_type, 0.75)
+            path_boost = self._domain_path_boost(query_tokens, str(candidate.get("path") or ""))
 
             freshness_bonus = 0.5
             modified_ts = candidate.get("modified_ts")
@@ -92,6 +118,7 @@ class AssistantReranker:
                 + 0.15 * heading_match
                 + 0.05 * source_priority
                 + 0.05 * freshness_bonus
+                + path_boost
                 - diversity_penalty
             )
 
@@ -102,3 +129,22 @@ class AssistantReranker:
 
         rescored.sort(key=lambda item: item.get("rerank_score", 0.0), reverse=True)
         return rescored[:top_k]
+
+    def _domain_path_boost(self, query_tokens: List[str], path: str) -> float:
+        if not query_tokens or not path:
+            return 0.0
+        token_set = set(query_tokens)
+        boost = 0.0
+        if {"reorder", "replenish", "supplier", "purchase", "po", "order"} & token_set:
+            if path in DOMAIN_PATH_BOOSTS["reorder"]:
+                boost += 0.35
+        if {"inventory", "stock", "ingredient"} & token_set:
+            if path in DOMAIN_PATH_BOOSTS["inventory"]:
+                boost += 0.2
+        if {"forecast", "demand", "sales"} & token_set:
+            if path in DOMAIN_PATH_BOOSTS["forecast"]:
+                boost += 0.2
+        if {"assistant", "rag", "upload", "index"} & token_set:
+            if path in DOMAIN_PATH_BOOSTS["assistant"]:
+                boost += 0.2
+        return boost

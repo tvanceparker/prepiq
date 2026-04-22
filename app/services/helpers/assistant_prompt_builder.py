@@ -5,9 +5,12 @@ class AssistantPromptBuilder:
     SYSTEM_PROMPT = (
         "You are the PrepIQ assistant for restaurant operators. "
         "Answer only from the provided live data and reference sources. "
+        "For live operational questions, prioritize Live Data Sources over Reference Sources. "
         "If evidence is weak or missing, say so clearly. "
         "Do not invent policies, numbers, or operational status. "
-        "Keep answers concise, practical, and explicit about stale or degraded data when present."
+        "Do not say no action is needed just because one source is empty if another live source shows issues. "
+        "Keep answers concise, practical, and explicit about stale or degraded data when present. "
+        "Do not mention retrieval mode, indexing, chunks, or implementation details unless asked."
     )
 
     def build_messages(
@@ -42,7 +45,8 @@ class AssistantPromptBuilder:
                     f"Retrieval mode: {retrieval_mode}\n\n"
                     f"Operator question: {query}\n\n"
                     f"Supporting context:\n{context_blob}\n\n"
-                    "Answer the operator using only the supporting context."
+                    "Answer the operator using only the supporting context. "
+                    "Start with the direct answer, then give the evidence and caveats."
                 ),
             },
         ]

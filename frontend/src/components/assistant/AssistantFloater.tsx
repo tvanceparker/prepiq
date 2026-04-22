@@ -38,7 +38,7 @@ export default function AssistantFloater(): JSX.Element {
           id: makeMessageId('assistant'),
           role: 'assistant',
           content:
-            'Chef Garlic can help with restaurant operations, alerts, forecast context, and procedures from indexed docs, notes, and uploaded files.',
+            'Ask me operational questions like: what should I reorder today, why did this PO suggestion fire, what forecast data is stale, or how do I set up recipes.',
         },
       ];
     }

@@ -9,6 +9,7 @@ STRUCTURED_HINTS = {
     "alert",
     "alerts",
     "purchase order",
+    "order",
     "po",
     "eod",
     "par",
@@ -17,6 +18,8 @@ STRUCTURED_HINTS = {
     "usage",
     "reorder",
     "vendor",
+    "buy",
+    "replenish",
 }
 
 DOCUMENT_HINTS = {
@@ -56,10 +59,12 @@ class AssistantQueryRouter:
         has_document = any(term in normalized for term in DOCUMENT_HINTS)
         has_blended = any(term in normalized for term in BLENDED_HINTS)
 
-        if has_blended or (has_structured and has_document):
+        if has_structured and has_document:
             return AssistantRetrievalMode.blended
         if has_structured:
             return AssistantRetrievalMode.structured
+        if has_blended and has_document:
+            return AssistantRetrievalMode.blended
         if has_document:
             return AssistantRetrievalMode.document
         return AssistantRetrievalMode.document

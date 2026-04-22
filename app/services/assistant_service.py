@@ -85,20 +85,24 @@ class AssistantService:
 
         indexed_count, indexing_warnings = await self.indexing_service.ensure_builtin_sources_indexed(
             openai_client,
-            max_documents=2,
+            max_documents=None,
         )
 
         structured_sections, structured_citations = await self.context_builder.build(
             payload.query,
             retrieval_mode.value,
         )
-        document_candidates = await self.retriever.retrieve(payload.query, openai_client=openai_client, top_k=24)
-        reranked_candidates = self.reranker.rerank(payload.query, document_candidates, top_k=5)
-        expanded_candidates = await self.retriever.expand_neighbors(reranked_candidates, limit_base=3)
-        document_chunks = self._merge_document_context(reranked_candidates, expanded_candidates)
+        reranked_candidates: list[dict] = []
+        document_chunks: list[dict] = []
+        if retrieval_mode.value != "structured":
+            document_candidates = await self.retriever.retrieve(payload.query, openai_client=openai_client, top_k=24)
+            reranked_candidates = self.reranker.rerank(payload.query, document_candidates, top_k=5)
+            expanded_candidates = await self.retriever.expand_neighbors(reranked_candidates, limit_base=3)
+            document_chunks = self._merge_document_context(reranked_candidates, expanded_candidates)
 
         citations = list(structured_citations)
-        citations.extend(self._build_document_citations(reranked_candidates))
+        if reranked_candidates:
+            citations.extend(self._build_document_citations(reranked_candidates))
 
         if retrieval_mode.value == "document" and not reranked_candidates:
             return AssistantQueryResponseDTO(
@@ -196,8 +200,6 @@ class AssistantService:
     ) -> list[str]:
         warnings = []
         warnings.extend(indexing_warnings or [])
-        if indexed_count:
-            warnings.append(f"Assistant indexed {indexed_count} built-in reference document(s) during this request.")
         if retrieval_mode != "document" and not structured_sections:
             warnings.append("No structured live-data sources matched this query strongly enough on the first pass.")
         if retrieval_mode != "structured" and not reranked_candidates:

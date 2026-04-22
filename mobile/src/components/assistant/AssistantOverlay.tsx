@@ -30,7 +30,7 @@ export default function AssistantOverlay(): JSX.Element {
       id: makeMessageId('assistant'),
       role: 'assistant',
       content:
-        'Ask about procedures, alerts, forecast context, EOD status, or indexed docs, notes, and uploaded files.',
+        'Ask operational questions like: what should I reorder today, why did this PO suggestion fire, what forecast data is stale, or how do I set up recipes.',
     },
   ]);
 
@@ -129,12 +129,6 @@ export default function AssistantOverlay(): JSX.Element {
                     {message.content}
                   </Text>
 
-                  {message.role === 'assistant' && message.retrievalMode && (
-                    <Text variant="labelSmall" style={styles.metaText}>
-                      {message.retrievalMode}
-                    </Text>
-                  )}
-
                   {message.role === 'assistant' && message.warnings?.length ? (
                     <View style={styles.metaBlock}>
                       {message.warnings.map(warning => (
@@ -225,9 +219,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
-  },
-  metaText: {
-    marginTop: 8,
   },
   metaBlock: {
     marginTop: 8,
