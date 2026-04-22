@@ -26,6 +26,7 @@ from app.api.v1 import (
     assistant_routes,
 )
 from app.api.v1 import pos_mappings_routes
+from app.mcp_server import create_mcp_app
 from app.utils.eod_runner import run_eod_jobs
 import app.db.models  # Register ORM models via package auto-import side effects.
 # import logging
@@ -68,6 +69,8 @@ app.add_middleware(
 )
 
 app.add_middleware(AuthExtractionMiddleware)
+
+app.mount("/mcp", create_mcp_app())
 
 # Include routers after app creation
 app.include_router(pos_webhooks.router, prefix="/api/v1")  # POS webhook routes

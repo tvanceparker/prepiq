@@ -635,9 +635,10 @@ class InventoryService:
         }
 
     async def generate_purchase_order_suggestions(
-        self, 
-        horizon_days: int = 7, 
-        use_cached_forecast: bool = True
+        self,
+        horizon_days: int = 7,
+        use_cached_forecast: bool = True,
+        manage_alerts: bool = True,
     ) -> dict:
         """
         Generate PO suggestions based on forecast data.
@@ -646,6 +647,7 @@ class InventoryService:
             horizon_days: Number of days to forecast for ordering
             use_cached_forecast: If True, use cached forecast from last EOD run.
                                 If False, run fresh forecast (slower but more accurate).
+            manage_alerts: If True, allow reorder decision generation to create/update low-stock alerts.
         
         Returns:
             dict with 'suggestions' grouped by supplier, 'last_eod_run_date', and 'forecast_source'
@@ -922,7 +924,7 @@ class InventoryService:
                     current_stock=current_stock,
                     current_unit=inventory_unit or supplier_unit,
                     moq=min_order_quantity,
-                    manage_alerts=True,
+                    manage_alerts=manage_alerts,
                 )
             except ValueError as exc:
                 logger.warning(
