@@ -223,9 +223,16 @@ export default function AssistantFloater(): JSX.Element {
   };
 
   return (
-    <Box sx={{ position: 'fixed', right: 24, bottom: 24, zIndex: theme => theme.zIndex.modal + 2 }}>
+    <Box
+      sx={{
+        position: 'fixed',
+        right: { xs: 16, sm: 88, lg: 104 },
+        bottom: { xs: 16, sm: 40 },
+        zIndex: theme => theme.zIndex.modal + 2,
+      }}
+    >
       {open && (
-        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        <Box sx={{ mb: 2.5, display: 'flex', justifyContent: 'flex-end' }}>
           <AssistantPanel
             input={input}
             isLoading={isLoading}
@@ -252,6 +259,8 @@ export default function AssistantFloater(): JSX.Element {
         onClick={() => setOpen(prev => !prev)}
         sx={{
           boxShadow: '0 16px 30px rgba(81, 59, 11, 0.28)',
+          px: 2.25,
+          py: 1.1,
           '@keyframes floaterWave': {
             '0%, 100%': { transform: 'translateY(0)' },
             '50%': { transform: 'translateY(-4px)' },

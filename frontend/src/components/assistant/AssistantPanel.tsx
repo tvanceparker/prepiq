@@ -61,8 +61,9 @@ export default function AssistantPanel({
     <Paper
       elevation={12}
       sx={{
-        width: { xs: 'calc(100vw - 32px)', sm: 460 },
-        height: { xs: '70vh', sm: 560 },
+        width: { xs: 'calc(100vw - 24px)', sm: 520, lg: 560 },
+        height: { xs: '76vh', sm: 620, lg: 680 },
+        maxHeight: 'calc(100vh - 112px)',
         display: 'flex',
         flexDirection: 'column',
         borderRadius: 3,
