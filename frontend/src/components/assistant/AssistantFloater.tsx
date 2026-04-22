@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Fab } from '@mui/material';
 import { SmartToy as AssistantIcon } from '@mui/icons-material';
 
@@ -10,6 +10,7 @@ import {
 } from '../../api/assistant';
 import type { AssistantChatMessage, AssistantDocument } from '../../interfaces/assistant';
 import AssistantPanel from './AssistantPanel';
+import type { ChefGarlicMotionState } from './ChefGarlicAvatar';
 
 const STORAGE_KEY = 'prepiq-assistant-chat-v1';
 
@@ -26,6 +27,9 @@ export default function AssistantFloater(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [documents, setDocuments] = useState<AssistantDocument[]>([]);
+  const [avatarMotionState, setAvatarMotionState] = useState<ChefGarlicMotionState>('idle');
+  const [avatarWaveToken, setAvatarWaveToken] = useState(0);
+  const avatarResetTimerRef = useRef<number | null>(null);
   const [messages, setMessages] = useState<AssistantChatMessage[]>(() => {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) {
@@ -34,7 +38,7 @@ export default function AssistantFloater(): JSX.Element {
           id: makeMessageId('assistant'),
           role: 'assistant',
           content:
-            'Ask about restaurant operations, alerts, forecast context, or procedures from indexed docs, notes, and uploaded files.',
+            'Chef Garlic can help with restaurant operations, alerts, forecast context, and procedures from indexed docs, notes, and uploaded files.',
         },
       ];
     }
@@ -49,6 +53,47 @@ export default function AssistantFloater(): JSX.Element {
   useEffect(() => {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
   }, [messages]);
+
+  const clearAvatarResetTimer = (): void => {
+    if (avatarResetTimerRef.current !== null) {
+      window.clearTimeout(avatarResetTimerRef.current);
+      avatarResetTimerRef.current = null;
+    }
+  };
+
+  const triggerAvatarReaction = (
+    nextState: Exclude<ChefGarlicMotionState, 'thinking'> = 'celebrate'
+  ): void => {
+    clearAvatarResetTimer();
+    setAvatarWaveToken(current => current + 1);
+    setAvatarMotionState(nextState);
+    avatarResetTimerRef.current = window.setTimeout(() => {
+      setAvatarMotionState(current => (current === 'thinking' ? current : 'idle'));
+      avatarResetTimerRef.current = null;
+    }, 1500);
+  };
+
+  useEffect(() => () => clearAvatarResetTimer(), []);
+
+  useEffect(() => {
+    if (!open) {
+      clearAvatarResetTimer();
+      setAvatarMotionState('idle');
+      return;
+    }
+
+    triggerAvatarReaction('celebrate');
+  }, [open]);
+
+  useEffect(() => {
+    if (isLoading) {
+      clearAvatarResetTimer();
+      setAvatarMotionState('thinking');
+      return;
+    }
+
+    setAvatarMotionState(current => (current === 'thinking' ? 'idle' : current));
+  }, [isLoading]);
 
   useEffect(() => {
     if (!open) {
@@ -110,6 +155,7 @@ export default function AssistantFloater(): JSX.Element {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      triggerAvatarReaction('celebrate');
     } catch (requestError: any) {
       setError(
         requestError?.response?.data?.detail || requestError?.message || 'Assistant request failed'
@@ -139,6 +185,7 @@ export default function AssistantFloater(): JSX.Element {
           retrievalMode: 'document',
         },
       ]);
+      triggerAvatarReaction('celebrate');
     } catch (requestError: any) {
       setUploadError(
         requestError?.response?.data?.detail || requestError?.message || 'Assistant upload failed'
@@ -163,6 +210,7 @@ export default function AssistantFloater(): JSX.Element {
           retrievalMode: 'document',
         },
       ]);
+      triggerAvatarReaction('celebrate');
       const nextDocuments = await listAssistantDocuments();
       setDocuments(nextDocuments);
     } catch (requestError: any) {
@@ -187,6 +235,8 @@ export default function AssistantFloater(): JSX.Element {
             uploadError={uploadError}
             messages={messages}
             documents={documents}
+            avatarMotionState={avatarMotionState}
+            avatarWaveToken={avatarWaveToken}
             onClose={() => setOpen(false)}
             onInputChange={setInput}
             onSubmit={handleSubmit}
@@ -210,7 +260,7 @@ export default function AssistantFloater(): JSX.Element {
         }}
       >
         <AssistantIcon sx={{ mr: 1 }} />
-        {open ? 'Hide Assistant' : 'Ask PrepIQ'}
+        {open ? 'Hide Chef Garlic' : 'Ask Chef Garlic'}
       </Fab>
     </Box>
   );

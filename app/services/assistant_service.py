@@ -65,7 +65,7 @@ class AssistantService:
                 warnings=["Assistant settings are present, but the assistant is not enabled."],
             )
 
-        restaurant_key = decrypt_secret(restaurant.assistant_openai_api_key)
+        restaurant_key, key_warning = self._resolve_restaurant_api_key(restaurant)
         openai_client = OpenAIClient(api_key=restaurant_key or os.getenv("OPENAI_API_KEY"))
 
         if not openai_client.is_configured():
@@ -73,10 +73,14 @@ class AssistantService:
                 status=AssistantResponseStatus.not_configured,
                 retrieval_mode=retrieval_mode,
                 answer=(
-                    "The assistant does not have an OpenAI API key configured yet. "
+                    key_warning
+                    or "The assistant does not have an OpenAI API key configured yet. "
                     "Add a restaurant key in Settings > Integrations or configure a server-level fallback key."
                 ),
-                warnings=["No restaurant-level or server-level OpenAI API key is configured."],
+                warnings=[
+                    key_warning
+                    or "No restaurant-level or server-level OpenAI API key is configured."
+                ],
             )
 
         indexed_count, indexing_warnings = await self.indexing_service.ensure_builtin_sources_indexed(
@@ -204,16 +208,31 @@ class AssistantService:
         restaurant = await self.restaurant_repo.get_by_id(self.restaurant_id)
         if not restaurant:
             raise HTTPException(status_code=404, detail="Restaurant not found")
-        restaurant_key = decrypt_secret(restaurant.assistant_openai_api_key)
+        restaurant_key, key_warning = self._resolve_restaurant_api_key(restaurant)
         openai_client = OpenAIClient(api_key=restaurant_key or os.getenv("OPENAI_API_KEY"))
         if not openai_client.is_configured():
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Assistant uploads and indexing require a restaurant-level or server-level OpenAI API key."
+                    key_warning
+                    or "Assistant uploads and indexing require a restaurant-level or server-level OpenAI API key."
                 ),
             )
         return openai_client
+
+    def _resolve_restaurant_api_key(self, restaurant) -> tuple[str | None, str | None]:
+        encrypted_key = restaurant.assistant_openai_api_key
+        if not encrypted_key:
+            return None, None
+
+        decrypted_key = decrypt_secret(encrypted_key)
+        if decrypted_key:
+            return decrypted_key, None
+
+        return (
+            None,
+            "The stored restaurant OpenAI API key could not be decrypted. Set a stable ENCRYPTION_KEY and save the key again in Settings > Integrations.",
+        )
 
     def _serialize_document(self, document) -> AssistantDocumentDTO:
         return AssistantDocumentDTO(

@@ -1496,7 +1496,6 @@ class InventoryService:
             today,
             end_date,
             created_at_cutoff=ledger_finished_at,
-            forecast_run_date=forecast_run_date,
         )
 
         if not breakdowns:

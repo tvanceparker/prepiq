@@ -19,7 +19,7 @@ import {
 
 import type { AssistantChatMessage, AssistantDocument } from '../../interfaces/assistant';
 import AssistantComposer from './AssistantComposer';
-import ChefGarlicAvatar from './ChefGarlicAvatar';
+import ChefGarlicAvatar, { type ChefGarlicMotionState } from './ChefGarlicAvatar';
 import AssistantMessageList from './AssistantMessageList';
 
 interface AssistantPanelProps {
@@ -31,6 +31,8 @@ interface AssistantPanelProps {
   uploadError: string | null;
   messages: AssistantChatMessage[];
   documents: AssistantDocument[];
+  avatarMotionState: ChefGarlicMotionState;
+  avatarWaveToken: number;
   onClose: () => void;
   onInputChange: (value: string) => void;
   onSubmit: () => void;
@@ -47,6 +49,8 @@ export default function AssistantPanel({
   uploadError,
   messages,
   documents,
+  avatarMotionState,
+  avatarWaveToken,
   onClose,
   onInputChange,
   onSubmit,
@@ -77,16 +81,16 @@ export default function AssistantPanel({
         }}
       >
         <Stack direction="row" spacing={1.5} alignItems="center">
-          <ChefGarlicAvatar />
+          <ChefGarlicAvatar motionState={avatarMotionState} waveToken={avatarWaveToken} />
           <Box>
             <Typography variant="subtitle1" fontWeight={800}>
-              PrepIQ Assistant
+              Chef Garlic
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-              Indexed docs, uploads, and live restaurant read-only context
+              Live restaurant context plus indexed docs, notes, and uploads
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Chef Garlic will autoplay built-in model animation when the viewer is available.
+              Tap the avatar to make him wave. He perks up while replies are on the way.
             </Typography>
           </Box>
         </Stack>

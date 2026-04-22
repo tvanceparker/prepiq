@@ -8,7 +8,7 @@ from app.repositories.role_permissions_repo import RolePermissionRepository
 from app.repositories.permissions_repo import PermissionRepository
 from app.utils.logger_helpers import log_method
 from app.utils.security import verify_password, get_password_hash
-from app.utils.secret_encryption import encrypt_secret
+from app.utils.secret_encryption import decrypt_secret, encrypt_secret
 from app.core.logging import logger 
 import json
 from typing import Any, List
@@ -76,10 +76,11 @@ class SettingsService:
 
         settings_blob = restaurant.settings or {}
         assistant_settings = settings_blob.get("assistant") or {}
+        decrypted_api_key = decrypt_secret(restaurant.assistant_openai_api_key)
 
         return {
             "enabled": bool(assistant_settings.get("enabled", False)),
-            "api_key_configured": bool(restaurant.assistant_openai_api_key),
+            "api_key_configured": bool(decrypted_api_key),
             "api_key_last4": restaurant.assistant_openai_api_key_last4,
             "api_key_updated_at": restaurant.assistant_openai_api_key_updated_at,
         }
