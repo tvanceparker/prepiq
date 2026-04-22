@@ -9,6 +9,7 @@ from app.repositories.ingredients_repo import IngredientRepository
 from app.repositories.inventory_usage_log_repo import InventoryUsageLogRepository
 from app.repositories.recipes_repo import RecipeRepository
 from app.repositories.menu_item_recipes_repo import MenuItemRecipeRepository
+from app.repositories.menu_item_batch_usage_repo import MenuItemBatchUsageRepository
 from app.repositories.recipe_ingredients_repo import RecipeIngredientRepository
 from app.repositories.menu_items_repo import MenuItemRepository
 from app.repositories.prep_schedule_repo import PrepScheduleRepository
@@ -45,6 +46,7 @@ class PrepService:
         self.inventory_usage_log_repo = InventoryUsageLogRepository(db, restaurant_id)
         self.recipe_repo = RecipeRepository(db, restaurant_id)
         self.menu_item_recipe_repo = MenuItemRecipeRepository(db, restaurant_id)
+        self.menu_item_batch_usage_repo = MenuItemBatchUsageRepository(db)
         self.recipe_ingredient_repo = RecipeIngredientRepository(db, restaurant_id)
         self.menu_item_repo = MenuItemRepository(db, restaurant_id)
         self.prep_schedule_repo = PrepScheduleRepository(db, restaurant_id)
@@ -806,6 +808,10 @@ class PrepService:
             ingredient_type="batch",
             reference_id=batch_recipe_id,
         )
+        menu_item_dependencies = await self.menu_item_batch_usage_repo.get_all_for_batch_recipe(
+            batch_recipe_id,
+            self.restaurant_id,
+        )
         prep_schedule_dependencies = await self.prep_schedule_repo.get_by_field(
             "batch_recipe_id",
             batch_recipe_id,
@@ -838,18 +844,100 @@ class PrepService:
                     }
                 )
 
+        used_in_menu_items = []
+        for dependency in menu_item_dependencies:
+            menu_item = await self.menu_item_repo.get_by_id(dependency.menu_item_id)
+            if menu_item:
+                used_in_menu_items.append(
+                    {
+                        "menu_item_id": menu_item.menu_item_id,
+                        "menu_item_name": menu_item.name,
+                        "is_active": getattr(menu_item, "is_active", True),
+                        "quantity_used": float(dependency.quantity_used or 0),
+                        "unit": dependency.unit,
+                    }
+                )
+
         return {
             "batch_recipe_id": batch_recipe.batch_recipe_id,
             "batch_recipe_name": batch_recipe.name,
             "is_active": getattr(batch_recipe, "is_active", True),
             "usage": {
+                "menu_items": used_in_menu_items,
                 "recipes": used_in_recipes,
                 "batches": used_in_batches,
                 "prep_schedule_count": len(prep_schedule_dependencies),
                 "inventory_lot_count": len(inventory_lot_dependencies),
+                "menu_item_count": len(used_in_menu_items),
                 "recipe_count": len(used_in_recipes),
                 "batch_count": len(used_in_batches),
             },
+        }
+
+    async def get_batch_recipe_detail(self, batch_recipe_id: int) -> dict:
+        batch_recipe = await self.batch_recipe_repo.get_by_id(batch_recipe_id)
+        if not batch_recipe or getattr(batch_recipe, "is_active", True) is False:
+            raise ValueError(f"Batch recipe ID {batch_recipe_id} not found.")
+
+        ingredients = await self.batch_recipe_ingredient_repo.get_all_for_batch(batch_recipe_id)
+        ingredient_details = []
+        for ing in ingredients:
+            ingredient_type = getattr(ing, "ingredient_type", None) or "ingredient"
+            reference_id = getattr(ing, "reference_id", None)
+
+            if ingredient_type == "batch":
+                batch_info = await self.batch_recipe_repo.get_by_id(reference_id)
+                ingredient_details.append(
+                    {
+                        "ingredient_type": "batch",
+                        "reference_id": reference_id,
+                        "batch_recipe_id": reference_id,
+                        "ingredient_id": None,
+                        "ingredient_name": batch_info.name if batch_info else "Unknown batch",
+                        "quantity_used": float(ing.quantity_used or 0),
+                        "unit": ing.unit,
+                    }
+                )
+            else:
+                ingredient_info = await self.ingredient_repo.get_by_id(reference_id)
+                ingredient_details.append(
+                    {
+                        "ingredient_type": "ingredient",
+                        "reference_id": reference_id,
+                        "ingredient_id": reference_id,
+                        "ingredient_name": ingredient_info.name if ingredient_info else "Unknown",
+                        "quantity_used": float(ing.quantity_used or 0),
+                        "unit": ing.unit,
+                    }
+                )
+
+        used_in_recipes = await self.recipe_ingredient_repo.get_all_by_reference_id_and_type(
+            ingredient_type="batch",
+            reference_id=batch_recipe_id,
+        )
+        used_in_details = []
+        for use in used_in_recipes:
+            recipe = await self.recipe_repo.get_by_id(use.recipe_id)
+            if recipe:
+                used_in_details.append(
+                    {
+                        "recipe_id": recipe.recipe_id,
+                        "recipe_name": recipe.name,
+                        "recipe_description": recipe.description,
+                    }
+                )
+
+        return {
+            "batch_recipe_id": batch_recipe.batch_recipe_id,
+            "name": batch_recipe.name,
+            "description": batch_recipe.description,
+            "yield_quantity": float(batch_recipe.yield_quantity or 0),
+            "yield_unit": batch_recipe.yield_unit,
+            "estimated_prep_time_minutes": batch_recipe.estimated_prep_time_minutes,
+            "shelf_life_days": batch_recipe.shelf_life_days,
+            "is_active": getattr(batch_recipe, "is_active", True),
+            "ingredients": ingredient_details,
+            "used_in_recipes": used_in_details,
         }
 
     async def view_batch_recipes(self) -> List[dict]:

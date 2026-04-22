@@ -7,7 +7,13 @@ STRUCTURED_HINTS = {
     "inventory",
     "stock",
     "forecast",
+    "forecasted",
     "sales",
+    "sell",
+    "selling",
+    "expected",
+    "expect",
+    "upcoming",
     "alert",
     "alerts",
     "purchase order",
@@ -28,6 +34,14 @@ STRUCTURED_HINTS = {
     "vendors",
     "buy",
     "replenish",
+    "recipe",
+    "recipes",
+    "batch",
+    "linked",
+    "contain",
+    "contains",
+    "used",
+    "usage",
 }
 
 DOCUMENT_HINTS = {
@@ -72,6 +86,30 @@ def _matches_hints(normalized: str, tokens: set[str], hints: set[str]) -> bool:
     return False
 
 
+def _looks_operational_query(normalized: str, tokens: set[str]) -> bool:
+    if {
+        "forecast",
+        "forecasted",
+        "sell",
+        "selling",
+        "expected",
+        "upcoming",
+        "reorder",
+        "inventory",
+        "ingredient",
+        "recipe",
+        "batch",
+        "linked",
+        "purchase",
+    } & tokens:
+        return True
+
+    month_names = (
+        "january|february|march|april|may|june|july|august|september|october|november|december"
+    )
+    return bool(re.search(rf"\b({month_names}|today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", normalized))
+
+
 class AssistantQueryRouter:
     @staticmethod
     def classify(query: str) -> AssistantRetrievalMode:
@@ -82,9 +120,11 @@ class AssistantQueryRouter:
         has_document = _matches_hints(normalized, tokens, DOCUMENT_HINTS)
         has_blended = _matches_hints(normalized, tokens, BLENDED_HINTS)
 
-        if has_structured and has_document:
-            return AssistantRetrievalMode.blended
         if has_structured:
+            if _looks_operational_query(normalized, tokens):
+                return AssistantRetrievalMode.structured
+            if has_document:
+                return AssistantRetrievalMode.blended
             return AssistantRetrievalMode.structured
         if has_blended and has_document:
             return AssistantRetrievalMode.blended

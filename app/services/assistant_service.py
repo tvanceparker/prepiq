@@ -88,10 +88,18 @@ class AssistantService:
             max_documents=None,
         )
 
-        structured_sections, structured_citations = await self.context_builder.build(
+        structured_sections, structured_citations, clarification = await self.context_builder.build(
             payload.query,
             retrieval_mode.value,
         )
+        if clarification:
+            return AssistantQueryResponseDTO(
+                status=AssistantResponseStatus.scaffolded,
+                retrieval_mode=retrieval_mode,
+                answer=clarification,
+                warnings=indexing_warnings,
+                citations=structured_citations,
+            )
         reranked_candidates: list[dict] = []
         document_chunks: list[dict] = []
         if retrieval_mode.value != "structured":

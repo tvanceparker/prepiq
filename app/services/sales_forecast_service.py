@@ -316,6 +316,79 @@ class SalesForecastService:
                 })
 
         return results
+
+    @log_method("Get Menu Item Forecast On Date")
+    async def get_menu_item_forecast_on_date(self, menu_item_id: int, target_date: date) -> Optional[Dict[str, Any]]:
+        menu_item = await self.menu_repo.get_by_id(menu_item_id)
+        if not menu_item or getattr(menu_item, "is_active", True) is False:
+            return None
+
+        forecast_row = await self.forecast_breakdown_repo.get_latest_for_menu_item_on_date(
+            menu_item_id,
+            target_date,
+        )
+        if not forecast_row:
+            return None
+
+        price = Decimal(str(getattr(menu_item, "price", 0) or 0))
+        forecasted_quantity = int(forecast_row.forecasted_quantity or 0)
+        return {
+            "date": forecast_row.forecast_date,
+            "menu_item_id": menu_item.menu_item_id,
+            "menu_item_name": menu_item.name,
+            "forecasted_quantity": forecasted_quantity,
+            "forecasted_revenue": float(round(price * Decimal(forecasted_quantity), 2)),
+        }
+
+    @log_method("Get Menu Item Forecast Range")
+    async def get_menu_item_forecast_range(
+        self,
+        menu_item_id: int,
+        start_date: date,
+        end_date: date,
+    ) -> Optional[Dict[str, Any]]:
+        menu_item = await self.menu_repo.get_by_id(menu_item_id)
+        if not menu_item or getattr(menu_item, "is_active", True) is False:
+            return None
+
+        forecast_rows = await self.forecast_breakdown_repo.get_latest_for_menu_item_date_range(
+            menu_item_id,
+            start_date,
+            end_date,
+        )
+        if not forecast_rows:
+            return {
+                "menu_item_id": menu_item.menu_item_id,
+                "menu_item_name": menu_item.name,
+                "forecasted_quantity": 0,
+                "forecasted_revenue": 0.0,
+                "days": [],
+            }
+
+        price = Decimal(str(getattr(menu_item, "price", 0) or 0))
+        days = []
+        total_quantity = 0
+        total_revenue = Decimal("0.00")
+        for row in forecast_rows:
+            quantity = int(row.forecasted_quantity or 0)
+            revenue = price * Decimal(quantity)
+            total_quantity += quantity
+            total_revenue += revenue
+            days.append(
+                {
+                    "date": row.forecast_date,
+                    "forecasted_quantity": quantity,
+                    "forecasted_revenue": float(round(revenue, 2)),
+                }
+            )
+
+        return {
+            "menu_item_id": menu_item.menu_item_id,
+            "menu_item_name": menu_item.name,
+            "forecasted_quantity": total_quantity,
+            "forecasted_revenue": float(round(total_revenue, 2)),
+            "days": days,
+        }
     
     
     #BASIC MENU MIX
