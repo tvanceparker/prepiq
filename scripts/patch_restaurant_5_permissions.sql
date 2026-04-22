@@ -24,7 +24,7 @@ WHERE NOT EXISTS (
 DELETE FROM role_permissions WHERE restaurant_id = 5;
 DELETE FROM permissions WHERE restaurant_id = 5;
 
--- Insert default permissions for master tier
+-- Insert default permissions for full tier
 INSERT INTO permissions (permission_id, restaurant_id, name, description) VALUES
   (501, 5, 'manage_employees', 'Can manage employees'),
   (502, 5, 'upload_sales', 'Can upload sales data'),

@@ -189,7 +189,7 @@ class SalesDateRange(BaseModel):
 # ============================================================================
 
 class SalesBreakdownProItem(BaseModel):
-    """Pro tier sales breakdown with cost analysis"""
+    """Full tier sales breakdown with cost analysis"""
     menu_item_id: int
     menu_item_name: str
     category: Optional[str]
@@ -206,7 +206,7 @@ class SalesBreakdownProItem(BaseModel):
 
 
 class SalesOverTimeProItem(BaseModel):
-    """Pro tier sales over time with profitability"""
+    """Full tier sales over time with profitability"""
     sale_date: date
     menu_item_id: int
     menu_item_name: str
@@ -218,7 +218,7 @@ class SalesOverTimeProItem(BaseModel):
 
 
 class TopBottomProItem(BaseModel):
-    """Pro tier top/bottom items with profitability"""
+    """Full tier top/bottom items with profitability"""
     menu_item_id: int
     menu_item_name: str
     quantity_sold: int

@@ -5,6 +5,7 @@ import AppRoutes from './routes/AppRoutes';
 import { AuthContext } from './contexts/AuthContext';
 import type { AuthContextType } from './interfaces/auth';
 import GlobalSnackbar from './components/GlobalSnackbar';
+import AssistantFloater from './components/assistant/AssistantFloater';
 
 export default function App(): JSX.Element {
   const { tier, loading } = useContext(AuthContext) as AuthContextType;
@@ -27,9 +28,12 @@ export default function App(): JSX.Element {
       {isAuthPage ? (
         <AppRoutes />
       ) : (
-        <Layout tier={tier as any}>
-          <AppRoutes />
-        </Layout>
+        <>
+          <Layout tier={tier as any}>
+            <AppRoutes />
+          </Layout>
+          <AssistantFloater />
+        </>
       )}
       <GlobalSnackbar />
     </>

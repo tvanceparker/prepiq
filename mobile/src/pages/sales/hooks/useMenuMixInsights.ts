@@ -29,7 +29,7 @@ export default function useMenuMixInsights(
     enabled: !!startDate && !!endDate,
   });
 
-  // Transform Pro tier breakdown data to have metric field
+  // Transform Full tier breakdown data to have metric field
   const breakdownData = useMemo(() => {
     return (Array.isArray(breakdownRaw) ? breakdownRaw : []).map((item: any) => ({
       ...item,
@@ -40,7 +40,7 @@ export default function useMenuMixInsights(
     }));
   }, [breakdownRaw, byRevenue]);
 
-  // Transform Pro tier over time data to have metric field and sale_date
+  // Transform Full tier over time data to have metric field and sale_date
   const overTimeData = useMemo(() => {
     return (Array.isArray(overTimeRaw) ? overTimeRaw : []).map((item: any) => ({
       ...item,
@@ -52,7 +52,7 @@ export default function useMenuMixInsights(
     }));
   }, [overTimeRaw, byRevenue]);
 
-  // Transform Pro tier top/bottom data to have metric field
+  // Transform Full tier top/bottom data to have metric field
   const topBottomData = useMemo(() => {
     return (Array.isArray(topBottomRaw) ? topBottomRaw : []).map((item: any) => ({
       ...item,

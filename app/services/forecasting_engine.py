@@ -42,7 +42,7 @@ from app.utils.logger_helpers import log_method
 
 class ForecastingEngine:
     """
-    Advanced forecasting engine used by Pro/Master tiers.
+    Advanced forecasting engine used by Full tier.
     Provides:
       * H2O-based model training with accuracy tracking & retraining rules
       * Forecast persistence to forecasts/forecast_breakdown tables

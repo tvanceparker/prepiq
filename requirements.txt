@@ -58,3 +58,4 @@ aiohttp
 
 stripe
 httpx
+pypdf

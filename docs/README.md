@@ -2,11 +2,22 @@
 
 ## Purpose
 
-This folder has been reset from older point-in-time implementation notes into a cleaner technical documentation set.
+This folder is the curated documentation source for PrepIQ engineers and the internal RAG-powered assistant. The lowercase docs are the current canonical maps generated from route registration, sidebar wiring, service usage, and ORM models. The uppercase docs remain useful deep dives, but some originated before the latest assistant and navigation reconciliation.
 
-The files listed below are now the primary docs set for this repository.
+## Canonical RAG-Ready Maps
 
-## New Core Docs
+Read these first when answering "what exists now" questions:
+
+- `system-overview.md`
+- `frontend-map.md`
+- `backend-map.md`
+- `database-map.md`
+- `feature-matrix.md`
+- `core-workflows.md`
+- `rag-ingestion-guide.md`
+- `gaps-and-legacy.md`
+
+## Core Deep Dives
 
 - `AUTH_AND_TENANCY.md`
 - `ARCHITECTURE_OVERVIEW.md`
@@ -15,7 +26,7 @@ The files listed below are now the primary docs set for this repository.
 - `API_SURFACES.md`
 - `FEATURE_TIERS.md`
 
-## New Operational Deep Dives
+## Operational Deep Dives
 
 - `EOD_PIPELINE.md`
 - `FORECASTING_SYSTEM.md`
@@ -24,25 +35,27 @@ The files listed below are now the primary docs set for this repository.
 - `ALERTS_AND_DIAGNOSTICS.md`
 - `INTEGRATIONS.md`
 
-## New Client Docs
+## Client Docs
 
 - `FRONTEND_ARCHITECTURE.md`
 - `MOBILE_ARCHITECTURE.md`
 
-## New Assistant Planning Docs
+## Assistant Docs
 
-- `OPERATOR_KNOWLEDGE_SOURCES.md`
+- `ASSISTANT_IMPLEMENTATION_STATUS.md`
+- `ASSISTANT_RETRIEVAL_DESIGN.md`
+- `ASSISTANT_TOOL_CATALOG.md`
+- `ASSISTANT_UPLOAD_AND_INDEXING.md`
 - `ASSISTANT_RAG_MCP_ROADMAP.md`
+- `OPERATOR_KNOWLEDGE_SOURCES.md`
 
-## Review Guidance
+## Recommended Reading Order
 
-Suggested reading order:
+1. Start with `rag-ingestion-guide.md` if building or tuning retrieval.
+2. Read the canonical maps for current product, frontend, backend, database, tiers, workflows, and legacy areas.
+3. Use uppercase docs as focused deep dives.
+4. Resolve conflicts by trusting active code wiring first: `main.py`, web/mobile sidebar data, AppRoutes, mounted routes, services, and ORM models.
 
-- core docs first
-- operational deep dives second
-- client docs third
-- assistant planning docs last
+## Important Source-Of-Truth Rule
 
-## Cleanup Status
-
-The prior legacy implementation notes have been retired from `docs/` and replaced by the files listed in this index.
+File existence does not mean a feature is active. For active pages, trust sidebar data plus route registration. For active APIs, trust `main.py`. For schema, trust ORM models plus migrations. For stale or disconnected areas, see `gaps-and-legacy.md`.

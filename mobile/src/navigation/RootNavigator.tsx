@@ -5,6 +5,7 @@ import { AuthContext } from '../contexts/AuthContext';
 import { ActivityIndicator } from 'react-native-paper';
 import { View } from 'react-native';
 import { AppRoutes } from './routes';
+import AssistantOverlay from '../components/assistant/AssistantOverlay';
 
 const Stack = createNativeStackNavigator();
 
@@ -18,12 +19,15 @@ export default function RootNavigator() {
     );
   }
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {token ? (
-        <Stack.Screen name="App" component={AppRoutes} />
-      ) : (
-        <Stack.Screen name="Login" component={LoginScreen} />
-      )}
-    </Stack.Navigator>
+    <>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {token ? (
+          <Stack.Screen name="App" component={AppRoutes} />
+        ) : (
+          <Stack.Screen name="Login" component={LoginScreen} />
+        )}
+      </Stack.Navigator>
+      {token ? <AssistantOverlay /> : null}
+    </>
   );
 }

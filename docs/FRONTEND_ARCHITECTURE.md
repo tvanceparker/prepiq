@@ -4,6 +4,8 @@
 
 This document describes the current web client structure and the implementation patterns used across the React application.
 
+For the reconciled page-by-page navigation map, see `frontend-map.md`. That file should be preferred when deciding whether a page is active, hidden, or merely code-resident.
+
 ## Stack
 
 The web client currently uses:
@@ -28,6 +30,8 @@ The current web application is organized into these top-level route groups:
 - `/settings`
 
 Routing is defined in `frontend/src/routes/AppRoutes.tsx` and protected through a protected-route shell plus tier-gated routes where needed.
+
+Current sidebar visibility is defined in `frontend/src/components/data/sidebarData.js`. A page file under `frontend/src/pages/` is not necessarily an active product route.
 
 ## Layout Model
 
@@ -87,7 +91,8 @@ The integration settings hook currently owns:
 - mutations
 - snackbar state
 - provider connect and disconnect actions
-- sync and terminal reader workflows
+- assistant key/settings actions
+- POS provider status, connect, disconnect, sync, and mode actions
 
 This is the preferred pattern for non-trivial pages.
 
@@ -101,6 +106,12 @@ Examples include:
 - `TierGatedRoute` for feature exposure such as stock movements
 - route groups that differ between limited and full experiences
 
+The product-facing tiers are `basic` and `full`. The auth context normalizes raw non-`basic` backend tiers to `full`.
+
+## Assistant Surface
+
+The assistant is now present as a global authenticated web floater rather than only a future settings concept. The related settings controls live in Integration Settings and call `/settings/assistant/*`; chat queries call `/assistant/query`.
+
 ## Documentation Rule
 
 When adding or documenting new frontend features:
@@ -110,11 +121,7 @@ When adding or documenting new frontend features:
 - avoid scattering fetch logic across presentation components
 - preserve the current route grouping model unless the task is explicitly structural
 
-## Assistant Implications
-
-The future assistant's first web surface should likely live in settings or another global authenticated surface.
-
-When added, it should follow the existing frontend pattern:
+When extending the assistant, follow the existing frontend pattern:
 
 - dedicated page or panel component
 - dedicated hook for query and mutation logic

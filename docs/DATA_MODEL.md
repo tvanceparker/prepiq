@@ -19,8 +19,9 @@ The root tenant record is the restaurant.
 - sales channel configuration
 - EOD state such as `last_eod_run_date`
 - generic JSON settings
-- internal POS mode flags
+- legacy internal POS mode flags
 - external POS connection state and sync metadata
+- assistant enablement and encrypted assistant API-key fields
 
 Most operational tables are tenant-bound through `restaurant_id`.
 
@@ -148,6 +149,12 @@ Purpose:
 - store scheduled shifts and edits
 - track actual clock events and insights
 
+Current status:
+
+- team/timekeeping is not a current product area
+- schema and services exist, but `team_routes.py` is not mounted in `main.py`
+- current web/mobile navigation does not expose team pages
+
 ### Orders, Payments, And Devices
 
 Primary entities:
@@ -165,6 +172,12 @@ Purpose:
 - support order and payment records
 - capture payments and device registration
 - map external POS items into PrepIQ entities
+
+Current status:
+
+- `/orders` is a mounted backend API surface, but no current sidebar order-entry page was found
+- internal POS is not being used right now
+- broad internal POS terminal/cash-drawer surfaces should be treated as legacy
 
 ### Supporting Operational Data
 
@@ -199,9 +212,11 @@ Some backend persistence and older code still contain legacy tier values, but th
 
 For current documentation and assistant design, use `basic` and `full` as the canonical tier vocabulary.
 
+Migration status: backend storage, seeds, JWT tier values, and service guards are being aligned to `basic/full`. Runtime code normalizes deprecated `pro/master` values to `full`, and migration `0018_migrate_subscription_tier_to_full.sql` converts stored restaurant tiers. Client auth contexts normalize legacy non-basic tiers to `full`.
+
 ## Data Model Notes For Assistant Design
 
-The future assistant should not treat raw source code or arbitrary table dumps as the primary knowledge source.
+The current assistant should not treat raw source code or arbitrary table dumps as the primary knowledge source.
 
 Instead:
 

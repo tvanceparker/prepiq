@@ -5,7 +5,8 @@ from app.api.dependencies import get_settings_service, check_permissions, build_
 from app.schemas.pos_dto import POSSyncSummaryOut
 from app.schemas.settings_dto import (RestaurantSettingsDTO, UpdateRestaurantSettingsDTO, 
                                       ChangePasswordDTO, ChangeEmailDTO, ChangePhoneDTO,
-                                        PreferencesDTO, UpdatePreferencesDTO, AccountInfoDTO,
+                                                                                PreferencesDTO, UpdatePreferencesDTO, AccountInfoDTO,
+                                                                                AssistantSettingsDTO, UpdateAssistantSettingsDTO,
                                          )
 from app.utils.logger_helpers import log_route
 from app.core.logging import logger
@@ -28,6 +29,39 @@ async def update_settings(
 ):
     await settings_service.update_restaurant_settings(settings_dto)
     return await settings_service.get_restaurant_settings()
+
+
+@router.get("/assistant", response_model=AssistantSettingsDTO)
+@log_route("Get Assistant Settings")
+async def get_assistant_settings(
+    settings_service: SettingsService = Depends(get_settings_service)
+):
+    return await settings_service.get_assistant_settings()
+
+
+@router.put(
+    "/assistant",
+    response_model=AssistantSettingsDTO,
+    dependencies=[Depends(check_permissions(["restaurant_settings"]))],
+)
+@log_route("Update Assistant Settings")
+async def update_assistant_settings(
+    assistant_dto: UpdateAssistantSettingsDTO,
+    settings_service: SettingsService = Depends(get_settings_service)
+):
+    return await settings_service.update_assistant_settings(assistant_dto)
+
+
+@router.delete(
+    "/assistant/api-key",
+    response_model=AssistantSettingsDTO,
+    dependencies=[Depends(check_permissions(["restaurant_settings"]))],
+)
+@log_route("Clear Assistant API Key")
+async def clear_assistant_api_key(
+    settings_service: SettingsService = Depends(get_settings_service)
+):
+    return await settings_service.clear_assistant_api_key()
 
 # --- Password ---
 @router.post("/change_password")

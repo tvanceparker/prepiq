@@ -7,7 +7,6 @@ import React, { useContext } from 'react';
 import { AuthContext } from '../../contexts/AuthContext';
 import MenuMixInsightsBasic from './components/MenuMixInsightsBasic';
 import MenuMixInsightsPro from './components/MenuMixInsightsPro';
-// import MenuMixInsightsMaster from "./components/MenuMixInsightsMaster"; // TODO: Implement Master tier
 
 export default function MenuMixInsights() {
   const { tier } = useContext(AuthContext);

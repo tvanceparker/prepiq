@@ -8,10 +8,6 @@ export default function SalesExplorer() {
   switch (tier) {
     case "basic":
       return <SalesExplorerBasic />;
-    // case "pro":
-    //   return <MenuMixInsightsPro />;
-    // case "master":
-    //   return <MenuMixInsightsMaster />;
     default:
       return <SalesExplorerBasic />;
   }

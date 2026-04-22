@@ -1,5 +1,5 @@
 /**
- * Custom hook for Pro tier Menu Mix Insights
+ * Custom hook for Full tier Menu Mix Insights
  * Fetches sales data with cost analysis and profitability metrics
  */
 
@@ -54,7 +54,7 @@ export default function useMenuMixInsightsPro(
         setOverTimeData(overTime);
         setTopBottomData(topBottom);
       } catch (err) {
-        console.error('Error loading Pro tier menu mix insights:', err);
+        console.error('Error loading Full tier menu mix insights:', err);
       } finally {
         setLoading(false);
       }

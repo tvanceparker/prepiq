@@ -8,10 +8,6 @@ export default function MenuMixInsights() {
   switch (tier) {
     case "basic":
       return <MenuMixInsightsBasic />;
-    // case "pro":
-    //   return <MenuMixInsightsPro />;
-    // case "master":
-    //   return <MenuMixInsightsMaster />;
     default:
       return <MenuMixInsightsBasic />;
   }

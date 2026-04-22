@@ -4,6 +4,8 @@
 
 This document describes the current mobile app structure and the parity expectations it has with the web client and backend.
 
+For the reconciled mobile/web route map, see `frontend-map.md`. It records which screens are active navigation entries and which are only code-resident.
+
 ## Stack
 
 The mobile app currently uses:
@@ -73,6 +75,10 @@ The app uses theme-aware composition via React Native Paper and a custom theme c
 
 The app root switches both navigation theme and paper theme based on `themeName`.
 
+## Active Versus Code-Resident Screens
+
+Mobile source contains screens for domains such as POS and team, but active availability is controlled by `mobile/src/navigation/sidebarData.ts` and `mobile/src/navigation/routes.tsx`. Do not infer current product availability from a screen file alone.
+
 ## API And Contract Expectations
 
 Mobile should stay aligned with backend API behavior and, where features overlap, with web interface semantics.
@@ -92,9 +98,9 @@ When adding or documenting new mobile features:
 - prefer theme-driven UI choices
 - keep new mobile features consistent with current domain organization
 
-## Assistant Implications
+## Assistant Surface
 
-If the operator assistant is added to mobile, it should likely be exposed as a settings or globally reachable authenticated screen.
+The operator assistant is now exposed as a globally reachable authenticated overlay on mobile, with settings managed from Integration Settings.
 
 It should follow the same architectural expectations as web:
 

@@ -39,6 +39,17 @@ class MenuItemBatchUsageRepository:
         )
         return result.scalars().all()
 
+    async def get_all_for_batch_recipe(
+        self, batch_recipe_id: int, restaurant_id: int
+    ) -> List[MenuItemBatchUsage]:
+        result = await self.db.execute(
+            select(MenuItemBatchUsage).filter(
+                MenuItemBatchUsage.batch_recipe_id == batch_recipe_id,
+                MenuItemBatchUsage.restaurant_id == restaurant_id,
+            )
+        )
+        return result.scalars().all()
+
     async def create(self, data: MenuItemBatchUsageCreate) -> MenuItemBatchUsage:
         """Create a new menu item batch usage."""
         db_obj = MenuItemBatchUsage(**data.dict())

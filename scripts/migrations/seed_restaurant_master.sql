@@ -1,6 +1,6 @@
 -- scripts/migrations/seed_restaurant_master.sql
--- Seed data for Restaurant ID 5: Perrine Heights Kitchen (Master Tier)
--- Master tier: external POS metadata, devices, payments, nested batches, all features
+-- Seed data for Restaurant ID 5: Perrine Heights Kitchen (Full Tier)
+-- Full tier sample: external POS metadata, devices, payments, nested batches, all features
 -- 
 -- Run: mysql -u user -p database < scripts/migrations/seed_restaurant_master.sql
 -- After seeding: python scripts/backfill_weather.py --start 2025-06-25 --end 2025-12-24
@@ -57,7 +57,7 @@ INSERT INTO restaurants (
     pos_provider, pos_connected, pos_mode
 ) VALUES (
     5, 'Perrine Heights Kitchen', '208-555-0105', '1234 Perrine Bridge Rd', 'Twin Falls', 'ID', '83301',
-    42.5637, -114.4609, 'master', 'info@perrineheights.com', 'active',
+    42.5637, -114.4609, 'full', 'info@perrineheights.com', 'active',
     '2026-12-31', 30,
     '{"mon": {"open": "11:00", "close": "22:00"}, "tue": {"open": "11:00", "close": "22:00"}, "wed": {"open": "11:00", "close": "22:00"}, "thu": {"open": "11:00", "close": "22:00"}, "fri": {"open": "11:00", "close": "23:00"}, "sat": {"open": "10:00", "close": "23:00"}, "sun": {"open": "10:00", "close": "21:00"}}',
     6.00, 'America/Boise', TRUE, 60,
@@ -67,7 +67,7 @@ INSERT INTO restaurants (
 );
 
 -- ============================================================================
--- PERMISSIONS (Master tier: 20 permissions)
+-- PERMISSIONS (Full tier sample: 20 permissions)
 -- ============================================================================
 INSERT INTO permissions (permission_id, restaurant_id, name, description) VALUES
 (501, 5, 'view_menu', 'View menu items'),
@@ -543,7 +543,7 @@ INSERT INTO sales (
 (5008, 5, '2025-12-24 17:45:00', 502, 1, 'in-house');
 
 -- ============================================================================
--- ORDER ITEM MODIFIERS (Master tier has modifier support)
+-- ORDER ITEM MODIFIERS (Full tier sample has modifier support)
 -- Note: target_type uses 'ingredient' or 'modifier', not 'batch'
 -- ============================================================================
 INSERT INTO order_item_modifiers (
@@ -554,7 +554,7 @@ INSERT INTO order_item_modifiers (
 (502, 5103, 5, 'add', 'ingredient', 501, 1.00, NULL, 'Extra garlic confit');
 
 -- ============================================================================
--- PAYMENTS (Master tier has full payment processing)
+-- PAYMENTS (Full tier sample has payment processing)
 -- ============================================================================
 INSERT INTO payments (
     payment_id, order_id, restaurant_id, payment_timestamp, amount,
@@ -571,7 +571,7 @@ INSERT INTO payments (
  'USD', 'card', 'stripe', 'pi_504_test', 'refunded', '{"refund_reason": "Order cancelled"}');
 
 -- ============================================================================
--- DEVICES (Master tier has device management)
+-- DEVICES (Full tier sample has device management)
 -- ============================================================================
 INSERT INTO devices (
     device_id, restaurant_id, name, device_type, device_metadata, device_settings,
@@ -591,7 +591,7 @@ INSERT INTO devices (
  'sha256:mgr-001-perrine');
 
 -- ============================================================================
--- SUPPLIER PREFERENCES (Master tier - no supplier_preference_id, restaurant_id is PK)
+-- SUPPLIER PREFERENCES (Full tier sample - no supplier_preference_id, restaurant_id is PK)
 -- ============================================================================
 INSERT INTO supplier_preferences (
     restaurant_id, weight_cost, weight_lead_time, weight_spoilage, weight_rating
@@ -610,7 +610,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- 3. Generate 6 months of sales data programmatically for realistic forecasting
 --
 -- Notes:
--- - Master tier includes: all Pro features + devices, payments, modifiers, and external POS metadata
+-- - Full tier sample includes: inventory/recipe features + devices, payments, modifiers, and external POS metadata
 -- - Herb Chimichurri batch references Garlic Confit batch (nested batch support)
 -- - Batch-produced inventory lots have NULL ingredient_supplier_id
 -- - order_item_modifiers.target_type uses 'ingredient' not 'batch' per ORM enum

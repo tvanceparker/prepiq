@@ -248,7 +248,7 @@ export default function MasterOverviewMobile({ data, navigation }: Props) {
       <View style={styles.header}>
         <View>
           <Text variant="headlineMedium" style={{ fontWeight: '700' }}>
-            Master Dashboard
+            Full Dashboard
           </Text>
           <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
             {new Date().toLocaleDateString('en-US', {
@@ -265,7 +265,7 @@ export default function MasterOverviewMobile({ data, navigation }: Props) {
           style={{ backgroundColor: '#FFD70030' }}
           textStyle={{ color: '#B8860B' }}
         >
-          Master Tier
+          Full Tier
         </Chip>
       </View>
 
@@ -329,7 +329,7 @@ export default function MasterOverviewMobile({ data, navigation }: Props) {
       <Card style={styles.card} mode="outlined">
         <Card.Title
           title="Quick Actions"
-          subtitle="Master tier automation"
+          subtitle="Full tier automation"
           titleVariant="titleMedium"
         />
         <Card.Content>

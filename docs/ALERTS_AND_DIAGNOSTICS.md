@@ -135,7 +135,7 @@ When documenting or extending alerts and diagnostics:
 
 ## Assistant Implications
 
-A future assistant should answer alert questions using structured retrieval from:
+The assistant should answer alert questions using structured retrieval from:
 
 - alert state and normalized copy
 - discrepancy status when relevant

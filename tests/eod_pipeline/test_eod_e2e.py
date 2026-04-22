@@ -1,7 +1,7 @@
 """
 End-to-End tests for complete EOD Pipeline.
 
-Tests the full finalize_end_of_day_summary workflow for Master tier.
+Tests the full finalize_end_of_day_summary workflow for Full tier.
 """
 import pytest
 from datetime import date, datetime, timedelta
@@ -28,7 +28,7 @@ class TestEODPipelineE2E:
         sample_eod_ledger,
     ):
         """
-        Test complete EOD pipeline for Master tier from start to finish.
+        Test complete EOD pipeline for Full tier from start to finish.
         
         Flow:
         1. Check/create ledger
@@ -40,7 +40,7 @@ class TestEODPipelineE2E:
         7. Write purchase orders
         8. Finalize ledger
         """
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         
@@ -216,7 +216,7 @@ class TestEODPipelineE2E:
         sample_eod_ledger,
     ):
         """Test EOD pipeline handles gracefully when no sales data exists."""
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         
@@ -257,7 +257,7 @@ class TestEODPipelineE2E:
         sample_eod_ledger,
     ):
         """Test EOD pipeline skips already-completed stages on re-run."""
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         
@@ -299,7 +299,7 @@ class TestEODPipelineE2E:
         test_date,
         sample_eod_ledger,
     ):
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
 
@@ -332,7 +332,7 @@ class TestEODPipelineE2E:
         restaurant_id,
         test_date,
     ):
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
 
         with pytest.raises(ValueError, match="Force reruns are only allowed for manual EOD triggers."):
             await service.finalize_end_of_day_summary(
@@ -353,7 +353,7 @@ class TestEODPipelineE2E:
         sample_eod_ledger,
     ):
         """Test EOD pipeline handles errors and triggers rollback."""
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         
         service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
@@ -386,7 +386,7 @@ class TestEODPipelineE2E:
         sample_eod_ledger,
     ):
         """Test EOD pipeline tracks timing for each stage."""
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         

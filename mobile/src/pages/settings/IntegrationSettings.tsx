@@ -11,6 +11,8 @@ import {
   Snackbar,
   ActivityIndicator,
   Chip,
+  TextInput,
+  Switch,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { POSProvider } from '../../interfaces/pos';
@@ -30,11 +32,21 @@ export default function IntegrationSettings() {
     isSyncing,
     snackbar,
     closeSnackbar,
+    assistantSettings,
+    assistantApiKeyInput,
+    isAssistantLoading,
+    assistantError,
+    isUpdatingAssistant,
+    isDeletingAssistantApiKey,
     handleEnableExternal,
     handleProviderChange,
     handleDisconnect,
     handleSync,
     showWebSetupMessage,
+    handleAssistantToggle,
+    handleAssistantApiKeyInputChange,
+    handleSaveAssistantApiKey,
+    handleDeleteAssistantApiKey,
   } = useIntegrationSettings();
 
   const selectedProvider: POSProvider =
@@ -74,6 +86,90 @@ export default function IntegrationSettings() {
       >
         Manage the supported external POS connection and sync status.
       </Text>
+
+      <Card style={styles.card} mode="outlined">
+        <Card.Title
+          title="Assistant"
+          titleVariant="titleMedium"
+          left={() => (
+            <MaterialCommunityIcons
+              name="robot-outline"
+              size={24}
+              color={theme.colors.primary}
+              style={{ marginLeft: 16 }}
+            />
+          )}
+          right={() =>
+            isAssistantLoading ? (
+              <ActivityIndicator style={{ marginRight: 16 }} size="small" />
+            ) : (
+              <Chip compact mode={assistantSettings?.api_key_configured ? 'flat' : 'outlined'}>
+                {assistantSettings?.api_key_configured ? 'Key Configured' : 'Key Missing'}
+              </Chip>
+            )
+          }
+        />
+        <Card.Content>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            Configure the restaurant assistant and save a restaurant-specific OpenAI API key. The
+            key is stored encrypted and is never returned to the client after save.
+          </Text>
+
+          {assistantError && (
+            <Text variant="bodySmall" style={{ marginTop: 12, color: theme.colors.error }}>
+              Failed to load assistant settings. Please try again.
+            </Text>
+          )}
+
+          <View style={styles.toggleRow}>
+            <Text variant="bodyMedium">Enable assistant</Text>
+            <Switch
+              value={assistantSettings?.enabled ?? false}
+              onValueChange={handleAssistantToggle}
+              disabled={isAssistantLoading || isUpdatingAssistant}
+            />
+          </View>
+
+          <TextInput
+            mode="outlined"
+            label="OpenAI API Key"
+            value={assistantApiKeyInput}
+            onChangeText={handleAssistantApiKeyInputChange}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={styles.input}
+            placeholder={
+              assistantSettings?.api_key_configured
+                ? 'Enter a new key to replace the current one'
+                : 'sk-...'
+            }
+          />
+
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            {assistantSettings?.api_key_configured
+              ? `Current key ends in ${assistantSettings.api_key_last4 || 'unknown'}${assistantSettings.api_key_updated_at ? ` • Updated ${new Date(assistantSettings.api_key_updated_at).toLocaleString()}` : ''}`
+              : 'No restaurant-specific key saved yet.'}
+          </Text>
+        </Card.Content>
+        <Card.Actions>
+          <Button
+            mode="contained"
+            onPress={handleSaveAssistantApiKey}
+            loading={isUpdatingAssistant}
+          >
+            {assistantSettings?.api_key_configured ? 'Replace Key' : 'Save Key'}
+          </Button>
+          <Button
+            mode="outlined"
+            onPress={handleDeleteAssistantApiKey}
+            disabled={!assistantSettings?.api_key_configured || isDeletingAssistantApiKey}
+            loading={isDeletingAssistantApiKey}
+          >
+            Remove Key
+          </Button>
+        </Card.Actions>
+      </Card>
 
       <Card style={styles.card} mode="outlined">
         <Card.Title
@@ -279,6 +375,16 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     marginTop: 16,
+  },
+  toggleRow: {
+    marginTop: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  input: {
+    marginBottom: 12,
   },
   noticeCard: {
     marginTop: 16,

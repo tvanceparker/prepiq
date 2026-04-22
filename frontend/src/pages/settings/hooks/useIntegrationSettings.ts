@@ -2,8 +2,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  deleteAssistantApiKey,
+  getAssistantSettings,
   getPOSModeSettings,
   updatePOSModeSettings,
+  updateAssistantSettings,
   getPOSIntegrationStatus,
   getPOSOAuthUrl,
   disconnectPOS,
@@ -27,6 +30,7 @@ export function useIntegrationSettings() {
     severity: 'info',
   });
   const [lastSyncResult, setLastSyncResult] = useState<POSSyncSummary | null>(null);
+  const [assistantApiKeyInput, setAssistantApiKeyInput] = useState('');
 
   const showSnackbar = (message: string, severity: SnackbarState['severity'] = 'info') => {
     setSnackbar({ open: true, message, severity });
@@ -51,6 +55,11 @@ export function useIntegrationSettings() {
     queryKey: ['posStatus'],
     queryFn: getPOSIntegrationStatus,
     enabled: posSettingsQuery.data?.pos_mode === 'external',
+  });
+
+  const assistantSettingsQuery = useQuery({
+    queryKey: ['assistantSettings'],
+    queryFn: getAssistantSettings,
   });
 
   // =========================================================================
@@ -91,6 +100,32 @@ export function useIntegrationSettings() {
     },
     onError: (error: any) => {
       showSnackbar(error?.message || 'Sync failed', 'error');
+    },
+  });
+
+  const updateAssistantMutation = useMutation({
+    mutationFn: updateAssistantSettings,
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['assistantSettings'] });
+      if (variables.openai_api_key) {
+        setAssistantApiKeyInput('');
+      }
+      showSnackbar('Assistant settings updated', 'success');
+    },
+    onError: (error: any) => {
+      showSnackbar(error?.message || 'Failed to update assistant settings', 'error');
+    },
+  });
+
+  const deleteAssistantApiKeyMutation = useMutation({
+    mutationFn: deleteAssistantApiKey,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['assistantSettings'] });
+      setAssistantApiKeyInput('');
+      showSnackbar('Assistant API key removed', 'success');
+    },
+    onError: (error: any) => {
+      showSnackbar(error?.message || 'Failed to remove assistant API key', 'error');
     },
   });
 
@@ -139,6 +174,28 @@ export function useIntegrationSettings() {
     disconnectMutation.mutate();
   };
 
+  const handleAssistantToggle = (enabled: boolean) => {
+    updateAssistantMutation.mutate({ enabled });
+  };
+
+  const handleAssistantApiKeyInputChange = (value: string) => {
+    setAssistantApiKeyInput(value);
+  };
+
+  const handleSaveAssistantApiKey = async () => {
+    const normalizedKey = assistantApiKeyInput.trim();
+    if (!normalizedKey) {
+      showSnackbar('Enter an OpenAI API key before saving', 'warning');
+      return;
+    }
+
+    await updateAssistantMutation.mutateAsync({ openai_api_key: normalizedKey });
+  };
+
+  const handleDeleteAssistantApiKey = () => {
+    deleteAssistantApiKeyMutation.mutate();
+  };
+
   // =========================================================================
   // Return
   // =========================================================================
@@ -148,18 +205,24 @@ export function useIntegrationSettings() {
     posSettings: posSettingsQuery.data,
     posStatus: posStatusQuery.data,
     lastSyncResult,
+    assistantSettings: assistantSettingsQuery.data,
+    assistantApiKeyInput,
 
     // Loading states
     isLoading: posSettingsQuery.isLoading,
     isStatusLoading: posStatusQuery.isLoading,
+    isAssistantLoading: assistantSettingsQuery.isLoading,
 
     // Error states
     posError: posSettingsQuery.error,
+    assistantError: assistantSettingsQuery.error,
 
     // Mutation pending states
     isUpdatingMode: updateModeMutation.isPending,
     isDisconnecting: disconnectMutation.isPending,
     isSyncing: syncMutation.isPending,
+    isUpdatingAssistant: updateAssistantMutation.isPending,
+    isDeletingAssistantApiKey: deleteAssistantApiKeyMutation.isPending,
 
     // Snackbar
     snackbar,
@@ -171,6 +234,10 @@ export function useIntegrationSettings() {
     handleConnectPOS,
     handleSync,
     handleDisconnect,
+    handleAssistantToggle,
+    handleAssistantApiKeyInputChange,
+    handleSaveAssistantApiKey,
+    handleDeleteAssistantApiKey,
 
     // Refetch
     refetchStatus: posStatusQuery.refetch,

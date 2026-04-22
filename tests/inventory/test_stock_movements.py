@@ -25,7 +25,7 @@ class _ExecuteResult:
 
 @pytest.fixture
 def inventory_service(mock_db):
-    service = InventoryService(mock_db, 1, 'pro', employee_id=7)
+    service = InventoryService(mock_db, 1, 'full', employee_id=7)
     service.ingredient_repo = AsyncMock()
     service.batch_recipe_repo = AsyncMock()
     service.ingredient_supplier_repo = AsyncMock()

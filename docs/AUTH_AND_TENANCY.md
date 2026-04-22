@@ -132,6 +132,8 @@ This device context includes values such as:
 
 This is separate from normal user JWT context and is used for device-bound POS flows.
 
+Current route caveat: active backend device registration is exposed under `/api/v1/auth/register-device`. Older client code may still reference `/pos/register-device` or `/pos/refresh-token`; those should be treated as stale unless matching routes are restored.
+
 ## Documentation Rule
 
 When documenting auth-sensitive or tenant-sensitive behavior:
@@ -143,7 +145,7 @@ When documenting auth-sensitive or tenant-sensitive behavior:
 
 ## Assistant Implications
 
-A future assistant and MCP action layer must inherit the same trust model:
+The current read-only assistant, and any future MCP action layer, must inherit the same trust model:
 
 - all reads must stay scoped to the current `restaurant_id`
 - tier and permission context must influence available capabilities

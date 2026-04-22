@@ -9,10 +9,6 @@ export default function AccountSettings() {
   switch (tier) {
     case "basic":
       return <BasicAccountSettings />;
-    // case "pro":
-    //   return <ProRestaurantSettings />;
-    // case "master":
-    //   return <MasterRestaurantSettings />;
     default:
       return <BasicAccountSettings />;
   }

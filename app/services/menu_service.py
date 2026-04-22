@@ -439,6 +439,43 @@ class MenuService:
             )
         return results
 
+    async def get_recipe_detail(self, recipe_id: int) -> Dict:
+        recipe = await self.recipe_repo.get_by_id(recipe_id)
+        if not recipe or getattr(recipe, "is_active", True) is False:
+            raise ValueError("Recipe not found")
+
+        ingredients = await self.recipe_ingredient_repo.get_by_recipe_id(recipe_id=recipe.recipe_id)
+        ingredient_details = []
+        for ri in ingredients:
+            if ri.ingredient_type == "ingredient":
+                ingredient = await self.ingredient_repo.get_by_id(ri.reference_id)
+                name = ingredient.name if ingredient else "Unknown Ingredient"
+            elif ri.ingredient_type == "batch":
+                batch = await self.batch_recipe_repo.get_by_id(ri.reference_id)
+                name = batch.name if batch else "Unknown Batch"
+            else:
+                nested_recipe = await self.recipe_repo.get_by_id(ri.reference_id)
+                name = nested_recipe.name if nested_recipe else "Unknown Recipe"
+
+            ingredient_details.append(
+                {
+                    "name": name,
+                    "quantity": ri.quantity_used,
+                    "unit": ri.unit,
+                    "type": ri.ingredient_type,
+                    "reference_id": ri.reference_id,
+                }
+            )
+
+        return {
+            "recipe_id": recipe.recipe_id,
+            "name": recipe.name,
+            "description": recipe.description,
+            "is_active": getattr(recipe, "is_active", True),
+            "ingredients": ingredient_details,
+            "restaurant_id": self.restaurant_id,
+        }
+
     async def get_recipe_usage(self, recipe_id: int) -> Dict:
         recipe = await self.recipe_repo.get_by_id(recipe_id)
         if not recipe:

@@ -21,7 +21,7 @@ class TestReorderForecastEngineUnit:
     async def test_calculate_safety_stock(
         self, mock_db_session, restaurant_id, mock_inventory_stats
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.stats_service = mock_inventory_stats
 
         mock_inventory_stats.get_std_dev_usage.return_value = Decimal("0.50")
@@ -40,7 +40,7 @@ class TestReorderForecastEngineUnit:
     async def test_calculate_safety_stock_zero_stddev(
         self, mock_db_session, restaurant_id, mock_inventory_stats
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.stats_service = mock_inventory_stats
 
         mock_inventory_stats.get_std_dev_usage.return_value = Decimal("0")
@@ -57,7 +57,7 @@ class TestReorderForecastEngineUnit:
     async def test_calculate_max_order_with_limit(
         self, mock_db_session, restaurant_id, mock_inventory_stats
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.stats_service = mock_inventory_stats
 
         mock_inventory_stats.get_max_stock_level.return_value = Decimal("100.00")
@@ -73,7 +73,7 @@ class TestReorderForecastEngineUnit:
     async def test_calculate_max_order_no_limit(
         self, mock_db_session, restaurant_id, mock_inventory_stats
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.stats_service = mock_inventory_stats
 
         mock_inventory_stats.get_max_stock_level.return_value = None
@@ -89,7 +89,7 @@ class TestReorderForecastEngineUnit:
     async def test_calculate_max_order_at_capacity(
         self, mock_db_session, restaurant_id, mock_inventory_stats
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.stats_service = mock_inventory_stats
 
         mock_inventory_stats.get_max_stock_level.return_value = Decimal("100.00")
@@ -105,7 +105,7 @@ class TestReorderForecastEngineUnit:
     async def test_build_reorder_decision_class_a_forecast_path(
         self, mock_db_session, restaurant_id, mock_inventory_stats, sample_ingredients
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.stats_service = mock_inventory_stats
         engine.alert_repo = AsyncMock()
 
@@ -152,7 +152,7 @@ class TestReorderForecastEngineUnit:
     async def test_build_reorder_decision_class_b_forecast_path(
         self, mock_db_session, restaurant_id, mock_inventory_stats, sample_ingredients
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.stats_service = mock_inventory_stats
         engine.alert_repo = AsyncMock()
 
@@ -201,7 +201,7 @@ class TestReorderForecastEngineUnit:
     async def test_build_reorder_decision_class_c_forecast_path(
         self, mock_db_session, restaurant_id, mock_inventory_stats, sample_ingredients
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.stats_service = mock_inventory_stats
         engine.alert_repo = AsyncMock()
 
@@ -249,7 +249,7 @@ class TestReorderForecastEngineUnit:
     async def test_build_reorder_decision_above_reorder_point_resolves_alert(
         self, mock_db_session, restaurant_id, mock_inventory_stats, sample_ingredients
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.stats_service = mock_inventory_stats
         engine.alert_repo = AsyncMock()
         engine.alert_repo.resolve_open_low_stock_alerts = AsyncMock(return_value=1)
@@ -293,7 +293,7 @@ class TestReorderForecastEngineUnit:
     async def test_build_reorder_decision_below_reorder_point_creates_alert(
         self, mock_db_session, restaurant_id, mock_inventory_stats, sample_ingredients
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.stats_service = mock_inventory_stats
         engine.alert_repo = AsyncMock()
         engine.create_low_stock_alert = AsyncMock()
@@ -336,7 +336,7 @@ class TestReorderForecastEngineUnit:
     async def test_build_reorder_decision_normalizes_integer_inputs(
         self, mock_db_session, restaurant_id, sample_ingredients
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.alert_repo = AsyncMock()
         engine.ingredient_repo.get_by_id = AsyncMock(return_value=sample_ingredients[0])
         engine.stats_service.get_average_daily_usage = AsyncMock(return_value=Decimal("1.00"))
@@ -382,7 +382,7 @@ class TestReorderForecastEngineUnit:
     async def test_classify_abc_item_cached(
         self, mock_db_session, restaurant_id, sample_ingredients
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine._abc_cache = {1001: "A"}
         engine.ingredient_repo.get_by_id = AsyncMock()
 
@@ -395,7 +395,7 @@ class TestReorderForecastEngineUnit:
     async def test_classify_abc_item_from_db(
         self, mock_db_session, restaurant_id, sample_ingredients
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.ingredient_repo.get_by_id = AsyncMock(return_value=sample_ingredients[0])
 
         result = await engine.classify_abc_item(ingredient_id=1001)
@@ -407,7 +407,7 @@ class TestReorderForecastEngineUnit:
     async def test_classify_abc_item_default_c(
         self, mock_db_session, restaurant_id, sample_ingredients
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         ingredient = sample_ingredients[0]
         ingredient.abc_class = None
         engine.ingredient_repo.get_by_id = AsyncMock(return_value=ingredient)
@@ -420,7 +420,7 @@ class TestReorderForecastEngineUnit:
     async def test_classify_all_ingredients(
         self, mock_db_session, restaurant_id, sample_ingredients, mock_inventory_stats
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.stats_service = mock_inventory_stats
         engine.ingredient_repo.get_all = AsyncMock(return_value=sample_ingredients)
         engine.ingredient_repo.update = AsyncMock()
@@ -453,7 +453,7 @@ class TestReorderForecastEngineUnit:
     async def test_classify_all_ingredients_empty(
         self, mock_db_session, restaurant_id
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.ingredient_repo.get_all = AsyncMock(return_value=[])
 
         await engine.classify_all_ingredients(days=90)
@@ -464,7 +464,7 @@ class TestReorderForecastEngineUnit:
     async def test_create_low_stock_alert(
         self, mock_db_session, restaurant_id, sample_ingredients
     ):
-        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         engine.ingredient_repo.get_by_id = AsyncMock(return_value=sample_ingredients[0])
         engine.alert_repo = AsyncMock()
         engine.alert_repo.get_open_low_stock_alert = AsyncMock(return_value=None)

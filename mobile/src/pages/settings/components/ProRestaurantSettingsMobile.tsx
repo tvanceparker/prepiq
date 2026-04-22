@@ -91,7 +91,7 @@ export default function ProRestaurantSettingsMobile() {
         title: 'Inventory Deduction',
         value:
           settings?.inventory_deduction_mode === 'real_time'
-            ? 'Real-time (Pro/Master)'
+            ? 'Real-time (Full)'
             : 'End of Day',
         icon: 'cube-outline',
         color: settings?.inventory_deduction_mode === 'real_time' ? primary : secondary,

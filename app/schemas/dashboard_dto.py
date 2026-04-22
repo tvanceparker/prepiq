@@ -213,7 +213,7 @@ class QuickAnalyticsOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# ---- Pro/Master Daily Overview DTOs ----
+# ---- Full Daily Overview DTOs ----
 class InventoryAlertOut(BaseModel):
     ingredient_id: int
     ingredient_name: str

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.db.models.role_permissions_orm import RolePermission
 from app.db.models.permissions_orm import Permission
+from app.services.utils.subscription_tiers import normalize_subscription_tier
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -33,7 +34,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("sub")
         restaurant_id = payload.get("restaurant_id")
-        subscription_tier = payload.get("subscription_tier")
+        subscription_tier = normalize_subscription_tier(payload.get("subscription_tier"))
         employee_id = payload.get("employee_id")
         name = payload.get("name")
         role_id = payload.get("role_id")
@@ -171,6 +172,7 @@ from app.services.settings_service import SettingsService
 from app.services.alerts_service import AlertsService
 from app.services.team_service import TeamService
 from app.services.order_service import OrderService
+from app.services.assistant_service import AssistantService
 
 
 get_menu_service = build_service(MenuService)
@@ -185,3 +187,4 @@ get_settings_service = build_service(SettingsService)
 get_alert_service = build_service(AlertsService)
 get_team_service = build_service(TeamService)
 get_order_service = build_service(OrderService)
+get_assistant_service = build_service(AssistantService)

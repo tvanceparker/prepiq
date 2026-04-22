@@ -42,7 +42,7 @@ class TestOrderService:
     @pytest.fixture
     def order_service(self, mock_db, mock_repos):
         """Create OrderService with mocked dependencies"""
-        service = OrderService(mock_db, 1, 'pro', 1)
+        service = OrderService(mock_db, 1, 'full', 1)
         # Override the repositories with mocks
         service.order_repo = mock_repos['orders']
         service.order_item_repo = mock_repos['order_items']
@@ -211,7 +211,7 @@ class TestOrderService:
 
         mock_repos['menu'].get_all.return_value = [mock_item]
 
-        order_service.subscription_tier = 'pro'
+        order_service.subscription_tier = 'full'
         result = await order_service.get_menu_items()
 
         assert len(result) == 1

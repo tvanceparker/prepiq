@@ -29,6 +29,7 @@ from app.schemas.sales_forecast_dto import (
     SalesDateRange,
 )
 from app.services.sales_forecast_service import SalesForecastService
+from app.services.utils.subscription_tiers import is_full_service_tier
 from app.api.dependencies import get_sales_forecast_service
 from app.utils.logger_helpers import log_route
 
@@ -262,7 +263,7 @@ async def create_sale(
 
 
 # ============================================================================
-# PRO TIER: Menu Mix Insights with Cost Analysis
+# FULL TIER: Menu Mix Insights with Cost Analysis
 # ============================================================================
 
 @router.get("/sales_breakdown_pro", response_model=List[SalesBreakdownProItem])
@@ -274,11 +275,10 @@ async def sales_breakdown_pro(
     service: SalesForecastService = Depends(get_sales_forecast_service),
 ):
     """
-    Pro tier sales breakdown including recipe costs, margins, and profitability metrics.
-    Requires Pro or Master subscription tier.
+    Full tier sales breakdown including recipe costs, margins, and profitability metrics.
     """
-    if service.subscription_tier not in ["pro", "master"]:
-        raise HTTPException(status_code=403, detail="Pro or Master tier required")
+    if not is_full_service_tier(service.subscription_tier):
+        raise HTTPException(status_code=403, detail="Full tier required")
     
     return await service.get_sales_breakdown_pro(start_date, end_date, by_revenue)
 
@@ -292,11 +292,10 @@ async def sales_over_time_pro(
     service: SalesForecastService = Depends(get_sales_forecast_service),
 ):
     """
-    Pro tier sales over time with cost and profitability analysis.
-    Requires Pro or Master subscription tier.
+    Full tier sales over time with cost and profitability analysis.
     """
-    if service.subscription_tier not in ["pro", "master"]:
-        raise HTTPException(status_code=403, detail="Pro or Master tier required")
+    if not is_full_service_tier(service.subscription_tier):
+        raise HTTPException(status_code=403, detail="Full tier required")
     
     return await service.get_sales_over_time_pro(start_date, end_date, by_revenue)
 
@@ -312,10 +311,9 @@ async def top_bottom_items_pro(
     service: SalesForecastService = Depends(get_sales_forecast_service),
 ):
     """
-    Pro tier top/bottom performers with profitability analysis.
-    Requires Pro or Master subscription tier.
+    Full tier top/bottom performers with profitability analysis.
     """
-    if service.subscription_tier not in ["pro", "master"]:
-        raise HTTPException(status_code=403, detail="Pro or Master tier required")
+    if not is_full_service_tier(service.subscription_tier):
+        raise HTTPException(status_code=403, detail="Full tier required")
     
     return await service.get_top_bottom_items_pro(start_date, end_date, by_revenue, top, count)

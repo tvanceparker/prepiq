@@ -20,7 +20,7 @@ class TestSalesPatternsService:
     @pytest.fixture
     def service(self, mock_repos):
         sale_repo, menu_repo = mock_repos
-        service = SalesForecastService(db=None, restaurant_id=1, subscription_tier="pro", employee_id=1)
+        service = SalesForecastService(db=None, restaurant_id=1, subscription_tier="full", employee_id=1)
         service.sale_repo = sale_repo
         service.menu_repo = menu_repo
         return service

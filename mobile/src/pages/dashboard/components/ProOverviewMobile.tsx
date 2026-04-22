@@ -190,7 +190,7 @@ export default function ProOverviewMobile({ data, navigation }: Props) {
           </Text>
         </View>
         <Chip icon="chart-timeline-variant" mode="flat" compact>
-          Pro Tier
+          Full Tier
         </Chip>
       </View>
 
@@ -241,7 +241,7 @@ export default function ProOverviewMobile({ data, navigation }: Props) {
       <Card style={styles.card} mode="outlined">
         <Card.Title
           title="Forecast Insights"
-          subtitle="Pro tier analytics"
+          subtitle="Full tier analytics"
           titleVariant="titleMedium"
         />
         <Card.Content>
@@ -285,7 +285,7 @@ export default function ProOverviewMobile({ data, navigation }: Props) {
           <Divider style={{ marginVertical: 16 }} />
 
           <Text variant="bodySmall" style={{ color: theme.colors.outline, textAlign: 'center' }}>
-            Upgrade to Master tier for automated reordering and advanced AI insights
+            Full tier includes automated reordering and advanced AI insights
           </Text>
         </Card.Content>
       </Card>

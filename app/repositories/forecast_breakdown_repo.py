@@ -52,7 +52,78 @@ class ForecastBreakdownRepository(BaseRepository):
                 ForecastBreakdown.restaurant_id == self.restaurant_id,
             )
         )
-        #returns all forecasts for that day on that menu item
+        return result.scalars().all()
+
+    async def get_latest_for_menu_item_on_date(
+        self,
+        menu_item_id: int,
+        target_date: date,
+    ) -> Optional[ForecastBreakdown]:
+        subquery = (
+            select(func.max(ForecastBreakdown.forecast_id).label("max_forecast_id"))
+            .where(
+                ForecastBreakdown.restaurant_id == self.restaurant_id,
+                ForecastBreakdown.menu_item_id == menu_item_id,
+                ForecastBreakdown.forecast_date == target_date,
+            )
+            .subquery()
+        )
+
+        stmt = (
+            select(ForecastBreakdown)
+            .join(subquery, ForecastBreakdown.forecast_id == subquery.c.max_forecast_id)
+            .where(
+                ForecastBreakdown.restaurant_id == self.restaurant_id,
+                ForecastBreakdown.menu_item_id == menu_item_id,
+                ForecastBreakdown.forecast_date == target_date,
+            )
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_latest_for_menu_item_date_range(
+        self,
+        menu_item_id: int,
+        start_date: date,
+        end_date: date,
+    ) -> List[ForecastBreakdown]:
+        subquery = (
+            select(
+                ForecastBreakdown.forecast_date,
+                func.max(ForecastBreakdown.forecast_id).label("max_forecast_id"),
+            )
+            .where(
+                ForecastBreakdown.restaurant_id == self.restaurant_id,
+                ForecastBreakdown.menu_item_id == menu_item_id,
+                ForecastBreakdown.forecast_date >= start_date,
+                ForecastBreakdown.forecast_date <= end_date,
+            )
+            .group_by(ForecastBreakdown.forecast_date)
+            .subquery()
+        )
+
+        fb_alias = aliased(ForecastBreakdown)
+        stmt = (
+            select(fb_alias)
+            .join(
+                subquery,
+                and_(
+                    fb_alias.forecast_date == subquery.c.forecast_date,
+                    fb_alias.forecast_id == subquery.c.max_forecast_id,
+                ),
+            )
+            .where(
+                fb_alias.restaurant_id == self.restaurant_id,
+                fb_alias.menu_item_id == menu_item_id,
+                fb_alias.forecast_date >= start_date,
+                fb_alias.forecast_date <= end_date,
+            )
+            .order_by(fb_alias.forecast_date.asc())
+        )
+
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
     async def get_forecasts_for_date(self, date):
         stmt = select(ForecastBreakdown).where(
             ForecastBreakdown.restaurant_id == self.restaurant_id,

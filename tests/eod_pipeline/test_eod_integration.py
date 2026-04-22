@@ -24,7 +24,7 @@ class TestEODPipelineIntegration:
         mock_db_session,
         restaurant_id,
     ):
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         ledger = SimpleNamespace(reorder_completed=False, forecast_completed=True)
         ingredient_forecast = {
             1001: {
@@ -91,7 +91,7 @@ class TestEODPipelineIntegration:
         mock_db_session,
         restaurant_id,
     ):
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         ledger = SimpleNamespace(reorder_completed=False, forecast_completed=True)
         ingredient_forecast = {
             1002: {
@@ -139,7 +139,7 @@ class TestEODPipelineIntegration:
         self, mock_db_session, restaurant_id, sample_menu_items
     ):
         """Test EOD service properly invokes forecasting engine."""
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
@@ -175,7 +175,7 @@ class TestEODPipelineIntegration:
         self, mock_db_session, restaurant_id, mock_inventory_stats, sample_suppliers
     ):
         """Test forecast output feeds into reorder calculations."""
-        eod_service = EODService(mock_db_session, restaurant_id, "master")
+        eod_service = EODService(mock_db_session, restaurant_id, "full")
         eod_service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         eod_service.reorder_engine.stats_service = mock_inventory_stats
         
@@ -241,7 +241,7 @@ class TestEODPipelineIntegration:
     async def test_eod_generate_suggested_purchase_orders_uses_stable_reorder_public_contract(
         self, mock_db_session, restaurant_id, sample_suppliers
     ):
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         supplier = sample_suppliers[0]
         ingredient_forecast = {
             1001: {
@@ -334,8 +334,8 @@ class TestEODPipelineIntegration:
         self, mock_db_session, restaurant_id
     ):
         """Test inventory stats service provides data to reorder engine."""
-        stats_service = InventoryStatsService(mock_db_session, restaurant_id, "master")
-        reorder_engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        stats_service = InventoryStatsService(mock_db_session, restaurant_id, "full")
+        reorder_engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         reorder_engine.stats_service = stats_service
         
         # Mock inventory stats data
@@ -397,7 +397,7 @@ class TestEODPipelineIntegration:
         self, mock_db_session, restaurant_id, sample_sales_data, sample_inventory
     ):
         """Test sales aggregation output feeds into inventory deduction."""
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         
         # Mock sales aggregation
         service.sales_repo.get_by_date = AsyncMock(return_value=sample_sales_data[:1])
@@ -443,7 +443,7 @@ class TestEODPipelineIntegration:
         self, mock_db_session, restaurant_id, sample_suppliers
     ):
         """Test PO suggestions flow through to database writes."""
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         
         # Setup PO suggestions
         service._purchase_order_suggestions = [
@@ -490,7 +490,7 @@ class TestEODPipelineDataFlow:
         self, mock_db_session, restaurant_id, mock_inventory_stats, sample_suppliers
     ):
         """Test complete flow from forecast generation to PO creation."""
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         service.reorder_engine.stats_service = mock_inventory_stats
         
         # Step 1: Generate forecast
@@ -577,7 +577,7 @@ class TestEODPipelineDataFlow:
         self, mock_db_session, restaurant_id, mock_inventory_stats
     ):
         """Test ABC classification remains visible without hardcoded quantity buffers."""
-        reorder_engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        reorder_engine = ReorderForecastEngine(mock_db_session, restaurant_id, "full")
         reorder_engine.stats_service = mock_inventory_stats
         reorder_engine.alert_repo = AsyncMock()
         

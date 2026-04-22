@@ -10,10 +10,6 @@ export default function SystemHealth() {
   switch (tier) {
     case 'basic':
       return <SystemHealthBasic initialDate={today} />;
-    // case "pro":
-    //   return <TenantInfoPro />;
-    // case "master":
-    //   return <TenantInfoMaster />;
     default:
       return <SystemHealthBasic initialDate={today} />;
   }

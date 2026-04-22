@@ -62,7 +62,7 @@ CONFIG: Dict[int, RestaurantConfig] = {
         lunch_window=(12, 0, 13, 30),
         dinner_window=(18, 0, 20, 0),
     ),
-    # Pro tier (restaurant_id=4)
+    # Full tier sample (restaurant_id=4)
     4: RestaurantConfig(
         restaurant_id=4,
         timezone="America/Boise",
@@ -79,7 +79,7 @@ CONFIG: Dict[int, RestaurantConfig] = {
         lunch_window=(11, 30, 13, 30),
         dinner_window=(17, 30, 20, 30),
     ),
-    # Master tier (restaurant_id=5)
+    # Full tier sample (restaurant_id=5)
     5: RestaurantConfig(
         restaurant_id=5,
         timezone="America/Boise",

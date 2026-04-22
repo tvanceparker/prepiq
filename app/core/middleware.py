@@ -5,6 +5,7 @@ from starlette.requests import Request
 from app.core.logging import logger
 from jose import jwt, JWTError
 from app.utils.security import SECRET_KEY, ALGORITHM
+from app.services.utils.subscription_tiers import normalize_subscription_tier
 
 
 class AuthExtractionMiddleware(BaseHTTPMiddleware):
@@ -28,7 +29,7 @@ class AuthExtractionMiddleware(BaseHTTPMiddleware):
                 payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
                 request.state.username = payload.get("sub")
                 request.state.restaurant_id = int(payload.get("restaurant_id"))
-                request.state.subscription_tier = payload.get("subscription_tier")
+                request.state.subscription_tier = normalize_subscription_tier(payload.get("subscription_tier"))
 
                 logger.info(
                     f"[Middleware] User: {request.state.username}, "
