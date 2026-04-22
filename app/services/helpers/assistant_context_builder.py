@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 from typing import Any, Dict, List, Tuple
 
@@ -24,10 +25,11 @@ class AssistantContextBuilder:
             return [], []
 
         normalized = query.lower()
+        tokens = self._query_tokens(query)
         sections: List[str] = []
         citations: List[AssistantCitationDTO] = []
 
-        if any(term in normalized for term in ("alert", "alerts", "warning", "urgent")):
+        if self._matches_query_hints(normalized, tokens, ("alert", "alerts", "warning", "warnings", "urgent")):
             alerts_service = AlertsService(self.db, self.restaurant_id, self.subscription_tier, self.employee_id)
             alerts = await alerts_service.get_active_alerts(limit=5)
             if alerts:
@@ -43,7 +45,7 @@ class AssistantContextBuilder:
                     )
                 )
 
-        if any(term in normalized for term in ("forecast", "sales", "demand")):
+        if self._matches_query_hints(normalized, tokens, ("forecast", "forecasts", "sales", "demand")):
             forecast_service = SalesForecastService(
                 self.db,
                 self.restaurant_id,
@@ -76,7 +78,7 @@ class AssistantContextBuilder:
                 )
             )
 
-        if any(term in normalized for term in ("eod", "end of day", "finalize")):
+        if self._matches_query_hints(normalized, tokens, ("eod", "end of day", "finalize", "finalized")):
             eod_service = EODService(self.db, self.restaurant_id, self.subscription_tier, self.employee_id)
             eod_summary = await eod_service.get_eod_run_summary()
             if eod_summary:
@@ -95,7 +97,11 @@ class AssistantContextBuilder:
                     )
                 )
 
-        if any(term in normalized for term in ("purchase order", "po", "reorder", "supplier")):
+        if self._matches_query_hints(
+            normalized,
+            tokens,
+            ("purchase order", "purchase", "purchasing", "po", "reorder", "order", "orders", "supplier", "suppliers"),
+        ):
             inventory_service = InventoryService(self.db, self.restaurant_id, self.subscription_tier, self.employee_id)
             po_summary = await inventory_service.generate_purchase_order_suggestions(horizon_days=7, use_cached_forecast=True)
             sections.append(self._format_purchase_order_suggestions(po_summary))
@@ -107,7 +113,11 @@ class AssistantContextBuilder:
                 )
             )
 
-        if any(term in normalized for term in ("inventory", "stock", "ingredient", "reorder", "purchase order", "po")):
+        if self._matches_query_hints(
+            normalized,
+            tokens,
+            ("inventory", "stock", "ingredient", "ingredients", "reorder", "purchase order", "purchase", "po", "order", "orders"),
+        ):
             sections.append(await self._build_inventory_snapshot_section())
             citations.append(
                 AssistantCitationDTO(
@@ -117,6 +127,20 @@ class AssistantContextBuilder:
             )
 
         return sections, citations
+
+    @staticmethod
+    def _query_tokens(query: str) -> set[str]:
+        return set(re.findall(r"[a-z0-9]+", query.lower()))
+
+    @staticmethod
+    def _matches_query_hints(normalized: str, tokens: set[str], hints: Tuple[str, ...]) -> bool:
+        for hint in hints:
+            if " " in hint:
+                if hint in normalized:
+                    return True
+            elif hint in tokens:
+                return True
+        return False
 
     def _format_purchase_order_suggestions(self, po_summary: Dict[str, Any]) -> str:
         suggestion_groups = po_summary.get("suggestions") or []

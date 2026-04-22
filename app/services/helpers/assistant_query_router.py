@@ -1,3 +1,5 @@
+import re
+
 from app.schemas.assistant_dto import AssistantRetrievalMode
 
 
@@ -9,15 +11,21 @@ STRUCTURED_HINTS = {
     "alert",
     "alerts",
     "purchase order",
+    "purchase",
+    "purchasing",
     "order",
+    "orders",
+    "ordering",
     "po",
     "eod",
     "par",
     "ingredient",
+    "ingredients",
     "waste",
     "usage",
     "reorder",
     "vendor",
+    "vendors",
     "buy",
     "replenish",
 }
@@ -50,14 +58,29 @@ BLENDED_HINTS = {
 }
 
 
+def _tokenize_query(query: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", query.lower()))
+
+
+def _matches_hints(normalized: str, tokens: set[str], hints: set[str]) -> bool:
+    for hint in hints:
+        if " " in hint:
+            if hint in normalized:
+                return True
+        elif hint in tokens:
+            return True
+    return False
+
+
 class AssistantQueryRouter:
     @staticmethod
     def classify(query: str) -> AssistantRetrievalMode:
         normalized = query.lower()
+        tokens = _tokenize_query(query)
 
-        has_structured = any(term in normalized for term in STRUCTURED_HINTS)
-        has_document = any(term in normalized for term in DOCUMENT_HINTS)
-        has_blended = any(term in normalized for term in BLENDED_HINTS)
+        has_structured = _matches_hints(normalized, tokens, STRUCTURED_HINTS)
+        has_document = _matches_hints(normalized, tokens, DOCUMENT_HINTS)
+        has_blended = _matches_hints(normalized, tokens, BLENDED_HINTS)
 
         if has_structured and has_document:
             return AssistantRetrievalMode.blended

@@ -19,7 +19,7 @@ function makeMessageId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export default function AssistantOverlay(): JSX.Element {
+export default function AssistantOverlay(): React.ReactElement {
   const theme = useTheme();
   const [visible, setVisible] = useState(false);
   const [input, setInput] = useState('');

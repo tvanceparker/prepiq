@@ -16,6 +16,12 @@ def test_reorder_explanation_query_routes_to_blended():
     assert mode == AssistantRetrievalMode.blended
 
 
+def test_policy_query_does_not_match_po_substring():
+    mode = AssistantQueryRouter.classify("what policy docs exist?")
+
+    assert mode == AssistantRetrievalMode.document
+
+
 def test_purchase_order_suggestions_format_includes_items():
     builder = AssistantContextBuilder(db=None, restaurant_id=1, subscription_tier="full", employee_id=1)
 

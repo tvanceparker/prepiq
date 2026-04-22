@@ -67,6 +67,11 @@ export default function AssistantPanel({
         flexDirection: 'column',
         borderRadius: 3,
         overflow: 'hidden',
+        bgcolor: theme => (theme.palette.mode === 'dark' ? 'grey.900' : 'background.paper'),
+        border: theme =>
+          `1px solid ${
+            theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(104, 72, 18, 0.08)'
+          }`,
       }}
     >
       <Box
@@ -76,8 +81,10 @@ export default function AssistantPanel({
           justifyContent: 'space-between',
           px: 2.25,
           py: 1.75,
-          background:
-            'linear-gradient(135deg, rgba(250,244,231,1) 0%, rgba(246,229,186,0.96) 100%)',
+          background: theme =>
+            theme.palette.mode === 'dark'
+              ? 'linear-gradient(135deg, rgba(42,32,18,0.98) 0%, rgba(69,50,23,0.98) 100%)'
+              : 'linear-gradient(135deg, rgba(250,244,231,1) 0%, rgba(246,229,186,0.96) 100%)',
         }}
       >
         <Stack direction="row" spacing={1.5} alignItems="center">
@@ -94,20 +101,32 @@ export default function AssistantPanel({
             </Typography>
           </Box>
         </Stack>
-        <IconButton onClick={onClose}>
+        <IconButton onClick={onClose} sx={{ color: theme => theme.palette.text.primary }}>
           <CloseIcon />
         </IconButton>
       </Box>
 
       <Divider />
 
-      <Box sx={{ px: 2, py: 1.25, bgcolor: 'rgba(248, 243, 229, 0.85)' }}>
+      <Box
+        sx={{
+          px: 2,
+          py: 1.25,
+          bgcolor: theme =>
+            theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(248, 243, 229, 0.85)',
+        }}
+      >
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
           <Button
             component="label"
             size="small"
             startIcon={<UploadFileIcon />}
             disabled={isUploading}
+            sx={{
+              color: theme => (theme.palette.mode === 'dark' ? '#f0d9aa' : 'inherit'),
+              borderColor: theme =>
+                theme.palette.mode === 'dark' ? 'rgba(240,217,170,0.25)' : undefined,
+            }}
           >
             Add File
             <input
@@ -128,10 +147,19 @@ export default function AssistantPanel({
             startIcon={isRefreshingIndex ? <CircularProgress size={14} /> : <RefreshIcon />}
             disabled={isRefreshingIndex}
             onClick={onReindex}
+            sx={{
+              color: theme => (theme.palette.mode === 'dark' ? '#f0d9aa' : 'inherit'),
+              borderColor: theme =>
+                theme.palette.mode === 'dark' ? 'rgba(240,217,170,0.25)' : undefined,
+            }}
           >
             Reindex Built-ins
           </Button>
-          {isUploading && <Typography variant="caption">Indexing upload...</Typography>}
+          {isUploading && (
+            <Typography variant="caption" color="text.secondary">
+              Indexing upload...
+            </Typography>
+          )}
         </Stack>
 
         {documents.length > 0 && (
@@ -142,6 +170,14 @@ export default function AssistantPanel({
                 size="small"
                 label={`${document.display_name} · ${document.index_status}`}
                 variant="outlined"
+                sx={{
+                  bgcolor: theme =>
+                    theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : 'transparent',
+                  borderColor: theme =>
+                    theme.palette.mode === 'dark'
+                      ? 'rgba(255,255,255,0.12)'
+                      : 'rgba(104, 72, 18, 0.12)',
+                }}
               />
             ))}
           </Stack>
@@ -150,7 +186,15 @@ export default function AssistantPanel({
 
       <Divider />
 
-      <Box sx={{ flexGrow: 1, overflowY: 'auto', px: 2, py: 1.5, bgcolor: 'background.default' }}>
+      <Box
+        sx={{
+          flexGrow: 1,
+          overflowY: 'auto',
+          px: 2,
+          py: 1.5,
+          bgcolor: theme => (theme.palette.mode === 'dark' ? 'grey.950' : 'background.default'),
+        }}
+      >
         {error && (
           <Alert severity="error" sx={{ mb: 1.5 }}>
             {error}
@@ -174,7 +218,13 @@ export default function AssistantPanel({
 
       <Divider />
 
-      <Box sx={{ p: 2, bgcolor: 'background.paper' }}>
+      <Box
+        sx={{
+          p: 2,
+          bgcolor: theme =>
+            theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'background.paper',
+        }}
+      >
         <AssistantComposer
           value={input}
           onChange={onInputChange}
