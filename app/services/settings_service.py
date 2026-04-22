@@ -8,6 +8,7 @@ from app.repositories.role_permissions_repo import RolePermissionRepository
 from app.repositories.permissions_repo import PermissionRepository
 from app.utils.logger_helpers import log_method
 from app.utils.security import verify_password, get_password_hash
+from app.utils.secret_encryption import encrypt_secret
 from app.core.logging import logger 
 import json
 from typing import Any, List
@@ -66,6 +67,82 @@ class SettingsService:
         )
         settings_dict["settings"] = settings_blob
         return settings_dict
+
+    @log_method("Get Assistant Settings")
+    async def get_assistant_settings(self) -> dict:
+        restaurant = await self.restaurant_repo.get_by_id(self.restaurant_id)
+        if not restaurant:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+
+        settings_blob = restaurant.settings or {}
+        assistant_settings = settings_blob.get("assistant") or {}
+
+        return {
+            "enabled": bool(assistant_settings.get("enabled", False)),
+            "api_key_configured": bool(restaurant.assistant_openai_api_key),
+            "api_key_last4": restaurant.assistant_openai_api_key_last4,
+            "api_key_updated_at": restaurant.assistant_openai_api_key_updated_at,
+        }
+
+    @log_method("Update Assistant Settings")
+    async def update_assistant_settings(self, update_data: dict) -> dict:
+        restaurant = await self.restaurant_repo.get_by_id(self.restaurant_id)
+        if not restaurant:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+
+        if hasattr(update_data, "dict"):
+            update_payload = update_data.dict(exclude_unset=True)
+        else:
+            update_payload = dict(update_data)
+
+        current_settings = restaurant.settings or {}
+        assistant_settings = dict(current_settings.get("assistant") or {})
+        update_record = {}
+
+        enabled = update_payload.get("enabled")
+        if enabled is not None:
+            assistant_settings["enabled"] = enabled
+            update_record["settings"] = {**current_settings, "assistant": assistant_settings}
+
+        raw_api_key = update_payload.get("openai_api_key")
+        if raw_api_key is not None:
+            normalized_key = raw_api_key.strip()
+            update_record["assistant_openai_api_key"] = encrypt_secret(normalized_key)
+            update_record["assistant_openai_api_key_last4"] = normalized_key[-4:]
+            update_record["assistant_openai_api_key_updated_at"] = datetime.utcnow()
+
+        if update_record:
+            await self.restaurant_repo.update(self.restaurant_id, update_record)
+            await self.log_activity(
+                "assistant_settings_updated",
+                {
+                    "restaurant_id": self.restaurant_id,
+                    "enabled_updated": enabled is not None,
+                    "api_key_updated": raw_api_key is not None,
+                },
+            )
+
+        return await self.get_assistant_settings()
+
+    @log_method("Clear Assistant API Key")
+    async def clear_assistant_api_key(self) -> dict:
+        restaurant = await self.restaurant_repo.get_by_id(self.restaurant_id)
+        if not restaurant:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+
+        await self.restaurant_repo.update(
+            self.restaurant_id,
+            {
+                "assistant_openai_api_key": None,
+                "assistant_openai_api_key_last4": None,
+                "assistant_openai_api_key_updated_at": None,
+            },
+        )
+        await self.log_activity(
+            "assistant_api_key_cleared",
+            {"restaurant_id": self.restaurant_id},
+        )
+        return await self.get_assistant_settings()
 
     @log_method("Update Restaurant Settings")
     async def update_restaurant_settings(self, update_data: dict):

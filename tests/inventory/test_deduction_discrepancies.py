@@ -225,7 +225,7 @@ async def test_get_inventory_deduction_discrepancies_uses_available_as_current_w
 
 @pytest.mark.asyncio
 async def test_get_inventory_discrepancy_history_returns_resolved_entries(inventory_service):
-    inventory_service.subscription_tier = 'pro'
+    inventory_service.subscription_tier = 'full'
     persisted = SimpleNamespace(
         discrepancy_id=9,
         alert_id=42,

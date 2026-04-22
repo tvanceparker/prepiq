@@ -10,6 +10,8 @@ It is intended to answer:
 - which services matter for major product areas
 - which services are likely retrieval sources for future assistant features
 
+For mounted route/service status, use `backend-map.md` as the current source of truth. This index includes some code-resident services that may not be active product surfaces.
+
 ## Tenant-Aware Service Pattern
 
 Most application services are created through `build_service(...)` and receive:
@@ -107,6 +109,12 @@ Purpose:
 - shifts, schedule views, schedule updates
 - clock events and staffing insights
 
+Current status:
+
+- team/timekeeping is not a current product area
+- code-resident, but `team_routes.py` is not mounted in `main.py`
+- do not treat team scheduling as an active API surface
+
 ### SettingsService
 
 Purpose:
@@ -138,11 +146,22 @@ Purpose:
 - order creation and completion
 - cash drawer and terminal-related flows
 
+Current status:
+
+- not being used right now; legacy or removed surface in current source wiring
+- broad internal `/pos` routes are not mounted in `main.py`
+- active POS work is primarily external POS integration through settings/webhooks/mappings plus the `/orders` API
+
 ### KitchenService
 
 Purpose:
 
 - kitchen-oriented operational flows and realtime support
+
+Current status:
+
+- legacy or removed surface in current source wiring
+- active backend route modules for kitchen/waiter were not found during the current audit
 
 ## Forecasting And EOD Engines
 
@@ -178,6 +197,16 @@ Purpose:
 - safety stock, reorder point, and supplier timing logic
 - reorder suggestion math that can separate ingredient policy from supplier cadence
 
+### AssistantService
+
+Purpose:
+
+- read-only assistant query orchestration
+- assistant settings enforcement and OpenAI key resolution
+- query routing across document, structured, and blended retrieval
+- document retrieval over `docs/` and `notes/`
+- selected structured live context from existing services
+
 ## Helpers And Utilities Worth Knowing
 
 Important helper/service-adjacent areas include:
@@ -189,13 +218,12 @@ Important helper/service-adjacent areas include:
 
 ## Assistant Integration Guidance
 
-If a future assistant needs live operational answers, the first retrieval targets should be:
+The current phase 1 assistant already uses selected live operational retrieval. The strongest retrieval targets are:
 
 - `SalesForecastService`
 - `InventoryService`
 - `MenuService`
 - `PrepService`
-- `TeamService`
 - `AlertsService`
 - `SettingsService`
 
@@ -207,3 +235,5 @@ For deeper analytics or pipeline introspection, it may also need:
 - `InventoryStatsService`
 
 The assistant should prefer normalized service outputs over direct interpretation of arbitrary backend code.
+
+Because team/timekeeping is not a current product area, do not use `TeamService` as assistant context.

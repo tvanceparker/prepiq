@@ -6,7 +6,7 @@ export default function UserManagement() {
   const { tier } = useContext(AuthContext);
   switch (tier) {
     case 'basic':
-    case 'master':
+    case 'full':
     default:
       return <UserManagementBasic />;
   }

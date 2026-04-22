@@ -81,7 +81,7 @@ async def test_update_tenant_info(admin_service):
         "city": "New City",
         "state": "NC",
         "zip_code": "54321",
-        "subscription_tier": "pro",
+        "subscription_tier": "full",
         "subscription_status": "active",
         "expiry_date": "2026-01-01",
         "hours_of_operation": [

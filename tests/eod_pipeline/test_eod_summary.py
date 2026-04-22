@@ -14,7 +14,7 @@ class TestEODRunSummary:
         mock_db_session,
         restaurant_id,
     ):
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         run_date = date.today()
 
         ledger = MagicMock(
@@ -86,7 +86,7 @@ class TestEODRunSummary:
         mock_db_session,
         restaurant_id,
     ):
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         run_date = date.today() - timedelta(days=1)
 
         ledger = MagicMock(
@@ -140,7 +140,7 @@ class TestEODRunSummary:
         mock_db_session,
         restaurant_id,
     ):
-        service = EODService(mock_db_session, restaurant_id, "master")
+        service = EODService(mock_db_session, restaurant_id, "full")
         latest_run_date = date.today()
         historical_run_date = latest_run_date - timedelta(days=2)
 

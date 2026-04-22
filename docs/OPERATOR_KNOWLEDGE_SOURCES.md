@@ -2,7 +2,7 @@
 
 ## Status
 
-Planning guidance only. This document describes the intended assistant retrieval model and is not a description of a fully implemented operator assistant in the current product.
+Partially implemented. The current phase 1 assistant uses document retrieval over `docs/` and `notes/` plus selected structured live context. Uploaded-file indexing, vector retrieval, and write-capable actions are still planned.
 
 ## Purpose
 
@@ -32,7 +32,6 @@ Best for questions such as:
 - What are my open purchase orders?
 - What is tomorrow's forecast?
 - What are my active alerts?
-- Who is on shift today?
 
 These answers should come from tenant-scoped backend retrieval through service or repository-backed context builders.
 
@@ -42,7 +41,6 @@ Good sources include:
 - inventory state
 - purchase order state
 - recipe and prep data
-- staffing and schedule data
 - alerts and diagnostics
 
 ### 2. Procedural And Onboarding Documents
@@ -110,9 +108,9 @@ That may require:
 - live PO suggestion and forecast state
 - documented explanation of review and approval workflow
 
-## Highest-Value Future Document Types
+## Highest-Value Document Types
 
-The assistant will benefit most from documents covering:
+The assistant benefits most from documents covering:
 
 - onboarding and setup
 - POS and integration configuration
@@ -123,7 +121,7 @@ The assistant will benefit most from documents covering:
 
 ## Reliability Rules
 
-The future assistant should:
+The assistant should:
 
 - prefer structured tenant-scoped retrieval for live state
 - cite documents for procedural answers

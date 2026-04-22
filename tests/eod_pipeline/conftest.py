@@ -65,8 +65,8 @@ def restaurant_id():
 
 @pytest.fixture
 def subscription_tier():
-    """Master tier for advanced features."""
-    return "master"
+    """Full tier for advanced features."""
+    return "full"
 
 
 @pytest.fixture

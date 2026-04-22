@@ -29,6 +29,7 @@ from app.services.utils.purchase_order_note_helper import (
     serialize_purchase_order_notes,
 )
 from app.services.utils.forecast_contract import build_forecast_contract
+from app.services.utils.subscription_tiers import is_full_service_tier
 from app.utils.replenishment_policy import normalize_supplier_cadence_settings
 
 class InventoryService:
@@ -1739,8 +1740,8 @@ class InventoryService:
         end_date: date,
         ingredient_id: Optional[int] = None,
     ) -> list:
-        if self.subscription_tier not in ["pro", "master"]:
-            raise Exception("Discrepancy history is only available for Pro and Master tiers.")
+        if not is_full_service_tier(self.subscription_tier):
+            raise Exception("Discrepancy history is only available for Full tier.")
 
         ingredient_cache = {}
         batch_cache = {}
@@ -1991,10 +1992,10 @@ class InventoryService:
         - Receipts (lots/deliveries) - inventory IN
         - Usage (sales, waste, spoilage, adjustments) - inventory OUT
         - Batch Production - ingredients OUT, batch recipe product IN
-        Only available for Pro/Master tiers.
+        Only available for Full tier.
         """
-        if self.subscription_tier not in ["pro", "master"]:
-            raise Exception("Stock Movements are only available for Pro and Master tiers.")
+        if not is_full_service_tier(self.subscription_tier):
+            raise Exception("Stock Movements are only available for Full tier.")
 
         # Get all ingredients and batch recipes for name lookup
         ingredients = await self.ingredient_repo.get_all()

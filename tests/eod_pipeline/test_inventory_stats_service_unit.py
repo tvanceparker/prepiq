@@ -19,7 +19,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test average daily usage calculation from usage logs."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         # Mock usage log data (14+ days)
         service.inventory_usage_log_repo.get_daily_usage = AsyncMock(
@@ -39,7 +39,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test fallback to sales-derived usage when insufficient logs."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         # Mock insufficient usage log data
         service.inventory_usage_log_repo.get_daily_usage = AsyncMock(return_value=[])
@@ -64,7 +64,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test zero return when no usage data exists."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         service.inventory_usage_log_repo.get_daily_usage = AsyncMock(return_value=[])
         service.forecasting_engine.derive_ingredient_usage_from_sales = AsyncMock(
@@ -80,7 +80,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test standard deviation calculation from usage logs."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         # Mock usage data with variance
         service.inventory_usage_log_repo.get_daily_usage = AsyncMock(
@@ -113,7 +113,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test std dev returns zero with insufficient samples."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         service.inventory_usage_log_repo.get_daily_usage = AsyncMock(
             return_value=[(date.today(), Decimal("2.00"))]
@@ -131,7 +131,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id, sample_inventory
     ):
         """Test current inventory retrieval."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         service.inventory_repo.get_inventory_by_ingredient = AsyncMock(
             return_value=sample_inventory[0]
@@ -147,7 +147,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test current inventory when ingredient not found."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         service.inventory_repo.get_inventory_by_ingredient = AsyncMock(return_value=None)
         
@@ -161,7 +161,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id, sample_suppliers
     ):
         """Test lead time retrieval from supplier."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         service.ingredient_supplier_repo.get_preferred_or_lowest_priority_supplier = AsyncMock(
             return_value=sample_suppliers[0]
@@ -176,7 +176,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test default lead time when no supplier found."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         service.ingredient_supplier_repo.get_preferred_or_lowest_priority_supplier = AsyncMock(
             return_value=None
@@ -191,7 +191,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id, sample_suppliers
     ):
         """Test minimum order quantity retrieval."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         service.ingredient_supplier_repo.get_preferred_or_lowest_priority_supplier = AsyncMock(
             return_value=sample_suppliers[0]
@@ -206,7 +206,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test default MOQ when no supplier found."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         service.ingredient_supplier_repo.get_preferred_or_lowest_priority_supplier = AsyncMock(
             return_value=None
@@ -221,7 +221,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id, sample_ingredients
     ):
         """Test max stock level retrieval."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         ingredient = sample_ingredients[0]
         ingredient.max_stock_level = Decimal("100.00")
@@ -236,7 +236,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id, sample_ingredients
     ):
         """Test max stock level when undefined."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         ingredient = sample_ingredients[0]
         ingredient.max_stock_level = None
@@ -251,7 +251,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id, sample_ingredients
     ):
         """Test shelf life retrieval."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         service.ingredient_repo.get_by_id = AsyncMock(return_value=sample_ingredients[0])
         
@@ -264,7 +264,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id, sample_ingredients
     ):
         """Test default shelf life when undefined."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         ingredient = sample_ingredients[0]
         ingredient.shelf_life_days = None
@@ -279,7 +279,7 @@ class TestInventoryStatsServiceUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test total usage calculation over window."""
-        service = InventoryStatsService(mock_db_session, restaurant_id, "master")
+        service = InventoryStatsService(mock_db_session, restaurant_id, "full")
         
         service.inventory_usage_log_repo.get_daily_usage = AsyncMock(
             return_value=[

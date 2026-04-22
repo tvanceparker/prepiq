@@ -6,7 +6,7 @@ export default function SystemAlerts() {
   const { tier } = useContext(AuthContext);
   switch (tier) {
     case 'basic':
-    case 'master':
+    case 'full':
     default:
       return <SystemAlertsBasic />;
   }

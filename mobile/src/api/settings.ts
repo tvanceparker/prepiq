@@ -1,10 +1,18 @@
-import { get, put, post } from './index';
-import type { RestaurantSettings, AccountInfo } from '../interfaces/settings';
+import { del, get, put, post } from './index';
+import type { RestaurantSettings, AccountInfo, AssistantSettings } from '../interfaces/settings';
 import type { POSModeSettings, ExternalPOSStatus, POSSyncSummary } from '../interfaces/pos';
 
 export const getRestaurantSettings = async () => get('/settings/restaurant_settings');
 export const updateRestaurantSettings = async (data: Partial<any>) =>
   put('/settings/restaurant_settings', data);
+export const getAssistantSettings = async (): Promise<AssistantSettings> =>
+  get('/settings/assistant');
+export const updateAssistantSettings = async (data: {
+  enabled?: boolean;
+  openai_api_key?: string;
+}): Promise<AssistantSettings> => put('/settings/assistant', data);
+export const deleteAssistantApiKey = async (): Promise<AssistantSettings> =>
+  del('/settings/assistant/api-key');
 export const getAccountInfo = async () => get('/settings/account-info');
 export const updateUserPreferences = async (data: Record<string, any>) =>
   put('/settings/preferences', data);

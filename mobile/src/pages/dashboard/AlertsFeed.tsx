@@ -6,8 +6,7 @@ export default function AlertsFeed() {
   const { tier } = useContext(AuthContext);
   switch (tier) {
     case 'basic':
-    case 'pro':
-    case 'master':
+    case 'full':
     default:
       return <AlertsFeedBasicMobile />;
   }

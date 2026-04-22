@@ -669,7 +669,7 @@ async def test_build_explanation_payload_for_intermittent_surfaces_moq_review_wa
 
 @pytest.mark.asyncio
 async def test_generate_purchase_order_suggestions_includes_explanation_payload():
-    service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
+    service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="full", employee_id=99)
     service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Primary Supplier"))
     service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(return_value=None)
     service.forecast_repo.get_forecasts_created_between = AsyncMock(
@@ -805,7 +805,7 @@ async def test_generate_purchase_order_suggestions_includes_explanation_payload(
 
 @pytest.mark.asyncio
 async def test_generate_purchase_order_suggestions_falls_back_to_supplier_shelf_life_when_inventory_missing_value():
-    service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
+    service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="full", employee_id=99)
     service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Primary Supplier"))
     service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(return_value=None)
     service.forecast_repo.get_forecasts_created_between = AsyncMock(return_value=[])
@@ -900,7 +900,7 @@ async def test_generate_purchase_order_suggestions_falls_back_to_supplier_shelf_
 
 @pytest.mark.asyncio
 async def test_generate_purchase_order_suggestions_includes_unspecified_supplier_when_mapping_missing():
-    service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
+    service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="full", employee_id=99)
     service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(return_value=None)
     service.forecast_repo.get_forecasts_created_between = AsyncMock(return_value=[])
     service.ingredient_supplier_repo.get_all_by_ingredient_id = AsyncMock(return_value=[])
@@ -994,7 +994,7 @@ async def test_generate_purchase_order_suggestions_includes_unspecified_supplier
 
 @pytest.mark.asyncio
 async def test_generate_purchase_order_suggestions_uses_recent_eod_forecast_when_fresh_run_fails():
-    service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
+    service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="full", employee_id=99)
     service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Primary Supplier"))
 
     supplier = MagicMock(
@@ -1100,7 +1100,7 @@ async def test_generate_purchase_order_suggestions_uses_recent_eod_forecast_when
 
 @pytest.mark.asyncio
 async def test_generate_purchase_order_suggestions_uses_latest_finalized_forecast_when_restaurant_date_missing():
-    service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
+    service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="full", employee_id=99)
     service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Primary Supplier"))
     service.forecast_repo.get_forecasts_created_between = AsyncMock(return_value=[])
 

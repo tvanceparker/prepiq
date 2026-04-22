@@ -248,7 +248,7 @@ export default function ProOverview({ data }: ProOverviewProps) {
         <Box display="flex" gap={1}>
           <Chip
             icon={<TimelineIcon />}
-            label="Pro Tier"
+            label="Full Tier"
             color="secondary"
             variant="filled"
             size="small"
@@ -346,7 +346,7 @@ export default function ProOverview({ data }: ProOverviewProps) {
                   Forecast Insights
                 </Typography>
               }
-              subheader="Pro tier analytics"
+              subheader="Full tier analytics"
               sx={{ pb: 0 }}
             />
             <CardContent>
@@ -411,7 +411,7 @@ export default function ProOverview({ data }: ProOverviewProps) {
                 <Divider />
 
                 <Typography variant="caption" color="text.disabled" textAlign="center">
-                  Upgrade to Master tier for automated reordering and advanced AI insights
+                  Full tier includes automated reordering and advanced AI insights
                 </Typography>
               </Stack>
             </CardContent>

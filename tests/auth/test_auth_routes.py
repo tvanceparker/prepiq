@@ -20,7 +20,7 @@ def current_user_override():
     return CurrentUser(
         username="testuser",
         restaurant_id=7,
-        subscription_tier="pro",
+        subscription_tier="full",
         employee_id=42,
         name="Test User",
         role_id=3,
@@ -67,7 +67,7 @@ def test_me_returns_current_user_and_permissions(client, auth_service_override):
             "email": "testuser@example.com",
             "restaurant_id": 7,
             "role_id": 3,
-            "subscription_tier": "pro",
+            "subscription_tier": "full",
         },
         "permissions": ["view_dashboard", "manage_inventory"],
     }

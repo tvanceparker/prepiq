@@ -16,7 +16,7 @@ def mock_repos():
     
     db = MagicMock()
     restaurant_id = 123
-    tier = "pro"
+    tier = "full"
 
     service = DashboardService(db, restaurant_id, tier, employee_id=1)
     service.sales_repo = mock_sales

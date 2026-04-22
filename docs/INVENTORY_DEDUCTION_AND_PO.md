@@ -146,7 +146,7 @@ Any operator-facing or assistant-facing explanation of suggested purchasing shou
 
 ## Assistant Implications
 
-The future assistant should answer purchasing questions using structured retrieval from inventory and PO services, not from generic reasoning over historical docs alone.
+The assistant should answer purchasing questions using structured retrieval from inventory and PO services, not from generic reasoning over historical docs alone.
 
 High-value assistant questions include:
 

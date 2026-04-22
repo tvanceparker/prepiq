@@ -1,4 +1,4 @@
--- Seed data for Restaurant 5 (Master Tier)
+-- Seed data for Restaurant 5 (Full Tier)
 -- Perrine Heights Kitchen
 
 START TRANSACTION;
@@ -47,7 +47,7 @@ INSERT INTO restaurants (
     42.5637,
     -114.4609,
     'America/Boise',
-    'master',
+    'full',
     'active',
     '2027-12-25',
     6.00,

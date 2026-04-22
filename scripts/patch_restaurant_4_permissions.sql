@@ -1,4 +1,4 @@
--- Patch permissions/roles for restaurant_id=4 to match app defaults (pro tier)
+-- Patch permissions/roles for restaurant_id=4 to match app defaults (full tier)
 START TRANSACTION;
 
 -- Ensure roles are aligned with defaults
@@ -24,7 +24,7 @@ WHERE NOT EXISTS (
 DELETE FROM role_permissions WHERE restaurant_id = 4;
 DELETE FROM permissions WHERE restaurant_id = 4;
 
--- Insert default permissions for pro tier
+-- Insert default permissions for full tier
 INSERT INTO permissions (permission_id, restaurant_id, name, description) VALUES
   (401, 4, 'manage_employees', 'Can manage employees'),
   (402, 4, 'upload_sales', 'Can upload sales data'),

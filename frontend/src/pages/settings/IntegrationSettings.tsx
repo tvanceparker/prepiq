@@ -14,6 +14,9 @@ import {
   Divider,
   Chip,
   CircularProgress,
+  Switch,
+  TextField,
+  FormControlLabel,
 } from '@mui/material';
 import {
   PointOfSale as POSIcon,
@@ -22,6 +25,7 @@ import {
   LinkOff as LinkOffIcon,
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
+  SmartToy as AssistantIcon,
 } from '@mui/icons-material';
 import { useIntegrationSettings } from './hooks/useIntegrationSettings';
 import type { POSProvider } from '../../interfaces/pos';
@@ -40,11 +44,21 @@ export default function IntegrationSettings() {
     isSyncing,
     snackbar,
     closeSnackbar,
+    assistantSettings,
+    assistantApiKeyInput,
+    isAssistantLoading,
+    assistantError,
+    isUpdatingAssistant,
+    isDeletingAssistantApiKey,
     handleModeChange,
     handleProviderChange,
     handleConnectPOS,
     handleSync,
     handleDisconnect,
+    handleAssistantToggle,
+    handleAssistantApiKeyInputChange,
+    handleSaveAssistantApiKey,
+    handleDeleteAssistantApiKey,
   } = useIntegrationSettings();
 
   const syncSummarySeverity =
@@ -74,6 +88,88 @@ export default function IntegrationSettings() {
         description="Manage the active external POS connection, review sync status, and keep the v1 integration surface focused on the supported provider workflow."
         icon={<POSIcon />}
       />
+
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+            <Box display="flex" alignItems="center">
+              <AssistantIcon sx={{ mr: 1, color: 'primary.main' }} />
+              <Typography variant="h6">Assistant</Typography>
+            </Box>
+            {isAssistantLoading ? (
+              <CircularProgress size={20} />
+            ) : (
+              <Chip
+                icon={assistantSettings?.api_key_configured ? <CheckCircleIcon /> : <WarningIcon />}
+                label={assistantSettings?.api_key_configured ? 'Key configured' : 'Key missing'}
+                color={assistantSettings?.api_key_configured ? 'success' : 'warning'}
+                size="small"
+              />
+            )}
+          </Box>
+
+          <Typography variant="body2" color="text.secondary" mb={2}>
+            Configure the restaurant assistant and optionally save a restaurant-specific OpenAI API
+            key. The key is stored encrypted and is never returned to the client after save.
+          </Typography>
+
+          {assistantError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              Failed to load assistant settings. Please try again.
+            </Alert>
+          )}
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={assistantSettings?.enabled ?? false}
+                onChange={event => handleAssistantToggle(event.target.checked)}
+                disabled={isAssistantLoading || isUpdatingAssistant}
+              />
+            }
+            label="Enable assistant"
+            sx={{ mb: 2 }}
+          />
+
+          <TextField
+            fullWidth
+            label="OpenAI API Key"
+            type="password"
+            value={assistantApiKeyInput}
+            onChange={event => handleAssistantApiKeyInputChange(event.target.value)}
+            placeholder={
+              assistantSettings?.api_key_configured
+                ? 'Enter a new key to replace the current one'
+                : 'sk-...'
+            }
+            helperText={
+              assistantSettings?.api_key_configured
+                ? `Current key ends in ${assistantSettings.api_key_last4 ?? 'unknown'}${assistantSettings.api_key_updated_at ? ` • Updated ${new Date(assistantSettings.api_key_updated_at).toLocaleString()}` : ''}`
+                : 'No restaurant-specific key saved yet. The backend can later fall back to an env key if configured.'
+            }
+            sx={{ mb: 2 }}
+          />
+
+          <Box display="flex" gap={2} flexWrap="wrap">
+            <Button
+              variant="contained"
+              onClick={handleSaveAssistantApiKey}
+              disabled={isUpdatingAssistant}
+            >
+              {assistantSettings?.api_key_configured ? 'Replace Key' : 'Save Key'}
+            </Button>
+
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={handleDeleteAssistantApiKey}
+              disabled={!assistantSettings?.api_key_configured || isDeletingAssistantApiKey}
+            >
+              Remove Key
+            </Button>
+          </Box>
+        </CardContent>
+      </Card>
 
       <Card sx={{ mb: 3 }}>
         <CardContent>

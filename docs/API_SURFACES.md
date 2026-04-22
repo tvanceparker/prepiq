@@ -2,52 +2,61 @@
 
 ## Purpose
 
-This document provides a route-level map of the backend API surfaces currently registered in the application.
+This document provides a route-level map of backend API surfaces registered in the current application. For the newer RAG-oriented map, see `backend-map.md`.
 
 It is a practical catalog, not a generated OpenAPI replacement.
 
 ## Registration Model
 
-Routers are mounted from `main.py` under `/api/v1`, with websocket routes registered separately.
+Routers are mounted from `main.py` under `/api/v1`. During the current audit, no source websocket route modules were found to be registered by `main.py`.
 
-Current route modules include:
+Current mounted route modules:
 
-- `kitchen_routes`
-- `pos_routes`
-- `pos_webhooks`
-- `pos_mappings_routes`
-- `orders_routes`
+- `auth_routes`
 - `dashboard_routes`
+- `sales_forecast_routes`
+- `menu_routes`
+- `inventory_routes`
+- `prep_routes`
 - `profit_analytic_routes`
 - `waste_analytics_routes`
-- `prep_routes`
-- `eod_routes`
-- `admin_routes`
-- `menu_routes`
-- `sales_forecast_routes`
-- `inventory_routes`
-- `settings_routes`
 - `alert_routes`
-- `auth_routes`
+- `settings_routes`
+- `admin_routes`
+- `orders_routes`
+- `pos_webhooks`
+- `pos_mappings_routes`
+- `eod_routes`
+- `assistant_routes`
 
-Route files currently present in the repo but not mounted in `main.py` include:
+Route files present but not mounted in `main.py`:
 
 - `team_routes`
 - `permission_routes`
-- `waiter_routes`
 
-## Core Route Groups
+Older docs or client files may refer to `kitchen_routes`, `waiter_routes`, and a broad internal `pos_routes` module. Those route source files are not active in the current backend tree and should not be documented as mounted APIs.
+
+## Mounted Route Groups
+
+### `/auth`
+
+Primary capabilities:
+
+- employee login
+- refresh-token flow
+- current user and whoami
+- logout
+- device registration under `/auth/register-device`
 
 ### `/dashboard`
 
 Primary capabilities:
 
 - daily overview
-- live operations
 - quick analytics
 - menu item management helpers
-- sales upload flows and template download
-- extended overview data
+- sales upload flows, conflict checks, and template download
+- live operations endpoint support, though the current web page is not active navigation
 
 ### `/sales_forecast`
 
@@ -59,9 +68,19 @@ Primary capabilities:
 - top/bottom items
 - forecast accuracy chart and table
 - pattern endpoints such as weekday averages and channel breakdowns
+- sales explorer table/download
 - sales editing and creation endpoints
+- full-tier menu-mix endpoints that still use legacy pro-style endpoint names; guards use full-tier normalization
 
-This is one of the highest-value operator data surfaces in the system.
+### `/menu`
+
+Primary capabilities:
+
+- menu items and categories
+- ingredients and supplier links
+- recipes and recipe usage
+- batch recipe access
+- recipe and menu item create/update/delete flows
 
 ### `/inventory`
 
@@ -77,37 +96,6 @@ Primary capabilities:
 - PO suggestion generation and order creation from suggestions
 - discrepancy and deduction history endpoints
 
-### `/orders`
-
-Primary capabilities:
-
-- menu access for order entry
-- list orders
-- retrieve one order
-- create, update, complete, cancel, and send orders
-- update order status
-- sales-channel lookup for order flows
-
-This is a distinct backend surface from `/pos`, even though both support POS-adjacent workflows.
-
-### `/kitchen`
-
-Primary capabilities:
-
-- mark kitchen orders done
-
-This is currently a very small mounted route surface, with most kitchen realtime behavior living in websocket flows rather than a large REST route set.
-
-### `/menu`
-
-Primary capabilities:
-
-- menu items and categories
-- ingredients and suppliers
-- recipes and recipe usage
-- batch recipe access
-- recipe and menu item create/update/delete flows
-
 ### `/prep`
 
 Primary capabilities:
@@ -117,9 +105,9 @@ Primary capabilities:
 - prep schedule CRUD
 - batch recipe create, update, delete, and usage endpoints
 
-### `/analytics` Surface By Routes
+### Analytics By Route
 
-There is no single `/analytics` route prefix in the backend. Analytics is currently split across:
+There is no single backend `/analytics` route prefix. Analytics is split across:
 
 - `/profit_analytics`
 - `/waste_analytics`
@@ -159,8 +147,8 @@ Primary capabilities:
 - restaurant settings
 - account info and preferences
 - change password, email, phone
-- POS integration OAuth and sync flows
-- POS mode get/update
+- assistant enablement and encrypted API-key settings
+- POS integration OAuth, status, sync, and mode flows
 
 ### `/admin`
 
@@ -171,19 +159,27 @@ Primary capabilities:
 - sales data checks
 - EOD write validation
 - role and permission views
+- employee management
 
-### `/pos`
+### `/orders`
 
 Primary capabilities:
 
-- device registration and settings
-- order creation and updates
-- payment intents and confirmations
-- cash drawer session lifecycle and transactions
-- Stripe terminal location and reader management
-- terminal payment processing
-- device token refresh
-- POS mode settings
+- menu access for order entry
+- list orders
+- retrieve one order
+- create, update, complete, cancel, and send orders
+- update order status
+- sales-channel lookup for order flows
+
+This backend surface is active, but no current sidebar order-entry UI was found.
+
+### `/webhooks/pos`
+
+Primary capabilities:
+
+- Square webhook handling
+- Toast and Clover placeholder endpoints that return not implemented
 
 ### `/pos/mappings`
 
@@ -193,21 +189,22 @@ Primary capabilities:
 - auto-match helper
 - unmapped view
 
-### Route Files Not Currently Mounted
+Current caveat: this mounted route appears to treat `CurrentUser` as a dictionary even though `get_current_user` returns a model object. Treat it as active-but-suspect until fixed.
 
-The following route modules exist in `app/api/v1`, but are not currently included in `main.py` and therefore should not be documented as active API surfaces:
+### `/eod`
 
-- `/team`
-- `/permissions`
-- waiter-specific route surfaces
+Primary capabilities:
 
-### Webhook And Realtime Surfaces
+- EOD summary
+- manual finalize trigger
 
-Current special transport surfaces include:
+### `/assistant`
 
-- POS webhooks under `/api/v1/webhooks/pos/*`
-- kitchen websocket router
-- POS websocket router
+Primary capabilities:
+
+- read-only assistant query endpoint
+- document retrieval over `docs/` and `notes/`
+- selected live structured context from existing services
 
 ## Contract Alignment
 

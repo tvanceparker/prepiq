@@ -1,4 +1,4 @@
--- Seed data for Restaurant 4 (Pro Tier)
+-- Seed data for Restaurant 4 (Full Tier)
 -- Snake River Taqueria
 
 START TRANSACTION;
@@ -47,7 +47,7 @@ INSERT INTO restaurants (
     42.5885,
     -114.4602,
     'America/Boise',
-    'pro',
+    'full',
     'active',
     '2027-06-25',
     6.00,

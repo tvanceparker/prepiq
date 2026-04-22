@@ -30,7 +30,7 @@ async def test_check_permissions_raises_when_required_permission_missing(mock_db
     current_user = CurrentUser(
         username="testuser",
         restaurant_id=7,
-        subscription_tier="pro",
+        subscription_tier="full",
         employee_id=42,
         name="Test User",
         role_id=3,

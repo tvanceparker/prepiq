@@ -1,0 +1,183 @@
+import React from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Divider,
+  IconButton,
+  Paper,
+  Stack,
+  Typography,
+} from '@mui/material';
+import {
+  Close as CloseIcon,
+  Refresh as RefreshIcon,
+  UploadFile as UploadFileIcon,
+} from '@mui/icons-material';
+
+import type { AssistantChatMessage, AssistantDocument } from '../../interfaces/assistant';
+import AssistantComposer from './AssistantComposer';
+import ChefGarlicAvatar from './ChefGarlicAvatar';
+import AssistantMessageList from './AssistantMessageList';
+
+interface AssistantPanelProps {
+  input: string;
+  isLoading: boolean;
+  isUploading: boolean;
+  isRefreshingIndex: boolean;
+  error: string | null;
+  uploadError: string | null;
+  messages: AssistantChatMessage[];
+  documents: AssistantDocument[];
+  onClose: () => void;
+  onInputChange: (value: string) => void;
+  onSubmit: () => void;
+  onUpload: (file: File) => void;
+  onReindex: () => void;
+}
+
+export default function AssistantPanel({
+  input,
+  isLoading,
+  isUploading,
+  isRefreshingIndex,
+  error,
+  uploadError,
+  messages,
+  documents,
+  onClose,
+  onInputChange,
+  onSubmit,
+  onUpload,
+  onReindex,
+}: AssistantPanelProps): JSX.Element {
+  return (
+    <Paper
+      elevation={12}
+      sx={{
+        width: { xs: 'calc(100vw - 32px)', sm: 460 },
+        height: { xs: '70vh', sm: 560 },
+        display: 'flex',
+        flexDirection: 'column',
+        borderRadius: 3,
+        overflow: 'hidden',
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          px: 2.25,
+          py: 1.75,
+          background:
+            'linear-gradient(135deg, rgba(250,244,231,1) 0%, rgba(246,229,186,0.96) 100%)',
+        }}
+      >
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <ChefGarlicAvatar />
+          <Box>
+            <Typography variant="subtitle1" fontWeight={800}>
+              PrepIQ Assistant
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              Indexed docs, uploads, and live restaurant read-only context
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Chef Garlic will autoplay built-in model animation when the viewer is available.
+            </Typography>
+          </Box>
+        </Stack>
+        <IconButton onClick={onClose}>
+          <CloseIcon />
+        </IconButton>
+      </Box>
+
+      <Divider />
+
+      <Box sx={{ px: 2, py: 1.25, bgcolor: 'rgba(248, 243, 229, 0.85)' }}>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+          <Button
+            component="label"
+            size="small"
+            startIcon={<UploadFileIcon />}
+            disabled={isUploading}
+          >
+            Add File
+            <input
+              hidden
+              type="file"
+              accept=".md,.txt,.pdf"
+              onChange={event => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  onUpload(file);
+                }
+                event.currentTarget.value = '';
+              }}
+            />
+          </Button>
+          <Button
+            size="small"
+            startIcon={isRefreshingIndex ? <CircularProgress size={14} /> : <RefreshIcon />}
+            disabled={isRefreshingIndex}
+            onClick={onReindex}
+          >
+            Reindex Built-ins
+          </Button>
+          {isUploading && <Typography variant="caption">Indexing upload...</Typography>}
+        </Stack>
+
+        {documents.length > 0 && (
+          <Stack direction="row" spacing={0.75} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.75 }}>
+            {documents.slice(0, 5).map(document => (
+              <Chip
+                key={document.document_id}
+                size="small"
+                label={`${document.display_name} · ${document.index_status}`}
+                variant="outlined"
+              />
+            ))}
+          </Stack>
+        )}
+      </Box>
+
+      <Divider />
+
+      <Box sx={{ flexGrow: 1, overflowY: 'auto', px: 2, py: 1.5, bgcolor: 'background.default' }}>
+        {error && (
+          <Alert severity="error" sx={{ mb: 1.5 }}>
+            {error}
+          </Alert>
+        )}
+
+        {uploadError && (
+          <Alert severity="warning" sx={{ mb: 1.5 }}>
+            {uploadError}
+          </Alert>
+        )}
+
+        <AssistantMessageList messages={messages} />
+
+        {isLoading && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
+            Assistant is working...
+          </Typography>
+        )}
+      </Box>
+
+      <Divider />
+
+      <Box sx={{ p: 2, bgcolor: 'background.paper' }}>
+        <AssistantComposer
+          value={input}
+          onChange={onInputChange}
+          onSubmit={onSubmit}
+          disabled={isLoading || isUploading}
+        />
+      </Box>
+    </Paper>
+  );
+}

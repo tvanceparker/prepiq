@@ -23,6 +23,7 @@ from app.api.v1 import (
     alert_routes,
     orders_routes,
     pos_webhooks,
+    assistant_routes,
 )
 from app.api.v1 import pos_mappings_routes
 from app.utils.eod_runner import run_eod_jobs
@@ -85,3 +86,4 @@ app.include_router(inventory_routes.router, prefix="/api/v1")
 app.include_router(settings_routes.router, prefix="/api/v1")
 app.include_router(alert_routes.router, prefix="/api/v1")
 app.include_router(auth_routes.router, prefix="/api/v1")
+app.include_router(assistant_routes.router, prefix="/api/v1")

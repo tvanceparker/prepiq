@@ -11,6 +11,13 @@ export interface RestaurantSettings {
   inventory_deduction_mode: InventoryDeductionMode;
 }
 
+export interface AssistantSettings {
+  enabled: boolean;
+  api_key_configured: boolean;
+  api_key_last4?: string | null;
+  api_key_updated_at?: string | null;
+}
+
 export interface AccountInfo {
   name: string;
   role?: string | null;

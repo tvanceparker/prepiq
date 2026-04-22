@@ -9,10 +9,6 @@ export default function TenantInfo() {
   switch (tier) {
     case "basic":
       return <ActivityLogsBasic />;
-    // case "pro":
-    //   return <TenantInfoPro />;
-    // case "master":
-    //   return <TenantInfoMaster />;
     default:
       return <ActivityLogsBasic />;
   }

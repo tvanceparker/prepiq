@@ -2,6 +2,8 @@
 
 ## Purpose
 
+For the current RAG-ready reconciliation, start with `system-overview.md`, `frontend-map.md`, `backend-map.md`, and `gaps-and-legacy.md`. This file is a broader architecture overview and should defer to those maps when route registration or navigation details conflict.
+
 PrepIQ is a multi-tenant restaurant operations platform built as a monorepo with three primary application surfaces:
 
 - FastAPI backend in `app/`
@@ -76,10 +78,11 @@ The current backend is organized around these major operational domains:
 - Inventory, suppliers, and purchase orders
 - Prep schedules and waste logging
 - Alerts and diagnostics
-- Team scheduling and clock events
+- Team scheduling and clock events, currently legacy/code-resident and out of product scope
 - Admin and tenant configuration
-- Internal POS, cash drawer, terminal readers, and external POS integration
+- External POS integration and order APIs
 - End-of-day orchestration and forecasting pipelines
+- Assistant query and retrieval support
 
 ## Current Service Layer
 
@@ -95,16 +98,17 @@ The current service layer includes:
 - `ProfitAnalyticsService`
 - `WasteAnalyticsService`
 - `AlertsService`
-- `TeamService`
+- `TeamService` (legacy/code-resident; team/timekeeping is not current product scope)
 - `SettingsService`
 - `AdminService`
 - `OrderService`
-- `InternalPOSService`
-- `KitchenService`
 - `EODService`
 - `ForecastingEngine`
 - `ForecastingEngineBasic`
 - `ReorderForecastEngine`
+- `AssistantService`
+
+Some older service names may still appear in historical docs or removed code paths. `InternalPOSService` is not being used right now, and `KitchenService` should not be assumed active from historical docs alone.
 
 ## Runtime Composition
 
@@ -114,8 +118,9 @@ The current service layer includes:
 - CORS configuration
 - auth extraction middleware
 - router registration under `/api/v1`
-- websocket registration for kitchen and POS surfaces
 - `AsyncIOScheduler` startup for EOD execution
+
+During the latest audit, route registration in `main.py` did not include active websocket route modules. Older documentation references to kitchen/POS websocket registration should be treated as legacy unless source registration is restored.
 
 ## Scheduler And Background Processing
 
@@ -164,7 +169,9 @@ Current integration surfaces include:
 - Square external POS support
 - provider abstraction for future POS integrations
 - weather and forecast-supporting operational data
-- Stripe terminal and cash drawer flows for internal POS mode
+- OpenAI-based assistant answer generation
+
+Older terminal and cash-drawer migration/docs artifacts exist, but internal POS is not being used right now.
 
 ## Legacy And Internal Surfaces
 
@@ -177,7 +184,7 @@ These include:
 - granular permission expansion beyond the shared-access v1 model
 - older tier naming and broader internal-ops assumptions left in legacy code paths
 
-These surfaces are still real parts of the codebase, but retrieval and documentation should prioritize the current v1 restaurant operations model first.
+Some of these surfaces are real source artifacts, but not active product surfaces. Retrieval and documentation should prioritize the current v1 restaurant operations model first.
 
 ## Documentation Boundaries
 
@@ -187,6 +194,10 @@ This document is the top-level architecture map. More detailed behavior belongs 
 - `SERVICES_INDEX.md`
 - `API_SURFACES.md`
 - `FEATURE_TIERS.md`
+- `system-overview.md`
+- `frontend-map.md`
+- `backend-map.md`
+- `gaps-and-legacy.md`
 - `FORECASTING_SYSTEM.md`
 - `INVENTORY_DEDUCTION_AND_PO.md`
 - `ASSISTANT_RAG_MCP_ROADMAP.md`

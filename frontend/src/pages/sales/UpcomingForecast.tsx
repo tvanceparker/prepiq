@@ -8,10 +8,6 @@ export default function UpcomingForecast() {
   switch (tier) {
     case "basic":
       return <BasicUpcomingForecast />;
-    // case "pro":
-    //   return <ProUpcomingForecast />;
-    // case "master":
-    //   return <MasterUpcomingForecast />;
     default:
       return <BasicUpcomingForecast />;
   }

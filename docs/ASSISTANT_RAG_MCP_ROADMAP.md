@@ -2,13 +2,15 @@
 
 ## Status
 
-Planning guidance only. The assistant and MCP layers described here are future architecture, not current shipped platform behavior.
+Partially superseded by implementation. The phase 1 read-only assistant slice now exists across backend, web, and mobile; see `ASSISTANT_IMPLEMENTATION_STATUS.md` and `ASSISTANT_RETRIEVAL_DESIGN.md`.
+
+This document remains useful as roadmap guidance for future MCP-style write actions and possible retrieval infrastructure upgrades. Do not read its earlier "future only" framing as proof that no assistant exists.
 
 ## Purpose
 
 This document describes the recommended architecture for adding an operator-facing assistant to PrepIQ.
 
-It is intentionally separate from the current production architecture docs because the assistant and MCP layers are planned work, not current shipped platform behavior.
+It is intentionally separate from the current production architecture docs because parts of the assistant and MCP layers remain planned work. The shipped portion today is read-only Q&A with indexed retrieval over `docs/`, `notes/`, and uploaded files plus selected structured service context.
 
 ## Recommended Framing
 
@@ -35,6 +37,8 @@ That includes:
 It should not include autonomous write actions.
 
 ## Recommended Phase 1 Architecture
+
+Phase 1 has been started in the current codebase. The actual implementation uses `app/api/v1/assistant_routes.py`, `app/services/assistant_service.py`, helper modules under `app/services/helpers/`, `app/integrations/openai_client.py`, web/mobile assistant UI components, and settings APIs under `/settings/assistant`.
 
 ### 1. Keep The Assistant Inside The Existing Backend First
 
@@ -63,7 +67,6 @@ High-value sources for phase 1:
 - `InventoryService`
 - `MenuService`
 - `PrepService`
-- `TeamService`
 - `AlertsService`
 - `SettingsService`
 
@@ -100,6 +103,8 @@ app/services/helpers/assistant_indexing_service.py
 app/integrations/openai_client.py
 app/integrations/vector_store.py
 ```
+
+Actual current note: the codebase has query routing, context building, prompt building, upload-aware indexing, heuristic reranking, OpenAI client integration, and a database-backed vector retrieval path. A dedicated external vector database is not active yet.
 
 Suggested client surfaces:
 
@@ -174,7 +179,7 @@ It needs structured backend integration for:
 - live restaurant state
 - current forecasts
 - current inventory and purchase orders
-- staffing and alerts
+- alerts
 
 ## Recommended Delivery Order
 

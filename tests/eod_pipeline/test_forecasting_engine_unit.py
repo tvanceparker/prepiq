@@ -19,7 +19,7 @@ class TestForecastingEngineUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test initialize is a no-op for advanced pipeline."""
-        engine = ForecastingEngine(mock_db_session, restaurant_id, "master")
+        engine = ForecastingEngine(mock_db_session, restaurant_id, "full")
         
         # Should not raise
         await engine.initialize()
@@ -29,7 +29,7 @@ class TestForecastingEngineUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test alert creation."""
-        engine = ForecastingEngine(mock_db_session, restaurant_id, "master")
+        engine = ForecastingEngine(mock_db_session, restaurant_id, "full")
         engine.alert_repo.create = AsyncMock()
         
         await engine._raise_alert(
@@ -51,7 +51,7 @@ class TestForecastingEngineUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test confidence score derivation with MAPE and R2."""
-        engine = ForecastingEngine(mock_db_session, restaurant_id, "master")
+        engine = ForecastingEngine(mock_db_session, restaurant_id, "full")
         
         metrics = {
             "mape": 0.15,  # 15% error -> confidence ~0.85
@@ -69,7 +69,7 @@ class TestForecastingEngineUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test confidence score returns None when no metrics available."""
-        engine = ForecastingEngine(mock_db_session, restaurant_id, "master")
+        engine = ForecastingEngine(mock_db_session, restaurant_id, "full")
         
         result = engine._derive_confidence_score(None)
         
@@ -80,7 +80,7 @@ class TestForecastingEngineUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test confidence score returns None for empty metrics."""
-        engine = ForecastingEngine(mock_db_session, restaurant_id, "master")
+        engine = ForecastingEngine(mock_db_session, restaurant_id, "full")
         
         result = engine._derive_confidence_score({})
         
@@ -91,7 +91,7 @@ class TestForecastingEngineUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test retrain decision when no model exists."""
-        engine = ForecastingEngine(mock_db_session, restaurant_id, "master")
+        engine = ForecastingEngine(mock_db_session, restaurant_id, "full")
         
         with patch('app.services.forecasting_engine.load_model', return_value=None):
             with patch('h2o.init'):
@@ -109,7 +109,7 @@ class TestForecastingEngineUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test retrain decision when accuracy is poor."""
-        engine = ForecastingEngine(mock_db_session, restaurant_id, "master")
+        engine = ForecastingEngine(mock_db_session, restaurant_id, "full")
         engine._compute_forecast_accuracy_metrics = AsyncMock(return_value={
             "mape": 0.30,  # Above threshold of 0.20
             "r2": 0.50,    # Below threshold of 0.70
@@ -131,7 +131,7 @@ class TestForecastingEngineUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test no retrain when accuracy is acceptable."""
-        engine = ForecastingEngine(mock_db_session, restaurant_id, "master")
+        engine = ForecastingEngine(mock_db_session, restaurant_id, "full")
         engine._compute_forecast_accuracy_metrics = AsyncMock(return_value={
             "mape": 0.10,  # Below threshold
             "r2": 0.85,    # Above threshold
@@ -153,7 +153,7 @@ class TestForecastingEngineUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test batch recipe breakdown from menu item forecasts."""
-        engine = ForecastingEngine(mock_db_session, restaurant_id, "master")
+        engine = ForecastingEngine(mock_db_session, restaurant_id, "full")
         
         # Mock recipe data
         engine.menu_item_recipe_repo.get_by_menu_item = AsyncMock(return_value=[
@@ -186,7 +186,7 @@ class TestForecastingEngineUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test ingredient breakdown from menu item and batch forecasts."""
-        engine = ForecastingEngine(mock_db_session, restaurant_id, "master")
+        engine = ForecastingEngine(mock_db_session, restaurant_id, "full")
         
         # Mock menu item recipe ingredients
         engine.menu_item_recipe_repo.get_recipe_ids_for_menu_item = AsyncMock(return_value=[301])
@@ -230,7 +230,7 @@ class TestForecastingEngineUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test ingredient demand aggregation for reorder planning."""
-        engine = ForecastingEngine(mock_db_session, restaurant_id, "master")
+        engine = ForecastingEngine(mock_db_session, restaurant_id, "full")
         
         engine.ingredient_repo.get_by_id = AsyncMock(side_effect=lambda id: MagicMock(unit="lb"))
         
@@ -252,7 +252,7 @@ class TestForecastingEngineUnit:
         self, mock_db_session, restaurant_id, sample_sales_data
     ):
         """Test ingredient usage derivation from sales data."""
-        engine = ForecastingEngine(mock_db_session, restaurant_id, "master")
+        engine = ForecastingEngine(mock_db_session, restaurant_id, "full")
         
         engine.sales_repo.get_sales_between_dates = AsyncMock(return_value=sample_sales_data)
         engine.menu_item_recipe_repo.get_recipe_ids_for_menu_item = AsyncMock(return_value=[301])
@@ -277,7 +277,7 @@ class TestForecastingEngineUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test batch prep suggestions generation."""
-        engine = ForecastingEngine(mock_db_session, restaurant_id, "master")
+        engine = ForecastingEngine(mock_db_session, restaurant_id, "full")
         
         # Setup latest forecasts
         engine.latest_menu_item_forecasts = {
@@ -309,7 +309,7 @@ class TestForecastingEngineUnit:
         self, mock_db_session, restaurant_id
     ):
         """Test batch prep suggestions when no batches needed."""
-        engine = ForecastingEngine(mock_db_session, restaurant_id, "master")
+        engine = ForecastingEngine(mock_db_session, restaurant_id, "full")
         
         engine.latest_menu_item_forecasts = {
             101: {

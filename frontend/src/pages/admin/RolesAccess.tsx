@@ -9,9 +9,7 @@ export default function TenantInfo() {
   switch (tier) {
     case "basic":
       return <RolesAccessBasic />;
-    // case "pro":
-    //   return <TenantInfoPro />;
-    case "master":
+    case "full":
       return <RolesAccessBasic />;
     default:
       return <RolesAccessBasic />;

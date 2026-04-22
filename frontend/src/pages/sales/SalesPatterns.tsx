@@ -8,10 +8,6 @@ export default function SalesPatterns() {
   switch (tier) {
     case "basic":
       return <SalesPatternsBasic />;
-    // case "pro":
-    //   return <MenuMixInsightsPro />;
-    // case "master":
-    //   return <MenuMixInsightsMaster />;
     default:
       return <SalesPatternsBasic />;
   }

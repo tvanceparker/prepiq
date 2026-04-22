@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document describes the current integration model in the backend, with emphasis on external POS integration and the internal POS runtime that coexists with it.
+This document describes the current integration model in the backend, with emphasis on external POS integration. Internal POS is not being used right now. Older internal POS runtime artifacts still exist in docs/migrations and should be treated as legacy.
 
 ## Integration Categories
 
@@ -10,8 +10,9 @@ Current integration-related behavior includes:
 
 - external POS provider connection and sync
 - POS webhooks
-- internal POS mode and device runtime
-- Stripe terminal and cash drawer surfaces
+- POS mode settings
+- device registration support under auth
+- assistant OpenAI key/configuration support
 - operational support data such as weather for forecasting
 
 ## External POS Integration
@@ -65,11 +66,11 @@ Planned but not yet implemented:
 - Toast webhook endpoint
 - Clover webhook endpoint
 
-## Internal POS Runtime
+## Internal POS Legacy Artifacts
 
-Internal POS flows are separate from external POS sync.
+Internal POS is not a current product surface.
 
-The current `/pos` surface includes:
+Legacy/internal POS artifacts include references to:
 
 - device registration and settings
 - order creation and updates
@@ -79,10 +80,12 @@ The current `/pos` surface includes:
 - terminal payment flows
 - POS mode configuration
 
-This means the product currently supports both:
+Current interpretation:
 
-- an internal POS operating surface
-- an external POS integration surface
+- external POS integration is the active integration surface
+- `/orders` is a mounted backend API, but no current sidebar order-entry page was found
+- device registration exists under `/auth/register-device`, not a mounted broad `/pos` route group
+- cash drawer and terminal reader surfaces should be treated as legacy
 
 ## Restaurant-Level Integration Fields
 
@@ -96,7 +99,9 @@ The restaurant record currently stores integration-related state such as:
 - `pos_last_sync`
 - sync flags for orders, payments, and menu
 - `pos_mode`
-- terminal and cash drawer fields
+- assistant settings and encrypted assistant API-key fields
+
+Some legacy terminal and cash-drawer fields or migrations may still exist, but they are not the current active integration story.
 
 ## Security Model
 
@@ -111,14 +116,14 @@ Current integration security includes:
 
 When documenting integrations, keep these distinctions explicit:
 
-- external POS integration versus internal POS runtime
+- external POS integration versus legacy internal POS artifacts
 - OAuth setup versus ongoing sync behavior
 - merchant mapping versus restaurant configuration
 - current provider support versus planned provider support
 
 ## Assistant Implications
 
-The future assistant should be able to explain:
+The current assistant should be able to explain:
 
 - whether a restaurant is connected to an external POS
 - when the last sync occurred

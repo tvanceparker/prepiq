@@ -20,12 +20,22 @@ class TenantInfoResponse(BaseModel):
     city: Optional[str]
     state: Optional[str]
     zip_code: Optional[str]
-    subscription_tier: Literal['basic', 'pro', 'master']
+    subscription_tier: Literal['basic', 'full']
     subscription_status: Literal['active', 'inactive']
     expiry_date: Optional[date]
     hours_of_operation: List[DayHours]
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("subscription_tier", mode="before")
+    @classmethod
+    def normalize_subscription_tier(cls, v):
+        if isinstance(v, str):
+            normalized = v.strip().lower()
+            if normalized in {"pro", "master"}:
+                return "full"
+            return normalized
+        return v
 
     @field_validator("hours_of_operation", mode="before")
     @classmethod

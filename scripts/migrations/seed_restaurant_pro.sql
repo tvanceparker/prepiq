@@ -1,6 +1,6 @@
 -- scripts/migrations/seed_restaurant_pro.sql
--- Seed data for Restaurant ID 4: Snake River Taqueria (Pro Tier)
--- Pro tier: Full inventory, recipes, batches with nested support
+-- Seed data for Restaurant ID 4: Snake River Taqueria (Full Tier)
+-- Full tier sample: inventory, recipes, batches with nested support
 -- 
 -- Run: mysql -u user -p database < scripts/migrations/seed_restaurant_pro.sql
 -- After seeding: python scripts/backfill_weather.py --start 2025-06-25 --end 2025-12-24
@@ -52,7 +52,7 @@ INSERT INTO restaurants (
     pos_provider, pos_connected, pos_mode
 ) VALUES (
     4, 'Snake River Taqueria', '208-555-0104', '789 Riverside Ave', 'Twin Falls', 'ID', '83301',
-    42.5630, -114.4720, 'pro', 'info@snakerivertaqueria.com', 'active',
+    42.5630, -114.4720, 'full', 'info@snakerivertaqueria.com', 'active',
     '2026-12-31', 14,
     '{"mon": {"open": "10:00", "close": "22:00"}, "tue": {"open": "10:00", "close": "22:00"}, "wed": {"open": "10:00", "close": "22:00"}, "thu": {"open": "10:00", "close": "22:00"}, "fri": {"open": "10:00", "close": "23:00"}, "sat": {"open": "09:00", "close": "23:00"}, "sun": {"open": "09:00", "close": "21:00"}}',
     6.00, 'America/Boise', TRUE, 60,
@@ -62,7 +62,7 @@ INSERT INTO restaurants (
 );
 
 -- ============================================================================
--- PERMISSIONS (Pro tier: 15 permissions)
+-- PERMISSIONS (Full tier sample: 15 permissions)
 -- ============================================================================
 INSERT INTO permissions (permission_id, restaurant_id, name, description) VALUES
 (401, 4, 'view_menu', 'View menu items'),
@@ -470,7 +470,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- 3. Generate 6 months of sales data programmatically for realistic forecasting
 --
 -- Notes:
--- - Pro tier includes: ingredients, suppliers, recipes, batches (with nesting), inventory
+-- - Full tier sample includes: ingredients, suppliers, recipes, batches (with nesting), inventory
 -- - Guacamole batch references Pico de Gallo batch (nested batch support)
 -- - Batch-produced inventory lots have NULL ingredient_supplier_id
 -- ============================================================================

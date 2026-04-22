@@ -22,7 +22,7 @@ class Restaurant(Base):
     # Latitude / longitude for geocoded restaurant address (nullable until backfilled)
     latitude = Column(DECIMAL(9,6), nullable=True)
     longitude = Column(DECIMAL(9,6), nullable=True)
-    subscription_tier = Column(Enum('basic', 'pro', 'master'), nullable=False, default='basic')
+    subscription_tier = Column(Enum('basic', 'full'), nullable=False, default='basic')
     email = Column(String(255))
     subscription_status = Column(String(20), default='inactive') 
     expiry_date = Column(Date)
@@ -54,6 +54,9 @@ class Restaurant(Base):
     pos_sync_payments = Column(Boolean, default=True)  # Sync payment data
     pos_sync_menu = Column(Boolean, default=False)  # Sync menu items from POS
     pos_mode = Column(Enum('none', 'external'), nullable=False, default='none')
+    assistant_openai_api_key = Column(Text, nullable=True)  # Encrypted per-restaurant key
+    assistant_openai_api_key_last4 = Column(String(4), nullable=True)
+    assistant_openai_api_key_updated_at = Column(DateTime, nullable=True)
 
 
     ingredients = relationship("Ingredient", back_populates="restaurant")

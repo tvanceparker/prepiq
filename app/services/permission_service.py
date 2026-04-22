@@ -6,10 +6,10 @@ from app.repositories.role_permissions_repo import RolePermissionRepository
 from app.repositories.roles_repo import RoleRepository
 from app.services.utils.permissions import (
     DEFAULT_PERMISSIONS_BASIC, DEFAULT_ROLE_PERMISSIONS_BASIC,
-    DEFAULT_PERMISSIONS_PRO, DEFAULT_ROLE_PERMISSIONS_PRO,
     DEFAULT_PERMISSIONS_MASTER, DEFAULT_ROLE_PERMISSIONS_MASTER,
-    DEFAULT_ROLES_BASIC, DEFAULT_ROLES_PRO, DEFAULT_ROLES_MASTER
+    DEFAULT_ROLES_BASIC, DEFAULT_ROLES_MASTER
 )
+from app.services.utils.subscription_tiers import normalize_subscription_tier
 
 class PermissionUtil:
     @staticmethod
@@ -19,21 +19,19 @@ class PermissionUtil:
         # Tier-specific permissions and roles
         tier_permissions = {
             "basic": DEFAULT_PERMISSIONS_BASIC,
-            "pro": DEFAULT_PERMISSIONS_PRO,
-            "master": DEFAULT_PERMISSIONS_MASTER,
+            "full": DEFAULT_PERMISSIONS_MASTER,
         }
 
         tier_roles_permissions = {
             "basic": DEFAULT_ROLE_PERMISSIONS_BASIC,
-            "pro": DEFAULT_ROLE_PERMISSIONS_PRO,
-            "master": DEFAULT_ROLE_PERMISSIONS_MASTER,
+            "full": DEFAULT_ROLE_PERMISSIONS_MASTER,
         }
 
         # Fetch all restaurants
         all_restaurants = await restaurant_repo.get_all_restaurants()
 
         for restaurant in all_restaurants:
-            tier = restaurant.subscription_tier.lower()
+            tier = normalize_subscription_tier(restaurant.subscription_tier)
             restaurant_id = restaurant.restaurant_id
 
             if tier not in tier_permissions:
@@ -50,8 +48,7 @@ class PermissionUtil:
             # Create or update roles with descriptions based on tier
             default_roles_map = {
                 "basic": DEFAULT_ROLES_BASIC,
-                "pro": DEFAULT_ROLES_PRO,
-                "master": DEFAULT_ROLES_MASTER,
+                "full": DEFAULT_ROLES_MASTER,
             }
 
             # Create roles for the current tier if not exist

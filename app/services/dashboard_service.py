@@ -325,7 +325,7 @@ class DashboardService:
 
     async def get_daily_overview_data(self):
         # Return the basic overview for all tiers to ensure a valid response.
-        # Pro/Master dashboards use a separate /pro-overview endpoint.
+        # Full dashboards use a separate legacy /pro-overview endpoint.
         data = await self._get_basic_overview()
         return DailyOverviewOut(**data)
 
@@ -996,7 +996,7 @@ class DashboardService:
     @log_method()
     async def get_pro_daily_overview(self) -> ProDailyOverviewOut:
         """
-        Comprehensive daily overview for Pro/Master tier with:
+        Comprehensive daily overview for Full tier with:
         - Basic metrics
         - Inventory summary & alerts
         - Prep schedule & task completion

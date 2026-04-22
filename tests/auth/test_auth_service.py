@@ -51,7 +51,7 @@ class TestAuthService:
 
         # Mock restaurant repository
         mock_restaurant_repo = AsyncMock()
-        mock_restaurant_repo.get_subscription_tier.return_value = 'pro'
+        mock_restaurant_repo.get_subscription_tier.return_value = 'full'
 
         with (patch('app.services.auth_service.RestaurantRepository') as mock_restaurant_class,
               patch('app.services.auth_service.create_access_token') as mock_create_token,
@@ -68,7 +68,7 @@ class TestAuthService:
 
             assert user == mock_employee
             assert token == 'mock-jwt-token'
-            assert tier == 'pro'
+            assert tier == 'full'
             assert expires_in == 2592000
 
             mock_repos['employees'].get_by_username.assert_called_once_with('testuser')

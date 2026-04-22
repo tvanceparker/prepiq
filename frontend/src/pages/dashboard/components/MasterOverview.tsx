@@ -328,7 +328,7 @@ export default function MasterOverview({ data }: MasterOverviewProps) {
         <Box display="flex" gap={1}>
           <Chip
             icon={<StarIcon />}
-            label="Master Tier"
+            label="Full Tier"
             color="primary"
             variant="filled"
             sx={{ fontWeight: 600 }}
@@ -440,7 +440,7 @@ export default function MasterOverview({ data }: MasterOverviewProps) {
                   Quick Actions
                 </Typography>
               }
-              subheader="Master tier features at your fingertips"
+              subheader="Full tier features at your fingertips"
             />
             <Divider />
             <CardContent>

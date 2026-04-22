@@ -113,13 +113,13 @@ export default function ProRestaurantSettingsModal({
             helperText={
               errors.inventory_deduction_mode ||
               (formData.inventory_deduction_mode === 'real_time'
-                ? 'Real-time mode deducts inventory when each order completes (Pro/Master).'
+                ? 'Real-time mode deducts inventory when each order completes (Full).'
                 : 'EOD mode deducts inventory during the nightly end-of-day job.')
             }
             margin="normal"
           >
             <MenuItem value="eod">End of Day (default)</MenuItem>
-            <MenuItem value="real_time">Real-time (requires Pro/Master)</MenuItem>
+            <MenuItem value="real_time">Real-time (requires Full)</MenuItem>
           </TextField>
 
           <Box mt={2}>

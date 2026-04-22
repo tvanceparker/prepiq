@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, List, Dict, Any, Annotated
 from pydantic import BaseModel, EmailStr, Field
 from enum import Enum
@@ -37,6 +38,18 @@ class UpdateRestaurantSettingsDTO(BaseModel):
     kitchen_mode: Optional[str] = None
     ui_layout_size: Optional[str] = None
     inventory_deduction_mode: Optional[InventoryDeductionMode] = None
+
+
+class AssistantSettingsDTO(BaseModel):
+    enabled: bool = False
+    api_key_configured: bool = False
+    api_key_last4: Optional[str] = None
+    api_key_updated_at: Optional[datetime] = None
+
+
+class UpdateAssistantSettingsDTO(BaseModel):
+    enabled: Optional[bool] = None
+    openai_api_key: Optional[Annotated[str, Field(min_length=20)]] = None
 
 # ---- Account Management ----
 class ChangePasswordDTO(BaseModel):
