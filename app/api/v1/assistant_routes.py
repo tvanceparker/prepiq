@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, File, UploadFile
 
-from app.api.dependencies import get_assistant_service
+from app.api.dependencies import get_assistant_service, oauth2_scheme
 from app.schemas.assistant_dto import (
     AssistantDocumentDTO,
     AssistantDocumentUploadResponseDTO,
     AssistantQueryRequestDTO,
     AssistantQueryResponseDTO,
+    AssistantReindexResponseDTO,
 )
 from app.services.assistant_service import AssistantService
 from app.utils.logger_helpers import log_route
@@ -18,9 +19,10 @@ router = APIRouter(prefix="/assistant", tags=["Assistant"])
 @log_route("Assistant Query")
 async def query_assistant(
     payload: AssistantQueryRequestDTO,
+    token: str = Depends(oauth2_scheme),
     assistant_service: AssistantService = Depends(get_assistant_service),
 ):
-    return await assistant_service.query(payload)
+    return await assistant_service.query(payload, raw_token=token)
 
 
 @router.get("/documents", response_model=list[AssistantDocumentDTO])
@@ -40,7 +42,7 @@ async def upload_assistant_document(
     return await assistant_service.upload_document(file)
 
 
-@router.post("/reindex")
+@router.post("/reindex", response_model=AssistantReindexResponseDTO)
 @log_route("Assistant Reindex")
 async def reindex_assistant_documents(
     assistant_service: AssistantService = Depends(get_assistant_service),

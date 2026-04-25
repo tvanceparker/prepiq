@@ -1,25 +1,32 @@
 import os
+import json
+import re
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.openai_client import OpenAIClient
+from app.integrations.openai_client import OpenAIClient, OpenAIToolInvocation
 from app.repositories.restaurants_repo import RestaurantRepository
 from app.schemas.assistant_dto import (
     AssistantDocumentDTO,
     AssistantCitationDTO,
     AssistantDocumentUploadResponseDTO,
+    AssistantActionResultDTO,
     AssistantQueryRequestDTO,
     AssistantQueryResponseDTO,
+    AssistantPendingActionDTO,
+    AssistantReindexResponseDTO,
     AssistantResponseStatus,
 )
+from app.services.helpers.assistant_action_state import assistant_action_state
 from app.services.helpers.assistant_context_builder import AssistantContextBuilder
 from app.services.helpers.assistant_indexing_service import AssistantIndexingService
 from app.services.helpers.assistant_prompt_builder import AssistantPromptBuilder
 from app.services.helpers.assistant_query_router import AssistantQueryRouter
 from app.services.helpers.assistant_reranker import AssistantReranker
 from app.services.helpers.assistant_retriever import AssistantRetriever
+from app.services.helpers.assistant_tool_executor import AssistantToolExecutor
 from app.utils.secret_encryption import decrypt_secret
 from app.utils.logger_helpers import log_method
 
@@ -45,7 +52,7 @@ class AssistantService:
         )
 
     @log_method("Assistant Query")
-    async def query(self, payload: AssistantQueryRequestDTO) -> AssistantQueryResponseDTO:
+    async def query(self, payload: AssistantQueryRequestDTO, *, raw_token: str | None = None) -> AssistantQueryResponseDTO:
         restaurant = await self.restaurant_repo.get_by_id(self.restaurant_id)
         if not restaurant:
             raise HTTPException(status_code=404, detail="Restaurant not found")
@@ -64,6 +71,10 @@ class AssistantService:
                 ),
                 warnings=["Assistant settings are present, but the assistant is not enabled."],
             )
+
+        pending_action_response = await self._maybe_handle_pending_action(payload, retrieval_mode, raw_token=raw_token)
+        if pending_action_response:
+            return pending_action_response
 
         restaurant_key, key_warning = self._resolve_restaurant_api_key(restaurant)
         openai_client = OpenAIClient(api_key=restaurant_key or os.getenv("OPENAI_API_KEY"))
@@ -130,10 +141,35 @@ class AssistantService:
             document_chunks=document_chunks,
         )
 
+        tool_invocations: list[OpenAIToolInvocation] = []
+        tool_executor = None
+        if retrieval_mode.value != "document":
+            tool_executor = AssistantToolExecutor(
+                self.db,
+                self.restaurant_id,
+                self.subscription_tier,
+                self.employee_id,
+                payload.query,
+                raw_token=raw_token,
+                conversation_id=payload.conversation_id,
+            )
+
         try:
-            answer = await openai_client.generate_answer(messages)
+            if tool_executor:
+                generation = await openai_client.generate_answer_with_tools(
+                    messages=messages,
+                    tools=tool_executor.get_openai_tools(),
+                    tool_executor=tool_executor.execute_tool,
+                )
+                answer = generation.answer
+                tool_invocations = generation.tool_invocations
+            else:
+                answer = await openai_client.generate_answer(messages)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Assistant generation failed: {exc}") from exc
+
+        if tool_invocations:
+            citations.extend(self._build_tool_citations(tool_invocations))
 
         return AssistantQueryResponseDTO(
             status=AssistantResponseStatus.scaffolded,
@@ -145,8 +181,11 @@ class AssistantService:
                 structured_sections,
                 indexing_warnings=indexing_warnings,
                 indexed_count=indexed_count,
+                tool_invocations=tool_invocations,
             ),
             citations=citations,
+            pending_action=self._build_pending_action_dto(tool_executor.pending_action if tool_executor else None),
+            action_result=self._build_action_result(tool_invocations),
         )
 
     @log_method("Assistant Upload Document")
@@ -163,14 +202,14 @@ class AssistantService:
 
     @log_method("Assistant List Documents")
     async def list_uploaded_documents(self) -> list[AssistantDocumentDTO]:
-        documents = await self.indexing_service.list_uploaded_documents()
+        documents = await self.indexing_service.list_documents()
         return [self._serialize_document(document) for document in documents]
 
     @log_method("Assistant Reindex Documents")
-    async def reindex_documents(self) -> dict:
+    async def reindex_documents(self) -> AssistantReindexResponseDTO:
         openai_client = await self._get_configured_openai_client()
-        indexed_count = await self.indexing_service.reindex_builtins(openai_client)
-        return {"indexed_count": indexed_count}
+        result = await self.indexing_service.reindex_builtins(openai_client)
+        return AssistantReindexResponseDTO(**result)
 
     def _build_document_citations(self, chunks: list[dict]) -> list[AssistantCitationDTO]:
         citations = []
@@ -185,6 +224,43 @@ class AssistantService:
                 )
             )
         return citations
+
+    def _build_tool_citations(self, invocations: list[OpenAIToolInvocation]) -> list[AssistantCitationDTO]:
+        citations = []
+        for invocation in invocations:
+            result_snippet = json.dumps(invocation.result, default=str)[:220]
+            label_prefix = "MCP Action Tool" if invocation.result.get("audit_id") is not None else "MCP Query Tool"
+            citations.append(
+                AssistantCitationDTO(
+                    source_type="tool",
+                    label=f"{label_prefix}: {invocation.name}",
+                    snippet=result_snippet,
+                )
+            )
+        return citations
+
+    def _build_action_result(
+        self,
+        invocations: list[OpenAIToolInvocation],
+    ) -> AssistantActionResultDTO | None:
+        for invocation in reversed(invocations):
+            if invocation.result.get("audit_id") is None:
+                continue
+            return AssistantActionResultDTO(
+                tool=invocation.name,
+                status=str(invocation.result.get("status") or "unknown"),
+                audit_id=invocation.result.get("audit_id"),
+                idempotent_replay=bool(invocation.result.get("idempotent_replay")),
+            )
+        return None
+
+    def _build_pending_action_dto(
+        self,
+        pending_action,
+    ) -> AssistantPendingActionDTO | None:
+        if not pending_action:
+            return None
+        return AssistantPendingActionDTO(**pending_action.to_public_dict())
 
     def _merge_document_context(self, base_chunks: list[dict], expanded_chunks: list[dict]) -> list[dict]:
         seen = set()
@@ -205,6 +281,7 @@ class AssistantService:
         *,
         indexing_warnings: list[str] | None = None,
         indexed_count: int = 0,
+        tool_invocations: list[OpenAIToolInvocation] | None = None,
     ) -> list[str]:
         warnings = []
         warnings.extend(indexing_warnings or [])
@@ -212,7 +289,124 @@ class AssistantService:
             warnings.append("No structured live-data sources matched this query strongly enough on the first pass.")
         if retrieval_mode != "structured" and not reranked_candidates:
             warnings.append("No strong document matches were found in indexed docs, notes, or uploads.")
+        for invocation in tool_invocations or []:
+            if invocation.result.get("ok") is False:
+                error = invocation.result.get("error") or {}
+                warnings.append(
+                    f"Assistant tool {invocation.name} failed: {error.get('message') or 'Unknown tool error.'}"
+                )
+            elif invocation.result.get("requires_confirmation"):
+                warnings.append(f"Assistant action {invocation.name} is staged and waiting for your confirmation.")
         return warnings
+
+    async def _maybe_handle_pending_action(
+        self,
+        payload: AssistantQueryRequestDTO,
+        retrieval_mode,
+        *,
+        raw_token: str | None,
+    ) -> AssistantQueryResponseDTO | None:
+        if not payload.conversation_id:
+            return None
+
+        pending_action = assistant_action_state.get(
+            restaurant_id=self.restaurant_id,
+            employee_id=self.employee_id,
+            conversation_id=payload.conversation_id,
+        )
+        if not pending_action:
+            return None
+
+        if self._is_cancellation_request(payload.query):
+            assistant_action_state.clear(
+                restaurant_id=self.restaurant_id,
+                employee_id=self.employee_id,
+                conversation_id=payload.conversation_id,
+            )
+            return AssistantQueryResponseDTO(
+                status=AssistantResponseStatus.scaffolded,
+                retrieval_mode=retrieval_mode,
+                answer=f"Cancelled the pending {pending_action.tool_name} action.",
+                action_result=AssistantActionResultDTO(
+                    tool=pending_action.tool_name,
+                    status="cancelled",
+                    audit_id=pending_action.audit_id,
+                ),
+            )
+
+        if not self._is_confirmation_request(payload.query):
+            return None
+
+        executor = AssistantToolExecutor(
+            self.db,
+            self.restaurant_id,
+            self.subscription_tier,
+            self.employee_id,
+            pending_action.operator_intent,
+            raw_token=raw_token,
+            conversation_id=payload.conversation_id,
+        )
+        result = await executor.execute_pending_action(pending_action)
+        assistant_action_state.clear(
+            restaurant_id=self.restaurant_id,
+            employee_id=self.employee_id,
+            conversation_id=payload.conversation_id,
+        )
+
+        warnings = []
+        if not result.get("ok"):
+            error = result.get("error") or {}
+            warnings.append(error.get("message") or "The pending assistant action failed.")
+
+        citations = [
+            AssistantCitationDTO(
+                source_type="tool",
+                label=f"MCP Action Tool: {pending_action.tool_name}",
+                snippet=json.dumps(result, default=str)[:220],
+            )
+        ]
+        return AssistantQueryResponseDTO(
+            status=AssistantResponseStatus.scaffolded,
+            retrieval_mode=retrieval_mode,
+            answer=self._format_pending_action_result(pending_action.tool_name, result),
+            warnings=warnings,
+            citations=citations,
+            action_result=AssistantActionResultDTO(
+                tool=pending_action.tool_name,
+                status=str(result.get("status") or "unknown"),
+                audit_id=result.get("audit_id"),
+                idempotent_replay=bool(result.get("idempotent_replay")),
+            ),
+        )
+
+    def _format_pending_action_result(self, tool_name: str, result: dict) -> str:
+        if result.get("ok"):
+            return f"Confirmed and executed {tool_name} successfully."
+        error = result.get("error") or {}
+        return f"I tried to execute {tool_name}, but it failed: {error.get('message') or 'Unknown error.'}"
+
+    def _is_confirmation_request(self, query: str) -> bool:
+        normalized = re.sub(r"[^a-z]+", " ", query.lower()).strip()
+        return normalized in {
+            "confirm",
+            "yes",
+            "yes confirm",
+            "confirm it",
+            "do it",
+            "go ahead",
+            "approve",
+        }
+
+    def _is_cancellation_request(self, query: str) -> bool:
+        normalized = re.sub(r"[^a-z]+", " ", query.lower()).strip()
+        return normalized in {
+            "cancel",
+            "never mind",
+            "stop",
+            "dont do that",
+            "do not do that",
+            "no cancel",
+        }
 
     async def _get_configured_openai_client(self) -> OpenAIClient:
         restaurant = await self.restaurant_repo.get_by_id(self.restaurant_id)

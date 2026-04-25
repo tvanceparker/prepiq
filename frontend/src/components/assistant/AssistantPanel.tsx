@@ -154,7 +154,7 @@ export default function AssistantPanel({
                 theme.palette.mode === 'dark' ? 'rgba(240,217,170,0.25)' : undefined,
             }}
           >
-            Reindex Built-ins
+            Reindex Docs & Notes
           </Button>
           {isUploading && (
             <Typography variant="caption" color="text.secondary">
@@ -169,7 +169,7 @@ export default function AssistantPanel({
               <Chip
                 key={document.document_id}
                 size="small"
-                label={`${document.display_name} · ${document.index_status}`}
+                label={`${document.source_type} · ${document.display_name} · ${document.index_status}`}
                 variant="outlined"
                 sx={{
                   bgcolor: theme =>

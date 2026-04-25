@@ -1,5 +1,8 @@
+import pytest
+
 from app.schemas.assistant_dto import AssistantRetrievalMode
 from app.services.helpers.assistant_context_builder import AssistantContextBuilder
+from app.services.helpers.assistant_indexing_service import AssistantIndexingService
 from app.services.helpers.assistant_query_router import AssistantQueryRouter
 from app.services.helpers.assistant_reranker import AssistantReranker
 
@@ -107,3 +110,29 @@ def test_reorder_reranker_prefers_replenishment_docs():
     reranked = AssistantReranker().rerank("how do you reorder ingredients?", candidates, top_k=2)
 
     assert reranked[0]["path"] == "docs/REPLENISHMENT_POLICY_ENGINE.md"
+
+
+@pytest.mark.asyncio
+async def test_reindex_builtins_counts_changed_docs_even_with_warning(monkeypatch, tmp_path):
+    docs_root = tmp_path / "docs"
+    notes_root = tmp_path / "notes"
+    docs_root.mkdir()
+    notes_root.mkdir()
+    (docs_root / "assistant.md").write_text("# Built-in assistant doc", encoding="utf-8")
+    (notes_root / "operator.txt").write_text("Operator note", encoding="utf-8")
+
+    service = AssistantIndexingService(db=None, restaurant_id=1, repo_root=str(tmp_path))
+
+    async def fake_index_file_path(*, path, source_type, openai_client):
+        if path.name == "assistant.md":
+            return True, "Built-in document embeddings were rate-limited; using lexical retrieval."
+        return True, None
+
+    monkeypatch.setattr(service, "_index_file_path", fake_index_file_path)
+
+    summary = await service.reindex_builtins(openai_client=object())
+
+    assert summary["scanned_count"] == 2
+    assert summary["indexed_count"] == 2
+    assert summary["warning_count"] == 1
+    assert len(summary["warnings"]) == 1

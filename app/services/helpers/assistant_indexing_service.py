@@ -42,6 +42,35 @@ class AssistantIndexingService:
         *,
         max_documents: int | None = 2,
     ) -> tuple[int, list[str]]:
+        _scanned_count, indexed_count, warnings = await self._scan_builtin_sources(
+            openai_client,
+            max_documents=max_documents,
+        )
+        return indexed_count, warnings
+
+    async def list_documents(self):
+        return await self.documents_repo.list_all()
+
+    async def reindex_builtins(self, openai_client: OpenAIClient) -> dict[str, Any]:
+        scanned_count, indexed_count, warnings = await self._scan_builtin_sources(
+            openai_client,
+            max_documents=None,
+        )
+        return {
+            "scanned_count": scanned_count,
+            "indexed_count": indexed_count,
+            "warning_count": len(warnings),
+            "warnings": warnings,
+            "source_summary": "Built-in docs and notes",
+        }
+
+    async def _scan_builtin_sources(
+        self,
+        openai_client: OpenAIClient,
+        *,
+        max_documents: int | None,
+    ) -> tuple[int, int, list[str]]:
+        scanned_count = 0
         indexed_count = 0
         warnings: list[str] = []
         for source_type, root in (("docs", self.repo_root / "docs"), ("notes", self.repo_root / "notes")):
@@ -50,6 +79,7 @@ class AssistantIndexingService:
             for path in sorted(root.rglob("*")):
                 if not path.is_file() or path.suffix.lower() not in SUPPORTED_TEXT_EXTENSIONS:
                     continue
+                scanned_count += 1
                 changed, warning = await self._index_file_path(
                     path=path,
                     source_type=source_type,
@@ -57,13 +87,12 @@ class AssistantIndexingService:
                 )
                 if warning:
                     warnings.append(warning)
-                    return indexed_count, warnings
                 if not changed:
                     continue
                 indexed_count += 1
                 if max_documents is not None and indexed_count >= max_documents:
-                    return indexed_count, warnings
-        return indexed_count, warnings
+                    return scanned_count, indexed_count, warnings
+        return scanned_count, indexed_count, warnings
 
     async def index_uploaded_file(
         self,
@@ -109,16 +138,6 @@ class AssistantIndexingService:
             openai_client=openai_client,
         )
         return document
-
-    async def list_uploaded_documents(self):
-        return await self.documents_repo.list_uploaded()
-
-    async def reindex_builtins(self, openai_client: OpenAIClient) -> int:
-        indexed_count, _warnings = await self.ensure_builtin_sources_indexed(
-            openai_client,
-            max_documents=None,
-        )
-        return indexed_count
 
     async def _index_file_path(
         self,

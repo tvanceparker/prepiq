@@ -201,13 +201,20 @@ export default function AssistantFloater(): JSX.Element {
 
     try {
       const response = await reindexAssistantDocuments();
+      const warningSuffix =
+        response.warning_count > 0
+          ? ` ${response.warning_count} warning${response.warning_count === 1 ? '' : 's'} noted.`
+          : '';
       setMessages(prev => [
         ...prev,
         {
           id: makeMessageId('assistant'),
           role: 'assistant',
-          content: `Reindexed ${response.indexed_count} built-in assistant documents from docs and notes.`,
+          content:
+            `Scanned ${response.scanned_count} ${response.source_summary.toLowerCase()} and reindexed ${response.indexed_count} changed document${response.indexed_count === 1 ? '' : 's'}.` +
+            warningSuffix,
           retrievalMode: 'document',
+          warnings: response.warnings,
         },
       ]);
       triggerAvatarReaction('celebrate');

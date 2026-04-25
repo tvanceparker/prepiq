@@ -17,6 +17,19 @@ export interface AssistantQueryResponse {
   answer: string;
   warnings: string[];
   citations: AssistantCitation[];
+  pending_action?: {
+    tool: string;
+    audit_id?: number | null;
+    requires_confirmation: boolean;
+    preview?: Record<string, unknown> | null;
+    expires_at?: string | null;
+  } | null;
+  action_result?: {
+    tool: string;
+    status: string;
+    audit_id?: number | null;
+    idempotent_replay: boolean;
+  } | null;
 }
 
 export interface AssistantDocument {
@@ -33,6 +46,14 @@ export interface AssistantDocument {
 export interface AssistantDocumentUploadResponse {
   document: AssistantDocument;
   message: string;
+}
+
+export interface AssistantReindexResponse {
+  scanned_count: number;
+  indexed_count: number;
+  warning_count: number;
+  warnings: string[];
+  source_summary: string;
 }
 
 export interface AssistantChatMessage {

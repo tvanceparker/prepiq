@@ -33,3 +33,16 @@ class AssistantDocumentsRepository(BaseRepository):
         )
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+    async def list_all(self) -> List[AssistantDocument]:
+        stmt = (
+            select(AssistantDocument)
+            .where(AssistantDocument.restaurant_id == self.restaurant_id)
+            .order_by(
+                AssistantDocument.is_uploaded.asc(),
+                AssistantDocument.source_type.asc(),
+                AssistantDocument.display_name.asc(),
+            )
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()

@@ -4,6 +4,7 @@ import type {
   AssistantDocumentUploadResponse,
   AssistantQueryRequest,
   AssistantQueryResponse,
+  AssistantReindexResponse,
 } from '../interfaces/assistant';
 
 export const queryAssistant = async (
@@ -30,5 +31,5 @@ export const uploadAssistantDocument = async (
   return response.data;
 };
 
-export const reindexAssistantDocuments = async (): Promise<{ indexed_count: number }> =>
+export const reindexAssistantDocuments = async (): Promise<AssistantReindexResponse> =>
   post('/assistant/reindex');

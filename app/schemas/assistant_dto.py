@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -45,9 +45,34 @@ class AssistantDocumentUploadResponseDTO(BaseModel):
     message: str
 
 
+class AssistantReindexResponseDTO(BaseModel):
+    scanned_count: int
+    indexed_count: int
+    warning_count: int
+    warnings: List[str] = Field(default_factory=list)
+    source_summary: str
+
+
+class AssistantPendingActionDTO(BaseModel):
+    tool: str
+    audit_id: Optional[int] = None
+    requires_confirmation: bool = True
+    preview: Optional[dict[str, Any]] = None
+    expires_at: Optional[str] = None
+
+
+class AssistantActionResultDTO(BaseModel):
+    tool: str
+    status: str
+    audit_id: Optional[int] = None
+    idempotent_replay: bool = False
+
+
 class AssistantQueryResponseDTO(BaseModel):
     status: AssistantResponseStatus
     retrieval_mode: AssistantRetrievalMode
     answer: str
     warnings: List[str] = Field(default_factory=list)
     citations: List[AssistantCitationDTO] = Field(default_factory=list)
+    pending_action: Optional[AssistantPendingActionDTO] = None
+    action_result: Optional[AssistantActionResultDTO] = None
