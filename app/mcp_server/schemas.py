@@ -32,6 +32,7 @@ class QueryInput(StrictModel):
 
 
 ResolvableEntityType = Literal["menu_item", "ingredient", "recipe", "batch_recipe"]
+RecipeComponentOptionType = Literal["ingredient", "batch", "recipe"]
 
 
 class EntityResolutionRequest(StrictModel):
@@ -41,6 +42,37 @@ class EntityResolutionRequest(StrictModel):
 
 class ResolveEntitiesInput(QueryInput):
     entities: Annotated[list[EntityResolutionRequest], Field(min_length=1, max_length=20)]
+
+
+class ListRecipeComponentOptionsInput(QueryInput):
+    component_types: list[RecipeComponentOptionType] = Field(
+        default_factory=lambda: ["ingredient", "batch", "recipe"],
+        min_length=1,
+        max_length=3,
+        description=(
+            "Component option groups to return for recipe-building. Ingredient and "
+            "batch options can be used in recipe or batch-recipe components; recipe "
+            "options can only be nested inside recipes."
+        ),
+    )
+    query: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        description="Optional case-insensitive name/category/description filter.",
+    )
+    exclude_recipe_id: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Recipe id to exclude from nested recipe options when updating that recipe."
+        ),
+    )
+    limit_per_type: int = Field(
+        default=50,
+        ge=1,
+        le=100,
+        description="Maximum matching options to return for each requested component type.",
+    )
 
 
 class OrderModifierInput(StrictModel):
@@ -112,27 +144,103 @@ BatchComponentType = Literal["ingredient", "batch"]
 
 
 class RecipeComponentInput(StrictModel):
-    reference_id: Annotated[int, Field(gt=0)]
-    ingredient_type: RecipeComponentType = "ingredient"
-    quantity_used: Annotated[Decimal, Field(gt=0)]
-    unit: Annotated[str, Field(min_length=1, max_length=20)]
+    reference_id: Annotated[
+        int,
+        Field(
+            gt=0,
+            description=(
+                "Live restaurant-scoped component id. Use ingredient_id when "
+                "ingredient_type is ingredient, batch_recipe_id when it is batch, "
+                "and recipe_id when it is recipe. Resolve names with resolve_entities first."
+            ),
+        ),
+    ]
+    ingredient_type: RecipeComponentType = Field(
+        default="ingredient",
+        description=(
+            "Component kind passed to MenuService recipe ingredients. "
+            "Allowed values: ingredient, batch, or recipe."
+        ),
+    )
+    quantity_used: Annotated[
+        Decimal,
+        Field(gt=0, description="Amount of the referenced component used in this recipe."),
+    ]
+    unit: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=20,
+            description=(
+                "Unit for quantity_used. It must be compatible with the referenced "
+                "ingredient unit, batch yield_unit, or nested recipe unit."
+            ),
+        ),
+    ]
 
 
 class CreateRecipeInput(ActionInput):
-    name: Annotated[str, Field(min_length=1, max_length=100)]
-    description: Optional[str] = None
-    ingredients: list[RecipeComponentInput] = Field(default_factory=list)
+    name: Annotated[
+        str,
+        Field(min_length=1, max_length=100, description="Recipe display name."),
+    ]
+    description: Optional[str] = Field(
+        default=None,
+        description="Optional recipe notes or prep description. Omit when unknown.",
+    )
+    ingredients: list[RecipeComponentInput] = Field(
+        default_factory=list,
+        description=(
+            "Complete component list passed to MenuService.update_recipe_with_ingredients. "
+            "Each entry maps to reference_id, ingredient_type, quantity_used, and unit."
+        ),
+    )
 
 
 class UpdateRecipeInput(CreateRecipeInput):
-    recipe_id: Annotated[int, Field(gt=0)]
+    recipe_id: Annotated[
+        int,
+        Field(
+            gt=0,
+            description=(
+                "Existing recipe_id to update. Use resolve_entities before calling this "
+                "when the operator gives a recipe name."
+            ),
+        ),
+    ]
 
 
 class BatchComponentInput(StrictModel):
-    reference_id: Annotated[int, Field(gt=0)]
-    ingredient_type: BatchComponentType = "ingredient"
-    quantity_used: Annotated[Decimal, Field(gt=0)]
-    unit: Annotated[str, Field(min_length=1, max_length=20)]
+    reference_id: Annotated[
+        int,
+        Field(
+            gt=0,
+            description=(
+                "Live restaurant-scoped component id. Use ingredient_id when "
+                "ingredient_type is ingredient, or batch_recipe_id when it is batch. "
+                "Resolve names with resolve_entities first."
+            ),
+        ),
+    ]
+    ingredient_type: BatchComponentType = Field(
+        default="ingredient",
+        description="Batch recipe component kind. Allowed values: ingredient or batch.",
+    )
+    quantity_used: Annotated[
+        Decimal,
+        Field(gt=0, description="Amount of the referenced component used in this batch."),
+    ]
+    unit: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=20,
+            description=(
+                "Unit for quantity_used. It must be compatible with the referenced "
+                "ingredient unit or nested batch yield_unit."
+            ),
+        ),
+    ]
 
 
 class CreateBatchRecipeInput(ActionInput):

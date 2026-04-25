@@ -11,6 +11,7 @@ async def test_mcp_server_registers_expected_tools_with_strict_payload_schema():
     assert {
         "prepare_action_context",
         "resolve_entities",
+        "list_recipe_component_options",
         "create_order",
         "update_order",
         "change_order_status",

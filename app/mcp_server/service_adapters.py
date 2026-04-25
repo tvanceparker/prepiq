@@ -18,6 +18,7 @@ from app.mcp_server.schemas import (
     GetPurchaseOrderSuggestionsInput,
     ImportSalesEntriesInput,
     LinkIngredientSupplierInput,
+    ListRecipeComponentOptionsInput,
     ListIngredientSuppliersInput,
     ListInventoryStockLevelsInput,
     ListPurchaseOrdersInput,
@@ -208,6 +209,108 @@ class MCPServiceAdapters:
             "tenant_source": "authenticated_user",
             "results": jsonable(results),
         }
+
+    async def list_recipe_component_options(
+        self, payload: ListRecipeComponentOptionsInput
+    ) -> dict:
+        service = self.menu_service()
+        component_types = set(payload.component_types)
+        query = (payload.query or "").strip().lower()
+
+        def matches(*values) -> bool:
+            if not query:
+                return True
+            return any(query in str(value or "").lower() for value in values)
+
+        result: dict = {
+            "restaurant_id": self.actor.restaurant_id,
+            "tenant_source": "authenticated_user",
+            "component_contract": {
+                "reference_id": (
+                    "Use ingredient_id for ingredient options, batch_recipe_id for "
+                    "batch options, and recipe_id for recipe options."
+                ),
+                "ingredient_type": ["ingredient", "batch", "recipe"],
+                "quantity_used": "Positive amount of the referenced component used.",
+                "unit": (
+                    "Use a unit compatible with source_unit. Recipe options have no "
+                    "source unit, so choose an operator-meaningful prep or portion unit."
+                ),
+            },
+            "filters": {
+                "component_types": list(payload.component_types),
+                "query": payload.query,
+                "exclude_recipe_id": payload.exclude_recipe_id,
+                "limit_per_type": payload.limit_per_type,
+            },
+        }
+
+        if "ingredient" in component_types:
+            ingredients = await service.ingredient_repo.get_all(limit=500)
+            rows = [
+                {
+                    "component_type": "ingredient",
+                    "reference_id": ingredient.ingredient_id,
+                    "source_id_field": "ingredient_id",
+                    "name": ingredient.name,
+                    "source_unit": ingredient.unit,
+                    "category": ingredient.category,
+                    "usable_for_recipe": True,
+                    "usable_for_batch_recipe": True,
+                }
+                for ingredient in ingredients
+                if matches(ingredient.name, ingredient.category)
+            ][: payload.limit_per_type]
+            result["ingredients"] = jsonable(rows)
+
+        if "batch" in component_types:
+            batch_recipes = await service.batch_recipe_repo.get_active()
+            rows = [
+                {
+                    "component_type": "batch",
+                    "reference_id": batch.batch_recipe_id,
+                    "source_id_field": "batch_recipe_id",
+                    "name": batch.name,
+                    "description": batch.description,
+                    "source_unit": batch.yield_unit,
+                    "yield_quantity": batch.yield_quantity,
+                    "usable_for_recipe": True,
+                    "usable_for_batch_recipe": True,
+                }
+                for batch in batch_recipes
+                if matches(batch.name, batch.description, batch.yield_unit)
+            ][: payload.limit_per_type]
+            result["batch_recipes"] = jsonable(rows)
+
+        if "recipe" in component_types:
+            recipes = await service.recipe_repo.get_active()
+            rows = [
+                {
+                    "component_type": "recipe",
+                    "reference_id": recipe.recipe_id,
+                    "source_id_field": "recipe_id",
+                    "name": recipe.name,
+                    "description": recipe.description,
+                    "source_unit": None,
+                    "unit_note": (
+                        "Nested recipe references do not enforce a source unit; use a "
+                        "meaningful prep, portion, or serving unit."
+                    ),
+                    "usable_for_recipe": True,
+                    "usable_for_batch_recipe": False,
+                }
+                for recipe in recipes
+                if int(recipe.recipe_id) != int(payload.exclude_recipe_id or 0)
+                and matches(recipe.name, recipe.description)
+            ][: payload.limit_per_type]
+            result["recipes"] = jsonable(rows)
+
+        result["counts"] = {
+            key: len(value)
+            for key, value in result.items()
+            if key in {"ingredients", "batch_recipes", "recipes"}
+        }
+        return result
 
     async def _require_active_menu_items(self, service: OrderService, menu_item_ids: Iterable[int]) -> None:
         found = await service.menu_repo.get_by_ids(list(set(menu_item_ids)))

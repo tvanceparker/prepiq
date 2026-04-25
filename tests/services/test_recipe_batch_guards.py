@@ -1,4 +1,5 @@
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -37,9 +38,41 @@ def prep_service(mock_db):
     service.ingredient_repo = AsyncMock()
     service.recipe_repo = AsyncMock()
     service.recipe_ingredient_repo = AsyncMock()
+    service.menu_item_batch_usage_repo = AsyncMock()
+    service.menu_item_batch_usage_repo.get_all_for_batch_recipe.return_value = []
+    service.menu_item_repo = AsyncMock()
     service.prep_schedule_repo = AsyncMock()
     service.inventory_lot_repo = AsyncMock()
     return service
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_with_ingredients_allows_missing_description(menu_service):
+    created_recipe = SimpleNamespace(recipe_id=42, name="Sauce", description=None)
+    created_recipe.__table__ = SimpleNamespace(
+        columns=[
+            SimpleNamespace(name="recipe_id"),
+            SimpleNamespace(name="name"),
+            SimpleNamespace(name="description"),
+        ]
+    )
+    menu_service.recipe_repo.pk_field = "recipe_id"
+    menu_service.recipe_repo.create.return_value = created_recipe
+    menu_service.recipe_repo.get_by_id.return_value = created_recipe
+    menu_service.recipe_ingredient_repo.get_by_recipe_id.return_value = []
+
+    result = await menu_service.update_recipe_with_ingredients(
+        {
+            "name": "Sauce",
+            "ingredients": [],
+        }
+    )
+
+    menu_service.recipe_repo.create.assert_awaited_once_with(
+        {"name": "Sauce", "description": None}
+    )
+    assert result["recipe_id"] == 42
+    assert result["description"] is None
 
 
 @pytest.mark.asyncio

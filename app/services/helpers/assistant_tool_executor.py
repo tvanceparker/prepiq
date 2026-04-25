@@ -25,6 +25,7 @@ from app.mcp_server.schemas import (
     ListIngredientSuppliersInput,
     ListInventoryStockLevelsInput,
     ListPurchaseOrdersInput,
+    ListRecipeComponentOptionsInput,
     LinkIngredientSupplierInput,
     ReceivePurchaseOrderInput,
     RemovePurchaseOrderItemInput,
@@ -149,6 +150,18 @@ class AssistantToolExecutor:
                 adapter_name="resolve_entities",
                 mode="query",
             ),
+            "list_recipe_component_options": self._spec(
+                name="list_recipe_component_options",
+                description=(
+                    "List active ingredient, batch recipe, and recipe component options "
+                    "with live reference_id values and source units. Use this before "
+                    "creating or updating recipes or batch recipes so payloads use valid "
+                    "restaurant-scoped ids and compatible units."
+                ),
+                input_model=ListRecipeComponentOptionsInput,
+                adapter_name="list_recipe_component_options",
+                mode="query",
+            ),
             "list_purchase_orders": self._spec(
                 name="list_purchase_orders",
                 description="List restaurant purchase orders, optionally filtered by status or supplier.",
@@ -200,28 +213,49 @@ class AssistantToolExecutor:
             ),
             "create_recipe": self._spec(
                 name="create_recipe",
-                description="Create a new recipe with ingredient, recipe, or batch components.",
+                description=(
+                    "Create a new recipe through MenuService.update_recipe_with_ingredients. "
+                    "Use resolve_entities first for ingredient, recipe, or batch names. "
+                    "The ingredients array is the full component list: reference_id is "
+                    "ingredient_id, batch_recipe_id, or recipe_id based on ingredient_type; "
+                    "quantity_used and unit must match compatible live restaurant units."
+                ),
                 input_model=CreateRecipeInput,
                 adapter_name="create_recipe",
                 mode="action",
             ),
             "update_recipe": self._spec(
                 name="update_recipe",
-                description="Update an existing recipe, including its name, description, and component list.",
+                description=(
+                    "Replace an existing recipe's name, description, and full component "
+                    "list through MenuService.update_recipe_with_ingredients. Use "
+                    "resolve_entities first for the recipe and component names. This is "
+                    "a confirmation-gated replacement, so include every component that "
+                    "should remain after the update."
+                ),
                 input_model=UpdateRecipeInput,
                 adapter_name="update_recipe",
                 mode="action",
             ),
             "create_batch_recipe": self._spec(
                 name="create_batch_recipe",
-                description="Create a new batch recipe with yield details, prep timing, shelf life, and ingredients.",
+                description=(
+                    "Create a batch recipe through PrepService. Use resolve_entities "
+                    "first for ingredient or batch component names. Components use "
+                    "reference_id plus ingredient_type, quantity_used, and unit; "
+                    "yield_quantity and yield_unit describe the produced batch output."
+                ),
                 input_model=CreateBatchRecipeInput,
                 adapter_name="create_batch_recipe",
                 mode="action",
             ),
             "update_batch_recipe": self._spec(
                 name="update_batch_recipe",
-                description="Update an existing batch recipe, including yield, prep time, shelf life, or components.",
+                description=(
+                    "Update an existing batch recipe. If ingredients is provided, it "
+                    "replaces the full component list, so include every component that "
+                    "should remain. Use resolve_entities first for batch and component names."
+                ),
                 input_model=UpdateBatchRecipeInput,
                 adapter_name="update_batch_recipe",
                 mode="action",

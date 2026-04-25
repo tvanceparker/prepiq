@@ -135,6 +135,52 @@ async def test_high_risk_tool_requires_dry_run_confirmation_then_executes():
 
 
 @pytest.mark.asyncio
+async def test_confirmation_replay_accepts_stored_token_hash_when_verifier_fails(monkeypatch):
+    spec = ToolSpec(
+        name="set_menu_item_active",
+        permissions=("edit_menu",),
+        confirmation_required=True,
+        risk_level="menu_lifecycle",
+    )
+    payload = CreateMenuItemInput(
+        idempotency_key="menu-key-stored-token",
+        name="Burger",
+        price=12,
+        dry_run=True,
+    )
+    executed = []
+
+    async def execute_tool(adapters):
+        executed.append(True)
+        return {"created": True}
+
+    dry_run_result = await execute_mcp_action(
+        spec,
+        payload,
+        execute_tool,
+        raw_token="token",
+    )
+    monkeypatch.setattr(executor, "verify_confirmation_token", lambda *args, **kwargs: False)
+
+    execute_payload = payload.model_copy(
+        update={
+            "dry_run": False,
+            "confirmation_token": dry_run_result["confirmation_token"],
+        }
+    )
+    execute_result = await execute_mcp_action(
+        spec,
+        execute_payload,
+        execute_tool,
+        raw_token="token",
+    )
+
+    assert execute_result["ok"] is True
+    assert execute_result["status"] == "succeeded"
+    assert executed == [True]
+
+
+@pytest.mark.asyncio
 async def test_idempotency_replays_success_without_reexecuting():
     spec = ToolSpec(name="create_menu_item", permissions=("edit_menu",))
     payload = CreateMenuItemInput(idempotency_key="menu-key-2", name="Burger", price=12)

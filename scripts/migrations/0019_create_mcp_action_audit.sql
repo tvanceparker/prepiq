@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS mcp_action_audit (
     audit_id BIGINT AUTO_INCREMENT PRIMARY KEY,
     restaurant_id INT NOT NULL,
-    employee_id BIGINT NULL,
+    employee_id INT NULL,
     tool_name VARCHAR(100) NOT NULL,
     idempotency_key VARCHAR(128) NOT NULL,
     payload_hash VARCHAR(64) NOT NULL,

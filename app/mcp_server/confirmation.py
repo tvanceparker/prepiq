@@ -97,3 +97,19 @@ def verify_confirmation_token(
     except Exception:
         return False
 
+
+def verify_stored_confirmation_token(
+    token: str,
+    *,
+    expected_token_hash: str | None,
+) -> bool:
+    if not expected_token_hash or not hmac.compare_digest(
+        token_hash(token), expected_token_hash
+    ):
+        return False
+    try:
+        encoded_body, _ = token.split(".", 1)
+        body = json.loads(_b64decode(encoded_body).decode("utf-8"))
+        return int(body.get("exp", 0)) >= int(time.time())
+    except Exception:
+        return False

@@ -16,6 +16,7 @@ from app.mcp_server.confirmation import (
     issue_confirmation_token,
     payload_hash,
     token_hash,
+    verify_stored_confirmation_token,
     verify_confirmation_token,
 )
 from app.mcp_server.errors import (
@@ -245,13 +246,24 @@ async def execute_mcp_action(
                         raise MCPConfirmationError(
                             "Run this MCP tool with dry_run=true first, then replay with the returned confirmation_token."
                         )
-                    if not verify_confirmation_token(
+                    token_is_valid = verify_confirmation_token(
                         confirmation_token,
                         tool_name=spec.name,
                         restaurant_id=actor.restaurant_id,
                         employee_id=actor.employee_id,
                         payload_digest=digest,
+                    )
+                    if (
+                        not token_is_valid
+                        and existing
+                        and existing.status == "requires_confirmation"
+                        and int(existing.employee_id or 0) == int(actor.employee_id)
                     ):
+                        token_is_valid = verify_stored_confirmation_token(
+                            confirmation_token,
+                            expected_token_hash=existing.confirmation_token_hash,
+                        )
+                    if not token_is_valid:
                         raise MCPConfirmationError("The confirmation_token is invalid or expired.")
 
                 await db.commit()

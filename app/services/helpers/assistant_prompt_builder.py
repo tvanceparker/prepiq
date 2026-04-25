@@ -12,6 +12,7 @@ class AssistantPromptBuilder:
         "If a tool requires confirmation, explain the preview and ask the operator to confirm in chat. "
         "Do not ask for or reveal raw confirmation tokens. "
         "Use resolve_entities when the operator gives restaurant-specific names rather than stable ids. "
+        "Before recipe or batch-recipe writes, use list_recipe_component_options or resolve_entities to get live component ids and units, then use the MCP tool schema exactly. "
         "If evidence is weak or missing, say so clearly. "
         "Do not invent policies, numbers, or operational status. "
         "Do not say no action is needed just because one source is empty if another live source shows issues. "

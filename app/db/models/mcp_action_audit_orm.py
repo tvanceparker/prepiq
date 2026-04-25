@@ -31,7 +31,7 @@ class MCPActionAudit(Base):
     restaurant_id = Column(
         Integer, ForeignKey("restaurants.restaurant_id"), nullable=False, index=True
     )
-    employee_id = Column(BigInteger, ForeignKey("employees.employee_id"), nullable=True)
+    employee_id = Column(Integer, ForeignKey("employees.employee_id"), nullable=True)
     tool_name = Column(String(100), nullable=False, index=True)
     idempotency_key = Column(String(128), nullable=False)
     payload_hash = Column(String(64), nullable=False)
@@ -46,4 +46,3 @@ class MCPActionAudit(Base):
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     completed_at = Column(DateTime, nullable=True)
-

@@ -11,6 +11,12 @@ TOOL_SPECS = {
         permissions=(),
         risk_level="entity_resolution",
     ),
+    "list_recipe_component_options": ToolSpec(
+        name="list_recipe_component_options",
+        permissions=(),
+        full_tier_required=True,
+        risk_level="recipe_component_lookup",
+    ),
     "update_order": ToolSpec(
         name="update_order",
         permissions=("manage_orders",),

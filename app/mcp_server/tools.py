@@ -20,6 +20,7 @@ from app.mcp_server.schemas import (
     ListIngredientSuppliersInput,
     ListInventoryStockLevelsInput,
     ListPurchaseOrdersInput,
+    ListRecipeComponentOptionsInput,
     RAGPreflightInput,
     ReceivePurchaseOrderInput,
     RemovePurchaseOrderItemInput,
@@ -56,6 +57,21 @@ def register_tools(mcp: FastMCP) -> None:
             TOOL_SPECS["resolve_entities"],
             payload,
             lambda adapters: adapters.resolve_entities(payload),
+        )
+
+    @mcp.tool(
+        description=(
+            "List active ingredient, batch recipe, and recipe component options with "
+            "live ids and source units for recipe-building tools."
+        )
+    )
+    async def list_recipe_component_options(
+        payload: ListRecipeComponentOptionsInput,
+    ) -> dict:
+        return await execute_mcp_query(
+            TOOL_SPECS["list_recipe_component_options"],
+            payload,
+            lambda adapters: adapters.list_recipe_component_options(payload),
         )
 
     @mcp.tool(description="Create a scoped PrepIQ order through OrderService.")
@@ -106,7 +122,13 @@ def register_tools(mcp: FastMCP) -> None:
             lambda adapters: adapters.set_menu_item_active(payload),
         )
 
-    @mcp.tool(description="Create a full-tier recipe through MenuService.")
+    @mcp.tool(
+        description=(
+            "Create a full-tier recipe through MenuService.update_recipe_with_ingredients. "
+            "Use live ids: ingredient_id for ingredient components, batch_recipe_id for "
+            "batch components, and recipe_id for nested recipe components."
+        )
+    )
     async def create_recipe(payload: CreateRecipeInput) -> dict:
         return await execute_mcp_action(
             TOOL_SPECS["create_recipe"],
@@ -114,7 +136,12 @@ def register_tools(mcp: FastMCP) -> None:
             lambda adapters: adapters.create_recipe(payload),
         )
 
-    @mcp.tool(description="Replace/update a full-tier recipe and its components.")
+    @mcp.tool(
+        description=(
+            "Replace/update a full-tier recipe and its full component list. Use live ids "
+            "and include every component that should remain after the update."
+        )
+    )
     async def update_recipe(payload: UpdateRecipeInput) -> dict:
         return await execute_mcp_action(
             TOOL_SPECS["update_recipe"],
@@ -122,7 +149,12 @@ def register_tools(mcp: FastMCP) -> None:
             lambda adapters: adapters.update_recipe(payload),
         )
 
-    @mcp.tool(description="Create a full-tier batch recipe through PrepService.")
+    @mcp.tool(
+        description=(
+            "Create a full-tier batch recipe through PrepService. Components use live "
+            "ingredient_id or batch_recipe_id values plus quantity_used and unit."
+        )
+    )
     async def create_batch_recipe(payload: CreateBatchRecipeInput) -> dict:
         return await execute_mcp_action(
             TOOL_SPECS["create_batch_recipe"],
@@ -130,7 +162,12 @@ def register_tools(mcp: FastMCP) -> None:
             lambda adapters: adapters.create_batch_recipe(payload),
         )
 
-    @mcp.tool(description="Replace/update a full-tier batch recipe and its components.")
+    @mcp.tool(
+        description=(
+            "Replace/update a full-tier batch recipe. If components are supplied, they "
+            "replace the full component list."
+        )
+    )
     async def update_batch_recipe(payload: UpdateBatchRecipeInput) -> dict:
         return await execute_mcp_action(
             TOOL_SPECS["update_batch_recipe"],

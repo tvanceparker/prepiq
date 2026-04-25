@@ -526,8 +526,8 @@ class MenuService:
         updated_recipe = None
         recipe_id = recipe_dict.get("recipe_id")
         name = recipe_dict["name"]
-        description = recipe_dict["description"]
-        ingredients_data = recipe_dict["ingredients"]
+        description = recipe_dict.get("description")
+        ingredients_data = recipe_dict.get("ingredients") or []
 
         if ingredients_data:
             await self._validate_recipe_ingredients(ingredients_data, current_recipe_id=recipe_id)
