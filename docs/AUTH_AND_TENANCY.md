@@ -141,10 +141,3 @@ When documenting auth-sensitive or tenant-sensitive behavior:
 - keep `restaurant_id` isolation explicit
 - treat permission checks and tenant checks as related but different concerns
 
-## Assistant Implications
-
-A future assistant and MCP action layer must inherit the same trust model:
-
-- all reads must stay scoped to the current `restaurant_id`
-- tier and permission context must influence available capabilities
-- write-capable tools must use the same approval and audit boundaries as the rest of the backend

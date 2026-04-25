@@ -29,11 +29,6 @@ The files listed below are now the primary docs set for this repository.
 - `FRONTEND_ARCHITECTURE.md`
 - `MOBILE_ARCHITECTURE.md`
 
-## New Assistant Planning Docs
-
-- `OPERATOR_KNOWLEDGE_SOURCES.md`
-- `ASSISTANT_RAG_MCP_ROADMAP.md`
-
 ## Review Guidance
 
 Suggested reading order:
@@ -41,7 +36,6 @@ Suggested reading order:
 - core docs first
 - operational deep dives second
 - client docs third
-- assistant planning docs last
 
 ## Cleanup Status
 

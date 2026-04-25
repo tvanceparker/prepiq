@@ -189,4 +189,3 @@ This document is the top-level architecture map. More detailed behavior belongs 
 - `FEATURE_TIERS.md`
 - `FORECASTING_SYSTEM.md`
 - `INVENTORY_DEDUCTION_AND_PO.md`
-- `ASSISTANT_RAG_MCP_ROADMAP.md`

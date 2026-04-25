@@ -44,7 +44,6 @@ Tier differences affect at least:
 - advanced inventory and analytics pages
 - prep, supplier, and stock movement functionality
 - forecast and purchasing workflows
-- future assistant and MCP action exposure
 
 ## Documentation Rule
 
@@ -63,12 +62,3 @@ Any new feature work should answer a simple question:
 - is this available to `basic`?
 - or is it `full` only?
 
-## Assistant And MCP Considerations
-
-Future assistant capabilities should be tier-aware.
-
-Recommended pattern:
-
-- read-only assistant Q&A may be broadly available
-- advanced analytics explanations should reflect tier availability
-- future write-capable MCP tools should be filtered both by tier and by role/permission context
