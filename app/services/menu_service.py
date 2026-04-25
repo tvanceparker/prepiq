@@ -529,10 +529,13 @@ class MenuService:
         description = recipe_dict.get("description")
         ingredients_data = recipe_dict.get("ingredients") or []
 
-        if ingredients_data:
-            await self._validate_recipe_ingredients(ingredients_data, current_recipe_id=recipe_id)
-
         async with self.db.begin():  # Wrap the whole operation in a single transaction
+            if ingredients_data:
+                await self._validate_recipe_ingredients(
+                    ingredients_data,
+                    current_recipe_id=recipe_id,
+                )
+
             if recipe_id:
                 # Update existing recipe
                 existing_recipe = await self.recipe_repo.get_by_id(recipe_id)

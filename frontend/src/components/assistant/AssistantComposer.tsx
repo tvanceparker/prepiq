@@ -33,7 +33,8 @@ export default function AssistantComposer({
       <TextField
         fullWidth
         multiline
-        maxRows={4}
+        minRows={2}
+        maxRows={6}
         size="small"
         placeholder="Ask Chef Garlic about docs, forecasts, or restaurant ops"
         value={value}

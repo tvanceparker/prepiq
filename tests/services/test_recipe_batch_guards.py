@@ -76,6 +76,53 @@ async def test_update_recipe_with_ingredients_allows_missing_description(menu_se
 
 
 @pytest.mark.asyncio
+async def test_update_recipe_validates_inside_transaction(menu_service):
+    order = []
+    transaction = AsyncMock()
+
+    async def enter_transaction():
+        order.append("begin")
+        return transaction
+
+    transaction.__aenter__.side_effect = enter_transaction
+    transaction.__aexit__.return_value = None
+    menu_service.db.begin = MagicMock(return_value=transaction)
+
+    existing_recipe = SimpleNamespace(recipe_id=42, name="Sauce", description=None, is_active=True)
+    existing_recipe.__table__ = SimpleNamespace(
+        columns=[
+            SimpleNamespace(name="recipe_id"),
+            SimpleNamespace(name="name"),
+            SimpleNamespace(name="description"),
+        ]
+    )
+    menu_service.recipe_repo.get_by_id.return_value = existing_recipe
+    menu_service.recipe_ingredient_repo.get_by_recipe_id.return_value = []
+
+    async def validate(*args, **kwargs):
+        order.append("validate")
+
+    menu_service._validate_recipe_ingredients = validate
+
+    await menu_service.update_recipe_with_ingredients(
+        {
+            "recipe_id": 42,
+            "name": "Sauce",
+            "ingredients": [
+                {
+                    "reference_id": 101,
+                    "type": "ingredient",
+                    "quantity": Decimal("1.0"),
+                    "unit": "oz",
+                }
+            ],
+        }
+    )
+
+    assert order == ["begin", "validate"]
+
+
+@pytest.mark.asyncio
 async def test_update_recipe_with_ingredients_rejects_incompatible_units(menu_service):
     menu_service.ingredient_repo.get_by_id.return_value = MagicMock(unit="lb")
 

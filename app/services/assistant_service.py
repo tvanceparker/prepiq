@@ -1,12 +1,19 @@
 import os
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.mcp_action_audit_orm import MCPActionAudit
 from app.integrations.openai_client import OpenAIClient, OpenAIToolInvocation
+from app.mcp_server.confirmation import (
+    DEFAULT_CONFIRMATION_TTL_SECONDS,
+    issue_confirmation_token,
+)
 from app.repositories.restaurants_repo import RestaurantRepository
 from app.schemas.assistant_dto import (
     AssistantDocumentDTO,
@@ -19,7 +26,10 @@ from app.schemas.assistant_dto import (
     AssistantReindexResponseDTO,
     AssistantResponseStatus,
 )
-from app.services.helpers.assistant_action_state import assistant_action_state
+from app.services.helpers.assistant_action_state import (
+    AssistantPendingAction,
+    assistant_action_state,
+)
 from app.services.helpers.assistant_context_builder import AssistantContextBuilder
 from app.services.helpers.assistant_indexing_service import AssistantIndexingService
 from app.services.helpers.assistant_prompt_builder import AssistantPromptBuilder
@@ -309,13 +319,19 @@ class AssistantService:
         if not payload.conversation_id:
             return None
 
+        is_confirmation = self._is_confirmation_request(payload.query)
         pending_action = assistant_action_state.get(
             restaurant_id=self.restaurant_id,
             employee_id=self.employee_id,
             conversation_id=payload.conversation_id,
         )
         if not pending_action:
-            return None
+            if is_confirmation:
+                pending_action = await self._load_pending_action_from_audit(
+                    payload.conversation_id
+                )
+            if not pending_action:
+                return None
 
         if self._is_cancellation_request(payload.query):
             assistant_action_state.clear(
@@ -334,7 +350,7 @@ class AssistantService:
                 ),
             )
 
-        if not self._is_confirmation_request(payload.query):
+        if not is_confirmation:
             return None
 
         executor = AssistantToolExecutor(
@@ -379,6 +395,70 @@ class AssistantService:
             ),
         )
 
+    async def _load_pending_action_from_audit(
+        self,
+        conversation_id: str,
+    ) -> AssistantPendingAction | None:
+        if self.db is None:
+            return None
+
+        prefix = f"assistant:{conversation_id}:"
+        result = await self.db.execute(
+            select(MCPActionAudit)
+            .where(
+                MCPActionAudit.restaurant_id == self.restaurant_id,
+                MCPActionAudit.employee_id == self.employee_id,
+                MCPActionAudit.status == "requires_confirmation",
+                MCPActionAudit.requires_confirmation.is_(True),
+                MCPActionAudit.completed_at.is_(None),
+                MCPActionAudit.idempotency_key.like(f"{prefix}%"),
+            )
+            .order_by(MCPActionAudit.created_at.desc())
+            .limit(1)
+        )
+        audit = result.scalars().first()
+        if not audit or not audit.input_summary:
+            return None
+
+        created_at = audit.created_at or datetime.utcnow()
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        expires_at = created_at + timedelta(seconds=DEFAULT_CONFIRMATION_TTL_SECONDS)
+        if expires_at <= datetime.now(timezone.utc):
+            return None
+
+        arguments = {
+            key: value
+            for key, value in dict(audit.input_summary).items()
+            if key
+            not in {
+                "idempotency_key",
+                "dry_run",
+                "confirmation_token",
+                "operator_intent",
+                "include_rag_context",
+            }
+        }
+        confirmation_token = issue_confirmation_token(
+            tool_name=audit.tool_name,
+            restaurant_id=self.restaurant_id,
+            employee_id=self.employee_id,
+            payload_digest=audit.payload_hash,
+            risk_level=audit.risk_level,
+        )
+        preview = audit.result_summary if isinstance(audit.result_summary, dict) else None
+        return AssistantPendingAction(
+            tool_name=audit.tool_name,
+            idempotency_key=audit.idempotency_key,
+            confirmation_token=confirmation_token,
+            arguments=arguments,
+            audit_id=audit.audit_id,
+            operator_intent="Confirmed pending assistant action.",
+            preview=preview,
+            created_at=created_at,
+            expires_at=expires_at,
+        )
+
     def _format_pending_action_result(self, tool_name: str, result: dict) -> str:
         if result.get("ok"):
             return f"Confirmed and executed {tool_name} successfully."
@@ -387,15 +467,41 @@ class AssistantService:
 
     def _is_confirmation_request(self, query: str) -> bool:
         normalized = re.sub(r"[^a-z]+", " ", query.lower()).strip()
-        return normalized in {
+        tokens = set(normalized.split())
+        has_negation = bool(tokens & {"not", "dont", "don", "no", "cancel", "stop"})
+
+        exact_confirmations = {
             "confirm",
             "yes",
             "yes confirm",
+            "yes please",
+            "confirm it",
+            "approve",
+            "approved",
+            "do it",
+            "go ahead",
+            "looks good",
+            "sounds good",
+            "perfect",
+        }
+        if has_negation:
+            return False
+
+        if normalized in exact_confirmations:
+            return True
+
+        confirmation_phrases = {
             "confirm it",
             "do it",
             "go ahead",
-            "approve",
+            "looks good",
+            "sounds good",
+            "yes please",
         }
+        if any(f" {phrase} " in f" {normalized} " for phrase in confirmation_phrases):
+            return True
+
+        return bool(tokens & {"confirm", "approve", "approved"})
 
     def _is_cancellation_request(self, query: str) -> bool:
         normalized = re.sub(r"[^a-z]+", " ", query.lower()).strip()

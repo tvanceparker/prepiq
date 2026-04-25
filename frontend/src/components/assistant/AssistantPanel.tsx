@@ -62,7 +62,7 @@ export default function AssistantPanel({
       elevation={12}
       sx={{
         width: { xs: 'calc(100vw - 24px)', sm: 520, lg: 560 },
-        height: { xs: '76vh', sm: 620, lg: 680 },
+        height: { xs: '78vh', sm: 660, lg: 720 },
         maxHeight: 'calc(100vh - 112px)',
         display: 'flex',
         flexDirection: 'column',
@@ -190,6 +190,7 @@ export default function AssistantPanel({
       <Box
         sx={{
           flexGrow: 1,
+          minHeight: 0,
           overflowY: 'auto',
           px: 2,
           py: 1.5,
@@ -221,7 +222,7 @@ export default function AssistantPanel({
 
       <Box
         sx={{
-          p: 2,
+          p: 1.25,
           bgcolor: theme =>
             theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.02)' : 'background.paper',
         }}
