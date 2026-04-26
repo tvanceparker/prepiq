@@ -140,4 +140,3 @@ When documenting auth-sensitive or tenant-sensitive behavior:
 - distinguish backend tier values from client-normalized tier buckets
 - keep `restaurant_id` isolation explicit
 - treat permission checks and tenant checks as related but different concerns
-

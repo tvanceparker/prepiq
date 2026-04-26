@@ -61,4 +61,3 @@ Any new feature work should answer a simple question:
 
 - is this available to `basic`?
 - or is it `full` only?
-
