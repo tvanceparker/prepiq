@@ -4,6 +4,7 @@ from app.repositories.restaurants_repo import RestaurantRepository
 from app.repositories.permissions_repo import PermissionRepository
 from app.repositories.role_permissions_repo import RolePermissionRepository
 from app.repositories.roles_repo import RoleRepository
+from app.services.utils.subscription_tiers import normalize_subscription_tier
 from app.services.utils.permissions import (
     DEFAULT_PERMISSIONS_BASIC, DEFAULT_ROLE_PERMISSIONS_BASIC,
     DEFAULT_PERMISSIONS_PRO, DEFAULT_ROLE_PERMISSIONS_PRO,
@@ -33,7 +34,7 @@ class PermissionUtil:
         all_restaurants = await restaurant_repo.get_all_restaurants()
 
         for restaurant in all_restaurants:
-            tier = restaurant.subscription_tier.lower()
+            tier = normalize_subscription_tier(restaurant.subscription_tier)
             restaurant_id = restaurant.restaurant_id
 
             if tier not in tier_permissions:

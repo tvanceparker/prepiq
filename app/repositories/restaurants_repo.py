@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.db.models.restaurants_orm import Restaurant
 from app.repositories.base_repository import BaseRepository
 from app.schemas.admin_dto import RestaurantCreate, RestaurantUpdate
+from app.services.utils.subscription_tiers import normalize_subscription_tier
 from typing import Optional
 
 
@@ -18,7 +19,7 @@ class RestaurantRepository(BaseRepository):
         stmt = select(Restaurant.subscription_tier).where(Restaurant.restaurant_id == self.restaurant_id)
         result = await self.db.execute(stmt)
         tier = result.scalar_one_or_none()
-        return tier or "basic"
+        return normalize_subscription_tier(tier) or "basic"
     
 
     async def get_settings(self):

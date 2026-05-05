@@ -22,7 +22,7 @@ class Restaurant(Base):
     # Latitude / longitude for geocoded restaurant address (nullable until backfilled)
     latitude = Column(DECIMAL(9,6), nullable=True)
     longitude = Column(DECIMAL(9,6), nullable=True)
-    subscription_tier = Column(Enum('basic', 'pro', 'master'), nullable=False, default='basic')
+    subscription_tier = Column(Enum('basic', 'pro', 'master', 'full'), nullable=False, default='basic')
     email = Column(String(255))
     subscription_status = Column(String(20), default='inactive') 
     expiry_date = Column(Date)

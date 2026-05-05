@@ -128,8 +128,8 @@ export default function BasicOverviewMobile({ data, navigation }: Props & { navi
     const saleDate = templateDate.toISOString().slice(0, 10);
     try {
       // Check conflicts using the hook
-      const result = await checkConflicts(saleDate, entries as any);
-      const confRaw = (result && result) || {};
+      const conflictResult = await checkConflicts(saleDate, entries as any);
+      const confRaw = conflictResult || {};
       const conf: Record<string, number> = {};
       Object.entries(confRaw).forEach(([k, v]) => {
         const key = k === null || k === 'null' ? 'null' : String(k);
@@ -141,10 +141,13 @@ export default function BasicOverviewMobile({ data, navigation }: Props & { navi
         return;
       }
       // No conflicts, proceed without overwrite via hook
-      const result = await submit(saleDate, entries as any, false);
+      const submitResult = await submit(saleDate, entries as any, false);
       setSheetOpen(false);
       setQtyById({});
-      setSnackbar({ visible: true, message: result?.message || 'Manual sales saved' });
+      setSnackbar({
+        visible: true,
+        message: String(submitResult?.message || 'Manual sales saved'),
+      });
     } catch (e: any) {
       const msg = String(e?.message || e || 'Manual upload failed');
       setSnackbar({ visible: true, message: msg });
