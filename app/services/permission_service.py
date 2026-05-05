@@ -20,14 +20,12 @@ class PermissionUtil:
         # Tier-specific permissions and roles
         tier_permissions = {
             "basic": DEFAULT_PERMISSIONS_BASIC,
-            "pro": DEFAULT_PERMISSIONS_PRO,
-            "master": DEFAULT_PERMISSIONS_MASTER,
+            "full": DEFAULT_PERMISSIONS_MASTER,
         }
 
         tier_roles_permissions = {
             "basic": DEFAULT_ROLE_PERMISSIONS_BASIC,
-            "pro": DEFAULT_ROLE_PERMISSIONS_PRO,
-            "master": DEFAULT_ROLE_PERMISSIONS_MASTER,
+            "full": DEFAULT_ROLE_PERMISSIONS_MASTER,
         }
 
         # Fetch all restaurants
@@ -51,8 +49,7 @@ class PermissionUtil:
             # Create or update roles with descriptions based on tier
             default_roles_map = {
                 "basic": DEFAULT_ROLES_BASIC,
-                "pro": DEFAULT_ROLES_PRO,
-                "master": DEFAULT_ROLES_MASTER,
+                "full": DEFAULT_ROLES_MASTER,
             }
 
             # Create roles for the current tier if not exist

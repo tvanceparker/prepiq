@@ -71,7 +71,7 @@ async def square_webhook(
     pos_service = POSIntegrationService(
         db=db,
         restaurant_id=restaurant_id,
-        subscription_tier="master",  # Webhooks available to all tiers with POS integration
+        subscription_tier="full",  # Webhooks available to all tiers with POS integration
         employee_id=1  # System user for automated processing
     )
     

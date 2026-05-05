@@ -48,14 +48,7 @@ interface MetricCardProps {
   trend?: number;
 }
 
-const MetricCard: React.FC<MetricCardProps> = ({
-  title,
-  value,
-  subtitle,
-  icon,
-  color,
-  trend,
-}) => {
+const MetricCard: React.FC<MetricCardProps> = ({ title, value, subtitle, icon, color, trend }) => {
   const theme = useTheme();
   const isPositiveTrend = trend && trend >= 0;
 
@@ -87,15 +80,19 @@ const MetricCard: React.FC<MetricCardProps> = ({
           {trend !== undefined && (
             <Chip
               size="small"
-              icon={isPositiveTrend ? <TrendingUpIcon sx={{ fontSize: 14 }} /> : <TrendingDownIcon sx={{ fontSize: 14 }} />}
+              icon={
+                isPositiveTrend ? (
+                  <TrendingUpIcon sx={{ fontSize: 14 }} />
+                ) : (
+                  <TrendingDownIcon sx={{ fontSize: 14 }} />
+                )
+              }
               label={`${isPositiveTrend ? '+' : ''}${trend}%`}
               sx={{
                 bgcolor: isPositiveTrend
                   ? alpha(theme.palette.success.main, 0.1)
                   : alpha(theme.palette.error.main, 0.1),
-                color: isPositiveTrend
-                  ? theme.palette.success.main
-                  : theme.palette.error.main,
+                color: isPositiveTrend ? theme.palette.success.main : theme.palette.error.main,
                 fontWeight: 600,
                 height: 24,
                 '& .MuiChip-icon': { color: 'inherit' },
@@ -235,7 +232,7 @@ export default function ProOverview({ data }: ProOverviewProps) {
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
           <Typography variant="h5" fontWeight={700} color="text.primary">
-            Pro Dashboard
+            Full Dashboard
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             {new Date().toLocaleDateString('en-US', {
@@ -248,7 +245,7 @@ export default function ProOverview({ data }: ProOverviewProps) {
         <Box display="flex" gap={1}>
           <Chip
             icon={<TimelineIcon />}
-            label="Pro Tier"
+            label="Full Tier"
             color="secondary"
             variant="filled"
             size="small"
@@ -346,7 +343,7 @@ export default function ProOverview({ data }: ProOverviewProps) {
                   Forecast Insights
                 </Typography>
               }
-              subheader="Pro tier analytics"
+              subheader="Full tier analytics"
               sx={{ pb: 0 }}
             />
             <CardContent>
@@ -384,7 +381,7 @@ export default function ProOverview({ data }: ProOverviewProps) {
 
                 <Box>
                   <Typography variant="body2" color="text.secondary" gutterBottom>
-                    Pro Features Available
+                    Full Features Available
                   </Typography>
                   <Box display="flex" gap={1} flexWrap="wrap">
                     <Chip
@@ -411,7 +408,8 @@ export default function ProOverview({ data }: ProOverviewProps) {
                 <Divider />
 
                 <Typography variant="caption" color="text.disabled" textAlign="center">
-                  Upgrade to Master tier for automated reordering and advanced AI insights
+                  Automated reordering and advanced AI insights are enabled for full-tier
+                  restaurants
                 </Typography>
               </Stack>
             </CardContent>

@@ -30,6 +30,7 @@ from app.schemas.sales_forecast_dto import (
 )
 from app.services.sales_forecast_service import SalesForecastService
 from app.api.dependencies import get_sales_forecast_service
+from app.services.utils.subscription_tiers import is_full_service_tier
 from app.utils.logger_helpers import log_route
 
 router = APIRouter(prefix="/sales_forecast", tags=["Sales & Forecast"])
@@ -262,11 +263,11 @@ async def create_sale(
 
 
 # ============================================================================
-# PRO TIER: Menu Mix Insights with Cost Analysis
+# FULL TIER: Menu Mix Insights with Cost Analysis
 # ============================================================================
 
 @router.get("/sales_breakdown_pro", response_model=List[SalesBreakdownProItem])
-@log_route("Get Sales Breakdown (Pro)")
+@log_route("Get Sales Breakdown (Full)")
 async def sales_breakdown_pro(
     start_date: date = Query(...),
     end_date: date = Query(...),
@@ -274,17 +275,17 @@ async def sales_breakdown_pro(
     service: SalesForecastService = Depends(get_sales_forecast_service),
 ):
     """
-    Pro tier sales breakdown including recipe costs, margins, and profitability metrics.
+    Full tier sales breakdown including recipe costs, margins, and profitability metrics.
     Requires Full subscription tier.
     """
-    if service.subscription_tier != "full":
+    if not is_full_service_tier(service.subscription_tier):
         raise HTTPException(status_code=403, detail="Full tier required")
     
     return await service.get_sales_breakdown_pro(start_date, end_date, by_revenue)
 
 
 @router.get("/sales_over_time_pro", response_model=List[SalesOverTimeProItem])
-@log_route("Get Sales Over Time (Pro)")
+@log_route("Get Sales Over Time (Full)")
 async def sales_over_time_pro(
     start_date: date = Query(...),
     end_date: date = Query(...),
@@ -292,17 +293,17 @@ async def sales_over_time_pro(
     service: SalesForecastService = Depends(get_sales_forecast_service),
 ):
     """
-    Pro tier sales over time with cost and profitability analysis.
+    Full tier sales over time with cost and profitability analysis.
     Requires Full subscription tier.
     """
-    if service.subscription_tier != "full":
+    if not is_full_service_tier(service.subscription_tier):
         raise HTTPException(status_code=403, detail="Full tier required")
     
     return await service.get_sales_over_time_pro(start_date, end_date, by_revenue)
 
 
 @router.get("/top_bottom_items_pro", response_model=List[TopBottomProItem])
-@log_route("Get Top/Bottom Items (Pro)")
+@log_route("Get Top/Bottom Items (Full)")
 async def top_bottom_items_pro(
     start_date: date = Query(...),
     end_date: date = Query(...),
@@ -312,10 +313,10 @@ async def top_bottom_items_pro(
     service: SalesForecastService = Depends(get_sales_forecast_service),
 ):
     """
-    Pro tier top/bottom performers with profitability analysis.
+    Full tier top/bottom performers with profitability analysis.
     Requires Full subscription tier.
     """
-    if service.subscription_tier != "full":
+    if not is_full_service_tier(service.subscription_tier):
         raise HTTPException(status_code=403, detail="Full tier required")
     
     return await service.get_top_bottom_items_pro(start_date, end_date, by_revenue, top, count)

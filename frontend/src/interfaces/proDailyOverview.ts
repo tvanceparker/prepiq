@@ -80,7 +80,7 @@ export interface ProDailyOverviewData {
   top_5_items_today: TopForecastedItem[];
   accuracy_yesterday: AccuracyBasic | null;
 
-  // Enhanced Pro metrics
+  // Enhanced full-tier metrics
   inventory_summary: InventorySummary;
   inventory_alerts: InventoryAlert[];
   prep_tasks_today: PrepTask[];

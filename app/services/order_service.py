@@ -337,7 +337,7 @@ class OrderService:
         """
         Get active menu items for the restaurant, tiered by subscription.
         Basic: Simple items without recipes.
-        Pro/Master: Placeholder for future complex ingredient/recipe linkages.
+        Full tier: Placeholder for future complex ingredient/recipe linkages.
         """
         menu_items = await self.menu_repo.get_all()
         active_items = [item for item in menu_items if item.is_active]

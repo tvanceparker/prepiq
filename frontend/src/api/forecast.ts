@@ -87,7 +87,7 @@ export const getTopBottomItems = (
   );
 
 // ============================================================================
-// MENU MIX INSIGHTS - PRO TIER (Cost & Profitability Analysis)
+// MENU MIX INSIGHTS - FULL TIER (Cost & Profitability Analysis)
 // ============================================================================
 
 export const getSalesBreakdownPro = (

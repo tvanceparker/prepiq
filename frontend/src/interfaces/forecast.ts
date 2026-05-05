@@ -28,7 +28,7 @@ export interface TopBottomItem {
 }
 
 // ============================================================================
-// PRO TIER: Menu Mix Insights with Cost Analysis
+// FULL TIER: Menu Mix Insights with Cost Analysis
 // ============================================================================
 
 export interface MenuItemCostInsight {
@@ -93,7 +93,7 @@ export interface ForecastState {
 }
 
 // ============================================================================
-// MASTER TIER (Future)
+// FULL TIER (Future expansion)
 // ============================================================================
 // TODO: Add cost trend analysis, supplier pricing history, recipe optimization
 

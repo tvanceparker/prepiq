@@ -126,7 +126,7 @@ prepiq/
 
 - Pages under `frontend/src/pages/` generally mirror backend domains.
 - Some routing, sidebar, and tier scaffolding still reflect older `basic/pro/master` and internal-ops assumptions. Treat those as cleanup targets rather than the desired long-term product shape.
-- For new work, prefer the current product direction of `Basic` and `Full` rather than expanding older tier structures unless the task is explicitly about legacy behavior.
+- Runtime tier handling should normalize legacy `pro` and `master` values to `full`. For new work, reason in terms of `basic` and `full` unless the task explicitly concerns legacy compatibility or data migration.
 
 ### 3.4 Data Access Layer
 

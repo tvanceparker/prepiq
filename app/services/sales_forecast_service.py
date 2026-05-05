@@ -44,7 +44,7 @@ class SalesForecastService:
         )
         self.activity_log_repo = ActivityLogRepository(db,restaurant_id,employee_id)
         
-        # Pro/Master tier repositories
+        # Full tier repositories
         self.menu_item_recipes_repo = MenuItemRecipeRepository(db, restaurant_id)
         self.recipe_ingredients_repo = RecipeIngredientRepository(db, restaurant_id)
         self.ingredients_repo = IngredientRepository(db, restaurant_id)
@@ -814,10 +814,10 @@ class SalesForecastService:
         return await self.sale_repo.get_sales_date_bounds()
 
     # ============================================================================
-    # PRO TIER: MENU MIX INSIGHTS WITH COST ANALYSIS
+    # FULL TIER: MENU MIX INSIGHTS WITH COST ANALYSIS
     # ============================================================================
 
-    @log_method("Calculate Recipe Cost (Pro)")
+    @log_method("Calculate Recipe Cost (Full)")
     async def calculate_recipe_cost(self, menu_item_id: int) -> Decimal:
         """
         Calculate total ingredient cost for a menu item by summing costs of all
@@ -837,7 +837,7 @@ class SalesForecastService:
             
             for ri in recipe_ingredients:
                 if ri.ingredient_type != "ingredient":
-                    continue  # Skip batch recipes for now (Pro tier)
+                    continue  # Skip batch recipes for now (Full tier)
                 
                 ingredient_id = ri.reference_id
                 quantity_used = Decimal(str(ri.quantity_used))
@@ -859,12 +859,12 @@ class SalesForecastService:
         
         return total_cost
 
-    @log_method("Get Sales Breakdown with Cost Analysis (Pro)")
+    @log_method("Get Sales Breakdown with Cost Analysis (Full)")
     async def get_sales_breakdown_pro(
         self, start_date: date, end_date: date, by_revenue=False
     ) -> List[Dict[str, Any]]:
         """
-        Enhanced sales breakdown for Pro tier including:
+        Enhanced sales breakdown for Full tier including:
         - Recipe cost
         - Gross margin %
         - Contribution margin ($)
@@ -942,12 +942,12 @@ class SalesForecastService:
         
         return results
 
-    @log_method("Get Sales Over Time with Profitability (Pro)")
+    @log_method("Get Sales Over Time with Profitability (Full)")
     async def get_sales_over_time_pro(
         self, start_date: date, end_date: date, by_revenue=False
     ) -> List[Dict[str, Any]]:
         """
-        Sales over time with cost and profitability metrics for Pro tier.
+        Sales over time with cost and profitability metrics for Full tier.
         """
         sales = await self.sale_repo.get_sales_between_dates(start_date, end_date)
         
@@ -1002,12 +1002,12 @@ class SalesForecastService:
         
         return results
 
-    @log_method("Get Top/Bottom Items with Profitability (Pro)")
+    @log_method("Get Top/Bottom Items with Profitability (Full)")
     async def get_top_bottom_items_pro(
         self, start_date: date, end_date: date, by_revenue=False, top=True, count=10
     ) -> List[Dict[str, Any]]:
         """
-        Top/bottom performers with profitability analysis for Pro tier.
+        Top/bottom performers with profitability analysis for Full tier.
         """
         sales = await self.sale_repo.get_sales_between_dates(start_date, end_date)
         

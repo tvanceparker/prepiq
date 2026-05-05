@@ -213,7 +213,7 @@ class QuickAnalyticsOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# ---- Pro/Master Daily Overview DTOs ----
+# ---- Full Daily Overview DTOs ----
 class InventoryAlertOut(BaseModel):
     ingredient_id: int
     ingredient_name: str
@@ -287,7 +287,7 @@ class ProDailyOverviewOut(BaseModel):
     top_5_items_today: List[TopForecastedItem]
     accuracy_yesterday: Optional[AccuracyBasicOut]
     
-    # Enhanced Pro metrics
+    # Enhanced full-tier metrics
     inventory_summary: InventorySummaryOut
     inventory_alerts: List[InventoryAlertOut]
     prep_tasks_today: List[PrepTaskOut]

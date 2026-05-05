@@ -210,9 +210,9 @@ async def get_quick_analytics(
 
 
 @router.get("/pro-overview", response_model=ProDailyOverviewOut)
-@log_route("Get Pro/Master daily overview")
+@log_route("Get Full daily overview")
 async def get_pro_daily_overview(
     dashboard_service: DashboardService = Depends(get_dashboard_service),
 ):
-    """Fetch comprehensive daily overview for Pro/Master tiers with inventory, prep, and menu insights."""
+    """Fetch comprehensive daily overview for Full tier restaurants with inventory, prep, and menu insights."""
     return await dashboard_service.get_pro_daily_overview()

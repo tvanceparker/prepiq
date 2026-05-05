@@ -20,7 +20,7 @@ class TenantInfoResponse(BaseModel):
     city: Optional[str]
     state: Optional[str]
     zip_code: Optional[str]
-    subscription_tier: Literal['basic', 'pro', 'master']
+    subscription_tier: Literal['basic', 'full']
     subscription_status: Literal['active', 'inactive']
     expiry_date: Optional[date]
     hours_of_operation: List[DayHours]

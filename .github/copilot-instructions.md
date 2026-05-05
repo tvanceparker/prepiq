@@ -24,6 +24,7 @@ Do not treat this file as a product README or roadmap. If older or legacy surfac
 - Backend request flow should generally remain: route -> dependency -> service -> repository.
 - Database access is tenant-scoped. `restaurant_id` is a required part of the backend data model and must remain enforced in all tenant-bound repository queries.
 - Auth is JWT-based. Middleware and dependencies extract user context that services use for tenant-aware behavior.
+- Treat the runtime subscription-tier contract as `basic` and `full`. Legacy `pro` and `master` values may still exist in old records, comments, or compatibility paths, but new logic should normalize them to `full` rather than branching on them directly.
 - End-of-day orchestration is a real backend pattern in this repo. If a feature affects forecast, reorder, purchasing, or daily finalization behavior, review the EOD path before making changes.
 - Use architecture notes only to guide implementation choices. Avoid adding product-marketing language to this file.
 

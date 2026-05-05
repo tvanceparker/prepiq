@@ -325,7 +325,7 @@ class DashboardService:
 
     async def get_daily_overview_data(self):
         # Return the basic overview for all tiers to ensure a valid response.
-        # Pro/Master dashboards use a separate /pro-overview endpoint.
+        # Full-tier dashboards use a separate /pro-overview endpoint for compatibility.
         data = await self._get_basic_overview()
         return DailyOverviewOut(**data)
 
@@ -996,7 +996,7 @@ class DashboardService:
     @log_method()
     async def get_pro_daily_overview(self) -> ProDailyOverviewOut:
         """
-        Comprehensive daily overview for Pro/Master tier with:
+        Comprehensive daily overview for Full tier with:
         - Basic metrics
         - Inventory summary & alerts
         - Prep schedule & task completion
@@ -1005,7 +1005,7 @@ class DashboardService:
         """
         try:
             today = date.today()
-            logger.info(f"Fetching Pro daily overview for restaurant {self.restaurant_id} on {today}")
+            logger.info(f"Fetching Full daily overview for restaurant {self.restaurant_id} on {today}")
             
             # Get basic overview data
             basic_data = await self._get_basic_overview()
@@ -1161,7 +1161,7 @@ class DashboardService:
                     items=delivery_items
                 ))
             
-            logger.info(f"Pro overview compiled successfully: {len(expected_deliveries)} expected deliveries")
+            logger.info(f"Full overview compiled successfully: {len(expected_deliveries)} expected deliveries")
             
             return ProDailyOverviewOut(
                 **basic_data,
@@ -1176,7 +1176,7 @@ class DashboardService:
             logger.error(f"Error in get_pro_daily_overview: {e}", exc_info=True)
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to fetch Pro daily overview: {str(e)}"
+                detail=f"Failed to fetch Full daily overview: {str(e)}"
             )
     
     

@@ -1,17 +1,13 @@
-import React, { useContext } from "react";
-import { AuthContext } from "../../contexts/AuthContext";
-import SalesExplorerBasic from "./components/SalesExplorerBasic";
+import React, { useContext } from 'react';
+import { AuthContext } from '../../contexts/AuthContext';
+import SalesExplorerBasic from './components/SalesExplorerBasic';
 
 export default function SalesExplorer() {
   const { tier } = useContext(AuthContext);
 
   switch (tier) {
-    case "basic":
+    case 'basic':
       return <SalesExplorerBasic />;
-    // case "pro":
-    //   return <MenuMixInsightsPro />;
-    // case "master":
-    //   return <MenuMixInsightsMaster />;
     default:
       return <SalesExplorerBasic />;
   }

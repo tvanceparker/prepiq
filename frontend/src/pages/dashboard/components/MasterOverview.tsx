@@ -101,9 +101,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
                 bgcolor: isPositiveTrend
                   ? alpha(theme.palette.success.main, 0.1)
                   : alpha(theme.palette.error.main, 0.1),
-                color: isPositiveTrend
-                  ? theme.palette.success.main
-                  : theme.palette.error.main,
+                color: isPositiveTrend ? theme.palette.success.main : theme.palette.error.main,
                 fontWeight: 600,
               }}
             />
@@ -314,7 +312,7 @@ export default function MasterOverview({ data }: MasterOverviewProps) {
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
         <Box>
           <Typography variant="h4" fontWeight={700} color="text.primary">
-            Master Dashboard
+            Full Dashboard
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             {new Date().toLocaleDateString('en-US', {
@@ -328,7 +326,7 @@ export default function MasterOverview({ data }: MasterOverviewProps) {
         <Box display="flex" gap={1}>
           <Chip
             icon={<StarIcon />}
-            label="Master Tier"
+            label="Full Tier"
             color="primary"
             variant="filled"
             sx={{ fontWeight: 600 }}
@@ -409,14 +407,7 @@ export default function MasterOverview({ data }: MasterOverviewProps) {
                 </Typography>
               }
               subheader="Highest predicted demand today"
-              action={
-                <Chip
-                  label="Live"
-                  size="small"
-                  color="success"
-                  sx={{ fontWeight: 600 }}
-                />
-              }
+              action={<Chip label="Live" size="small" color="success" sx={{ fontWeight: 600 }} />}
             />
             <Divider />
             <CardContent>
@@ -440,7 +431,7 @@ export default function MasterOverview({ data }: MasterOverviewProps) {
                   Quick Actions
                 </Typography>
               }
-              subheader="Master tier features at your fingertips"
+              subheader="Full tier features at your fingertips"
             />
             <Divider />
             <CardContent>

@@ -249,7 +249,7 @@ async def get_team_insights(
 ):
     """
     Get team analytics and insights for a date range.
-    Available for Pro and Master tiers.
+    Available for Full tier restaurants.
     """
     try:
         insights = await service.get_team_insights(start_date, end_date)

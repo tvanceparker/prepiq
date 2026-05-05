@@ -88,7 +88,7 @@ export default function AppRoutes(): JSX.Element {
         {/* Inventory */}
         <Route path="/inventory/table" element={<InventoryTable />} />
 
-        {/* Stock Movements - Pro/Master Only */}
+        {/* Stock Movements - Full Tier Only */}
         <Route element={<TierGatedRoute requiredTiers={['full']} />}>
           <Route path="/inventory/stock-movements" element={<StockMovements />} />
         </Route>

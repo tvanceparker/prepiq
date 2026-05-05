@@ -58,7 +58,7 @@ export default function BasicRestaurantSettingsModal({
                     onValueChange={value => onChange('inventory_deduction_mode', value)}
                   >
                     <RadioButton.Item label="End of Day (default)" value="eod" />
-                    <RadioButton.Item label="Real-time (Pro/Master)" value="real_time" />
+                    <RadioButton.Item label="Real-time (Full tier)" value="real_time" />
                   </RadioButton.Group>
                   <Text style={{ fontSize: 12, opacity: 0.6, marginBottom: 12 }}>
                     Real-time mode deducts inventory for each completed order and fires alerts on

@@ -226,7 +226,7 @@ export default function ProRestaurantSettings() {
             label="Inventory Deduction"
             value={
               settings.inventory_deduction_mode === 'real_time'
-                ? 'Real-time (Pro/Master)'
+                ? 'Real-time (Full tier)'
                 : 'End of Day'
             }
             color={

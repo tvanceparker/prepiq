@@ -173,7 +173,7 @@ export default function MenuMixInsightsPro() {
         py: { xs: 4, md: 8 },
       }}
     >
-      <PageHeader title="Menu Mix Insights - Pro Tier" />
+      <PageHeader title="Menu Mix Insights - Full Tier" />
 
       <Box sx={{ my: 3, maxWidth: 600, mx: 'auto' }}>
         <DateSelector

@@ -321,7 +321,7 @@ async def get_stock_movements(
 ):
     """
     Get all stock movements (inbound/outbound) for the given date range and ingredient.
-    Only available for Pro/Master tiers.
+    Only available for Full tier restaurants.
     """
     try:
         from datetime import datetime
