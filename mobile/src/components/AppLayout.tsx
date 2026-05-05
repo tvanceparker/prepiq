@@ -85,7 +85,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' },
-  drawerPanel: { width: 280, backgroundColor: '#fff' },
+  drawerPanel: {
+    width: 280,
+    height: '100%',
+    backgroundColor: '#fff',
+  },
   drawerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
