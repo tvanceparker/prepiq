@@ -9,6 +9,7 @@ from app.services.auth_service import AuthService
 from app.utils.security import create_access_token, create_refresh_token, SECRET_KEY, ALGORITHM
 from app.schemas.auth_dto import LoginResponse, DeviceRegistrationRequest, DeviceRegistrationResponse, MeResponse, LogoutResponse, RefreshTokenResponse
 from app.utils.logger_helpers import log_route
+from app.services.utils.subscription_tiers import normalize_subscription_tier
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -73,10 +74,12 @@ async def refresh_token(request: Request):
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
+    subscription_tier = normalize_subscription_tier(payload.get("subscription_tier")) or "basic"
+
     new_token, expires_in = create_access_token({
         "sub": payload["sub"],
         "restaurant_id": payload["restaurant_id"],
-        "subscription_tier": payload["subscription_tier"],
+        "subscription_tier": subscription_tier,
         "employee_id": payload.get("employee_id"),
         "name": payload.get("name"),
         "role_id": payload.get("role_id")

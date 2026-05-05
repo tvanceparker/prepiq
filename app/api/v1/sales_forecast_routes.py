@@ -275,10 +275,10 @@ async def sales_breakdown_pro(
 ):
     """
     Pro tier sales breakdown including recipe costs, margins, and profitability metrics.
-    Requires Pro or Master subscription tier.
+    Requires Full subscription tier.
     """
-    if service.subscription_tier not in ["pro", "master"]:
-        raise HTTPException(status_code=403, detail="Pro or Master tier required")
+    if service.subscription_tier != "full":
+        raise HTTPException(status_code=403, detail="Full tier required")
     
     return await service.get_sales_breakdown_pro(start_date, end_date, by_revenue)
 
@@ -293,10 +293,10 @@ async def sales_over_time_pro(
 ):
     """
     Pro tier sales over time with cost and profitability analysis.
-    Requires Pro or Master subscription tier.
+    Requires Full subscription tier.
     """
-    if service.subscription_tier not in ["pro", "master"]:
-        raise HTTPException(status_code=403, detail="Pro or Master tier required")
+    if service.subscription_tier != "full":
+        raise HTTPException(status_code=403, detail="Full tier required")
     
     return await service.get_sales_over_time_pro(start_date, end_date, by_revenue)
 
@@ -313,9 +313,9 @@ async def top_bottom_items_pro(
 ):
     """
     Pro tier top/bottom performers with profitability analysis.
-    Requires Pro or Master subscription tier.
+    Requires Full subscription tier.
     """
-    if service.subscription_tier not in ["pro", "master"]:
-        raise HTTPException(status_code=403, detail="Pro or Master tier required")
+    if service.subscription_tier != "full":
+        raise HTTPException(status_code=403, detail="Full tier required")
     
     return await service.get_top_bottom_items_pro(start_date, end_date, by_revenue, top, count)

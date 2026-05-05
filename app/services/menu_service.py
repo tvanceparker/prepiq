@@ -573,8 +573,12 @@ class MenuService:
 
         usage = await self.get_recipe_usage(recipe_id)
 
-        async with self.db.begin():
+        if self.db.in_transaction():
             await self.recipe_repo.update(recipe_id, {"is_active": False})
+        else:
+            async with self.db.begin():
+                await self.recipe_repo.update(recipe_id, {"is_active": False})
+
 
         return {
             "message": "Recipe archived successfully",

@@ -783,8 +783,11 @@ class PrepService:
 
         usage = await self.get_batch_recipe_usage(batch_recipe_id)
 
-        async with self.db.begin():
+        if self.db.in_transaction():
             await self.batch_recipe_repo.update(batch_recipe_id, {"is_active": False})
+        else:
+            async with self.db.begin():
+                await self.batch_recipe_repo.update(batch_recipe_id, {"is_active": False})
 
         return {
             "message": "Batch recipe archived successfully",

@@ -177,6 +177,24 @@ async def test_delete_recipe_rejects_when_recipe_is_nested_in_other_recipe(menu_
 
 
 @pytest.mark.asyncio
+async def test_delete_recipe_skips_begin_when_session_transaction_active(menu_service):
+    menu_service.db.in_transaction = MagicMock(return_value=True)
+    menu_service.menu_recipe_repo.get_by_recipe.return_value = []
+    menu_service.recipe_repo.get_by_id.return_value = MagicMock(
+        recipe_id=55,
+        name="Sauce",
+        is_active=True,
+    )
+    menu_service.recipe_ingredient_repo.get_all_by_reference_id_and_type.return_value = []
+
+    result = await menu_service.delete_recipe(55)
+
+    assert result["archived"] is True
+    menu_service.db.begin.assert_not_called()
+    menu_service.recipe_repo.update.assert_awaited_once_with(55, {"is_active": False})
+
+
+@pytest.mark.asyncio
 async def test_create_batch_recipe_rejects_missing_batch_reference(prep_service):
     prep_service.batch_recipe_repo.get_by_id.return_value = None
 
@@ -338,4 +356,23 @@ async def test_delete_batch_recipe_rejects_when_dependencies_exist(prep_service)
     assert result["usage"]["prep_schedule_count"] == 2
     assert result["usage"]["inventory_lot_count"] == 1
     assert result["lifecycle_action"] == "archive"
+    prep_service.batch_recipe_repo.update.assert_awaited_once_with(10, {"is_active": False})
+
+
+@pytest.mark.asyncio
+async def test_delete_batch_recipe_skips_begin_when_session_transaction_active(prep_service):
+    prep_service.db.in_transaction = MagicMock(return_value=True)
+    prep_service.batch_recipe_repo.get_by_id.side_effect = [
+        MagicMock(batch_recipe_id=10, name="Queso", is_active=True),
+        MagicMock(batch_recipe_id=10, name="Queso", is_active=True),
+    ]
+    prep_service.recipe_ingredient_repo.get_all_by_reference_id_and_type.return_value = []
+    prep_service.batch_recipe_ingredient_repo.get_all_by_reference_id_and_type.return_value = []
+    prep_service.prep_schedule_repo.get_by_field.return_value = []
+    prep_service.inventory_lot_repo.get_all_by_batch_recipe_id.return_value = []
+
+    result = await prep_service.delete_batch_recipe(10)
+
+    assert result["archived"] is True
+    prep_service.db.begin.assert_not_called()
     prep_service.batch_recipe_repo.update.assert_awaited_once_with(10, {"is_active": False})

@@ -3,9 +3,11 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from jose import jwt
 
 from app.api.dependencies import CurrentUser, get_auth_service, get_current_user
 from app.api.v1.auth_routes import router
+from app.utils.security import ALGORITHM, SECRET_KEY, create_refresh_token
 
 
 @pytest.fixture
@@ -172,6 +174,27 @@ def test_refresh_returns_401_without_refresh_cookie(auth_test_app):
 
     assert response.status_code == 401
     assert response.json() == {"detail": "No refresh token found"}
+
+
+def test_refresh_normalizes_legacy_full_tier_cookie(auth_test_app):
+    refresh_token, _ = create_refresh_token(
+        {
+            "sub": "testuser",
+            "restaurant_id": 7,
+            "subscription_tier": "master",
+            "employee_id": 42,
+            "name": "Test User",
+            "role_id": 3,
+        }
+    )
+
+    with TestClient(auth_test_app) as test_client:
+        test_client.cookies.set("refresh_token", refresh_token)
+        response = test_client.post("/api/v1/auth/refresh")
+
+    assert response.status_code == 200
+    claims = jwt.decode(response.json()["access_token"], SECRET_KEY, algorithms=[ALGORITHM])
+    assert claims["subscription_tier"] == "full"
 
 
 def test_logout_clears_refresh_cookie(auth_test_app, current_user_override):
