@@ -172,3 +172,7 @@ export const getWasteLogs = async (params: WasteLogParams = {}): Promise<any> =>
 export const createWasteLog = async (wasteData: CreateWasteLogRequest): Promise<any> => {
   return await post('/prep/waste-logs', wasteData);
 };
+
+
+export const getPrepRecommendations = async (): Promise<import('../interfaces/prep').PrepRecommendations> =>
+  get<import('../interfaces/prep').PrepRecommendations>('/prep/recommendations');

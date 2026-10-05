@@ -19,9 +19,16 @@ export function PageHeader({
             {eyebrow}
           </Typography>
         )}
-        <Typography variant="h3" component="h1" color="text.primary" fontWeight={600}>
-          {title}
-        </Typography>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}
+          justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            {icon && <Box sx={{ display: 'flex', color: 'primary.main' }}>{icon}</Box>}
+            <Typography variant="h4" component="h1" color="text.primary" fontWeight={700}>
+              {title}
+            </Typography>
+          </Stack>
+          {actions && <Box sx={{ width: { xs: '100%', sm: 'auto' } }}>{actions}</Box>}
+        </Stack>
         {description && (
           <Typography variant="body1" color="text.secondary" sx={{ mt: 0.75, maxWidth: 760 }}>
             {description}

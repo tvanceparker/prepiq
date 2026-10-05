@@ -83,6 +83,7 @@ export function useDishProfitability() {
     sortKey,
     setSortKey,
     category,
+    categories,
     setCategory,
     query,
     data,

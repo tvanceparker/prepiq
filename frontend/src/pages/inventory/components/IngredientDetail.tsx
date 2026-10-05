@@ -117,6 +117,7 @@ export default function IngredientDetail({
           lead_time_days: '',
           review_period_days: '',
           order_schedule_type: '',
+          order_schedule_anchor_date: '',
           allowed_order_days: '',
           allowed_delivery_days: '',
           cadence_source: '',
@@ -549,6 +550,20 @@ export default function IngredientDetail({
                     </option>
                   ))}
                 </TextField>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label="Cadence Anchor Date"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  value={supplier.order_schedule_anchor_date || ''}
+                  onChange={e => handleSupplierChange(i, 'order_schedule_anchor_date', e.target.value || null)}
+                  helperText="First order date for an every-N-days schedule"
+                  fullWidth
+                  size="small"
+                  disabled={!editable}
+                />
               </Grid>
 
               <Grid item xs={12} md={6}>

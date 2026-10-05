@@ -19,9 +19,10 @@ import {
   Snackbar,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { usePrepSchedule, useBatchRecipesForSchedule } from './hooks/usePrepSchedule';
+import { usePrepSchedule, useBatchRecipesForSchedule, usePrepRecommendations } from './hooks/usePrepSchedule';
 import type { PrepScheduleItem, BatchRecipe } from '../../interfaces/prep';
 export default function PrepSchedule(): React.JSX.Element {
+  const { data: recommendations, error: recommendationError } = usePrepRecommendations();
   const theme = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -133,7 +134,7 @@ export default function PrepSchedule(): React.JSX.Element {
     // Validate fields if completing
     if (updateStatus === 'completed') {
       const time = parseFloat(updateActualTime);
-      const batchCount = parseInt(updateBatchCount, 10);
+      const batchCount = parseFloat(updateBatchCount);
       if (isNaN(time) || time <= 0) {
         setSnackbar({ visible: true, message: 'Please enter a valid actual time' });
         return;
@@ -264,6 +265,27 @@ export default function PrepSchedule(): React.JSX.Element {
             </View>
           )}
         </Surface>
+
+        <Card mode="outlined" style={{ margin: 16 }}>
+          <Card.Content>
+            <Text variant="titleMedium">Forecast prep plan</Text>
+            <Text variant="bodySmall">Stock and scheduled output are included. Child batches appear first.</Text>
+            {recommendationError && <Text>Reconcile batch stock and rerun the forecast to restore recommendations.</Text>}
+            {recommendations?.review_required && <Text>Review history, overdue prep, or excess output before scheduling.</Text>}
+            {recommendations?.warnings?.map(message => <Text key={message}>{message}</Text>)}
+            {recommendations?.incomplete_preps?.map(item => <Text key={item.prep_id}>Prep #{item.prep_id}: {item.message}</Text>)}
+            {!recommendations?.batches?.length && <Text>No current forecast prep plan. Run EOD to generate one.</Text>}
+            {recommendations?.batches?.filter(row => row.additional_quantity > 0).map(row => (
+              <View key={`${row.forecast_date}-${row.batch_recipe_id}`} style={{ marginTop: 12 }}>
+                <Text>{row.forecast_date}: Batch #{row.batch_recipe_id}, {Number(row.additional_quantity).toFixed(3)} {row.unit} additional ({Number(row.additional_batch_count).toFixed(3)} batches)</Text>
+                <Button disabled={recommendations.review_required || row.review_required || creating} onPress={() => {
+                  const recipe = batchRecipes.find(batch => batch.batch_recipe_id === row.batch_recipe_id);
+                  if (recipe) { openCreateDialog(recipe); setCreateQuantity(String(row.additional_quantity)); setSelectedDate(row.forecast_date); }
+                }}>Plan prep</Button>
+              </View>
+            ))}
+          </Card.Content>
+        </Card>
 
         {/* Batch Recipes Section */}
         <View style={styles.section}>

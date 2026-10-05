@@ -3,7 +3,6 @@
 
 export * from './useWebSocket';
 export * from './useOrders';
-export * from './usePOS';
 export * from './useInventory';
 export * from './usePurchaseOrders';
 export * from './useSuppliers';

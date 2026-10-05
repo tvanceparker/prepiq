@@ -2,6 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getPrepSchedule,
+  getPrepRecommendations,
   createPrepSchedule,
   updatePrepSchedule,
   deletePrepSchedule,
@@ -31,6 +32,7 @@ export function usePrepSchedule(params: PrepScheduleParams = {}) {
     mutationFn: (data: PrepScheduleCreate) => createPrepSchedule(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['prep', 'schedule'] });
+      queryClient.invalidateQueries({ queryKey: ['prep', 'recommendations'] });
     },
   });
 
@@ -38,6 +40,7 @@ export function usePrepSchedule(params: PrepScheduleParams = {}) {
     mutationFn: (data: PrepScheduleUpdate) => updatePrepSchedule(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['prep', 'schedule'] });
+      queryClient.invalidateQueries({ queryKey: ['prep', 'recommendations'] });
     },
   });
 
@@ -45,6 +48,7 @@ export function usePrepSchedule(params: PrepScheduleParams = {}) {
     mutationFn: (prepId: number) => deletePrepSchedule(prepId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['prep', 'schedule'] });
+      queryClient.invalidateQueries({ queryKey: ['prep', 'recommendations'] });
     },
   });
 
@@ -65,6 +69,7 @@ export function usePrepSchedule(params: PrepScheduleParams = {}) {
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['prep', 'schedule'] });
+      queryClient.invalidateQueries({ queryKey: ['prep', 'recommendations'] });
   };
 
   return {
@@ -103,4 +108,9 @@ export function useBatchRecipesForSchedule() {
     loading: recipesQuery.isLoading,
     error: recipesQuery.error,
   };
+}
+
+
+export function usePrepRecommendations() {
+  return useQuery({ queryKey: ['prep', 'recommendations'], queryFn: getPrepRecommendations });
 }

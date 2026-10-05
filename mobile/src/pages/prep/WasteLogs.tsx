@@ -1,5 +1,5 @@
 // src/pages/prep/WasteLogs.tsx
-import React, { useState, useCallback, useContext } from 'react';
+import React, { useState, useCallback, useContext, useRef } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import {
   Surface,
@@ -32,6 +32,7 @@ const WASTE_REASONS: { value: WasteReason; label: string; icon: string }[] = [
 ];
 
 export default function WasteLogs(): React.ReactElement {
+  const wasteRequestKey = useRef<string | null>(null);
   const theme = useTheme();
   const { tier } = useContext(AuthContext) || {};
   const [refreshing, setRefreshing] = useState(false);
@@ -109,6 +110,7 @@ export default function WasteLogs(): React.ReactElement {
 
   // Open create dialog
   const openCreate = () => {
+    wasteRequestKey.current = null;
     setFormData({
       ingredient_id: 0,
       ingredient_name: '',
@@ -124,10 +126,11 @@ export default function WasteLogs(): React.ReactElement {
   const handleCreate = async () => {
     if (!formData.ingredient_name.trim() || !formData.quantity) return;
     await createWasteLog({
+      request_key: wasteRequestKey.current || (wasteRequestKey.current = `waste-${Date.now()}-${Math.random().toString(36).slice(2)}`),
       ingredient_id: formData.ingredient_id || undefined,
       quantity_wasted: parseFloat(formData.quantity),
       unit: formData.unit || 'units',
-      waste_type: formData.reason as any,
+      waste_type: ['expired', 'spoiled'].includes(formData.reason) ? 'spoilage' : 'waste',
       reason: formData.reason,
       notes: formData.notes || undefined,
     });

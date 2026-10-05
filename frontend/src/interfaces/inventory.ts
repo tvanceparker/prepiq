@@ -43,6 +43,7 @@ export interface IngredientSupplier {
   cost_per_unit: number;
   lead_time_days: number;
   review_period_days?: number | null;
+  order_schedule_anchor_date?: string | null;
   order_schedule_type?: OrderScheduleType | null;
   allowed_order_days?: string[] | string | null;
   allowed_delivery_days?: string[] | string | null;
@@ -85,6 +86,9 @@ export interface PurchaseOrderItem {
   ingredient_id: number;
   ingredient_name: string;
   ingredient_supplier_id?: number | null;
+  /** Physical amount in unit; pack metadata never changes receipt quantity. */
+  pack_quantity?: number | null;
+  pack_count?: number | null;
   quantity_ordered: number;
   quantity_received?: number | null;
   variance_quantity?: number | null;
@@ -136,6 +140,9 @@ export interface PurchaseOrderReceiptItemSummary {
   order_item_id: number;
   ingredient_id: number;
   lot_id: number;
+  /** Physical amount in unit; pack metadata never changes receipt quantity. */
+  pack_quantity?: number | null;
+  pack_count?: number | null;
   quantity_ordered: number;
   quantity_received: number;
   variance_quantity: number;
@@ -188,6 +195,9 @@ export interface PurchaseOrderItemUpdateResult {
   order_id: number;
   ingredient_id: number;
   ingredient_supplier_id?: number | null;
+  /** Physical amount in unit; pack metadata never changes receipt quantity. */
+  pack_quantity?: number | null;
+  pack_count?: number | null;
   quantity_ordered: number;
   unit: string;
   unit_price: number;
@@ -215,6 +225,9 @@ export interface LastEodDateResponse {
 export interface PurchaseOrderCreateItem {
   ingredient_id: number;
   ingredient_supplier_id?: number | null;
+  /** Physical amount in unit; pack metadata never changes receipt quantity. */
+  pack_quantity?: number | null;
+  pack_count?: number | null;
   quantity_ordered: number;
   unit: string;
   unit_price: number;
@@ -364,6 +377,8 @@ export interface UsageLog {
 
 // --- PO Suggestion Types ---
 export interface POReorderExplanation {
+  review_required?: boolean;
+  warnings?: string[];
   summary: string;
   why_reorder: {
     current_stock: number | null;
@@ -417,7 +432,8 @@ export interface POReorderExplanation {
     selected_supplier_priority: number | null;
     selected_supplier_preferred: boolean;
     pricing_available: boolean;
-    order_schedule_type?: string | null;
+  order_schedule_anchor_date?: string | null;
+  order_schedule_type?: string | null;
     review_period_days?: number | null;
     allowed_order_days?: string[];
     allowed_delivery_days?: string[];
@@ -444,6 +460,10 @@ export interface POReorderExplanation {
 }
 
 export interface POSuggestionItem {
+  review_required?: boolean;
+  pack_quantity?: number | null;
+  next_order_date?: string | null;
+  expected_delivery_date?: string | null;
   ingredient_id: number;
   ingredient_name: string;
   ingredient_supplier_id?: number | null;
@@ -524,6 +544,7 @@ export interface IngredientSupplierOption {
   min_order_quantity: number;
   lead_time_days: number;
   review_period_days?: number | null;
+  order_schedule_anchor_date?: string | null;
   order_schedule_type?: OrderScheduleType | null;
   allowed_order_days?: string[] | null;
   allowed_delivery_days?: string[] | null;

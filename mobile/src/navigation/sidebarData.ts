@@ -13,6 +13,7 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
       label: 'Dashboard',
       children: [
         { name: 'Daily Overview', path: '/dashboard/daily-overview' },
+        { name: 'EOD Detail', path: '/dashboard/eod-summary' },
         { name: 'Alerts & Insights Feed', path: '/dashboard/alerts' },
         { name: 'Menu Item Quick Entry', path: '/dashboard/menu-item-entry' },
       ],
@@ -48,6 +49,7 @@ export const sidebarDataByTier: Record<string, SidebarSection[]> = {
       label: 'Dashboard',
       children: [
         { name: 'Daily Overview', path: '/dashboard/daily-overview' },
+        { name: 'EOD Detail', path: '/dashboard/eod-summary' },
         { name: 'Alerts & Insights Feed', path: '/dashboard/alerts' },
         { name: 'Quick Analytics', path: '/dashboard/quick-analytics' },
       ],

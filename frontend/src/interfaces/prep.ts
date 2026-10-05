@@ -129,7 +129,7 @@ export interface BatchRecipePayload {
 export interface WasteLog {
   usage_id: number;
   waste_date: string;
-  ingredient_id: number;
+  ingredient_id: number | null;
   ingredient_name: string;
   batch_recipe_id: number | null;
   batch_recipe_name: string | null;
@@ -143,6 +143,7 @@ export interface WasteLog {
 }
 
 export interface CreateWasteLogRequest {
+  request_key?: string;
   ingredient_id?: number;
   batch_recipe_id?: number;
   quantity_wasted: number;
@@ -150,4 +151,25 @@ export interface CreateWasteLogRequest {
   waste_type: string;
   reason: string;
   notes?: string;
+}
+
+
+export interface PrepRecommendations {
+  run_date: string | null;
+  as_of_date?: string;
+  status: 'ready' | 'review' | 'missing';
+  review_required?: boolean;
+  warnings?: string[];
+  incomplete_preps?: { prep_id: number; message: string }[];
+  batches: {
+    forecast_date: string;
+    batch_recipe_id: number;
+    gross_quantity: number;
+    usable_stock: number;
+    scheduled_quantity: number;
+    additional_quantity: number;
+    additional_batch_count: number;
+    unit: string;
+    review_required: boolean;
+  }[];
 }

@@ -15,12 +15,13 @@ import {
   Chip,
 } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { Recipe, Ingredient } from '../../../interfaces/menu';
+import { Recipe, RecipeCreate, Ingredient } from '../../../interfaces/menu';
 
 const { height: screenHeight } = Dimensions.get('window');
 
 interface RecipeIngredientRow {
   ingredient_id: number;
+  ingredient_type: 'ingredient' | 'batch' | 'recipe';
   ingredient_name: string;
   quantity: string;
   unit: string;
@@ -34,11 +35,7 @@ interface RecipeDialogProps {
   ingredientsLoading: boolean;
   saving: boolean;
   onDismiss: () => void;
-  onSave: (data: {
-    name: string; // Backend expects 'name'
-    description?: string;
-    ingredients: { ingredient_id: number; quantity: number; unit: string }[];
-  }) => void;
+  onSave: (data: RecipeCreate) => void;
   onDelete?: () => void;
 }
 
@@ -79,6 +76,7 @@ export default function RecipeDialog({
             const qty = ri.quantity ?? ri.quantity_used ?? 0;
             return {
               ingredient_id: ingId || 0,
+              ingredient_type: ri.ingredient_type || ri.type || 'ingredient',
               ingredient_name: ingName,
               quantity: qty.toString(),
               unit: ri.unit || '',
@@ -98,6 +96,7 @@ export default function RecipeDialog({
       ...prev,
       {
         ingredient_id: 0,
+        ingredient_type: 'ingredient',
         ingredient_name: '',
         quantity: '',
         unit: '',
@@ -119,6 +118,7 @@ export default function RecipeDialog({
       updated[index] = {
         ...updated[index],
         ingredient_id: ingredient.ingredient_id,
+        ingredient_type: 'ingredient',
         ingredient_name: ingredient.name,
         unit: ingredient.unit || '',
       };
@@ -140,14 +140,16 @@ export default function RecipeDialog({
       ingredients: ingredients
         .filter(ing => ing.ingredient_id && ing.quantity)
         .map(ing => ({
-          ingredient_id: ing.ingredient_id,
+          reference_id: ing.ingredient_id,
+          ingredient_type: ing.ingredient_type,
           quantity: parseFloat(ing.quantity),
           unit: ing.unit || 'each',
         })),
     });
   };
 
-  const isValid = recipeName.trim();
+  const isValid = !!recipeName.trim() && ingredients.length > 0 && ingredients.every(ing =>
+    ing.ingredient_id > 0 && Number.isFinite(Number(ing.quantity)) && Number(ing.quantity) > 0 && !!ing.unit.trim());
   const isEditing = !!editingRecipe;
 
   return (
@@ -236,7 +238,7 @@ export default function RecipeDialog({
                         style={styles.ingredientButton}
                         contentStyle={styles.ingredientButtonContent}
                       >
-                        {ing.ingredient_name || 'Select ingredient...'}{' '}
+                        {ing.ingredient_name || 'Select ingredient...'}{ing.ingredient_type !== 'ingredient' ? ` (${ing.ingredient_type})` : ''}{' '}
                         {menuVisible === index ? '▲' : '▼'}
                       </Button>
                     }
