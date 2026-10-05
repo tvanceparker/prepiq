@@ -46,7 +46,8 @@ jobs:
         working-directory: frontend
         env:
           CI: 'false'
-      - run: npm ci --legacy-peer-deps
+      # Mobile lockfiles are ignored by this repository; use its install convention.
+      - run: npm install --legacy-peer-deps --no-audit --no-fund
         working-directory: mobile
       - run: npx tsc --noEmit
         working-directory: mobile
