@@ -57,7 +57,7 @@ class AlertRepository(BaseRepository):
                 Alert.restaurant_id == self.restaurant_id,
                 Alert.alert_type == alert_type,
                 Alert.status.in_(["Active", "Resolved","Acknowledged"]),
-                func.json_unquote(func.json_extract(Alert.meta, '$.sale_id')) == str(meta_sale_id)
+                Alert.meta["sale_id"].as_string() == str(meta_sale_id)
             )
         )
         result = await self.db.execute(stmt)
@@ -89,7 +89,7 @@ class AlertRepository(BaseRepository):
                 Alert.restaurant_id == self.restaurant_id,
                 Alert.alert_type == "LowStock",
                 Alert.status.in_(["Active", "Acknowledged"]),
-                func.json_unquote(func.json_extract(Alert.meta, '$.ingredient_id')) == str(ingredient_id),
+                Alert.meta["ingredient_id"].as_string() == str(ingredient_id),
             )
             .order_by(Alert.date_created.desc())
         )
@@ -101,7 +101,7 @@ class AlertRepository(BaseRepository):
             Alert.restaurant_id == self.restaurant_id,
             Alert.alert_type == "LowStock",
             Alert.status.in_(["Active", "Acknowledged"]),
-            func.json_unquote(func.json_extract(Alert.meta, '$.ingredient_id')) == str(ingredient_id),
+            Alert.meta["ingredient_id"].as_string() == str(ingredient_id),
         )
         result = await self.db.execute(stmt)
         alerts = result.scalars().all()

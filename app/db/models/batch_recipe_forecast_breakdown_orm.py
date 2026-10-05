@@ -16,7 +16,7 @@ class BatchRecipeForecastBreakdown(Base):
     batch_recipe_id = Column(
         Integer, ForeignKey("batch_recipes.batch_recipe_id"), nullable=False
     )
-    quantity = Column(DECIMAL(10, 2), nullable=False)
+    quantity = Column(DECIMAL(16, 6), nullable=False)
     source_menu_item_id = Column(
         Integer, ForeignKey("menu_items.menu_item_id"), nullable=True
     )

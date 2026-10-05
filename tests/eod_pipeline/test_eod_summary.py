@@ -36,6 +36,7 @@ class TestEODRunSummary:
             errors=[],
         )
         forecast_ledger = MagicMock(
+            result_snapshot={"version": 1, "history_quality": {"review_required": False}, "material_plan": {"review_required": False}},
             finalized=True,
             finished_at=datetime.utcnow(),
             errors=[],
@@ -103,6 +104,7 @@ class TestEODRunSummary:
             errors=[{"stage": "po_write", "message": "Supplier record missing", "ts": datetime.utcnow().isoformat()}],
         )
         forecast_ledger = MagicMock(
+            result_snapshot={"version": 1, "history_quality": {"review_required": False}, "material_plan": {"review_required": False}},
             finalized=True,
             finished_at=datetime.utcnow() - timedelta(minutes=2),
             errors=[{"stage": "forecast", "message": "Recovered with fallback"}],
@@ -159,6 +161,7 @@ class TestEODRunSummary:
             errors=[],
         )
         forecast_ledger = MagicMock(
+            result_snapshot={"version": 1, "history_quality": {"review_required": False}, "material_plan": {"review_required": False}},
             finalized=True,
             finished_at=datetime.utcnow() - timedelta(minutes=2),
             errors=[],

@@ -1,3 +1,4 @@
+from app.services.utils.forecast_snapshot import encode
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List
@@ -50,6 +51,7 @@ class EODPurchaseOrderSuggestionRepository(BaseRepository):
         created: List[EODPurchaseOrderSuggestion] = []
         for suggestion in suggestions:
             row = EODPurchaseOrderSuggestion(
+                suggestion_snapshot=encode(suggestion),
                 restaurant_id=self.restaurant_id,
                 run_date=run_date,
                 supplier_id=suggestion["supplier_id"],

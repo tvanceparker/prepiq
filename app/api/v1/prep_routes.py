@@ -8,6 +8,7 @@ from app.schemas.prep_dto import (
     IngredientInput,
     CreateBatchRecipeRequest,
     PrepScheduleUpdate,
+    PrepScheduleCreate,
     PrepLogResponse,
     WasteLogResponse,
     CreateWasteLogRequest,
@@ -67,6 +68,7 @@ async def create_waste_log(
             ingredient_id=data.ingredient_id,
             batch_recipe_id=data.batch_recipe_id,
             quantity_wasted=data.quantity_wasted,
+            request_key=data.request_key,
             unit=data.unit,
             waste_type=data.waste_type,
             reason=data.reason,
@@ -74,6 +76,15 @@ async def create_waste_log(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/recommendations")
+async def get_prep_recommendations(prep_service: PrepService = Depends(get_prep_service)):
+    """Net prep needs from the same persisted material plan used for purchasing."""
+    try:
+        return await prep_service.get_prep_recommendations()
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
 
 
 @router.get("/schedule", response_model=List[Dict])
@@ -85,11 +96,11 @@ async def get_prep_schedule(
 
 @router.post("/schedule")
 async def create_prep_schedule(
-    prep_data: Dict,  # accept a dict directly from request body
+    prep_data: PrepScheduleCreate,
     prep_service: PrepService = Depends(get_prep_service),
 ):
     try:
-        created = await prep_service.create_prep_schedule(prep_data)
+        created = await prep_service.create_prep_schedule(prep_data.model_dump(exclude_none=True))
         return created
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

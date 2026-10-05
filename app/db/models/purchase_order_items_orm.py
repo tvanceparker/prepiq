@@ -14,8 +14,10 @@ class PurchaseOrderItem(Base):
     ingredient_id = Column(Integer, ForeignKey("ingredients.ingredient_id"), nullable=False)
     ingredient_supplier_id = Column(Integer, ForeignKey("ingredient_supplier.ingredient_supplier_id"))
     
-    quantity_ordered = Column(DECIMAL(10, 2))
-    quantity_received = Column(DECIMAL(10, 2), nullable=True)
+    pack_quantity = Column(DECIMAL(16, 6), nullable=True)
+    pack_count = Column(Integer, nullable=True)
+    quantity_ordered = Column(DECIMAL(16, 6))
+    quantity_received = Column(DECIMAL(16, 6), nullable=True)
     unit = Column(String(20))
     unit_price = Column(DECIMAL(10, 2))
     total_item_price = Column(DECIMAL(10, 2), default=0.00)

@@ -15,6 +15,7 @@ class LotStatus(PyEnum):
 class InventoryLot(Base):
     __tablename__ = "inventory_lots"
     __table_args__ = (
+        UniqueConstraint("restaurant_id", "prep_id", name="uq_inventory_lots_prep"),
         UniqueConstraint(
             "purchase_order_item_id",
             name="uq_inventory_lots_purchase_order_item_id",
@@ -33,6 +34,7 @@ class InventoryLot(Base):
         ForeignKey("ingredient_supplier.ingredient_supplier_id"),
         nullable=True,  # Nullable for batch-produced lots (no external supplier)
     )  # Reference to ingredient_supplier
+    prep_id = Column(Integer, ForeignKey("prep_schedule.prep_id"), nullable=True)
     receipt_source = Column(String(50), nullable=True)
     purchase_order_id = Column(
         Integer, ForeignKey("purchase_orders.order_id"), nullable=True
@@ -44,9 +46,9 @@ class InventoryLot(Base):
     spoilage_expected_date = Column(
         Date, nullable=True
     )  # Expected spoilage date (can be null)
-    quantity = Column(Float, nullable=False)  # Quantity of the item in the lot
+    quantity = Column(DECIMAL(16, 6), nullable=False)  # Quantity of the item in the lot
     total_received = Column(
-        DECIMAL(10, 2), default=0.00, nullable=False
+        DECIMAL(16, 6), default=0.00, nullable=False
     )  # Total received quantity
     unit = Column(
         String, nullable=False

@@ -50,7 +50,7 @@ class EODRunLedgerRepository:
 
     async def mark_stage_complete(self, ledger: EODRunLedger, stage: str, duration_ms: int) -> None:
         setattr(ledger, stage, True)
-        durations = ledger.durations or {}
+        durations = dict(ledger.durations or {})
         durations[stage] = duration_ms
         ledger.durations = durations
         await self.db.flush()
@@ -71,7 +71,7 @@ class EODRunLedgerRepository:
         await self.db.flush()
 
     async def append_error(self, ledger: EODRunLedger, stage: str, message: str) -> None:
-        errors = ledger.errors or []
+        errors = list(ledger.errors or [])
         errors.append({"stage": stage, "message": message, "ts": datetime.utcnow().isoformat()})
         ledger.errors = errors
         await self.db.flush()

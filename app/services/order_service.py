@@ -305,7 +305,7 @@ class OrderService:
                 helper_result = await self.inventory_helper.deduct_for_menu_items(
                     menu_items=menu_items_payload,
                     reference_id=order_id,
-                    reference_type="sale",
+                    reference_type="order",
                 )
             except Exception as exc:  # pragma: no cover - defensive logging
                 logger.error("[Order] Real-time deduction failed order=%s error=%s", order_id, exc, exc_info=True)

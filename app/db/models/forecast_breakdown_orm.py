@@ -1,6 +1,6 @@
 # app/db/models/forecast_breakdown_orm.py
 
-from sqlalchemy import Column, Integer, Date, ForeignKey
+from sqlalchemy import Column, Integer, Date, ForeignKey, DECIMAL
 from app.db.session import Base
 from sqlalchemy.orm import relationship
 
@@ -17,7 +17,7 @@ class ForecastBreakdown(Base):
         Integer, ForeignKey("restaurants.restaurant_id"), nullable=False
     )
     forecast_date = Column(Date, nullable=False)
-    forecasted_quantity = Column(Integer, nullable=False)
+    forecasted_quantity = Column(DECIMAL(16, 6), nullable=False)
 
     forecast = relationship("Forecast", back_populates="forecast_breakdowns")
     menu_item = relationship("MenuItem", back_populates="forecast_breakdowns")

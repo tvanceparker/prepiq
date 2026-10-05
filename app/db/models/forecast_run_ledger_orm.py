@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, Date, DateTime, Boolean, JSON, String, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, Integer, BigInteger, Date, DateTime, Boolean, JSON, String, UniqueConstraint, ForeignKey
 from sqlalchemy.dialects.mysql import INTEGER
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -12,7 +12,7 @@ class ForecastRunLedger(Base):
         UniqueConstraint("restaurant_id", "run_date", name="uq_forecast_run_ledger_restaurant_date"),
     )
 
-    forecast_ledger_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    forecast_ledger_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     restaurant_id = Column(INTEGER(11), ForeignKey("restaurants.restaurant_id", ondelete="CASCADE"), index=True, nullable=False)
     run_date = Column(Date, index=True, nullable=False)
 
@@ -33,6 +33,7 @@ class ForecastRunLedger(Base):
     menu_items_processed = Column(BigInteger, default=0)
     menu_items_total = Column(BigInteger, default=0)
     
+    result_snapshot = Column(JSON, nullable=True)
     durations = Column(JSON, default=dict)  # stage -> milliseconds
     errors = Column(JSON, default=list)     # list of {stage, message, ts}
 

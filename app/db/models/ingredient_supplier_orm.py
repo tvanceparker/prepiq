@@ -24,6 +24,7 @@ class IngredientSupplier(Base):
     cost_per_unit = Column(DECIMAL(10, 2), nullable=False)
     lead_time_days = Column(Integer, nullable=False)
     review_period_days = Column(Integer)
+    order_schedule_anchor_date = Column(Date, nullable=True)
     order_schedule_type = Column(String(32))
     allowed_order_days = Column(JSON)
     allowed_delivery_days = Column(JSON)
@@ -32,11 +33,11 @@ class IngredientSupplier(Base):
     spoilage_rate = Column(DECIMAL(4, 3))
     shelf_life_days = Column(Integer)
     preferred = Column(Boolean, default=False)
-    min_order_quantity = Column(Integer)
+    min_order_quantity = Column(DECIMAL(16, 6))
     supplier_priority = Column(Integer)
     unit = Column(String, nullable=False)
     pack_size = Column(Integer)
-    quantity_per_pack_item = Column(DECIMAL(10, 2))
+    quantity_per_pack_item = Column(DECIMAL(16, 6))
     is_active = Column(Boolean, default=True)
 
     # Relationships

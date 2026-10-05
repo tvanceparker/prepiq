@@ -2,6 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     Column,
+    JSON,
     Date,
     DateTime,
     DECIMAL,
@@ -40,19 +41,20 @@ class EODPurchaseOrderSuggestion(Base):
         ForeignKey("ingredient_supplier.ingredient_supplier_id"),
         nullable=False,
     )
-    lead_demand = Column(DECIMAL(12, 2), nullable=False, default=0)
-    shelf_demand = Column(DECIMAL(12, 2), nullable=False, default=0)
+    lead_demand = Column(DECIMAL(16, 6), nullable=False, default=0)
+    shelf_demand = Column(DECIMAL(16, 6), nullable=False, default=0)
     forecast_unit = Column(String(20), nullable=True)
-    converted_quantity_needed = Column(DECIMAL(12, 2), nullable=False, default=0)
+    converted_quantity_needed = Column(DECIMAL(16, 6), nullable=False, default=0)
     suggested_packs_to_order = Column(Integer, nullable=False, default=0)
-    total_quantity_ordered = Column(DECIMAL(12, 2), nullable=False, default=0)
+    total_quantity_ordered = Column(DECIMAL(16, 6), nullable=False, default=0)
     supplier_unit = Column(String(20), nullable=False)
     inventory_unit = Column(String(20), nullable=True)
     lead_time_days = Column(Integer, nullable=False, default=0)
     shelf_life_days = Column(Integer, nullable=False, default=0)
     pack_size = Column(Integer, nullable=False, default=1)
-    quantity_per_pack_item = Column(DECIMAL(12, 2), nullable=False, default=1)
-    min_order_quantity = Column(DECIMAL(12, 2), nullable=False, default=0)
+    quantity_per_pack_item = Column(DECIMAL(16, 6), nullable=False, default=1)
+    min_order_quantity = Column(DECIMAL(16, 6), nullable=False, default=0)
+    suggestion_snapshot = Column(JSON, nullable=True)
     purchase_order_id = Column(
         Integer,
         ForeignKey("purchase_orders.order_id"),

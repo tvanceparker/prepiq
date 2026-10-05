@@ -1,3 +1,8 @@
+from app.utils.business_date import sales_day
+from app.services.utils.demand_observations import DemandObservations
+from app.services.utils.forecast_snapshot import encode, restore
+from app.utils.job_lock import serialized_job
+from app.services.utils.recipe_usage import RecipeUsageExpander
 from typing import Any, Dict, List, Optional, Tuple
 
 import asyncio
@@ -93,6 +98,9 @@ class ForecastingEngine:
 
         # Advanced pipeline state
         self.accuracy_metrics: Dict[int, Dict[str, Optional[float]]] = {}
+        self.forecast_origin = None
+        self.observations = None
+        self.history_quality = None
         self.latest_menu_item_forecasts: Dict[
             int, Dict[str, List[Tuple[date, float]]]
         ] = {}
@@ -140,12 +148,19 @@ class ForecastingEngine:
             )
             return
 
+        observations = await DemandObservations.load(self.db, self.restaurant_id)
+        if observations.status(evaluation_date) not in {"complete", "closed"}:
+            logger.info("[ACCURACY] Skipping unverified business date %s", evaluation_date)
+            return
         sales_for_day = await self.sales_repo.get_by_date(evaluation_date)
         actual_by_item: Dict[int, int] = defaultdict(int)
         for sale in sales_for_day:
             actual_by_item[sale.menu_item_id] += sale.quantity_sold
 
         for breakdown in forecast_breakdowns:
+            issued = await self.forecast_repo.get_by_id(breakdown.forecast_id)
+            if not issued or not issued.created_at or issued.created_at.date() >= evaluation_date:
+                continue
             predicted_quantity = breakdown.forecasted_quantity
             actual_quantity = actual_by_item.get(breakdown.menu_item_id, 0)
 
@@ -163,9 +178,9 @@ class ForecastingEngine:
                 "restaurant_id": breakdown.restaurant_id,
                 "menu_item_id": breakdown.menu_item_id,
                 "forecast_date": breakdown.forecast_date,
-                "predicted_quantity": int(predicted_quantity),
+                "predicted_quantity": predicted_quantity,
                 "actual_quantity": int(actual_quantity),
-                "forecast_error": int(forecast_error),
+                "forecast_error": forecast_error,
                 "error_percentage": round(float(error_percentage), 2),
             }
 
@@ -190,6 +205,7 @@ class ForecastingEngine:
             check_until,
         )
 
+        observations = await DemandObservations.load(self.db, self.restaurant_id)
         for forecast in past_forecasts:
             forecast_id = forecast.forecast_id
             existing_accuracy = await self.forecast_accuracy_repo.get_by_forecast_id(
@@ -212,7 +228,7 @@ class ForecastingEngine:
             actual_by_day: Dict[date, int] = defaultdict(int)
             for sale in sales_window:
                 if sale.menu_item_id == forecast.menu_item_id:
-                    actual_by_day[sale.sale_timestamp.date()] += sale.quantity_sold
+                    actual_by_day[sales_day(sale)] += sale.quantity_sold
 
             abs_percentage_errors = []
             squared_errors = []
@@ -224,6 +240,8 @@ class ForecastingEngine:
 
             for b in breakdowns:
                 forecast_day = b.forecast_date
+                if observations.status(forecast_day) not in {"complete", "closed"} or not forecast.created_at or forecast.created_at.date() >= forecast_day:
+                    continue
                 predicted_qty = b.forecasted_quantity
                 actual_qty = actual_by_day.get(forecast_day, 0)
                 total_actual += actual_qty
@@ -235,6 +253,8 @@ class ForecastingEngine:
                 actuals.append(actual_qty)
                 predictions.append(predicted_qty)
 
+            if not actuals:
+                continue
             mean_smape = mean(abs_percentage_errors) if abs_percentage_errors else 0.0
             mean_actual = mean(actuals) if actuals else 0
             ss_res = sum(squared_errors)
@@ -267,6 +287,10 @@ class ForecastingEngine:
 
         forecast_id = latest_forecast.forecast_id
         breakdowns = await self.forecast_breakdown_repo.get_by_forecast(forecast_id)
+        observations = await DemandObservations.load(self.db, self.restaurant_id)
+        breakdowns = [b for b in breakdowns if b.forecast_date <= (self.forecast_origin or date.today())
+                      and observations.status(b.forecast_date) in {"complete", "closed"}
+                      and latest_forecast.created_at and latest_forecast.created_at.date() < b.forecast_date]
         if not breakdowns:
             return {}
 
@@ -284,11 +308,11 @@ class ForecastingEngine:
         sales_df = pd.DataFrame(
             [
                 {
-                    "sale_date": s.sale_timestamp.date(),
+                    "sale_date": sales_day(s),
                     "quantity_sold": s.quantity_sold,
                 }
                 for s in sales_data
-            ]
+            ], columns=["sale_date", "quantity_sold"]
         )
         sales_df = sales_df.groupby("sale_date")["quantity_sold"].sum().reset_index()
 
@@ -326,7 +350,7 @@ class ForecastingEngine:
                 "rmse": None,
             }
 
-        r2 = r2_score(y_true, y_pred)
+        r2 = r2_score(y_true, y_pred) if len(y_true) >= 2 else None
         mae = mean_absolute_error(y_true, y_pred)
         mse = mean_squared_error(y_true, y_pred)
         rmse = mse ** 0.5
@@ -337,6 +361,9 @@ class ForecastingEngine:
             "mae": mae,
             "mse": mse,
             "rmse": rmse,
+            "bias": float((y_pred - y_true).mean()),
+            "wape": float(abs(y_pred - y_true).sum() / abs(y_true).sum()) if abs(y_true).sum() else None,
+            "metric_units": {"mape": "fraction", "wape": "fraction", "mae": "servings", "bias": "servings"},
         }
 
     def _derive_confidence_score(
@@ -349,7 +376,7 @@ class ForecastingEngine:
 
         mape_value = metrics.get("mape")
         if mape_value is not None and not np.isnan(mape_value):
-            components.append(max(0.0, min(1.0, 1 - (float(mape_value) / 100.0))))
+            components.append(max(0.0, min(1.0, 1 - float(mape_value))))
 
         r2_value = metrics.get("r2")
         if r2_value is not None and not np.isnan(r2_value):
@@ -367,8 +394,8 @@ class ForecastingEngine:
         self, menu_item_id: int, lookback_days: int = 90
     ) -> List[Any]:
         sales = await self.sales_repo.get_sales_between_dates(
-            start_date=date.today() - timedelta(days=lookback_days),
-            end_date=date.today(),
+            start_date=(self.forecast_origin or date.today()) - timedelta(days=lookback_days),
+            end_date=(self.forecast_origin or date.today()),
         )
         return [sale for sale in sales if sale.menu_item_id == menu_item_id]
 
@@ -483,9 +510,8 @@ class ForecastingEngine:
         strategy["history_summary"] = history_summary
         return strategy
 
-    @staticmethod
-    def _build_future_dates(horizon_days: int) -> List[date]:
-        return [date.today() + timedelta(days=offset) for offset in range(horizon_days)]
+    def _build_future_dates(self, horizon_days: int) -> List[date]:
+        return [(self.forecast_origin or date.today()) + timedelta(days=offset + 1) for offset in range(horizon_days)]
 
     @staticmethod
     def _generate_zero_forecast(future_dates: List[date]) -> List[Dict[str, Any]]:
@@ -626,92 +652,13 @@ class ForecastingEngine:
         features_df = df[["day_of_week", "day", "month", "year"]].copy()
 
         try:
-            future_weather_map: Dict[date, Dict[str, float]] = {}
-            if getattr(self, "db", None):
-                from app.integrations.weather.open_meteo_adapter import (
-                    fetch_forecast_for_range,
-                )
-
-                restaurant = await self.restaurant_repo.get_by_id(self.restaurant_id)
-                if (
-                    restaurant
-                    and getattr(restaurant, "latitude", None) is not None
-                    and getattr(restaurant, "longitude", None) is not None
-                ):
-                    start_dt = date.today()
-                    end_dt = date.today() + timedelta(days=horizon_days - 1)
-                    future_weather_map = await fetch_forecast_for_range(
-                        float(restaurant.latitude),
-                        float(restaurant.longitude),
-                        start_dt,
-                        end_dt,
-                    )
-
-            try:
-                from app.repositories.weather_data_repo import WeatherDataRepository
-
-                weather_repo = WeatherDataRepository(self.db, self.restaurant_id)
-                observed_rows = await weather_repo.get_range(
-                    self.restaurant_id,
-                    date.today() - timedelta(days=7),
-                    date.today(),
-                )
-                observed_rows = sorted(observed_rows, key=lambda row: row.weather_date)
-                past_temps = [
-                    float(row.temperature)
-                    for row in observed_rows
-                    if getattr(row, "temperature", None) is not None
-                ]
-                past_precips = [
-                    float(row.precipitation_mm)
-                    for row in observed_rows
-                    if getattr(row, "precipitation_mm", None) is not None
-                ]
-            except Exception:
-                past_temps = []
-                past_precips = []
-
-            future_temps = [
-                future_weather_map.get(forecast_date, {}).get("temperature")
-                if future_weather_map
-                else None
-                for forecast_date in future_dates
-            ]
-            future_precips = [
-                future_weather_map.get(forecast_date, {}).get("precipitation_mm")
-                if future_weather_map
-                else 0.0
-                for forecast_date in future_dates
-            ]
-
-            combined_temps = list(past_temps) if past_temps else [0.0]
-            temp_lag_1_list: List[float] = []
-            temp_roll_7_list: List[float] = []
-            for index, future_temp in enumerate(future_temps):
-                previous_temp = combined_temps[-1] if combined_temps else 0.0
-                temp_lag_1_list.append(previous_temp)
-                window = (
-                    combined_temps + [temp for temp in future_temps[:index] if temp is not None]
-                )[-7:]
-                temp_roll_7_list.append(
-                    float(sum(window) / len(window)) if window else 0.0
-                )
-                combined_temps.append(
-                    future_temp if future_temp is not None else previous_temp
-                )
-
-            combined_precips = list(past_precips) if past_precips else [0.0]
-            precip_lag_1_list: List[float] = []
-            for future_precip in future_precips:
-                previous_precip = combined_precips[-1] if combined_precips else 0.0
-                precip_lag_1_list.append(previous_precip)
-                combined_precips.append(future_precip if future_precip is not None else 0.0)
-
-            features_df = features_df.reset_index(drop=True)
-            features_df["temp_lag_1"] = temp_lag_1_list[: len(features_df)]
-            features_df["temp_roll_7"] = temp_roll_7_list[: len(features_df)]
-            features_df["precip_lag_1"] = precip_lag_1_list[: len(features_df)]
-
+            # Calendar predictors have identical information at training and
+            # every inference horizon. Observed future sales/errors/weather are
+            # excluded until origin-stamped external feature snapshots exist.
+            required_names = getattr(model, "_model_json", {}).get("output", {}).get("names", [])
+            if required_names and set(required_names) - {"day_of_week", "day", "month", "year", "quantity_sold"}:
+                logger.warning("[FORECAST] Legacy model feature contract rejected for menu_item %s", menu_item_id)
+                return []
             h2o_frame = h2o.H2OFrame(features_df)
             predictions = model.predict(h2o_frame).as_data_frame().values.flatten()
             result = [
@@ -875,7 +822,7 @@ class ForecastingEngine:
     async def should_retrain_model(
         self, menu_item_id: int, threshold_mape: float, threshold_r2: float
     ) -> bool:
-        model = load_model(self.restaurant_id, menu_item_id)
+        model = load_model(self.restaurant_id, menu_item_id, as_of_date=self.forecast_origin or date.today(), feature_version="calendar_v1")
         if model is None:
             logger.info(
                 "[FORECAST] No persisted model found for menu_item %s; checking H2O availability for retraining",
@@ -955,8 +902,8 @@ class ForecastingEngine:
             lookback_days,
         )
         sales = await self.sales_repo.get_sales_between_dates(
-            start_date=date.today() - timedelta(days=lookback_days),
-            end_date=date.today(),
+            start_date=(self.forecast_origin or date.today()) - timedelta(days=lookback_days),
+            end_date=(self.forecast_origin or date.today()),
         )
         item_sales = [s for s in sales if s.menu_item_id == menu_item_id]
         if not item_sales:
@@ -1004,18 +951,6 @@ class ForecastingEngine:
 
         base_features = ["day_of_week", "day", "month", "year"]
         extra_feats: List[str] = []
-        for col in [
-            "prev_forecasted_quantity",
-            "prev_error_percentage",
-            "lag_1",
-            "lag_7",
-            "temp_lag_1",
-            "temp_roll_7",
-            "precip_lag_1",
-        ]:
-            if col in feature_df.columns:
-                extra_feats.append(col)
-
         X_train = train_df[base_features + extra_feats]
         y_train = train_df["quantity_sold"]
         X_valid = valid_df[base_features + extra_feats]
@@ -1089,7 +1024,7 @@ class ForecastingEngine:
         mape_metric = float(np.nanmean(percentage_errors))
         r2_metric = float(model.r2(valid=True))
 
-        save_model(self.restaurant_id, menu_item_id, model)
+        save_model(self.restaurant_id, menu_item_id, model, trained_through=self.forecast_origin or date.today(), feature_version="calendar_v1")
         logger.info(
             "[FORECAST] Completed H2O training for menu_item %s mape=%s r2=%s",
             menu_item_id,
@@ -1103,206 +1038,17 @@ class ForecastingEngine:
         self, menu_item_id: int, lookback_days: int = 90
     ) -> pd.DataFrame:
         sales = await self.sales_repo.get_sales_between_dates(
-            start_date=date.today() - timedelta(days=lookback_days),
-            end_date=date.today(),
+            start_date=(self.forecast_origin or date.today()) - timedelta(days=lookback_days),
+            end_date=(self.forecast_origin or date.today()),
         )
         item_sales = [s for s in sales if s.menu_item_id == menu_item_id]
         if not item_sales:
             return pd.DataFrame()
 
-        from datetime import datetime as _dt
-
-        sales_dates = [
-            s.sale_timestamp.date() if isinstance(s.sale_timestamp, _dt) else s.sale_timestamp
-            for s in item_sales
-        ]
-
-        sales_df = pd.DataFrame(
-            {
-                "date": sales_dates,
-                "quantity_sold": [s.quantity_sold for s in item_sales],
-            }
-        )
-        daily = sales_df.groupby("date")["quantity_sold"].sum().reset_index()
-        daily["date"] = pd.to_datetime(daily["date"]).dt.date
-
-        try:
-            if getattr(self, "db", None):
-                await self.ensure_weather_for_range(
-                    daily["date"].min(), daily["date"].max()
-                )
-        except Exception:  # pragma: no cover
-            pass
-
-        try:
-            breakdowns = await self.forecast_breakdown_repo.get_latest_by_date_range(
-                start_date=daily["date"].min(),
-                end_date=daily["date"].max(),
-            )
-        except Exception:
-            breakdowns = []
-
-        if breakdowns:
-            fb_df = pd.DataFrame(
-                [
-                    {
-                        "date": b.forecast_date,
-                        "prev_forecasted_quantity": b.forecasted_quantity,
-                        "menu_item_id": b.menu_item_id,
-                    }
-                    for b in breakdowns
-                    if b.menu_item_id == menu_item_id
-                ]
-            )
-            if not fb_df.empty:
-                fb_df["date"] = pd.to_datetime(fb_df["date"]).dt.date
-                daily = pd.merge(
-                    daily, fb_df[["date", "prev_forecasted_quantity"]], on="date", how="left"
-                )
-            else:
-                daily["prev_forecasted_quantity"] = pd.NA
-        else:
-            daily["prev_forecasted_quantity"] = pd.NA
-
-        try:
-            accs = await self.daily_forecast_accuracy_repo.get_by_date_range(
-                daily["date"].min(), daily["date"].max()
-            )
-        except Exception:
-            accs = []
-
-        if accs:
-            acc_df = pd.DataFrame(
-                [
-                    {
-                        "date": a.forecast_date,
-                        "prev_error_percentage": a.error_percentage,
-                        "menu_item_id": a.menu_item_id,
-                    }
-                    for a in accs
-                    if a.menu_item_id == menu_item_id
-                ]
-            )
-            if not acc_df.empty:
-                acc_df["date"] = pd.to_datetime(acc_df["date"]).dt.date
-                daily = pd.merge(
-                    daily, acc_df[["date", "prev_error_percentage"]], on="date", how="left"
-                )
-            else:
-                daily["prev_error_percentage"] = pd.NA
-        else:
-            daily["prev_error_percentage"] = pd.NA
-
-        try:
-            from app.repositories.weather_data_repo import WeatherDataRepository
-
-            weather_repo = WeatherDataRepository(self.db, self.restaurant_id)
-            weather_rows = await weather_repo.get_range(
-                self.restaurant_id,
-                daily["date"].min(),
-                daily["date"].max(),
-            )
-        except Exception:
-            weather_rows = []
-
-        if weather_rows:
-            weather_df = pd.DataFrame(
-                [
-                    {
-                        "date": row.weather_date,
-                        "temperature": float(row.temperature)
-                        if getattr(row, "temperature", None) is not None
-                        else None,
-                        "precipitation_mm": float(row.precipitation_mm)
-                        if getattr(row, "precipitation_mm", None) is not None
-                        else None,
-                    }
-                    for row in weather_rows
-                ]
-            )
-            weather_df["date"] = pd.to_datetime(weather_df["date"]).dt.date
-            daily = pd.merge(daily, weather_df, on="date", how="left")
-        else:
-            daily["temperature"] = pd.NA
-            daily["precipitation_mm"] = pd.NA
-
-        daily["has_weather"] = daily["temperature"].notna().astype(int)
-        if "temperature" in daily.columns:
-            try:
-                daily["temperature"] = pd.to_numeric(daily["temperature"]).astype(float)
-                daily["temperature"] = daily["temperature"].fillna(
-                    daily["temperature"].mean()
-                )
-            except Exception:
-                daily["temperature"] = daily["temperature"].fillna(0.0)
-        if "precipitation_mm" in daily.columns:
-            try:
-                daily["precipitation_mm"] = pd.to_numeric(
-                    daily["precipitation_mm"]
-                ).astype(float)
-                daily["precipitation_mm"] = daily["precipitation_mm"].fillna(0.0)
-            except Exception:
-                daily["precipitation_mm"] = daily["precipitation_mm"].fillna(0.0)
-
-        MIN_EXOG_DAYS = 30
-        include_weather = int(daily.get("has_weather", pd.Series([])).sum() or 0) >= MIN_EXOG_DAYS
-        if include_weather:
-            try:
-                daily = daily.sort_values("date").reset_index(drop=True)
-                daily["temp_lag_1"] = (
-                    daily["temperature"].shift(1).fillna(method="bfill").astype(float)
-                )
-                daily["temp_roll_7"] = (
-                    daily["temperature"].rolling(window=7, min_periods=1).mean()
-                    .fillna(method="bfill")
-                    .astype(float)
-                )
-                daily["precip_lag_1"] = (
-                    daily["precipitation_mm"].shift(1).fillna(0.0).astype(float)
-                )
-            except Exception:
-                daily["temp_lag_1"] = 0.0
-                daily["temp_roll_7"] = 0.0
-                daily["precip_lag_1"] = 0.0
-        else:
-            daily["temp_lag_1"] = 0.0
-            daily["temp_roll_7"] = 0.0
-            daily["precip_lag_1"] = 0.0
-
-        daily = daily.sort_values("date").reset_index(drop=True)
-        daily["lag_1"] = daily["quantity_sold"].shift(1).fillna(0).astype(float)
-        daily["lag_7"] = daily["quantity_sold"].shift(7).fillna(0).astype(float)
-
-        daily["prev_forecasted_quantity"] = pd.to_numeric(
-            daily["prev_forecasted_quantity"].fillna(0)
-        ).astype(float)
-        daily["prev_error_percentage"] = pd.to_numeric(
-            daily["prev_error_percentage"].fillna(0)
-        ).astype(float)
-
-        daily["forecast_error"] = (
-            daily["quantity_sold"] - daily["prev_forecasted_quantity"]
-        ).astype(float)
-        daily["forecast_error_pct"] = daily.apply(
-            lambda row: (row["forecast_error"] / row["quantity_sold"] * 100.0)
-            if row["quantity_sold"] != 0
-            else 0.0,
-            axis=1,
-        )
-
-        daily["rolling_error_7"] = (
-            daily["forecast_error"].rolling(window=7, min_periods=1).mean().fillna(0).astype(float)
-        )
-        daily["prev_forecast_ratio"] = daily.apply(
-            lambda r: (
-                r["prev_forecasted_quantity"] / (r["lag_7"] + 1e-3)
-                if (r["lag_7"] + 1e-3) != 0
-                else 0.0
-            ),
-            axis=1,
-        )
-        daily["quantity_sold"] = pd.to_numeric(daily["quantity_sold"]).astype(float)
-
+        frame = await self._prepare_sales_dataframe(item_sales)
+        daily = frame.reset_index().rename(columns={"index": "date"})
+        if self.observations is not None:
+            daily = daily[daily["date"].apply(lambda day: self.observations.status(day.date()) in {"complete", "closed"})]
         return daily
 
     @log_method("Ensure Weather For Range (Advanced)")
@@ -1347,7 +1093,7 @@ class ForecastingEngine:
                                 self.restaurant_id, day, payload
                             )
                             if getattr(self.db, "commit", None):
-                                await self.db.commit()
+                                await self.db.flush()
                     except Exception as exc:
                         logger.debug(
                             "[WEATHER] Failed to fetch weather for %s: %s",
@@ -1378,7 +1124,7 @@ class ForecastingEngine:
         forecast_rows, strategy_metadata = await self.generate_forecast_with_metadata(
             menu_item_id,
             horizon_days=horizon_days,
-            model=load_model(self.restaurant_id, menu_item_id),
+            model=load_model(self.restaurant_id, menu_item_id, as_of_date=self.forecast_origin or date.today(), feature_version="calendar_v1"),
         )
         self.latest_forecast_model_metadata[menu_item_id] = strategy_metadata
         return forecast_rows
@@ -1397,8 +1143,8 @@ class ForecastingEngine:
         period_start = forecast_data[0]["forecast_date"]
         period_end = forecast_data[-1]["forecast_date"]
 
-        daily_rounded = [int(round(entry["predicted_quantity"])) for entry in forecast_data]
-        total_adjusted_quantity = sum(daily_rounded)
+        daily_quantities = [Decimal(str(entry["predicted_quantity"])) for entry in forecast_data]
+        total_adjusted_quantity = int(round(sum(daily_quantities)))
 
         resolved_confidence = (
             confidence_score
@@ -1439,15 +1185,16 @@ class ForecastingEngine:
         forecast = await self.forecast_repo.create(forecast_payload)
         forecast_id = forecast.forecast_id
 
-        for entry, rounded_qty in zip(forecast_data, daily_rounded):
+        for entry, daily_quantity in zip(forecast_data, daily_quantities):
             breakdown_payload = {
                 "forecast_id": forecast_id,
                 "restaurant_id": self.restaurant_id,
                 "menu_item_id": menu_item_id,
                 "forecast_date": entry["forecast_date"],
-                "forecasted_quantity": rounded_qty,
+                "forecasted_quantity": daily_quantity,
             }
             await self.forecast_breakdown_repo.create(breakdown_payload)
+        return {"forecast_id": forecast_id, "forecast_version": forecast_payload["forecast_version"]}
 
     @log_method("Prepare Sales DataFrame")
     async def _prepare_sales_dataframe(self, sales_history: List[Any]) -> pd.DataFrame:
@@ -1456,7 +1203,7 @@ class ForecastingEngine:
 
         records = [
             {
-                "sale_timestamp": getattr(row, "sale_timestamp", row.sale_timestamp),
+                "sale_timestamp": sales_day(row),
                 "quantity_sold": getattr(row, "quantity_sold", row.quantity_sold),
             }
             for row in sales_history
@@ -1465,7 +1212,8 @@ class ForecastingEngine:
         df = pd.DataFrame(records)
         df["sale_date"] = pd.to_datetime(df["sale_timestamp"]).dt.date
         df = df.groupby("sale_date")["quantity_sold"].sum().sort_index()
-        df = df.asfreq("D", fill_value=0)
+        df.index = pd.to_datetime(df.index)
+        df = df.reindex(pd.date_range(df.index.min(), self.forecast_origin or df.index.max(), freq="D"), fill_value=0)
         return df.to_frame()
 
     # ------------------------------------------------------------------
@@ -1510,7 +1258,7 @@ class ForecastingEngine:
                     {
                         "batch_recipe_id": batch_recipe_id,
                         "forecast_date": forecast_date,
-                        "required_quantity": round(qty, 2),
+                        "required_quantity": qty,
                         "unit": batch_units[forecast_date].get(batch_recipe_id, "count"),
                     }
                 )
@@ -1562,7 +1310,7 @@ class ForecastingEngine:
                         batch_yield_unit,
                     )
                 except ValueError:
-                    pass
+                    raise
 
             ingredient_requirements = await self._expand_batch_ingredient_requirements(
                 batch_recipe_id,
@@ -1586,7 +1334,7 @@ class ForecastingEngine:
                     {
                         "ingredient_id": ingredient_id,
                         "forecast_date": forecast_date,
-                        "quantity": round(qty, 2),
+                        "quantity": qty,
                         "source_type": source_type,
                         "source_id": source_id,
                         "unit": ingredient_units.get(ingredient_id, "count"),
@@ -1595,66 +1343,16 @@ class ForecastingEngine:
 
         return result
 
-    async def _expand_recipe_batch_requirements(
-        self,
-        recipe_id: int,
-        multiplier: Decimal,
-        visited: Optional[set[int]] = None,
-    ) -> Dict[int, Decimal]:
-        visited = visited or set()
-        if recipe_id in visited:
-            raise ValueError(f"Recipe graph cycle detected while expanding recipe {recipe_id}")
+    def _recipe_expander(self, leaf_types=("ingredient", "batch")):
+        return RecipeUsageExpander(self.recipe_ingredient_repo, self.ingredient_repo, self.batch_recipe_repo, leaf_types)
 
-        visited.add(recipe_id)
-        recipe_ingredients = await self.recipe_ingredient_repo.get_by_recipe_id(recipe_id)
-        batch_requirements: Dict[int, Decimal] = defaultdict(Decimal)
+    async def _expand_recipe_batch_requirements(self, recipe_id, multiplier, visited=None):
+        _, batches = await self._recipe_expander(("batch",)).expand(recipe_id, multiplier, visited)
+        return batches
 
-        for component in recipe_ingredients:
-            component_type = getattr(component, "ingredient_type", "ingredient")
-            component_multiplier = Decimal(str(component.quantity_used or 0)) * multiplier
-            if component_type == "batch":
-                batch_requirements[int(component.reference_id)] += component_multiplier
-            elif component_type == "recipe":
-                nested_requirements = await self._expand_recipe_batch_requirements(
-                    int(component.reference_id),
-                    component_multiplier,
-                    visited.copy(),
-                )
-                for batch_recipe_id, qty in nested_requirements.items():
-                    batch_requirements[batch_recipe_id] += qty
-
-        return batch_requirements
-
-    async def _expand_recipe_ingredient_requirements(
-        self,
-        recipe_id: int,
-        multiplier: Decimal,
-        visited: Optional[set[int]] = None,
-    ) -> Dict[int, Decimal]:
-        visited = visited or set()
-        if recipe_id in visited:
-            raise ValueError(f"Recipe graph cycle detected while expanding recipe {recipe_id}")
-
-        visited.add(recipe_id)
-        recipe_ingredients = await self.recipe_ingredient_repo.get_by_recipe_id(recipe_id)
-        ingredient_requirements: Dict[int, Decimal] = defaultdict(Decimal)
-
-        for component in recipe_ingredients:
-            component_type = getattr(component, "ingredient_type", "ingredient")
-            component_multiplier = Decimal(str(component.quantity_used or 0)) * multiplier
-
-            if component_type == "ingredient":
-                ingredient_requirements[int(component.reference_id)] += component_multiplier
-            elif component_type == "recipe":
-                nested_requirements = await self._expand_recipe_ingredient_requirements(
-                    int(component.reference_id),
-                    component_multiplier,
-                    visited.copy(),
-                )
-                for ingredient_id, qty in nested_requirements.items():
-                    ingredient_requirements[ingredient_id] += qty
-
-        return ingredient_requirements
+    async def _expand_recipe_ingredient_requirements(self, recipe_id, multiplier, visited=None):
+        ingredients, _ = await self._recipe_expander(("ingredient",)).expand(recipe_id, multiplier, visited)
+        return ingredients
 
     async def _expand_batch_ingredient_requirements(
         self,
@@ -1675,7 +1373,7 @@ class ForecastingEngine:
             )
 
         yield_qty = Decimal(str(batch_recipe.yield_quantity or 0))
-        if yield_qty <= 0:
+        if not yield_qty.is_finite() or yield_qty <= 0:
             raise ValueError(
                 f"Batch recipe {batch_recipe_id} has invalid yield quantity {batch_recipe.yield_quantity}"
             )
@@ -1699,13 +1397,15 @@ class ForecastingEngine:
             reference_id = getattr(component, "reference_id", None)
             if reference_id is None:
                 reference_id = getattr(component, "ingredient_id", None)
-            if not reference_id or component_quantity <= 0:
+            if not reference_id or not component_quantity.is_finite() or component_quantity < 0:
+                raise ValueError("Invalid batch component quantity or reference")
+            if component_quantity == 0:
                 continue
 
             if component_type == "ingredient":
                 ingredient = await self.ingredient_repo.get_by_id(reference_id)
                 if not ingredient:
-                    continue
+                    raise ValueError(f"Missing ingredient {reference_id}")
 
                 ingredient_unit = getattr(ingredient, "unit", None) or component.unit or "count"
                 if normalize_unit(component.unit or ingredient_unit) != normalize_unit(
@@ -1718,7 +1418,7 @@ class ForecastingEngine:
                             ingredient_unit,
                         )
                     except ValueError:
-                        pass
+                        raise
 
                 ingredient_requirements[int(reference_id)] += (
                     component_quantity / yield_qty
@@ -1727,7 +1427,7 @@ class ForecastingEngine:
 
             nested_batch = await self.batch_recipe_repo.get_by_id(reference_id)
             if not nested_batch:
-                continue
+                raise ValueError(f"Missing child batch {reference_id}")
 
             nested_batch_unit = getattr(nested_batch, "yield_unit", None) or component.unit or "count"
             if normalize_unit(component.unit or nested_batch_unit) != normalize_unit(
@@ -1740,7 +1440,7 @@ class ForecastingEngine:
                         nested_batch_unit,
                     )
                 except ValueError:
-                    pass
+                    raise
 
             nested_required_quantity = (component_quantity / yield_qty) * required_quantity
             nested_requirements = await self._expand_batch_ingredient_requirements(
@@ -1795,7 +1495,7 @@ class ForecastingEngine:
             )
             return []
 
-        cutoff = date.today() + timedelta(days=horizon_days)
+        cutoff = (self.forecast_origin or date.today()) + timedelta(days=horizon_days)
         suggestions: List[Dict[str, Any]] = []
         for entry in batch_breakdown:
             forecast_date = entry.get("forecast_date")
@@ -1820,7 +1520,7 @@ class ForecastingEngine:
     async def aggregate_ingredient_demand_for_reorder(
         self, forecast_breakdown: List[Dict[str, Any]], days: int
     ) -> Dict[int, Dict[str, Any]]:
-        today = date.today()
+        today = (self.forecast_origin or date.today())
         cutoff_date = today + timedelta(days=days)
 
         aggregated: Dict[int, Dict[str, Any]] = defaultdict(
@@ -1837,6 +1537,12 @@ class ForecastingEngine:
 
             aggregated[ingredient_id]["total_quantity"] += qty
             aggregated[ingredient_id]["daily_breakdown"].append((forecast_date, qty))
+
+        for payload in aggregated.values():
+            daily = defaultdict(Decimal)
+            for day, quantity in payload["daily_breakdown"]:
+                daily[day] += quantity
+            payload["daily_breakdown"] = sorted(daily.items())
 
         for ingredient_id in aggregated:
             ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
@@ -1931,6 +1637,7 @@ class ForecastingEngine:
         )
 
     @log_method("Run Forecasting Pipeline (Advanced)")
+    @serialized_job("forecast")
     async def run_forecasting_pipeline(
         self,
         forecast_date: Optional[date] = None,
@@ -1938,43 +1645,32 @@ class ForecastingEngine:
         reorder_horizon_days: int = 30,
         threshold_mape: float = 0.20,
         threshold_r2: float = 0.70,
+        commit: bool = True,
     ) -> Dict[int, Dict[str, Any]]:
-        forecast_date = forecast_date or datetime.utcnow().date()
+        forecast_date = forecast_date or date.today()
+        horizon_days = max(horizon_days, reorder_horizon_days)
+        self.forecast_origin = forecast_date
         stage_start_time = datetime.utcnow()
 
         # Get or create ledger for this run
         ledger = await self.forecast_run_ledger_repo.get_or_create(forecast_date)
 
-        # Check if already running
-        if ledger.running:
-            logger.warning(
-                "[FORECAST] Pipeline already running for %s on %s (lock_token: %s)",
-                self.restaurant_id,
-                forecast_date,
-                ledger.lock_token,
-            )
-            return {}
+        # Holding the connection-owned lock proves any prior running flag is stale.
+        ledger.running = False
+        ledger.errors = []
+        snapshot = getattr(ledger, "result_snapshot", None)
+        if ledger.finalized and isinstance(snapshot, dict) and snapshot.get("version") == 1:
+            restored = restore(snapshot)
+            if restored.get("horizon_days") != horizon_days or restored.get("reorder_horizon_days") != reorder_horizon_days:
+                raise ValueError("Forecast snapshot horizon differs; explicitly regenerate this run")
+            self.latest_menu_item_forecasts = restored["menus"]
+            self.latest_batch_breakdown = restored["batches"]
+            self.latest_ingredient_breakdown = restored["ingredients"]
+            self.latest_material_plan = restored.get("material_plan", {})
+            self.latest_aggregated_ingredient_demand = restored["aggregated"]
+            return restored["aggregated"]
 
-        # Check if already finalized
-        if ledger.finalized:
-            recovered = await self._recover_persisted_aggregated_forecast(
-                forecast_date=forecast_date,
-                horizon_days=horizon_days,
-                reorder_horizon_days=reorder_horizon_days,
-            )
-            if recovered:
-                logger.info(
-                    "[FORECAST] Reused persisted forecast results for %s on %s",
-                    self.restaurant_id,
-                    forecast_date,
-                )
-                return recovered
-
-            logger.info(
-                "[FORECAST] Finalized ledger had no reusable persisted forecast rows for %s on %s; resetting for rerun",
-                self.restaurant_id,
-                forecast_date,
-            )
+        if ledger.finalized or ledger.forecasts_generated:
             await self._reset_ledger_for_rerun(ledger)
 
         try:
@@ -1986,9 +1682,10 @@ class ForecastingEngine:
                 forecast_date,
             )
 
+            self.observations = await DemandObservations.load(self.db, self.restaurant_id)
             # Validate sales data exists
             sales_exist = await self.sales_repo.sales_exist_for_dates([forecast_date])
-            if not sales_exist:
+            if not sales_exist and self.observations.status(forecast_date) not in {"complete", "closed"}:
                 message = (
                     f"No sales data found for {forecast_date} for restaurant {self.restaurant_id}"
                 )
@@ -2001,9 +1698,10 @@ class ForecastingEngine:
                 await self.forecast_run_ledger_repo.record_error(
                     ledger, "validation", message
                 )
-                await self.forecast_run_ledger_repo.finalize(ledger)
-                await self.db.commit()
-                return {}
+                ledger.running = False
+                if commit:
+                    await self.db.commit()
+                raise ValueError(message)
 
             # Stage 1: Evaluate accuracy (skip if already done)
             if not ledger.accuracy_evaluated:
@@ -2030,176 +1728,187 @@ class ForecastingEngine:
             # Stage 3: Generate forecasts (skip if already done)
             menu_item_forecast: Dict[int, Dict[str, Any]] = {}
             
-            if not ledger.forecasts_generated:
-                stage_start = datetime.utcnow()
+            stage_start = datetime.utcnow()
                 
-                menu_items = await self.menu_item_repo.get_active_menu_items()
-                if not menu_items:
-                    logger.warning(
-                        "[FORECAST] No active menu items found for restaurant %s",
-                        self.restaurant_id,
-                    )
-                    await self.forecast_run_ledger_repo.finalize(ledger)
-                    await self.db.commit()
-                    return {}
+            menu_items = await self.menu_item_repo.get_active_menu_items()
+            if not menu_items:
+                logger.warning(
+                    "[FORECAST] No active menu items found for restaurant %s",
+                    self.restaurant_id,
+                )
+                raise ValueError("No active menu items found")
 
-                # Update total count
+            # Update total count
+            await self.forecast_run_ledger_repo.update_progress(
+                ledger, 0, len(menu_items)
+            )
+            await self.db.flush()
+
+            for idx, item in enumerate(menu_items):
+                menu_item_id = item.menu_item_id
+                retrain = await self.should_retrain_model(
+                    menu_item_id, threshold_mape, threshold_r2
+                )
+                logger.info(
+                    "[FORECAST] Menu item %s retrain_decision=%s",
+                    menu_item_id,
+                    retrain,
+                )
+
+                if retrain:
+                    model, metrics = await self.train_menu_item_model(menu_item_id)
+                    self.accuracy_metrics[menu_item_id] = metrics or {}
+                    model_source = (
+                        "trained_h2o"
+                        if model is not None
+                        else "fallback_after_failed_train"
+                    )
+                    logger.info(
+                        "[FORECAST] Menu item %s model_source=%s metrics=%s",
+                        menu_item_id,
+                        model_source,
+                        self.accuracy_metrics[menu_item_id],
+                    )
+                else:
+                    model = load_model(self.restaurant_id, menu_item_id, as_of_date=self.forecast_origin or date.today(), feature_version="calendar_v1")
+                    metrics = await self._compute_forecast_accuracy_metrics(menu_item_id)
+                    self.accuracy_metrics[menu_item_id] = metrics or {}
+                    model_source = (
+                        "loaded_h2o"
+                        if model is not None
+                        else "fallback_without_model"
+                    )
+                    logger.info(
+                        "[FORECAST] Menu item %s model_source=%s metrics=%s",
+                        menu_item_id,
+                        model_source,
+                        self.accuracy_metrics[menu_item_id],
+                    )
+
+                sales_history = await self._get_menu_item_sales_history(menu_item_id)
+                strategy_metadata = await self.select_forecast_strategy(
+                    menu_item_id,
+                    horizon_days=horizon_days,
+                    model=model,
+                    model_source=model_source,
+                    metrics=self.accuracy_metrics.get(menu_item_id),
+                    sales_history=sales_history,
+                )
+                forecast_rows, strategy_metadata = await self.generate_forecast_with_metadata(
+                    menu_item_id,
+                    horizon_days=horizon_days,
+                    strategy_metadata=strategy_metadata,
+                    model=model,
+                    sales_history=sales_history,
+                )
+                if not forecast_rows:
+                    raise ValueError(f"No usable forecast for active menu item {menu_item_id}")
+
+                confidence_score = self._derive_confidence_score(
+                    self.accuracy_metrics.get(menu_item_id)
+                )
+                self.menu_item_confidence[menu_item_id] = confidence_score
+                strategy_metadata = dict(strategy_metadata)
+                strategy_metadata["confidence_score"] = confidence_score
+                strategy_metadata["feature_contract"] = "calendar_v1"
+                strategy_metadata["forecast_origin"] = forecast_date.isoformat()
+                first_observed = min((sales_day(sale) for sale in sales_history), default=forecast_date)
+                quality = self.observations.quality(first_observed, forecast_date)
+                strategy_metadata["history_quality"] = quality
+                self.latest_forecast_model_metadata[menu_item_id] = strategy_metadata
+
+                logger.info(
+                    "[FORECAST] Menu item %s strategy=%s model_source=%s reason=%s",
+                    menu_item_id,
+                    strategy_metadata.get("model_type_used"),
+                    strategy_metadata.get("model_source"),
+                    strategy_metadata.get("selection_reason"),
+                )
+
+                persisted_header = await self.write_forecast_results(
+                    menu_item_id,
+                    forecast_rows,
+                    confidence_score,
+                    strategy_metadata,
+                )
+
+                menu_item_forecast[menu_item_id] = {
+                    **(persisted_header or {}),
+                    "daily_breakdown": [
+                        (row["forecast_date"], row["predicted_quantity"]) for row in forecast_rows
+                    ],
+                    "confidence_score": confidence_score,
+                    "forecast_strategy": strategy_metadata,
+                }
+
+                # Update progress
                 await self.forecast_run_ledger_repo.update_progress(
-                    ledger, 0, len(menu_items)
+                    ledger, idx + 1, len(menu_items)
                 )
                 await self.db.flush()
 
-                for idx, item in enumerate(menu_items):
-                    menu_item_id = item.menu_item_id
-                    retrain = await self.should_retrain_model(
-                        menu_item_id, threshold_mape, threshold_r2
-                    )
-                    logger.info(
-                        "[FORECAST] Menu item %s retrain_decision=%s",
-                        menu_item_id,
-                        retrain,
-                    )
-
-                    if retrain:
-                        model, metrics = await self.train_menu_item_model(menu_item_id)
-                        self.accuracy_metrics[menu_item_id] = metrics or {}
-                        model_source = (
-                            "trained_h2o"
-                            if model is not None
-                            else "fallback_after_failed_train"
-                        )
-                        logger.info(
-                            "[FORECAST] Menu item %s model_source=%s metrics=%s",
-                            menu_item_id,
-                            model_source,
-                            self.accuracy_metrics[menu_item_id],
-                        )
-                    else:
-                        model = load_model(self.restaurant_id, menu_item_id)
-                        metrics = await self._compute_forecast_accuracy_metrics(menu_item_id)
-                        self.accuracy_metrics[menu_item_id] = metrics or {}
-                        model_source = (
-                            "loaded_h2o"
-                            if model is not None
-                            else "fallback_without_model"
-                        )
-                        logger.info(
-                            "[FORECAST] Menu item %s model_source=%s metrics=%s",
-                            menu_item_id,
-                            model_source,
-                            self.accuracy_metrics[menu_item_id],
-                        )
-
-                    sales_history = await self._get_menu_item_sales_history(menu_item_id)
-                    strategy_metadata = await self.select_forecast_strategy(
-                        menu_item_id,
-                        horizon_days=horizon_days,
-                        model=model,
-                        model_source=model_source,
-                        metrics=self.accuracy_metrics.get(menu_item_id),
-                        sales_history=sales_history,
-                    )
-                    forecast_rows, strategy_metadata = await self.generate_forecast_with_metadata(
-                        menu_item_id,
-                        horizon_days=horizon_days,
-                        strategy_metadata=strategy_metadata,
-                        model=model,
-                        sales_history=sales_history,
-                    )
-                    if not forecast_rows:
-                        continue
-
-                    confidence_score = self._derive_confidence_score(
-                        self.accuracy_metrics.get(menu_item_id)
-                    )
-                    self.menu_item_confidence[menu_item_id] = confidence_score
-                    strategy_metadata = dict(strategy_metadata)
-                    strategy_metadata["confidence_score"] = confidence_score
-                    self.latest_forecast_model_metadata[menu_item_id] = strategy_metadata
-
-                    logger.info(
-                        "[FORECAST] Menu item %s strategy=%s model_source=%s reason=%s",
-                        menu_item_id,
-                        strategy_metadata.get("model_type_used"),
-                        strategy_metadata.get("model_source"),
-                        strategy_metadata.get("selection_reason"),
-                    )
-
-                    await self.write_forecast_results(
-                        menu_item_id,
-                        forecast_rows,
-                        confidence_score,
-                        strategy_metadata,
-                    )
-
-                    menu_item_forecast[menu_item_id] = {
-                        "daily_breakdown": [
-                            (row["forecast_date"], row["predicted_quantity"]) for row in forecast_rows
-                        ],
-                        "confidence_score": confidence_score,
-                        "forecast_strategy": strategy_metadata,
-                    }
-
-                    # Update progress
-                    await self.forecast_run_ledger_repo.update_progress(
-                        ledger, idx + 1, len(menu_items)
-                    )
-                    await self.db.flush()
-
-                duration_ms = int((datetime.utcnow() - stage_start).total_seconds() * 1000)
-                await self.forecast_run_ledger_repo.mark_stage_complete(
-                    ledger, "forecasts_generated", duration_ms
-                )
-                await self.db.flush()
-                logger.info("[FORECAST] Forecast generation completed in %dms", duration_ms)
+            duration_ms = int((datetime.utcnow() - stage_start).total_seconds() * 1000)
+            await self.forecast_run_ledger_repo.mark_stage_complete(
+                ledger, "forecasts_generated", duration_ms
+            )
+            await self.db.flush()
+            logger.info("[FORECAST] Forecast generation completed in %dms", duration_ms)
 
             if not menu_item_forecast:
                 logger.warning(
                     "[FORECAST] No forecasts generated for restaurant %s",
                     self.restaurant_id,
                 )
-                await self.forecast_run_ledger_repo.finalize(ledger)
-                await self.db.commit()
-                return {}
+                raise ValueError("No usable forecasts were generated")
 
             # Stage 4: Generate batch breakdown (skip if already done)
             batch_data = []
-            if not ledger.batch_breakdown_calculated:
-                stage_start = datetime.utcnow()
-                batch_data = await self.generate_batch_recipe_breakdown(menu_item_forecast)
-                self.latest_batch_breakdown = batch_data
-                duration_ms = int((datetime.utcnow() - stage_start).total_seconds() * 1000)
-                await self.forecast_run_ledger_repo.mark_stage_complete(
-                    ledger, "batch_breakdown_calculated", duration_ms
-                )
-                await self.db.flush()
-                logger.info("[FORECAST] Batch breakdown completed in %dms", duration_ms)
+            stage_start = datetime.utcnow()
+            batch_data = await self.generate_batch_recipe_breakdown(menu_item_forecast)
+            self.latest_batch_breakdown = batch_data
+            duration_ms = int((datetime.utcnow() - stage_start).total_seconds() * 1000)
+            await self.forecast_run_ledger_repo.mark_stage_complete(
+                ledger, "batch_breakdown_calculated", duration_ms
+            )
+            await self.db.flush()
+            logger.info("[FORECAST] Batch breakdown completed in %dms", duration_ms)
 
             # Stage 5: Generate ingredient breakdown (skip if already done)
             ingredient_data = []
             aggregated = {}
-            if not ledger.ingredient_breakdown_calculated:
-                stage_start = datetime.utcnow()
-                flat_forecast_list = convert_forecast_dict_to_list(menu_item_forecast)
-                ingredient_data = await self.generate_ingredient_breakdown(
-                    flat_forecast_list, batch_data
-                )
-                aggregated = await self.aggregate_ingredient_demand_for_reorder(
-                    ingredient_data, reorder_horizon_days
-                )
-                self.latest_ingredient_breakdown = ingredient_data
-                self.latest_aggregated_ingredient_demand = aggregated
-                duration_ms = int((datetime.utcnow() - stage_start).total_seconds() * 1000)
-                await self.forecast_run_ledger_repo.mark_stage_complete(
-                    ledger, "ingredient_breakdown_calculated", duration_ms
-                )
-                await self.db.flush()
-                logger.info("[FORECAST] Ingredient breakdown completed in %dms", duration_ms)
+            stage_start = datetime.utcnow()
+            flat_forecast_list = convert_forecast_dict_to_list(menu_item_forecast)
+            direct_ingredients = await self.generate_ingredient_breakdown(flat_forecast_list, [])
+            from app.services.prep_planning_service import PrepPlanningService
+            material_plan = await PrepPlanningService(self.db, self.restaurant_id).build(batch_data, direct_ingredients)
+            self.latest_material_plan = material_plan
+            ingredient_data = material_plan["ingredients"]
+            aggregated = await self.aggregate_ingredient_demand_for_reorder(
+                ingredient_data, reorder_horizon_days
+            )
+            self.latest_ingredient_breakdown = ingredient_data
+            self.latest_aggregated_ingredient_demand = aggregated
+            duration_ms = int((datetime.utcnow() - stage_start).total_seconds() * 1000)
+            await self.forecast_run_ledger_repo.mark_stage_complete(
+                ledger, "ingredient_breakdown_calculated", duration_ms
+            )
+            await self.db.flush()
+            logger.info("[FORECAST] Ingredient breakdown completed in %dms", duration_ms)
 
-            # Finalize ledger
+            if ledger.errors:
+                raise ValueError("One or more forecast items failed; inspect the run errors before retrying")
+
+            # The persisted outputs freeze quantities, units, recipe expansion and model metadata.
+            ledger.result_snapshot = encode({"version": 1, "run_date": forecast_date,
+                "horizon_days": horizon_days, "reorder_horizon_days": reorder_horizon_days,
+                "menus": menu_item_forecast, "batches": batch_data,
+                "ingredients": ingredient_data, "aggregated": aggregated, "material_plan": material_plan,
+                "history_quality": {"review_required": any(data["forecast_strategy"].get("history_quality", {}).get("review_required", False) for data in menu_item_forecast.values()),
+                    "items": {item_id: data["forecast_strategy"].get("history_quality") for item_id, data in menu_item_forecast.items()}}})
             self.latest_menu_item_forecasts = menu_item_forecast
             await self.forecast_run_ledger_repo.finalize(ledger)
-            await self.db.commit()
+            if commit:
+                await self.db.commit()
 
             total_duration_ms = int((datetime.utcnow() - stage_start_time).total_seconds() * 1000)
             logger.info(
@@ -2218,11 +1927,14 @@ class ForecastingEngine:
             logger.exception("[FORECAST] %s", error_message)
             
             try:
+                ledger = await self.forecast_run_ledger_repo.get_or_create(forecast_date)
                 await self.forecast_run_ledger_repo.record_error(
                     ledger, "pipeline_execution", error_message
                 )
-                await self.forecast_run_ledger_repo.finalize(ledger)
-                await self.db.commit()
+                ledger.running = False
+                ledger.finalized = False
+                if commit:
+                    await self.db.commit()
             except Exception as ledger_error:
                 logger.exception("[FORECAST] Failed to record error in ledger: %s", ledger_error)
             
@@ -2231,13 +1943,13 @@ class ForecastingEngine:
     async def derive_ingredient_usage_from_sales(
         self, days: int = 30
     ) -> Dict[int, Dict[date, Decimal]]:
-        end_date = datetime.utcnow().date()
-        start_date = end_date - timedelta(days=days)
+        end_date = self.forecast_origin or date.today()
+        start_date = end_date - timedelta(days=max(days - 1, 0))
         sales = await self.sales_repo.get_sales_between_dates(start_date, end_date)
 
         fake_forecast: Dict[int, Dict[date, int]] = defaultdict(lambda: defaultdict(int))
         for sale in sales:
-            fake_forecast[sale.menu_item_id][sale.sale_timestamp] += sale.quantity_sold
+            fake_forecast[sale.menu_item_id][sales_day(sale)] += sale.quantity_sold
 
         forecast_breakdown: List[Dict[str, Any]] = []
         for menu_item_id, date_map in fake_forecast.items():

@@ -16,6 +16,13 @@ class PurchaseOrderRepository(BaseRepository):
         self.restaurant_id = restaurant_id
         super().__init__(db, PurchaseOrder, restaurant_id, pk_field="order_id")
 
+    async def get_by_id(self, obj_id, *, for_update=False):
+        stmt = select(PurchaseOrder).where(PurchaseOrder.order_id == obj_id,
+                                    PurchaseOrder.restaurant_id == self.restaurant_id)
+        if for_update:
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
+        return (await self.db.execute(stmt)).scalars().first()
+
     async def list_purchase_orders(
         self, status: Optional[str] = None, supplier_id: Optional[int] = None
     ) -> List[PurchaseOrder]:

@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.ingredients_repo import IngredientRepository
 from app.repositories.ingredient_supplier_repo import IngredientSupplierRepository
 from app.repositories.inventory_repo import InventoryRepository
+from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
+from app.services.utils.unit_conversion import convert_unit
 from app.repositories.recipe_ingredients_repo import RecipeIngredientRepository
 from app.repositories.batch_recipe_ingredients_repo import BatchRecipeIngredientRepository
 from app.repositories.menu_item_recipes_repo import MenuItemRecipeRepository
@@ -40,6 +42,7 @@ class ReorderForecastEngine:
         self.ingredient_repo = IngredientRepository(db, restaurant_id)
         self.ingredient_supplier_repo = IngredientSupplierRepository(db, restaurant_id)
         self.inventory_repo = InventoryRepository(db, restaurant_id)
+        self.purchase_order_item_repo = PurchaseOrderItemRepository(db, restaurant_id)
         self.recipe_ingredient_repo = RecipeIngredientRepository(db, restaurant_id)
         self.batch_recipe_ingredient_repo = BatchRecipeIngredientRepository(db, restaurant_id)
         self.menu_item_recipe_repo = MenuItemRecipeRepository(db, restaurant_id)
@@ -79,7 +82,7 @@ class ReorderForecastEngine:
     def _to_decimal(value: Optional[Any]) -> Decimal:
         if value is None:
             return Decimal("0.00")
-        return Decimal(str(value)).quantize(Decimal("0.01"))
+        return Decimal(str(value)).quantize(Decimal("0.000001"))
 
     @staticmethod
     def _normalize_date_value(value: Optional[Any]) -> Optional[date]:
@@ -620,13 +623,13 @@ class ReorderForecastEngine:
             self._to_decimal(lead_demand)
             + self._to_decimal(safety_stock)
             + self._to_decimal(capped_tail_demand)
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
         max_order_cap = max(
             max_target_stock - self._to_decimal(inventory_position),
             Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
         effective_constraint_cap = min(max_order_cap, max_allowed).quantize(
-            Decimal("0.01")
+            Decimal("0.000001")
         )
         return {
             "max_target_stock": max_target_stock,
@@ -709,7 +712,15 @@ class ReorderForecastEngine:
 
         if moq is None:
             moq = await self.stats_service.get_moq(ingredient_id)
+        if supplier is not None:
+            moq = convert_unit(Decimal(str(moq)), supplier.unit, current_unit)
         moq = self._to_decimal(moq)
+        daily_forecast = [(day, convert_unit(Decimal(str(quantity)), unit, current_unit))
+                          for day, quantity in daily_forecast]
+        self.stats_service.as_of_date = as_of_date or date.today()
+        if not hasattr(self, "_decision_units"):
+            self._decision_units = {}
+        self._decision_units[ingredient_id] = current_unit
 
         anchor_date = as_of_date or date.today()
         normalized_shelf_life_days = (
@@ -798,7 +809,7 @@ class ReorderForecastEngine:
             inventory_position=inventory_position,
             lead_demand=lead_demand,
             capped_tail_demand=capped_tail_demand,
-            safety_stock=safety_stock,
+            safety_stock=self._to_decimal(policy_quantities.get("policy_buffer_quantity")),
             max_allowed=max_allowed,
         )
         max_target_stock = cap_context["max_target_stock"]
@@ -807,26 +818,26 @@ class ReorderForecastEngine:
         policy_safe_quantity = min(
             policy_safe_quantity,
             effective_constraint_cap,
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
         buffered_quantity = min(
             policy_capped_quantity,
             effective_constraint_cap,
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
         moq_floor = (
-            moq.quantize(Decimal("0.01"))
-            if reorder_target > 0
+            moq.quantize(Decimal("0.000001"))
+            if buffered_quantity > 0
             else Decimal("0.00")
         )
         if policy_context["policy_type"] == "fresh_perishable":
             proposed_quantity = policy_safe_quantity
             final_quantity = max(policy_safe_quantity, Decimal("0.00")).quantize(
-                Decimal("0.01")
+                Decimal("0.000001")
             )
         else:
             proposed_quantity = max(buffered_quantity, moq_floor)
             final_quantity = min(proposed_quantity, effective_constraint_cap)
             final_quantity = max(final_quantity, Decimal("0.00")).quantize(
-                Decimal("0.01")
+                Decimal("0.000001")
             )
         review_context = self._build_moq_review_context(
             policy_type=policy_context["policy_type"],
@@ -879,9 +890,9 @@ class ReorderForecastEngine:
             "excluded_expiring_stock": excluded_expiring_stock,
             "projected_waste_quantity": self._to_decimal(projected_waste_quantity),
             "current_unit": current_unit,
-            "lead_demand": lead_demand.quantize(Decimal("0.01")),
-            "shelf_demand": shelf_demand.quantize(Decimal("0.01")),
-            "total_demand": total_demand.quantize(Decimal("0.01")),
+            "lead_demand": lead_demand.quantize(Decimal("0.000001")),
+            "shelf_demand": shelf_demand.quantize(Decimal("0.000001")),
+            "total_demand": total_demand.quantize(Decimal("0.000001")),
             "safety_stock": safety_stock,
             "reorder_point": reorder_point,
             "reorder_target": reorder_target,
@@ -893,6 +904,7 @@ class ReorderForecastEngine:
             "max_target_stock": max_target_stock,
             "max_order_cap": max_order_cap,
             "final_quantity": final_quantity,
+            "effective_constraint_cap": effective_constraint_cap,
             "should_reorder": should_reorder,
             "skip_reason": (
                 None
@@ -966,7 +978,9 @@ class ReorderForecastEngine:
             "event_spacing_days": policy_quantities.get("event_spacing_days") or [],
             "days_until_next_event": policy_quantities.get("days_until_next_event"),
             "moq_review_required": review_context["moq_review_required"],
-            "review_required": review_context["moq_review_required"],
+            "review_required": bool(review_context["moq_review_required"] or demand_context.get("inventory_reconciliation_required") or demand_context.get("supply_timing_review")),
+            "inventory_reconciliation_required": demand_context.get("inventory_reconciliation_required", False),
+            "pre_delivery_shortfall": demand_context.get("pre_delivery_shortfall", Decimal("0")),
             "policy_review_warnings": review_context["policy_review_warnings"],
             "usable_until_date": usable_until_date,
             "fefo_applied": fefo_applied,
@@ -1097,7 +1111,7 @@ class ReorderForecastEngine:
         assumption_flags: Dict[str, Any],
     ) -> Dict[str, Any]:
         quantity_per_pack = (Decimal(str(pack_size or 1)) * quantity_per_pack_item).quantize(
-            Decimal("0.01")
+            Decimal("0.000001")
         )
         warning_list = list(decision.get("cadence_warnings") or [])
         warning_list.extend(decision.get("assumption_warnings") or [])
@@ -1265,10 +1279,14 @@ class ReorderForecastEngine:
         if lead_time <= 0:
             return Decimal("0.00")
         stddev_usage = await self.stats_service.get_std_dev_usage(ingredient_id)
+        target_unit = getattr(self, "_decision_units", {}).get(ingredient_id)
+        if target_unit:
+            ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+            stddev_usage = convert_unit(stddev_usage, ingredient.unit, target_unit)
         safety_stock = (
             service_level_z * stddev_usage * Decimal(math.sqrt(lead_time))
         )
-        safety_stock = safety_stock.quantize(Decimal("0.01"))
+        safety_stock = safety_stock.quantize(Decimal("0.000001"))
         logger.debug(
             f"[REORDER] SafetyStock ingredient={ingredient_id} stddev={stddev_usage} lead_time={lead_time} value={safety_stock}"
         )
@@ -1290,6 +1308,10 @@ class ReorderForecastEngine:
         """
         max_stock = await self.stats_service.get_max_stock_level(ingredient_id)
         if max_stock is not None:
+            target_unit = getattr(self, "_decision_units", {}).get(ingredient_id)
+            if target_unit:
+                ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+                max_stock = convert_unit(max_stock, ingredient.unit, target_unit)
             max_allowed = max_stock - current_stock
             max_allowed = max(max_allowed, Decimal(0))
             logger.debug(
@@ -1340,6 +1362,8 @@ class ReorderForecastEngine:
             )
             cost_value = supplier.cost_per_unit if supplier else None
             cost = Decimal(cost_value or 0)
+            if supplier:
+                usage = convert_unit(usage, ingredient.unit, supplier.unit)
             value = usage * cost
             usage_data.append((ingredient.ingredient_id, value, ingredient.abc_class))
 

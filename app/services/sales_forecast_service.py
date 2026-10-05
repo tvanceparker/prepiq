@@ -1,3 +1,4 @@
+from app.utils.business_date import sales_day
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.sales_repo import SalesRepository
 from app.repositories.menu_items_repo import MenuItemRepository
@@ -371,7 +372,7 @@ class SalesForecastService:
             metric = float(sale.quantity_sold) * float(item.price) if by_revenue else float(sale.quantity_sold)
             metric = round(metric, 2)
 
-            date_key = sale.sale_timestamp.date()
+            date_key = sales_day(sale)
             grouped[date_key][sale.menu_item_id] += metric
 
         results = []
@@ -539,7 +540,7 @@ class SalesForecastService:
             if not item:
                 continue
 
-            date_key = sale.sale_timestamp.date()
+            date_key = sales_day(sale)
             value = float(sale.quantity_sold) * float(item.price) if by_revenue else float(sale.quantity_sold)
             grouped[date_key][item.menu_item_id] += value
 
@@ -578,7 +579,7 @@ class SalesForecastService:
             if not item:
                 continue
 
-            sale_date = s.sale_timestamp.date()
+            sale_date = sales_day(s)
             value = float(s.quantity_sold) * float(item.price) if by_revenue else float(s.quantity_sold)
 
             per_day_total[sale_date] += value
@@ -659,7 +660,7 @@ class SalesForecastService:
             if not item:
                 continue
 
-            date_key = sale.sale_timestamp.date()
+            date_key = sales_day(sale)
             value = float(sale.quantity_sold) * float(item.price) if by_revenue else float(sale.quantity_sold)
             daily_totals[date_key] += value
 
@@ -974,7 +975,7 @@ class SalesForecastService:
             price = Decimal(str(item.price))
             recipe_cost = cost_cache.get(sale.menu_item_id, Decimal("0.00"))
             quantity = sale.quantity_sold
-            date_key = sale.sale_timestamp.date()
+            date_key = sales_day(sale)
             
             grouped[date_key][sale.menu_item_id]["quantity"] += quantity
             grouped[date_key][sale.menu_item_id]["revenue"] += quantity * price

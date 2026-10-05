@@ -21,6 +21,8 @@ class PurchaseOrderItemDTO(BaseModel):
     ingredient_id: int
     ingredient_name: str
     ingredient_supplier_id: Optional[int]
+    pack_quantity: Optional[float] = None
+    pack_count: Optional[int] = None
     quantity_ordered: float
     quantity_received: Optional[float] = None
     variance_quantity: Optional[float] = None
@@ -53,6 +55,8 @@ class PurchaseOrderReviewContextDTO(BaseModel):
 class PurchaseOrderCreateItemDTO(BaseModel):
     ingredient_id: int
     ingredient_supplier_id: Optional[int]
+    pack_quantity: Optional[float] = None
+    pack_count: Optional[int] = None
     quantity_ordered: float
     unit: str
     unit_price: float
@@ -86,6 +90,8 @@ class PurchaseOrderReceiptItemSummaryDTO(BaseModel):
     order_item_id: int
     ingredient_id: int
     lot_id: int
+    pack_quantity: Optional[float] = None
+    pack_count: Optional[int] = None
     quantity_ordered: float
     quantity_received: float
     variance_quantity: float
@@ -144,6 +150,8 @@ class PurchaseOrderItemUpdateResultDTO(BaseModel):
     order_id: int
     ingredient_id: int
     ingredient_supplier_id: Optional[int] = None
+    pack_quantity: Optional[float] = None
+    pack_count: Optional[int] = None
     quantity_ordered: float
     unit: str
     unit_price: float
@@ -260,6 +268,7 @@ class POSupplierFactorsDTO(BaseModel):
     selected_supplier_priority: Optional[int] = None
     selected_supplier_preferred: bool
     pricing_available: bool
+    order_schedule_anchor_date: Optional[date] = None
     order_schedule_type: Optional[str] = None
     review_period_days: Optional[int] = None
     allowed_order_days: List[str] = []
@@ -287,6 +296,8 @@ class POAssumptionFlagsDTO(BaseModel):
 
 
 class POReorderExplanationDTO(BaseModel):
+    review_required: bool = False
+    warnings: List[str] = []
     summary: str
     why_reorder: POWhyReorderDTO
     quantity_factors: POQuantityFactorsDTO
@@ -296,6 +307,10 @@ class POReorderExplanationDTO(BaseModel):
 
 
 class POSuggestionItemDTO(BaseModel):
+    review_required: bool = False
+    pack_quantity: Optional[float] = None
+    next_order_date: Optional[date] = None
+    expected_delivery_date: Optional[date] = None
     ingredient_id: int
     ingredient_name: str
     ingredient_supplier_id: Optional[int] = None
@@ -476,6 +491,7 @@ class IngredientOut(BaseModel):
     cost_per_unit: float
     lead_time_days: Optional[int]  # Could be null
     review_period_days: Optional[int] = None
+    order_schedule_anchor_date: Optional[date] = None
     order_schedule_type: Optional[OrderScheduleType] = None
     allowed_order_days: Optional[List[WeekdayCode]] = None
     allowed_delivery_days: Optional[List[WeekdayCode]] = None
@@ -484,7 +500,7 @@ class IngredientOut(BaseModel):
     spoilage_rate: float
     shelf_life_days: Optional[int]  # Could be null
     preferred: bool
-    min_order_quantity: Optional[int]
+    min_order_quantity: Optional[float]
     supplier_priority: Optional[int]
     pack_size: Optional[str]  # Because pack_size might sometimes be None or a string
     quantity_per_pack_item: float

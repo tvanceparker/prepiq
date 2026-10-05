@@ -27,6 +27,13 @@ from app.services.utils.graph_validation import (
     units_are_compatible,
 )
 import logging
+from sqlalchemy import select
+from app.db.models.prep_schedule_orm import PrepSchedule
+from app.db.models.inventory_orm import Inventory
+from app.db.models.waste_report_orm import WasteReport
+from uuid import uuid4
+from app.db.models.inventory_lot_orm import InventoryLot
+from app.services.utils.inventory_consumption import InventoryConsumption
 
 
 
@@ -273,10 +280,10 @@ class PrepService:
         
         # Apply date filters
         if start_date:
-            waste_logs = [log for log in waste_logs if log.used_date.date() >= start_date]
+            waste_logs = [log for log in waste_logs if (log.business_date or log.used_date.date()) >= start_date]
         
         if end_date:
-            waste_logs = [log for log in waste_logs if log.used_date.date() <= end_date]
+            waste_logs = [log for log in waste_logs if (log.business_date or log.used_date.date()) <= end_date]
         
         if waste_type:
             waste_logs = [log for log in waste_logs if log.usage_type == waste_type]
@@ -299,16 +306,17 @@ class PrepService:
                     if batch_recipe:
                         batch_recipe_name = batch_recipe.name
             
-            # Calculate cost impact (quantity * ingredient cost or batch cost)
+            # Frozen PO pricing is attributable; unknown/prepared costs remain
+            # unavailable instead of displaying a fabricated flat unit price.
             cost_impact = None
-            if ingredient:
-                # Get most recent ingredient supplier cost
-                inventory = await self.inventory_repo.get_inventory_by_ingredient(log.ingredient_id)
-                if inventory:
-                    # Rough estimate: use average cost per unit
-                    # You might want to get actual supplier cost here
-                    cost_impact = float(log.used_quantity) * 5.0  # Placeholder
-            
+            if log.lot_id:
+                lot = await self.inventory_lot_repo.get_by_id(log.lot_id)
+                if lot and lot.purchase_order_item_id:
+                    from app.repositories.purchase_order_items_repo import PurchaseOrderItemRepository
+                    line = await PurchaseOrderItemRepository(self.db, self.restaurant_id).get_by_id(lot.purchase_order_item_id)
+                    if line and line.unit_price is not None:
+                        cost_impact = convert_unit(log.used_quantity, log.unit, line.unit) * Decimal(str(line.unit_price))
+
             # Determine reason from notes or reference type
             reason = "unknown"
             if log.notes:
@@ -320,7 +328,7 @@ class PrepService:
             
             results.append(WasteLogResponse(
                 usage_id=log.usage_id,
-                waste_date=log.used_date.date(),
+                waste_date=(log.business_date or log.used_date.date()),
                 ingredient_id=log.ingredient_id,
                 ingredient_name=ingredient_name,
                 batch_recipe_id=batch_recipe_id,
@@ -340,266 +348,172 @@ class PrepService:
         return results
     
     
-    async def create_waste_log(
-        self,
-        ingredient_id: Optional[int] = None,
-        batch_recipe_id: Optional[int] = None,
-        quantity_wasted: Decimal = None,
-        unit: str = None,
-        waste_type: str = "waste",
-        reason: str = "manual_entry",
-        notes: Optional[str] = None,
-    ) -> dict:
-        """
-        Manually create a waste log entry.
-        Can log waste for either raw ingredients or batch recipes.
-        """
-        if not ingredient_id and not batch_recipe_id:
-            raise ValueError("Must provide either ingredient_id or batch_recipe_id")
-        
-        if not quantity_wasted or quantity_wasted <= 0:
-            raise ValueError("Quantity wasted must be greater than 0")
-        
-        # If batch_recipe_id provided, find the inventory for that batch
-        if batch_recipe_id:
-            lot = await self.inventory_lot_repo.get_by_batch_recipe_id(batch_recipe_id)
-            if not lot:
-                raise ValueError(f"No inventory lot found for batch recipe {batch_recipe_id}")
-            
-            inventory_id = lot.inventory_id
-            ingredient_id = lot.ingredient_id or 0  # Batch recipes might not have ingredient_id
-            lot_id = lot.lot_id
-        else:
-            # Get inventory for ingredient
-            inventory = await self.inventory_repo.get_inventory_by_ingredient(ingredient_id)
-            if not inventory:
-                raise ValueError(f"No inventory found for ingredient {ingredient_id}")
-            
-            inventory_id = inventory.inventory_id
-            lot_id = None
-        
-        # Create usage log entry
-        usage_log = await self.inventory_usage_log_repo.create({
-            "restaurant_id": self.restaurant_id,
-            "inventory_id": inventory_id,
-            "ingredient_id": ingredient_id,
-            "lot_id": lot_id,
-            "used_quantity": quantity_wasted,
-            "unit": unit,
-            "used_date": datetime.utcnow(),
-            "usage_type": waste_type,
-            "reference_type": "waste_report",
-            "notes": f"{reason}: {notes}" if notes else reason,
-        })
-        
-        # Optionally decrement inventory
-        await self.inventory_repo.decrement_quantity(inventory_id, float(quantity_wasted))
-        
-        return {
-            "usage_id": usage_log.usage_id,
-            "message": f"Waste log created successfully for {quantity_wasted} {unit}",
-        }
-    
-    
-    async def update_prep_schedule(self, prep_id: int, 
-                                   status: str, 
-                                   prep_time_minutes_actual: Optional[int] = None,
-                                   prep_batch_count: Optional[float] = None,) -> dict:
-        # 1. Load the prep schedule object
-        prep = await self.get_prep(prep_id)
-        
-        # 2. Update prep object fields as needed (status, time, batch count)
-        prep.status = status
-        prep.prep_time_minutes_actual = prep_time_minutes_actual
-        prep.prep_batch_count = prep_batch_count
+    async def create_waste_log(self, ingredient_id=None, batch_recipe_id=None,
+                               quantity_wasted=None, unit=None, waste_type="waste",
+                               reason="manual_entry", notes=None, request_key=None):
+        if bool(ingredient_id) == bool(batch_recipe_id):
+            raise ValueError("Provide exactly one raw ingredient or prepared batch")
+        quantity = Decimal(str(quantity_wasted))
+        if not quantity.is_finite() or quantity <= 0:
+            raise ValueError("Waste quantity must be finite and positive")
+        if waste_type not in {"waste", "spoilage"}:
+            raise ValueError("Waste type must be waste or spoilage")
+        key = request_key or str(uuid4())
+        if not isinstance(key, str) or not 1 <= len(key) <= 64:
+            raise ValueError("request_key must contain 1 to 64 characters")
+        payload = {"ingredient_id": ingredient_id, "batch_recipe_id": batch_recipe_id,
+                   "quantity": str(quantity.normalize()), "unit": normalize_unit(unit),
+                   "waste_type": waste_type, "reason": reason, "notes": notes}
+        async with self.db.begin_nested():
+            # Match the consumption lock order, then check the durable retry identity.
+            predicate = Inventory.ingredient_id == ingredient_id if ingredient_id else Inventory.inventory_id.in_(
+                select(InventoryLot.inventory_id).where(InventoryLot.restaurant_id == self.restaurant_id,
+                                                       InventoryLot.batch_recipe_id == batch_recipe_id))
+            await self.db.execute(select(Inventory).where(Inventory.restaurant_id == self.restaurant_id,
+                predicate).order_by(Inventory.inventory_id).with_for_update())
+            report = (await self.db.execute(select(WasteReport).where(
+                WasteReport.restaurant_id == self.restaurant_id, WasteReport.request_key == key))).scalar_one_or_none()
+            if report:
+                if report.payload != payload:
+                    raise ValueError("Waste retry key was already used with different values")
+                return report.result
+            report = WasteReport(restaurant_id=self.restaurant_id, request_key=key, payload=payload)
+            self.db.add(report)
+            await self.db.flush()
+            from app.repositories.restaurants_repo import RestaurantRepository
+            from app.utils.business_date import trading_date
+            restaurant = await RestaurantRepository(self.db, self.restaurant_id).get_by_id(self.restaurant_id)
+            movements = await InventoryConsumption(self.db, self.restaurant_id).consume(
+                item_kind='ingredient' if ingredient_id else 'batch', item_id=ingredient_id or batch_recipe_id,
+                quantity=quantity, unit=unit, reference_type='waste_report', reference_id=report.report_id,
+                usage_type=waste_type, include_expired=True, business_date=trading_date(datetime.utcnow(), restaurant),
+                notes=f"{reason}: {notes}" if notes else reason)
+            report.result = {"report_id": report.report_id, "request_key": key,
+                "movements": movements, "message": f"Waste recorded: {quantity} {unit}"}
+            await self.db.flush()
+            return report.result
 
-        # 3. Save changes (you likely have a repo method)
-        update_fields = {"status": status}
+    async def update_prep_schedule(self, prep_id: int, status: str,
+                                   prep_time_minutes_actual=None, prep_batch_count=None) -> dict:
+        async with self.db.begin_nested():
+            prep = await self._locked_prep(prep_id)
+            status = status or prep.status
+            if status not in {"scheduled", "in_progress", "completed", "cancelled"}:
+                raise ValueError("Unsupported prep status")
+            if prep_batch_count is not None and (not Decimal(str(prep_batch_count)).is_finite() or Decimal(str(prep_batch_count)) <= 0):
+                raise ValueError("Batch count must be finite and positive")
+            if prep.status == "completed":
+                if status != "completed" or (prep_batch_count is not None and
+                        Decimal(str(prep_batch_count)) != prep.prep_batch_count):
+                    raise ValueError("Completed production requires an explicit correction; it cannot be reopened")
+            else:
+                if prep_batch_count is not None:
+                    prep.prep_batch_count = Decimal(str(prep_batch_count))
+                if prep_time_minutes_actual is not None:
+                    prep.prep_time_minutes_actual = prep_time_minutes_actual
+                if status != "completed":
+                    prep.status = status
+            inventory_update = await self.finalize_batch_recipe_production(prep_id) if status == "completed" else None
+            await self.db.flush()
+            return {"prep_id": prep.prep_id, "status": prep.status,
+                    "prep_time_minutes_actual": prep.prep_time_minutes_actual,
+                    "prep_batch_count": prep.prep_batch_count,
+                    "quantity_prepped": prep.quantity_prepped,
+                    "inventory_update": inventory_update,
+                    "message": "Prep schedule updated successfully."}
 
-        if prep_time_minutes_actual is not None:
-            update_fields["prep_time_minutes_actual"] = prep_time_minutes_actual
-
-        if prep_batch_count is not None:
-            update_fields["prep_batch_count"] = prep_batch_count
-
-        await self.prep_schedule_repo.update(prep_id, update_fields)
-
-        
-        result = {
-            "prep_id": prep.prep_id,
-            "status": prep.status,
-            "prep_time_minutes_actual": prep.prep_time_minutes_actual,
-            "prep_batch_count": prep.prep_batch_count,
-            "quantity_prepped": None,
-            "message": "Prep schedule updated successfully.",
-        }
-        
-        # 4. If status is 'completed', finalize batch recipe production
-        if status == "completed":
-            finalization_result = await self.finalize_batch_recipe_production(prep_id)
-            result["quantity_prepped"] = finalization_result["added_to_inventory"]["quantity_added"]
-            result["inventory_update"] = finalization_result
-
-        return result
+    async def _locked_prep(self, prep_id):
+        prep = (await self.db.execute(select(PrepSchedule).where(
+            PrepSchedule.restaurant_id == self.restaurant_id,
+            PrepSchedule.prep_id == prep_id).with_for_update().execution_options(populate_existing=True))).scalars().first()
+        if not prep:
+            raise ValueError(f"Prep {prep_id} not found")
+        return prep
 
     async def finalize_batch_recipe_production(self, prep_id: int) -> dict:
-        prep = await self.get_prep(prep_id)
-        print(f"Prep: {prep}")
-        print(f"Prep.batch_recipe_id: {getattr(prep, 'batch_recipe_id', None)}")
-        batch_recipe_id = getattr(prep, "batch_recipe_id", None)
-        if batch_recipe_id is None:
-            raise ValueError("Prep does not have a batch_recipe_id.")
-        batch_recipe = await self.get_batch(prep.batch_recipe_id)
-        print(f"Batch recipe fetched: {batch_recipe}")
-        
-        total_quantity = batch_recipe.yield_quantity * prep.prep_batch_count
-        unit = batch_recipe.yield_unit
-        today = date.today()
+        async with self.db.begin_nested():
+            prep = await self._locked_prep(prep_id)
+            previous = (await self.db.execute(select(InventoryLot).where(
+                InventoryLot.restaurant_id == self.restaurant_id,
+                InventoryLot.prep_id == prep_id).with_for_update().execution_options(populate_existing=True))).scalars().first()
+            if previous:
+                return {"message": "Production already finalized", "deducted_ingredients": [],
+                        "added_to_inventory": {"inventory_id": previous.inventory_id,
+                            "quantity_added": float(previous.quantity), "unit": previous.unit}}
+            if prep.status == "completed":
+                raise ValueError("Legacy completed prep has no production provenance; reconcile before retrying")
+            batch = await self.batch_recipe_repo.get_by_id(prep.batch_recipe_id, for_update=True)
+            if not batch:
+                raise ValueError("Batch recipe not found")
+            count = Decimal(str(prep.prep_batch_count or 0))
+            output = Decimal(str(batch.yield_quantity or 0)) * count
+            if not count.is_finite() or count <= 0 or not output.is_finite() or output <= 0:
+                raise ValueError("Production requires a positive finite batch count and yield")
+            inputs = await self.batch_recipe_ingredient_repo.get_all_for_batch_ingredient(batch.batch_recipe_id)
+            requirements = {}
+            for component in inputs:
+                kind = normalize_batch_component_type(component.ingredient_type)
+                key = (kind, component.reference_id)
+                if key not in requirements:
+                    target = await (self.ingredient_repo if kind == "ingredient" else self.batch_recipe_repo).get_by_id(component.reference_id)
+                    if not target:
+                        raise ValueError(f"Missing production input {key}")
+                    requirements[key] = [Decimal("0"), target.unit if kind == "ingredient" else target.yield_unit]
+                requirements[key][0] += convert_unit(Decimal(str(component.quantity_used)), component.unit, requirements[key][1]) * count
+            consumption = InventoryConsumption(self.db, self.restaurant_id)
+            deductions = []
+            for (kind, item_id), (quantity, unit) in sorted(requirements.items()):
+                deductions.extend(await consumption.consume(item_kind=kind, item_id=item_id,
+                    quantity=quantity, unit=unit, usage_type="batch_production",
+                    reference_type="prep", reference_id=prep_id, business_date=prep.prep_date))
+            inventory = await self.inventory_repo.get_batch_inventory(batch.batch_recipe_id)
+            if inventory:
+                await self.inventory_repo.increment_quantity(inventory.inventory_id,
+                    convert_unit(output, batch.yield_unit, inventory.unit))
+            else:
+                inventory = await self.inventory_repo.create({"ingredient_id": None,
+                    "quantity_on_hand": output, "unit": batch.yield_unit,
+                    "shelf_life_days": batch.shelf_life_days, "last_delivery_date": prep.prep_date})
+            expiry = prep.prep_date + timedelta(days=batch.shelf_life_days) if batch.shelf_life_days is not None else None
+            await self.inventory_lot_repo.create({"inventory_id": inventory.inventory_id,
+                "prep_id": prep_id, "delivery_date": prep.prep_date, "spoilage_expected_date": expiry,
+                "quantity": output, "total_received": output, "unit": batch.yield_unit,
+                "batch_recipe_id": batch.batch_recipe_id, "receipt_source": "batch_production"})
+            prep.quantity_prepped, prep.status = output, "completed"
+            await self.db.flush()
+            return {"message": f"Batch '{batch.name}' finalized into inventory",
+                    "added_to_inventory": {"inventory_id": inventory.inventory_id,
+                        "quantity_added": float(output), "unit": batch.yield_unit},
+                    "deducted_ingredients": deductions}
 
-        inventory_entry = await self.update_inventory_for_batch_recipe(batch_recipe, total_quantity, unit, today)
-        lot = await self.create_inventory_lot(batch_recipe, inventory_entry, total_quantity, unit, today)
-        lot_id = lot.lot_id
-
-        deducted_ingredients = await self.deduct_ingredients_for_batch(batch_recipe, prep, lot_id)
-        
-        return {
-            "message": f"Batch recipe '{batch_recipe.name}' finalized into inventory.",
-            "added_to_inventory": {
-                "inventory_id": inventory_entry.inventory_id,
-                "quantity_added": float(total_quantity),
-                "unit": unit,
-            },
-            "deducted_ingredients": deducted_ingredients,
-        }
-
-    # Helper methods:
-
-    async def get_prep(self, prep_id: int):
-        try:
-            print(f"Fetching prep schedule with ID: {prep_id}")
-            prep = await self.prep_schedule_repo.get_by_id(prep_id)
-            print(f"Got prep: {prep}")
-
-            if not prep:
-                raise ValueError(f"Prep with ID {prep_id} not found.")
-            
-            return prep
-
-        except Exception as e:
-            print(f"get_prep() crashed: {e}")
-            raise
-
-    async def get_batch(self, batch_recipe_id: int):
-        batch_recipe = await self.batch_recipe_repo.get_by_id(batch_recipe_id)
-        if not batch_recipe:
-            raise ValueError("Batch recipe not found.")
-        print(f'1batch recipe: {batch_recipe}')
-        return batch_recipe
-
-    async def update_inventory_for_batch_recipe(self, batch_recipe, total_quantity, unit, today):
-        existing_lot = await self.inventory_lot_repo.get_by_batch_recipe_id(batch_recipe.batch_recipe_id)
-
-        if existing_lot:
-            return await self.increment_inventory(existing_lot.inventory_id, total_quantity)
-        else:
-            return await self.create_new_inventory(batch_recipe, total_quantity, unit, today)
-
-    async def increment_inventory(self, inventory_id: int, total_quantity: float):
-        inventory_entry = await self.inventory_repo.get_by_id(inventory_id)
-        if not inventory_entry:
-            raise ValueError(f"Inventory not found for ID {inventory_id}")
-        
-        updated_inventory = await self.inventory_repo.increment_quantity(inventory_id, total_quantity)
-        if not updated_inventory:
-            raise ValueError(f"Could not increment quantity for inventory ID {inventory_id}")
-        
-        return updated_inventory
-
-    async def create_new_inventory(self, batch_recipe, total_quantity, unit, today):
-        inventory_entry = await self.inventory_repo.create({
-            "restaurant_id": self.restaurant_id,
-            "ingredient_id": None,
-            "quantity_on_hand": total_quantity,
-            "unit": unit,
-            "shelf_life_days": batch_recipe.shelf_life_days,
-            "spoilage_expected_date": today + timedelta(days=batch_recipe.shelf_life_days),
-            "last_delivery_date": today,
-        })
-        return inventory_entry
-
-    async def create_inventory_lot(self, batch_recipe, inventory_entry, total_quantity, unit, today):
-        result = await self.inventory_lot_repo.create({
-            "inventory_id": inventory_entry.inventory_id,
-            "restaurant_id": self.restaurant_id,
-            "delivery_date": today,
-            "spoilage_expected_date": today + timedelta(days=batch_recipe.shelf_life_days),
-            "quantity": total_quantity,
-            "unit": unit,
-            "total_received": total_quantity,
-            "batch_recipe_id": batch_recipe.batch_recipe_id,
-        })
-        return result
-
-    async def deduct_ingredients_for_batch(self, batch_recipe, prep, lot_id):
-        deducted_ingredients = []
-        updated_inventories = []
-
-        # Fetch all ingredients for the batch recipe
-        ingredients = await self.batch_recipe_ingredient_repo.get_all_for_batch_ingredient(batch_recipe.batch_recipe_id)
-        
-        for ing in ingredients:
-            # Fetch the inventory entry for the ingredient
-            ingredient_entry = await self.inventory_repo.get_inventory_by_ingredient(ing.ingredient_id)
-            if not ingredient_entry:
-                raise ValueError(f"Inventory not found for ingredient {ing.ingredient_id}")
-            print(f"Ingredient: {ing.ingredient_id} | Per-batch used: {ing.quantity_used} {ing.unit} | Prep count: {prep.prep_batch_count}")
-
-            # Calculate the used quantity based on prep batch count and total quantity
-            used_quantity = ing.quantity_used * prep.prep_batch_count
-            
-            # Normalize units if needed
-            from_unit = ing.unit
-            to_unit = ingredient_entry.unit
-            if normalize_unit(from_unit) != normalize_unit(to_unit):
-                used_quantity = convert_unit(used_quantity, from_unit, to_unit)
-            print(f"From unit: {from_unit} | To unit: {to_unit} | Normalized: {normalize_unit(from_unit)} -> {normalize_unit(to_unit)}")
-
-            print(f"Used quantity after unit conversion: {used_quantity} {to_unit}")
-
-            # Update the inventory by decrementing the used quantity
-            updated_inv = await self.inventory_repo.decrement_quantity(
-                inventory_id=ingredient_entry.inventory_id,
-                amount=used_quantity,
-            )
-            updated_inventories.append(updated_inv)
-            ingredient = await self.ingredient_repo.get_by_id(ing.ingredient_id)
-            ingredient_name = ingredient.name
-
-            # Log the inventory usage
-            await self.inventory_usage_log_repo.create({
-                "restaurant_id": self.restaurant_id,
-                "inventory_id": ingredient_entry.inventory_id,
-                "ingredient_id": ing.ingredient_id,
-                "lot_id": lot_id,
-                "used_quantity": used_quantity,
-                "unit": to_unit,
-                "usage_type": "batch_production",
-                "reference_type": "batch",
-                "reference_id": batch_recipe.batch_recipe_id,
-                "used_date": datetime.utcnow(),
-            })
-
-            # Record the deducted ingredients for the response
-            deducted_ingredients.append({
-                "ingredient_id": ing.ingredient_id,
-                "ingredient_name": ingredient_name,
-                "used_quantity": float(used_quantity),
-                "unit": to_unit,
-            })
-
-        return deducted_ingredients
-
-        return response
+    async def get_prep_recommendations(self):
+        from app.repositories.forecast_run_ledger_repo import ForecastRunLedgerRepository
+        from app.services.utils.forecast_snapshot import restore
+        ledger = await ForecastRunLedgerRepository(self.db, self.restaurant_id).get_latest_finalized()
+        snapshot = getattr(ledger, "result_snapshot", None)
+        if not isinstance(snapshot, dict):
+            return {"run_date": None, "batches": [], "status": "missing"}
+        stored = restore(snapshot)
+        from app.services.prep_planning_service import PrepPlanningService
+        from app.repositories.restaurants_repo import RestaurantRepository
+        from app.utils.business_date import trading_date
+        restaurant = await RestaurantRepository(self.db, self.restaurant_id).get_by_id(self.restaurant_id)
+        today = trading_date(datetime.utcnow(), restaurant)
+        gross = [row for row in stored.get('batches', []) if row['forecast_date'] >= today]
+        direct = [row for row in stored.get('ingredients', [])
+                  if row.get('source_type') != 'net_prep' and row['forecast_date'] >= today]
+        plan = await PrepPlanningService(self.db, self.restaurant_id).build(gross, direct)
+        # Historical purchasing demand stays frozen. Present fresh prep guidance
+        # against current stock/tasks, with an explicit recipe-change review gate.
+        frozen = stored.get('material_plan', {}).get('recipe_graph', {})
+        recipe_changed = any(frozen.get(key) != value for key, value in plan['recipe_graph'].items())
+        warnings = ['Recipes changed since this forecast; generate a new forecast before scheduling.'] if recipe_changed else []
+        review = bool(plan['review_required'] or recipe_changed or stored.get('history_quality', {}).get('review_required'))
+        return {'run_date': ledger.run_date, 'as_of_date': today,
+                'batches': plan['batches'], 'production_order': plan['production_order'],
+                'status': 'review' if review else 'ready', 'review_required': review,
+                'warnings': warnings, 'incomplete_preps': plan['incomplete_preps'],
+                'input_requirements': plan['ingredients'], 'history_quality': stored.get('history_quality', {})}
 
     async def get_prep_schedule(self, prep_date: Optional[date] = None) -> List[Dict]:
         """Get prep schedule with batch recipe names."""
@@ -937,9 +851,22 @@ class PrepService:
         return result
 
     async def create_prep_schedule(self, prep_data: dict) -> dict:
-        # Ensure default status if not provided
-        if "status" not in prep_data:
-            prep_data["status"] = "scheduled"
+        prep_data = dict(prep_data)
+        batch = await self.batch_recipe_repo.get_by_id(prep_data['batch_recipe_id'])
+        if not batch or not batch.is_active:
+            raise ValueError('Active batch recipe not found')
+        if prep_data.get('assigned_employee_id') is not None and not await self.employee_repo.get_by_id(prep_data['assigned_employee_id']):
+            raise ValueError('Assigned employee not found for this restaurant')
+        quantity = Decimal(str(prep_data['quantity_needed']))
+        output = Decimal(str(batch.yield_quantity or 0))
+        if not quantity.is_finite() or quantity <= 0 or not output.is_finite() or output <= 0:
+            raise ValueError('Planned quantity and batch yield must be finite and positive')
+        count = Decimal(str(quantity / output if prep_data.get('prep_batch_count') is None else prep_data['prep_batch_count']))
+        if not count.is_finite() or count <= 0:
+            raise ValueError('Planned batch count must be finite and positive')
+        prep_data['quantity_needed'], prep_data['prep_batch_count'] = quantity, count
+        prep_data['prep_date'] = date.fromisoformat(prep_data['prep_date']) if isinstance(prep_data['prep_date'], str) else prep_data['prep_date']
+        prep_data['status'] = 'scheduled'
 
         # Create prep schedule using repo method
         prep = await self.prep_schedule_repo.create(prep_data)
@@ -958,6 +885,9 @@ class PrepService:
 
     # DELETE a prep schedule by ID
     async def delete_prep_schedule(self, prep_id: int) -> dict:
+        prep = await self._locked_prep(prep_id)
+        if prep.status == "completed":
+            raise ValueError("Completed production requires an explicit correction; it cannot be deleted")
         success = await self.prep_schedule_repo.delete(prep_id)
 
         if not success:

@@ -17,16 +17,32 @@ class InventoryRepository(BaseRepository):
         super().__init__(db, Inventory, restaurant_id, pk_field="inventory_id")
 
     async def get_inventory_by_ingredient(
-        self, ingredient_id: int
+        self, ingredient_id: int, *, for_update: bool = False
     ) -> Optional[Inventory]:
         """Get inventory by ingredient and restaurant ID."""
-        result = await self.db.execute(
-            select(Inventory).filter(
-                Inventory.restaurant_id == self.restaurant_id,
-                Inventory.ingredient_id == ingredient_id,
-            )
-        )
+        stmt = select(Inventory).where(Inventory.restaurant_id == self.restaurant_id,
+                                       Inventory.ingredient_id == ingredient_id)
+        if for_update:
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
+        result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_by_id(self, obj_id, *, for_update=False):
+        stmt = select(Inventory).where(Inventory.inventory_id == obj_id,
+                                       Inventory.restaurant_id == self.restaurant_id)
+        if for_update:
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
+    async def update(self, obj_id, update_data):
+        inventory = await self.get_by_id(obj_id, for_update=True)
+        if inventory is None:
+            return None
+        for field, value in self._to_dict(update_data).items():
+            setattr(inventory, field, value)
+        await self.db.flush()
+        await self.db.refresh(inventory)
+        return inventory
 
     async def increment_quantity(
         self, inventory_id: int, amount: float
@@ -36,7 +52,7 @@ class InventoryRepository(BaseRepository):
             select(Inventory).filter(
                 Inventory.inventory_id == inventory_id,
                 Inventory.restaurant_id == self.restaurant_id,
-            )
+            ).with_for_update().execution_options(populate_existing=True)
         )
         inventory = result.scalar_one_or_none()
 
@@ -55,7 +71,7 @@ class InventoryRepository(BaseRepository):
             select(Inventory).filter(
                 Inventory.inventory_id == inventory_id,
                 Inventory.restaurant_id == self.restaurant_id,
-            )
+            ).with_for_update().execution_options(populate_existing=True)
         )
         inventory = result.scalar_one_or_none()
 
@@ -72,16 +88,17 @@ class InventoryRepository(BaseRepository):
         return inventory
 
     async def get_batch_inventory(self, batch_recipe_id: int):
-        result = await self.db.execute(
-            select(Inventory).filter(
-                Inventory.restaurant_id == self.restaurant_id,
-                Inventory.batch_recipe_id == batch_recipe_id,
-            )
-        )
-        return result.scalar_one_or_none()
+        from app.db.models.inventory_lot_orm import InventoryLot
+        result = await self.db.execute(select(Inventory).where(
+            Inventory.restaurant_id == self.restaurant_id,
+            Inventory.inventory_id.in_(select(InventoryLot.inventory_id).where(
+                InventoryLot.restaurant_id == self.restaurant_id,
+                InventoryLot.batch_recipe_id == batch_recipe_id)),
+        ).order_by(Inventory.inventory_id).with_for_update().execution_options(populate_existing=True))
+        return result.scalars().first()
 
     async def get_all_by_ids(self, inventory_ids: List[int]):
         result = await self.db.execute(
-            select(Inventory).where(Inventory.inventory_id.in_(inventory_ids))
+            select(Inventory).where(Inventory.inventory_id.in_(inventory_ids), Inventory.restaurant_id == self.restaurant_id)
         )
         return result.scalars().all()

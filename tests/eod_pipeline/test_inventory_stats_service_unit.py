@@ -31,8 +31,8 @@ class TestInventoryStatsServiceUnit:
         
         result = await service.get_average_daily_usage(ingredient_id=1001, days=30)
         
-        assert result == Decimal("2.50")
-        service.inventory_usage_log_repo.get_daily_usage.assert_called_once_with(1001, 30)
+        assert result == Decimal("1.666667")
+        service.inventory_usage_log_repo.get_daily_usage.assert_called_once_with(1001, 30, as_of_date=date.today())
 
     @pytest.mark.asyncio
     async def test_get_average_daily_usage_fallback_to_sales(
@@ -122,7 +122,7 @@ class TestInventoryStatsServiceUnit:
             return_value={}
         )
         
-        result = await service.get_std_dev_usage(ingredient_id=1001, days=30)
+        result = await service.get_std_dev_usage(ingredient_id=1001, days=1)
         
         assert result == Decimal("0")
 

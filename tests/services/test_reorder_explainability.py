@@ -24,6 +24,7 @@ class DummyIngredient:
 @pytest.mark.asyncio
 async def test_choose_supplier_option_prefers_lowest_priority_preferred_supplier():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
 
     fallback_supplier = MagicMock(
         supplier_id=10,
@@ -59,6 +60,7 @@ async def test_choose_supplier_option_prefers_lowest_priority_preferred_supplier
 @pytest.mark.asyncio
 async def test_build_reorder_decision_returns_reusable_factor_breakdown():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=DummyIngredient(ingredient_id=1001, abc_class="B")
@@ -97,7 +99,7 @@ async def test_build_reorder_decision_returns_reusable_factor_breakdown():
 
     assert decision["abc_class"] == "B"
     assert decision["abc_multiplier"] is None
-    assert decision["reorder_point"] == Decimal("18.00")
+    assert decision["reorder_point"] == Decimal("8.00")
     assert decision["reorder_target"] == Decimal("18.00")
     assert decision["raw_order_quantity"] == Decimal("13.00")
     assert decision["buffered_quantity"] == Decimal("13.00")
@@ -110,6 +112,7 @@ async def test_build_reorder_decision_returns_reusable_factor_breakdown():
 @pytest.mark.asyncio
 async def test_build_explanation_payload_for_fresh_perishable_surfaces_assumptions_and_pack_warning():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=SimpleNamespace(
@@ -145,7 +148,7 @@ async def test_build_explanation_payload_for_fresh_perishable_surfaces_assumptio
             unit="lb",
             lead_time=0,
             daily_forecast=daily_forecast,
-            supplier=SimpleNamespace(spoilage_rate=None),
+            supplier=SimpleNamespace(spoilage_rate=None, unit="lb"),
             as_of_date=date(2026, 4, 15),
             shelf_life_days=3,
             current_stock=Decimal("0.00"),
@@ -178,7 +181,7 @@ async def test_build_explanation_payload_for_fresh_perishable_surfaces_assumptio
     assert "Configured MOQ exceeds the waste-safe cap and should be reviewed" in payload["summary"]
     assert "Pack rounding pushes the ordered quantity above the spoilage-safe quantity" in payload["summary"]
     warnings = payload["assumption_flags"]["cadence_warnings"]
-    assert "inbound quantity unavailable; assumed zero" in warnings
+    assert "inbound quantity unavailable; assumed zero" not in warnings
     assert "backorders unavailable; assumed zero" in warnings
     assert "configured MOQ exceeds waste-safe cap; review required" in warnings
     assert "pack rounding exceeds spoilage-safe quantity" in warnings
@@ -187,6 +190,7 @@ async def test_build_explanation_payload_for_fresh_perishable_surfaces_assumptio
 @pytest.mark.asyncio
 async def test_build_explanation_payload_for_stable_stocked_uses_reorder_point_summary():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=DummyIngredient(ingredient_id=1001, abc_class="B")
@@ -246,13 +250,14 @@ async def test_build_explanation_payload_for_stable_stocked_uses_reorder_point_s
     assert "Stable-stocked ordering uses reorder point" in payload["summary"]
     assert "safety stock 3.00" in payload["summary"]
     warnings = payload["assumption_flags"]["cadence_warnings"]
-    assert "inbound quantity unavailable; assumed zero" in warnings
+    assert "inbound quantity unavailable; assumed zero" not in warnings
     assert "backorders unavailable; assumed zero" in warnings
 
 
 @pytest.mark.asyncio
 async def test_build_explanation_payload_preserves_public_structure():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=DummyIngredient(ingredient_id=1011, abc_class="B")
@@ -341,6 +346,7 @@ async def test_build_explanation_payload_preserves_public_structure():
 @pytest.mark.asyncio
 async def test_build_explanation_payload_remains_compatible_with_cap_fields():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
 
     payload = engine.build_explanation_payload(
         decision={
@@ -428,6 +434,7 @@ async def test_build_explanation_payload_remains_compatible_with_cap_fields():
 @pytest.mark.asyncio
 async def test_build_explanation_payload_surfaces_projected_fefo_waste():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
 
     payload = engine.build_explanation_payload(
         decision={
@@ -510,6 +517,7 @@ async def test_build_explanation_payload_surfaces_projected_fefo_waste():
 @pytest.mark.asyncio
 async def test_build_explanation_payload_for_recipe_dependent_uses_dependency_summary():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=SimpleNamespace(
@@ -591,6 +599,7 @@ async def test_build_explanation_payload_for_recipe_dependent_uses_dependency_su
 @pytest.mark.asyncio
 async def test_build_explanation_payload_for_intermittent_surfaces_moq_review_warning():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=SimpleNamespace(
@@ -670,6 +679,7 @@ async def test_build_explanation_payload_for_intermittent_surfaces_moq_review_wa
 @pytest.mark.asyncio
 async def test_generate_purchase_order_suggestions_includes_explanation_payload():
     service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
+    service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
     service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Primary Supplier"))
     service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(return_value=None)
     service.forecast_repo.get_forecasts_created_between = AsyncMock(
@@ -734,6 +744,8 @@ async def test_generate_purchase_order_suggestions_includes_explanation_payload(
         restaurant_repo_cls.return_value = restaurant_repo
 
         forecasting_engine = MagicMock()
+        forecasting_engine.latest_material_plan = {}
+        forecasting_engine.latest_menu_item_forecasts = {}
         forecasting_engine.initialize = AsyncMock()
         forecasting_engine.run_forecasting_pipeline = AsyncMock(
             return_value={
@@ -806,6 +818,7 @@ async def test_generate_purchase_order_suggestions_includes_explanation_payload(
 @pytest.mark.asyncio
 async def test_generate_purchase_order_suggestions_falls_back_to_supplier_shelf_life_when_inventory_missing_value():
     service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
+    service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
     service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Primary Supplier"))
     service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(return_value=None)
     service.forecast_repo.get_forecasts_created_between = AsyncMock(return_value=[])
@@ -860,6 +873,8 @@ async def test_generate_purchase_order_suggestions_falls_back_to_supplier_shelf_
         restaurant_repo_cls.return_value = restaurant_repo
 
         forecasting_engine = MagicMock()
+        forecasting_engine.latest_material_plan = {}
+        forecasting_engine.latest_menu_item_forecasts = {}
         forecasting_engine.initialize = AsyncMock()
         forecasting_engine.run_forecasting_pipeline = AsyncMock(
             return_value={
@@ -901,6 +916,7 @@ async def test_generate_purchase_order_suggestions_falls_back_to_supplier_shelf_
 @pytest.mark.asyncio
 async def test_generate_purchase_order_suggestions_includes_unspecified_supplier_when_mapping_missing():
     service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
+    service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
     service.forecast_run_ledger_repo.get_latest_finalized = AsyncMock(return_value=None)
     service.forecast_repo.get_forecasts_created_between = AsyncMock(return_value=[])
     service.ingredient_supplier_repo.get_all_by_ingredient_id = AsyncMock(return_value=[])
@@ -941,6 +957,8 @@ async def test_generate_purchase_order_suggestions_includes_unspecified_supplier
         restaurant_repo_cls.return_value = restaurant_repo
 
         forecasting_engine = MagicMock()
+        forecasting_engine.latest_material_plan = {}
+        forecasting_engine.latest_menu_item_forecasts = {}
         forecasting_engine.initialize = AsyncMock()
         forecasting_engine.run_forecasting_pipeline = AsyncMock(
             return_value={
@@ -995,6 +1013,7 @@ async def test_generate_purchase_order_suggestions_includes_unspecified_supplier
 @pytest.mark.asyncio
 async def test_generate_purchase_order_suggestions_uses_recent_eod_forecast_when_fresh_run_fails():
     service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
+    service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
     service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Primary Supplier"))
 
     supplier = MagicMock(
@@ -1064,6 +1083,8 @@ async def test_generate_purchase_order_suggestions_uses_recent_eod_forecast_when
         restaurant_repo_cls.return_value = restaurant_repo
 
         forecasting_engine = MagicMock()
+        forecasting_engine.latest_material_plan = {}
+        forecasting_engine.latest_menu_item_forecasts = {}
         forecasting_engine.initialize = AsyncMock()
         forecasting_engine.run_forecasting_pipeline = AsyncMock(side_effect=RuntimeError("boom"))
         forecasting_engine_cls.return_value = forecasting_engine
@@ -1101,6 +1122,7 @@ async def test_generate_purchase_order_suggestions_uses_recent_eod_forecast_when
 @pytest.mark.asyncio
 async def test_generate_purchase_order_suggestions_uses_latest_finalized_forecast_when_restaurant_date_missing():
     service = InventoryService(MagicMock(), restaurant_id=1, subscription_tier="master", employee_id=99)
+    service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
     service.supplier_repo.get_by_id = AsyncMock(return_value=MagicMock(name="Primary Supplier"))
     service.forecast_repo.get_forecasts_created_between = AsyncMock(return_value=[])
 

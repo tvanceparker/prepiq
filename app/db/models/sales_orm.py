@@ -1,6 +1,6 @@
 # db/models/sales_orm.py
 
-from sqlalchemy import Column, Integer, String, DateTime, DECIMAL, ForeignKey
+from sqlalchemy import Column, Integer, String, Date, DateTime, DECIMAL, ForeignKey
 from app.db.session import Base
 from sqlalchemy.orm import relationship
 
@@ -12,6 +12,7 @@ class Sales(Base):
     restaurant_id = Column(
         Integer, ForeignKey("restaurants.restaurant_id"), nullable=False
     )
+    business_date = Column(Date, nullable=True, index=True)
     sale_timestamp = Column(DateTime, nullable=False)
     menu_item_id = Column(
         Integer, ForeignKey("menu_items.menu_item_id"), nullable=False

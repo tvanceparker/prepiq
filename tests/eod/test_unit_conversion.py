@@ -16,7 +16,8 @@ from app.services.utils.unit_conversion import (
         (1, "kg", "g", Decimal("1000")),
         (16, "oz", "lb", Decimal("1")),
         (1, "cup", "ml", Decimal("240")),
-        (15, "ml", "tbsp", pytest.raises(ValueError)),  # invalid conversion
+        (15, "ml", "tbsp", Decimal("1")),
+        (1, "kg", "liter", pytest.raises(ValueError)),
         (1, "count", "count", Decimal("1")),
     ],
 )

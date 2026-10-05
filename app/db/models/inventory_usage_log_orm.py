@@ -1,6 +1,6 @@
 # app/db/models/inventory_usage_log_orm.py
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, DECIMAL, Enum
+from sqlalchemy import Column, Integer, String, Date, DateTime, ForeignKey, DECIMAL, Enum
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 from datetime import datetime
@@ -17,7 +17,9 @@ class UsageTypeEnum(str, enum.Enum):
 
 
 class ReferenceTypeEnum(str, enum.Enum):
+    order = "order"
     sale = "sale"
+    prep = "prep"
     batch = "batch"
     user = "user"
     lot = "lot"
@@ -36,11 +38,12 @@ class InventoryUsageLog(Base):
     inventory_id = Column(Integer, ForeignKey("inventory.inventory_id"), nullable=False)
     lot_id = Column(Integer, ForeignKey("inventory_lots.lot_id"), nullable=True)
     ingredient_id = Column(
-        Integer, ForeignKey("ingredients.ingredient_id"), nullable=False
+        Integer, ForeignKey("ingredients.ingredient_id"), nullable=True
     )
 
-    used_quantity = Column(DECIMAL(10, 2), nullable=False)
+    used_quantity = Column(DECIMAL(16, 6), nullable=False)
     unit = Column(String(20), nullable=False)
+    business_date = Column(Date, nullable=True, index=True)
     used_date = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     usage_type = Column(Enum(UsageTypeEnum), nullable=False)

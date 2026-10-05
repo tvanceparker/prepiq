@@ -13,6 +13,13 @@ class BatchRecipeRepository(BaseRepository):
         self.restaurant_id = restaurant_id
         super().__init__(db, BatchRecipe, restaurant_id, pk_field="batch_recipe_id")
 
+    async def get_by_id(self, obj_id, *, for_update=False):
+        stmt = select(BatchRecipe).where(BatchRecipe.batch_recipe_id == obj_id,
+                                         BatchRecipe.restaurant_id == self.restaurant_id)
+        if for_update:
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
+        return (await self.db.execute(stmt)).scalars().first()
+
     async def get_active(self) -> List[BatchRecipe]:
         result = await self.db.execute(
             select(BatchRecipe).where(

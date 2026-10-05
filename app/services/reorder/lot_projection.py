@@ -10,7 +10,7 @@ class ReorderLotProjectionHelper:
     def _to_decimal(value: Any) -> Decimal:
         if value is None:
             return Decimal("0.00")
-        return Decimal(str(value)).quantize(Decimal("0.01"))
+        return Decimal(str(value)).quantize(Decimal("0.000001"))
 
     @staticmethod
     def _sort_key(lot: Dict[str, Any]) -> Any:
@@ -43,7 +43,7 @@ class ReorderLotProjectionHelper:
                 continue
             demand_by_day[demand_day] = (
                 demand_by_day.get(demand_day, Decimal("0.00")) + self._to_decimal(quantity)
-            ).quantize(Decimal("0.01"))
+            ).quantize(Decimal("0.000001"))
 
         simulated_lots: List[Dict[str, Any]] = []
         total_quantity = Decimal("0.00")
@@ -98,6 +98,8 @@ class ReorderLotProjectionHelper:
                     if demand_remaining <= 0:
                         break
 
+                    if lot["delivery_date"] and lot["delivery_date"] > current_day:
+                        continue
                     spoilage_expected_date = lot["spoilage_expected_date"]
                     remaining_quantity = lot["remaining_quantity"]
                     if remaining_quantity <= 0:
@@ -109,19 +111,19 @@ class ReorderLotProjectionHelper:
                         continue
 
                     consumed_quantity = min(remaining_quantity, demand_remaining).quantize(
-                        Decimal("0.01")
+                        Decimal("0.000001")
                     )
                     if consumed_quantity <= 0:
                         continue
 
                     lot["remaining_quantity"] = (
                         remaining_quantity - consumed_quantity
-                    ).quantize(Decimal("0.01"))
+                    ).quantize(Decimal("0.000001"))
                     lot["consumed_quantity"] = (
                         lot["consumed_quantity"] + consumed_quantity
-                    ).quantize(Decimal("0.01"))
+                    ).quantize(Decimal("0.000001"))
                     demand_remaining = (demand_remaining - consumed_quantity).quantize(
-                        Decimal("0.01")
+                        Decimal("0.000001")
                     )
                     lot_consumption_trace.append(
                         {
@@ -160,22 +162,22 @@ class ReorderLotProjectionHelper:
         projected_waste_quantity = sum(
             (lot["projected_waste_quantity"] for lot in simulated_lots),
             Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
         projected_remaining_quantity = sum(
             (lot["remaining_quantity"] for lot in simulated_lots),
             Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
         projected_consumed_quantity = sum(
             (lot["consumed_quantity"] for lot in simulated_lots),
             Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
 
         lot_projection_summary = []
         eligible_lot_count = 0
         for lot in simulated_lots:
             usable_quantity = (
                 lot["starting_quantity"] - lot["projected_waste_quantity"]
-            ).quantize(Decimal("0.01"))
+            ).quantize(Decimal("0.000001"))
             if usable_quantity > 0:
                 eligible_lot_count += 1
 
@@ -194,11 +196,11 @@ class ReorderLotProjectionHelper:
 
         projected_usable_quantity = (
             total_quantity - projected_waste_quantity
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
 
         return {
             "quantity": projected_usable_quantity,
-            "total_quantity": total_quantity.quantize(Decimal("0.01")),
+            "total_quantity": total_quantity.quantize(Decimal("0.000001")),
             "excluded_quantity": projected_waste_quantity,
             "projected_waste_quantity": projected_waste_quantity,
             "projected_remaining_quantity": projected_remaining_quantity,
@@ -209,5 +211,5 @@ class ReorderLotProjectionHelper:
             "fefo_applied": True,
             "projection_start_date": projection_start_date,
             "projection_end_date": projection_end_date,
-            "unmet_demand_quantity": unmet_demand_quantity.quantize(Decimal("0.01")),
+            "unmet_demand_quantity": unmet_demand_quantity.quantize(Decimal("0.000001")),
         }

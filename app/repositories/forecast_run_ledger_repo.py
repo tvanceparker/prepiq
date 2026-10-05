@@ -61,7 +61,7 @@ class ForecastRunLedgerRepository(BaseRepository[ForecastRunLedger]):
         
         if ledger.durations is None:
             ledger.durations = {}
-        ledger.durations[stage_name] = duration_ms
+        ledger.durations = {**(ledger.durations or {}), stage_name: duration_ms}
         
         await self.db.flush()
 
@@ -80,11 +80,11 @@ class ForecastRunLedgerRepository(BaseRepository[ForecastRunLedger]):
         if ledger.errors is None:
             ledger.errors = []
         
-        ledger.errors.append({
+        ledger.errors = [*(ledger.errors or []), {
             "stage": stage,
             "message": message,
             "timestamp": datetime.utcnow().isoformat(),
-        })
+        }]
         await self.db.flush()
 
     async def finalize(self, ledger: ForecastRunLedger) -> None:
