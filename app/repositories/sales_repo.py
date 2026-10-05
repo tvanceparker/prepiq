@@ -19,7 +19,7 @@ class SalesRepository(BaseRepository):
             select(func.sum(Sales.quantity_sold)).filter(
                 Sales.restaurant_id == self.restaurant_id,
                 Sales.menu_item_id == menu_item_id,
-                func.date(Sales.sale_timestamp) == sale_date,
+                func.coalesce(Sales.business_date, func.date(Sales.sale_timestamp)) == sale_date,
             )
         )
         total_quantity = result.scalar()
@@ -38,7 +38,7 @@ class SalesRepository(BaseRepository):
         result = await self.db.execute(
             select(Sales).filter(
                 Sales.restaurant_id == self.restaurant_id,
-                func.date(Sales.sale_timestamp) == sale_date,
+                func.coalesce(Sales.business_date, func.date(Sales.sale_timestamp)) == sale_date,
             )
         )
         return result.scalars().all()
@@ -47,8 +47,8 @@ class SalesRepository(BaseRepository):
         result = await self.db.execute(
             select(Sales).filter(
                 Sales.restaurant_id == self.restaurant_id,
-                Sales.sale_timestamp >= start_date,
-                Sales.sale_timestamp < end_date + timedelta(days=1),
+                func.coalesce(Sales.business_date, func.date(Sales.sale_timestamp)) >= start_date,
+                func.coalesce(Sales.business_date, func.date(Sales.sale_timestamp)) <= end_date,
             )
         )
         return result.scalars().all()
@@ -72,7 +72,7 @@ class SalesRepository(BaseRepository):
         end_dt = datetime.combine(end_date,time.max)
         stmt = (
             select(
-                func.date(Sales.sale_timestamp).label("sale_date"),
+                func.coalesce(Sales.business_date, func.date(Sales.sale_timestamp)).label("sale_date"),
                 Sales.menu_item_id,
                 func.sum(Sales.quantity_sold).label("quantity_sold")
             )
@@ -81,7 +81,7 @@ class SalesRepository(BaseRepository):
                 Sales.sale_timestamp >= start_dt,
                 Sales.sale_timestamp <= end_dt,
             )
-            .group_by(func.date(Sales.sale_timestamp), Sales.menu_item_id)
+            .group_by(func.coalesce(Sales.business_date, func.date(Sales.sale_timestamp)), Sales.menu_item_id)
         )
         print(f'stmt: {stmt}')
         result = await self.db.execute(stmt)
@@ -94,7 +94,7 @@ class SalesRepository(BaseRepository):
 
         stmt = delete(Sales).where(
             Sales.restaurant_id == self.restaurant_id,
-            func.date(Sales.sale_timestamp).in_(dates)
+            func.coalesce(Sales.business_date, func.date(Sales.sale_timestamp)).in_(dates)
         )
         await self.db.execute(stmt)
         await self.db.commit()
@@ -129,7 +129,7 @@ class SalesRepository(BaseRepository):
 
         stmt = select(func.count(Sales.sale_id)).filter(
             Sales.restaurant_id == self.restaurant_id,
-            func.date(Sales.sale_timestamp).in_(dates)
+            func.coalesce(Sales.business_date, func.date(Sales.sale_timestamp)).in_(dates)
         )
         result = await self.db.execute(stmt)
         count = result.scalar()
@@ -141,7 +141,7 @@ class SalesRepository(BaseRepository):
             select(Sales.sales_channel, func.count(Sales.sale_id))
             .where(
                 Sales.restaurant_id == self.restaurant_id,
-                func.date(Sales.sale_timestamp) == d,
+                func.coalesce(Sales.business_date, func.date(Sales.sale_timestamp)) == d,
             )
             .group_by(Sales.sales_channel)
         )
@@ -156,7 +156,7 @@ class SalesRepository(BaseRepository):
         conditions = self._build_channel_conditions(channels)
         stmt = select(func.count(Sales.sale_id)).where(
             Sales.restaurant_id == self.restaurant_id,
-            func.date(Sales.sale_timestamp) == d,
+            func.coalesce(Sales.business_date, func.date(Sales.sale_timestamp)) == d,
             or_(*conditions),
         )
         res = await self.db.execute(stmt)
@@ -169,7 +169,7 @@ class SalesRepository(BaseRepository):
         conditions = self._build_channel_conditions(channels)
         stmt = select(func.count(Sales.sale_id)).where(
             Sales.restaurant_id == self.restaurant_id,
-            func.date(Sales.sale_timestamp) == d,
+            func.coalesce(Sales.business_date, func.date(Sales.sale_timestamp)) == d,
             or_(*conditions),
         )
         res = await self.db.execute(stmt)
@@ -187,7 +187,7 @@ class SalesRepository(BaseRepository):
         conditions = self._build_channel_conditions(channels)
         stmt = delete(Sales).where(
             Sales.restaurant_id == self.restaurant_id,
-            func.date(Sales.sale_timestamp) == d,
+            func.coalesce(Sales.business_date, func.date(Sales.sale_timestamp)) == d,
             or_(*conditions),
         )
         result = await self.db.execute(stmt)

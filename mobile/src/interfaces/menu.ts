@@ -30,7 +30,8 @@ export interface RecipeIngredient {
   quantity?: number;
   quantity_used?: number; // Backend uses quantity_used
   unit?: string;
-  type?: string; // 'ingredient' or 'batch_recipe'
+  type?: 'ingredient' | 'batch' | 'recipe';
+  ingredient_type?: 'ingredient' | 'batch' | 'recipe';
 }
 
 // Recipe with ingredients (as returned from backend)
@@ -148,6 +149,7 @@ export interface IngredientWithSuppliers extends Ingredient {
     cost_per_unit: number;
     lead_time_days: number;
     review_period_days?: number | null;
+    order_schedule_anchor_date?: string | null;
     order_schedule_type?: 'ad_hoc' | 'fixed_days_of_week' | 'every_n_days' | null;
     allowed_order_days?: string[] | null;
     allowed_delivery_days?: string[] | null;
@@ -158,27 +160,16 @@ export interface IngredientWithSuppliers extends Ingredient {
 }
 
 export interface RecipeCreate {
-  recipe_name: string;
+  name: string;
   description?: string;
-  yield_quantity: number;
-  yield_unit: string;
-  prep_time_minutes?: number;
-  ingredients: Array<{
-    ingredient_id: number;
-    quantity: number;
+  ingredients: {
+    ingredient_id?: number;
+    reference_id?: number;
+    ingredient_type?: 'ingredient' | 'batch' | 'recipe';
+    quantity_used?: number;
+    quantity?: number;
     unit: string;
-  }>;
+  }[];
 }
 
-export interface RecipeUpdate {
-  recipe_name?: string;
-  description?: string;
-  yield_quantity?: number;
-  yield_unit?: string;
-  prep_time_minutes?: number;
-  ingredients?: Array<{
-    ingredient_id: number;
-    quantity: number;
-    unit: string;
-  }>;
-}
+export type RecipeUpdate = Partial<RecipeCreate>;

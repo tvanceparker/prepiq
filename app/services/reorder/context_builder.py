@@ -6,6 +6,7 @@ from statistics import NormalDist
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from app.utils.replenishment_policy import resolve_cadence
+from app.services.utils.unit_conversion import convert_unit
 
 if TYPE_CHECKING:
     from app.services.reorder_forecast_engine import ReorderForecastEngine
@@ -102,6 +103,7 @@ class ReorderContextBuilder:
             order_schedule_type=order_schedule_type,
             allowed_order_days=allowed_order_days,
             allowed_delivery_days=allowed_delivery_days,
+            order_schedule_anchor_date=getattr(supplier, "order_schedule_anchor_date", None),
         )
         next_delivery_date = cadence.next_delivery_date
         next_order_date = cadence.next_order_date
@@ -156,29 +158,16 @@ class ReorderContextBuilder:
                 continue
             if start_date <= normalized_day < end_date:
                 total += self.engine._to_decimal(quantity)
-        return total.quantize(Decimal("0.01"))
+        return total.quantize(Decimal("0.000001"))
 
-    def window_forecast_points(
-        self,
-        daily_forecast: List[Any],
-        *,
-        start_date: date,
-        window_days: int,
-    ) -> List[Any]:
-        if window_days <= 0:
-            return []
-
-        end_date = start_date + timedelta(days=window_days)
-        points = []
-        for forecast_day, quantity in daily_forecast:
-            normalized_day = self.engine._normalize_date_value(forecast_day)
-            if normalized_day is None:
-                continue
-            if start_date <= normalized_day < end_date:
-                points.append((normalized_day, self.engine._to_decimal(quantity)))
-
-        points.sort(key=lambda item: item[0])
-        return points
+    def window_forecast_points(self, daily_forecast, *, start_date, window_days):
+        end_date = start_date + timedelta(days=max(window_days, 0))
+        totals = {}
+        for day, quantity in daily_forecast:
+            day = self.engine._normalize_date_value(day)
+            if day is not None and start_date <= day < end_date:
+                totals[day] = totals.get(day, Decimal("0")) + Decimal(str(quantity))
+        return sorted((day, quantity.quantize(Decimal("0.000001"))) for day, quantity in totals.items())
 
     async def build_demand_context(
         self,
@@ -206,20 +195,15 @@ class ReorderContextBuilder:
             cadence_context["protection_window_days"],
             effective_lead_days,
         )
-        if uncapped_coverage_days == 0 and supplier is None and normalized_shelf_life_days:
-            uncapped_coverage_days = normalized_shelf_life_days
+        if supplier is None and normalized_shelf_life_days:
+            uncapped_coverage_days = effective_lead_days + normalized_shelf_life_days
 
-        coverage_days = uncapped_coverage_days
-        coverage_capped_by_shelf_life = False
+        post_delivery_days = max(uncapped_coverage_days - effective_lead_days, 1)
         if normalized_shelf_life_days is not None and normalized_shelf_life_days > 0:
-            if coverage_days > normalized_shelf_life_days:
-                coverage_days = normalized_shelf_life_days
-                coverage_capped_by_shelf_life = True
-
-        if coverage_days == 0 and supplier is None and normalized_shelf_life_days:
-            coverage_days = normalized_shelf_life_days
-
-        lead_window_days = min(effective_lead_days, coverage_days)
+            post_delivery_days = min(post_delivery_days, normalized_shelf_life_days)
+        coverage_days = effective_lead_days + post_delivery_days
+        coverage_capped_by_shelf_life = coverage_days < uncapped_coverage_days
+        lead_window_days = effective_lead_days
         lead_points = self.window_forecast_points(
             daily_forecast,
             start_date=as_of_date,
@@ -242,36 +226,50 @@ class ReorderContextBuilder:
         )
 
         lead_demand = sum((qty for _, qty in lead_points), Decimal("0.00")).quantize(
-            Decimal("0.01")
+            Decimal("0.000001")
         )
         protection_lead_demand = sum(
             (qty for _, qty in protection_lead_points),
             Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
         total_demand = sum((qty for _, qty in coverage_points), Decimal("0.00")).quantize(
-            Decimal("0.01")
+            Decimal("0.000001")
         )
         protection_total_demand = sum(
             (qty for _, qty in protection_points),
             Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
         shelf_demand = max(total_demand - lead_demand, Decimal("0.00")).quantize(
-            Decimal("0.01")
+            Decimal("0.000001")
         )
         capped_tail_demand = shelf_demand
-        positive_points = [(day, qty) for day, qty in coverage_points if qty > 0]
+        inbound_rows = await self.engine.purchase_order_item_repo.get_confirmed_inbound(ingredient_id)
+        inbound_quantity = Decimal("0")
+        pre_delivery_inbound = Decimal("0")
+        inbound_warnings = []
+        for inbound in inbound_rows:
+            eta = inbound["delivery_date"]
+            if eta is None or eta < as_of_date:
+                inbound_warnings.append("confirmed inbound has unknown or overdue ETA; review before counting supply")
+                continue
+            if eta < as_of_date + timedelta(days=coverage_days):
+                incoming = convert_unit(Decimal(str(inbound["quantity"])), inbound["unit"], current_unit)
+                inbound_quantity += incoming
+                if eta < cadence_context["next_delivery_date"]:
+                    pre_delivery_inbound += incoming
+        positive_points = [(day, qty) for day, qty in coverage_points if qty > 0 and day >= cadence_context["next_delivery_date"]]
         next_event_demand = (
             positive_points[0][1] if positive_points else Decimal("0.00")
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
         average_daily_demand = (
-            (total_demand / Decimal(str(coverage_days))).quantize(Decimal("0.01"))
+            (total_demand / Decimal(str(coverage_days))).quantize(Decimal("0.000001"))
             if coverage_days
             else Decimal("0.00")
         )
         max_daily_demand = max(
             (qty for _, qty in coverage_points),
             default=Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
 
         projection_end_date = None
         if coverage_days > 0:
@@ -289,20 +287,63 @@ class ReorderContextBuilder:
         usable_stock = self.engine._to_decimal(usable_inventory["quantity"])
         usable_unit = usable_inventory.get("unit") or current_unit
 
+        projection_lots = [{"lot_id": row["lot_id"], "delivery_date": row.get("delivery_date"),
+                            "spoilage_expected_date": row.get("spoilage_expected_date"),
+                            "quantity": row.get("starting_quantity", row.get("usable_quantity", Decimal("0")))}
+                           for row in usable_inventory.get("lot_projection_summary", [])]
+        if not projection_lots and usable_stock > 0:
+            projection_lots = [{"lot_id": 0, "quantity": usable_stock,
+                                "delivery_date": as_of_date, "spoilage_expected_date": None}]
+        for row in inbound_rows:
+            eta = row["delivery_date"]
+            if eta is not None and as_of_date <= eta < as_of_date + timedelta(days=coverage_days):
+                projection_lots.append({"lot_id": -row["order_item_id"], "delivery_date": eta,
+                    "spoilage_expected_date": eta + timedelta(days=normalized_shelf_life_days - 1) if normalized_shelf_life_days else None,
+                    "quantity": convert_unit(Decimal(str(row["quantity"])), row["unit"], current_unit)})
+        from app.services.reorder.lot_projection import ReorderLotProjectionHelper
+        projection = ReorderLotProjectionHelper()
+        pre_delivery_shortfall = Decimal("0")
+        if effective_lead_days:
+            before = projection.project_usable_inventory(lots=projection_lots,
+                projection_start_date=as_of_date,
+                projection_end_date=as_of_date + timedelta(days=effective_lead_days - 1),
+                daily_demand_points=protection_lead_points)
+            pre_delivery_shortfall = before["unmet_demand_quantity"]
+        combined = projection.project_usable_inventory(lots=projection_lots,
+            projection_start_date=as_of_date,
+            projection_end_date=as_of_date + timedelta(days=coverage_days - 1),
+            daily_demand_points=coverage_points)
+        post_delivery_shortfall = max(combined["unmet_demand_quantity"] - pre_delivery_shortfall, Decimal("0"))
+        # Demand already lost before a new delivery is an operational warning,
+        # never a reason to purchase replacement food after the event.
+        effective_lead_demand = max(lead_demand - pre_delivery_shortfall, Decimal("0"))
+        supply_timing_review = inbound_quantity > 0 and post_delivery_shortfall > max(total_demand - pre_delivery_shortfall - usable_stock - inbound_quantity, Decimal("0"))
+        if supply_timing_review:
+            inbound_warnings.append("Confirmed supply arrives too late or expires before demand; review/cancel/expedite the delivery before buying more")
+
         return {
             "demand_source": "forecast_daily_breakdown",
+            "inbound_quantity": inbound_quantity,
+            "inbound_warnings": inbound_warnings,
+            "pre_delivery_shortfall": pre_delivery_shortfall,
+            "supply_timing_review": supply_timing_review,
+            "post_delivery_shortfall": post_delivery_shortfall,
+            "arrival_date": cadence_context["next_delivery_date"],
+            "post_delivery_days": post_delivery_days,
+            "inventory_reconciliation_required": bool(usable_inventory.get("reconciliation_required")),
             "cadence_context": cadence_context,
             "effective_lead_days": effective_lead_days,
             "lead_window_days": lead_window_days,
             "coverage_days": coverage_days,
             "uncapped_coverage_days": uncapped_coverage_days,
             "coverage_capped_by_shelf_life": coverage_capped_by_shelf_life,
-            "lead_demand": lead_demand,
-            "protection_lead_demand": protection_lead_demand,
+            "lead_demand": effective_lead_demand,
+            "original_lead_demand": lead_demand,
+            "protection_lead_demand": max(protection_lead_demand - pre_delivery_shortfall, Decimal("0")),
             "shelf_demand": shelf_demand,
             "capped_tail_demand": capped_tail_demand,
             "total_demand": total_demand,
-            "protection_total_demand": protection_total_demand,
+            "protection_total_demand": max(protection_total_demand - pre_delivery_shortfall, Decimal("0")),
             "average_daily_demand": average_daily_demand,
             "max_daily_demand": max_daily_demand,
             "demand_event_count": len(positive_points),
@@ -333,13 +374,13 @@ class ReorderContextBuilder:
         demand_context: Dict[str, Any],
     ) -> Dict[str, Any]:
         usable_stock = self.engine._to_decimal(demand_context.get("current_stock"))
-        inbound_quantity = Decimal("0.00")
+        inbound_quantity = self.engine._to_decimal(demand_context.get("inbound_quantity"))
         backorder_quantity = Decimal("0.00")
         inventory_position = (usable_stock + inbound_quantity - backorder_quantity).quantize(
-            Decimal("0.01")
+            Decimal("0.000001")
         )
         assumption_warnings = [
-            "inbound quantity unavailable; assumed zero",
+            *demand_context.get("inbound_warnings", []),
             "backorders unavailable; assumed zero",
         ]
 
@@ -348,7 +389,7 @@ class ReorderContextBuilder:
             "inbound_quantity": inbound_quantity,
             "backorder_quantity": backorder_quantity,
             "inventory_position": inventory_position,
-            "inbound_quantity_assumed_zero": True,
+            "inbound_quantity_assumed_zero": False,
             "backorder_quantity_assumed_zero": True,
             "assumption_warnings": assumption_warnings,
         }

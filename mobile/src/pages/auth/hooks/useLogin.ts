@@ -25,9 +25,12 @@ export function useLogin() {
           name: data.name,
           restaurant_id: data.restaurant_id,
           employee_id: data.employee_id,
-          role_id: data.role_id,
+          role_id: data.role_id ?? undefined,
         },
-        preferences: data.preferences,
+        preferences: {
+          theme: ['light', 'dark', 'system'].includes(data.preferences?.theme) ? data.preferences.theme : 'light',
+          auto_logout_minutes: Number(data.preferences?.auto_logout_minutes) || 30,
+        },
       });
       return true;
     } catch (e: any) {

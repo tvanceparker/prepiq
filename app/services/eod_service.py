@@ -1,3 +1,6 @@
+from app.services.utils.forecast_snapshot import restore, decode
+from app.services.reorder.pack_contract import pack_order
+from app.utils.job_lock import serialized_job
 # app/services/eod_service.py
 
 
@@ -144,7 +147,10 @@ class EODService:
             )
 
         errors = getattr(forecast_ledger, "errors", None) or []
-        if errors:
+        snapshot = getattr(forecast_ledger, "result_snapshot", None)
+        quality = restore(snapshot).get("history_quality", {}) if isinstance(snapshot, dict) else {}
+        plan_review = restore(snapshot).get("material_plan", {}).get("review_required", False) if isinstance(snapshot, dict) else False
+        if errors or quality.get("review_required") or plan_review or not isinstance(snapshot, dict):
             summary = build_forecast_contract(
                 forecast_source="cached",
                 forecast_source_type="eod",
@@ -532,7 +538,9 @@ class EODService:
     ) -> List[Dict[str, Any]]:
         persisted_rows = await self.po_suggestion_repo.list_by_run_date(run_date)
         suggestions = [
-            {
+            decode(row.suggestion_snapshot) if isinstance(getattr(row, "suggestion_snapshot", None), dict) else {
+                "review_required": True,
+                "explanation": {"review_required": True, "warnings": ["Legacy suggestion lacks saved pack and cadence constraints; regenerate before ordering"]},
                 "ingredient_id": row.ingredient_id,
                 "ingredient_supplier_id": row.ingredient_supplier_id,
                 "supplier_id": row.supplier_id,
@@ -565,77 +573,11 @@ class EODService:
         run_date: date,
         reorder_horizon_days: int,
     ) -> Dict[int, Dict[str, Any]]:
-        horizon_days = max(int(reorder_horizon_days or 1), 1)
-        end_date = run_date + timedelta(days=horizon_days)
-
-        breakdown_rows = (
-            await self.forecasting_engine.forecast_breakdown_repo.get_latest_by_date_range(
-                start_date=run_date,
-                end_date=end_date,
-            )
-        )
-        if not breakdown_rows:
-            logger.warning(
-                "[EOD] No persisted forecast breakdowns available for recovery date=%s end_date=%s",
-                run_date,
-                end_date,
-            )
-            return {}
-
-        menu_item_forecast: Dict[int, Dict[str, Any]] = {}
-        for row in breakdown_rows:
-            entry = menu_item_forecast.setdefault(
-                row.menu_item_id,
-                {"daily_breakdown": []},
-            )
-            entry["daily_breakdown"].append(
-                (row.forecast_date, Decimal(str(row.forecasted_quantity or 0)))
-            )
-
-        for entry in menu_item_forecast.values():
-            entry["daily_breakdown"].sort(key=lambda item: item[0])
-
-        batch_breakdown = await self.forecasting_engine.generate_batch_recipe_breakdown(
-            menu_item_forecast
-        )
-        ingredient_breakdown = await self.forecasting_engine.generate_ingredient_breakdown(
-            convert_forecast_dict_to_list(menu_item_forecast),
-            batch_breakdown,
-        )
-
-        recovered_forecast: Dict[int, Dict[str, Any]] = defaultdict(
-            lambda: {
-                "total_quantity": Decimal(0),
-                "unit": None,
-                "daily_breakdown": [],
-            }
-        )
-        cutoff_date = run_date + timedelta(days=horizon_days)
-
-        for entry in ingredient_breakdown:
-            forecast_date = entry["forecast_date"]
-            if forecast_date > cutoff_date:
-                continue
-
-            ingredient_id = entry["ingredient_id"]
-            quantity = Decimal(str(entry["quantity"]))
-            recovered_forecast[ingredient_id]["total_quantity"] += quantity
-            recovered_forecast[ingredient_id]["daily_breakdown"].append(
-                (forecast_date, quantity)
-            )
-            if not recovered_forecast[ingredient_id]["unit"]:
-                recovered_forecast[ingredient_id]["unit"] = entry.get("unit") or "count"
-
-        for data in recovered_forecast.values():
-            data["daily_breakdown"].sort(key=lambda item: item[0])
-
-        recovered_count = len(recovered_forecast)
-        logger.info(
-            "[EOD] Recovered ingredient forecast from persisted breakdowns date=%s ingredients=%s",
-            run_date,
-            recovered_count,
-        )
-        return dict(recovered_forecast)
+        ledger = await self.forecast_run_ledger_repo.get_one_by({"run_date": run_date})
+        snapshot = getattr(ledger, "result_snapshot", None)
+        if not isinstance(snapshot, dict) or snapshot.get("version") != 1:
+            raise ValueError("Forecast recovery requires a persisted run snapshot; rerun the forecast stage")
+        return restore(snapshot)["aggregated"]
 
     async def _is_real_time_deduction_enabled(self) -> bool:
         if not is_full_service_tier(self.subscription_tier):
@@ -647,13 +589,6 @@ class EODService:
         if ledger.sales_deducted:
             logger.debug('[EOD] Skip sales_deduction already complete date=%s', run_date)
             return 0
-        if await self._is_real_time_deduction_enabled():
-            logger.info(
-                '[EOD] Skipping sales deduction for %s (real-time inventory deductions enabled)',
-                run_date,
-            )
-            await self.ledger_repo.mark_stage_complete(ledger, 'sales_deducted', 0)
-            return 0
         t0 = datetime.utcnow()
         usage_summary = await self.aggregate_daily_sales(run_date)
         helper_result = None
@@ -662,7 +597,8 @@ class EODService:
         has_failures = bool(helper_result.get("failures")) if isinstance(helper_result, dict) else False
         if not has_failures:
             await self.order_repo.mark_completed_orders_deducted_for_date(run_date)
-        await self.ledger_repo.mark_stage_complete(ledger, 'sales_deducted', int((datetime.utcnow()-t0).total_seconds()*1000))
+        if not has_failures:
+            await self.ledger_repo.mark_stage_complete(ledger, 'sales_deducted', int((datetime.utcnow()-t0).total_seconds()*1000))
         return len(usage_summary or [])
 
     async def _stage_spoilage(self, run_date, ledger):
@@ -677,6 +613,7 @@ class EODService:
         ingredient_forecast = await self.generate_forecast(
             run_date, forecast_horizon_days, reorder_horizon_days
         )
+        self.reorder_engine.stats_service.observations = self.forecasting_engine.observations
         # Record accuracy (daily + rolling) using forecasting engine advanced methods
         try:
             await self.forecasting_engine.evaluate_and_record_daily_forecast_accuracy(run_date)
@@ -800,7 +737,7 @@ class EODService:
         t0 = datetime.utcnow()
         await self.write_purchase_orders_to_db(run_date=run_date)
         await self.ledger_repo.mark_stage_complete(ledger, 'po_written', int((datetime.utcnow()-t0).total_seconds()*1000))
-        return len(self._purchase_order_suggestions)
+        return await self.purchase_order_repo.count_eod_auto_orders_for_run_date(run_date)
 
     def _build_eod_auto_po_note(self, run_date: date, supplier_id: int) -> str:
         marker = f"[EOD_AUTO run_date={run_date.isoformat()} supplier_id={supplier_id}]"
@@ -889,102 +826,45 @@ class EODService:
         }
 
     async def auto_deduct_spoilage(self, target_date: date) -> None:
-        """Automatically write off remaining quantity from expired available lots."""
-
-        expired_lots = await self.inventory_lot_repo.get_expired_available_lots(target_date)
-        if not expired_lots:
-            logger.info(
-                "[EOD] No expired lots to write off for %s (restaurant=%s)",
-                target_date,
-                self.restaurant_id,
-            )
-            return
-
-        spoilage_reference_id = int(target_date.strftime("%Y%m%d"))
-        processed_count = 0
-
-        for lot in expired_lots:
-            already_logged = await self.inventory_usage_log_repo.has_usage_type_for_lot(
-                lot.lot_id,
-                "spoilage",
-            )
-            if already_logged:
-                if lot.status != LotStatus.expired:
-                    await self.inventory_lot_repo.update(
-                        lot.lot_id,
-                        {"status": LotStatus.expired},
-                    )
-                logger.info(
-                    "[EOD] Skipping spoilage write-off for lot=%s (already logged)",
-                    lot.lot_id,
-                )
-                continue
-
-            remaining_quantity = await self.inventory_stats.get_lot_remaining(lot)
-            if remaining_quantity <= 0:
-                if lot.status != LotStatus.expired:
-                    await self.inventory_lot_repo.update(
-                        lot.lot_id,
-                        {"status": LotStatus.expired},
-                    )
-                continue
-
-            inventory = await self.inventory_repo.get_by_id(lot.inventory_id)
-            if not inventory:
-                logger.warning(
-                    "[EOD] Skipping spoilage write-off for lot=%s inventory missing",
-                    lot.lot_id,
-                )
-                continue
-
-            ingredient_id = lot.ingredient_id or inventory.ingredient_id
-            if not ingredient_id:
-                logger.warning(
-                    "[EOD] Skipping spoilage write-off for lot=%s no ingredient_id",
-                    lot.lot_id,
-                )
-                continue
-
-            try:
-                await self.inventory_repo.decrement_quantity(
-                    inventory_id=lot.inventory_id,
-                    amount=remaining_quantity,
-                )
-            except ValueError as exc:
-                logger.warning(
-                    "[EOD] Spoilage write-off failed lot=%s error=%s",
-                    lot.lot_id,
-                    exc,
-                )
-                continue
-
-            await self.inventory_usage_log_repo.create(
-                {
-                    "restaurant_id": self.restaurant_id,
-                    "inventory_id": lot.inventory_id,
-                    "ingredient_id": ingredient_id,
-                    "lot_id": lot.lot_id,
-                    "used_quantity": remaining_quantity,
-                    "unit": lot.unit,
-                    "usage_type": "spoilage",
-                    "reference_type": "lot",
-                    "reference_id": lot.lot_id,
-                    "used_date": datetime.utcnow(),
-                    "notes": f"Auto-expired during EOD for {target_date.isoformat()}",
-                }
-            )
-            await self.inventory_lot_repo.update(
-                lot.lot_id,
-                {"status": LotStatus.expired},
-            )
-            processed_count += 1
-
-        logger.info(
-            "[EOD] Auto-deducted spoilage for %s expired lots on %s (restaurant=%s)",
-            processed_count,
-            target_date,
-            self.restaurant_id,
-        )
+        """Expiry is the last usable day; atomically write off its EOD remainder."""
+        from sqlalchemy import select
+        from app.db.models.inventory_orm import Inventory
+        from app.db.models.inventory_lot_orm import InventoryLot
+        from app.db.models.inventory_usage_log_orm import InventoryUsageLog
+        from app.services.utils.inventory_consumption import remaining_quantity
+        expired = await self.inventory_lot_repo.get_expired_available_lots(target_date)
+        for candidate in sorted(expired, key=lambda lot: (lot.inventory_id, lot.lot_id)):
+            async with self.db.begin_nested():
+                inventory = (await self.db.execute(select(Inventory).where(
+                    Inventory.restaurant_id == self.restaurant_id,
+                    Inventory.inventory_id == candidate.inventory_id).with_for_update()
+                    .execution_options(populate_existing=True))).scalar_one_or_none()
+                lot = (await self.db.execute(select(InventoryLot).where(
+                    InventoryLot.restaurant_id == self.restaurant_id,
+                    InventoryLot.lot_id == candidate.lot_id).with_for_update()
+                    .execution_options(populate_existing=True))).scalar_one_or_none()
+                if not inventory or not lot:
+                    raise ValueError(f"Expired lot {candidate.lot_id} has missing stock identity")
+                if getattr(lot.status, 'value', lot.status) != 'available':
+                    continue
+                logs = (await self.db.execute(select(InventoryUsageLog).where(
+                    InventoryUsageLog.restaurant_id == self.restaurant_id,
+                    InventoryUsageLog.lot_id == lot.lot_id).with_for_update().execution_options(populate_existing=True))).unique().scalars().all()
+                remaining = remaining_quantity(lot, logs)
+                amount = convert_unit(remaining, lot.unit, inventory.unit)
+                available = Decimal(str(inventory.quantity_on_hand or 0))
+                if amount > available:
+                    raise ValueError(f"Expired lot {lot.lot_id} balance exceeds stock; reconcile before EOD")
+                if amount > 0:
+                    inventory.quantity_on_hand = available - amount
+                    self.db.add(InventoryUsageLog(restaurant_id=self.restaurant_id,
+                        inventory_id=inventory.inventory_id, ingredient_id=lot.ingredient_id,
+                        lot_id=lot.lot_id, used_quantity=remaining, unit=lot.unit,
+                        usage_type='spoilage', reference_type='lot', reference_id=lot.lot_id,
+                        used_date=datetime.utcnow(), business_date=target_date,
+                        notes=f"Auto-expired during EOD for {target_date.isoformat()}"))
+                lot.status = LotStatus.expired
+                await self.db.flush()
 
     async def generate_forecast(
         self,
@@ -1004,6 +884,7 @@ class EODService:
             forecast_date=forecast_date,
             horizon_days=forecast_horizon_days,
             reorder_horizon_days=reorder_horizon_days,
+            commit=False,
         )
 
         return ingredient_forecast
@@ -1015,7 +896,7 @@ class EODService:
     ) -> None:
         logger.info("[EOD] Generating suggested purchase orders")
         purchase_orders = []
-        effective_run_date = run_date or date.today()
+        effective_run_date = (run_date + timedelta(days=1)) if run_date else date.today()
 
         ingredient_ids = set(ingredient_forecast.keys())
         logger.debug(f"[EOD] Ingredient IDs to process: {ingredient_ids}")
@@ -1027,12 +908,11 @@ class EODService:
                 ingredient_id
             )
             if not suppliers:
-                logger.warning(f"[EOD] No suppliers found ingredient={ingredient_id}")
-                continue
+                raise ValueError(f"Ingredient {ingredient_id} has no supplier mapping; configure it and retry EOD")
 
-            supplier_selection = await self.reorder_engine.choose_supplier_option(suppliers)
+            supplier_selection = await self.reorder_engine.choose_supplier_option(suppliers, as_of_date=effective_run_date)
             if not supplier_selection:
-                continue
+                raise ValueError(f"Ingredient {ingredient_id} has no usable supplier option; review cadence and retry EOD")
 
             supplier = supplier_selection["supplier"]
 
@@ -1041,11 +921,11 @@ class EODService:
             lead_time = supplier.lead_time_days or 0
             supplier_unit = supplier.unit
             min_order_quantity = Decimal(str(supplier.min_order_quantity or 0)).quantize(
-                Decimal("0.01")
+                Decimal("0.000001")
             )
             pack_size = supplier.pack_size or 1
             quantity_per_pack_item = Decimal(str(supplier.quantity_per_pack_item or 1)).quantize(
-                Decimal("0.01")
+                Decimal("0.000001")
             )
 
             inventory = await self.inventory_repo.get_inventory_by_ingredient(
@@ -1063,7 +943,7 @@ class EODService:
                     shelf_life_source = "missing_assumed_zero"
                 inventory_unit = inventory.unit
                 current_stock = Decimal(str(inventory.quantity_on_hand or 0)).quantize(
-                    Decimal("0.01")
+                    Decimal("0.000001")
                 )
                 inventory_source = "inventory_summary"
             else:
@@ -1112,40 +992,15 @@ class EODService:
                 logger.debug(f"[EOD] Skip PO generation ingredient={ingredient_id} qty<=0")
                 continue
 
+            packed = pack_order(decision, stock_unit=inventory_unit,
+                supplier_unit=supplier_unit, pack_size=pack_size,
+                quantity_per_pack_item=quantity_per_pack_item,
+                minimum_quantity=min_order_quantity)
+            converted_qty = convert_unit(decision["final_quantity"], inventory_unit, supplier_unit)
+            quantity_per_pack = packed["pack_quantity"]
+            packs_to_order = packed["pack_count"]
+            total_quantity_ordered = packed["quantity"]
             unit_conversion_fallback = False
-            try:
-                converted_qty = Decimal(
-                    str(
-                        convert_unit(
-                            float(decision["final_quantity"]),
-                            from_unit=inventory_unit,
-                            to_unit=supplier_unit,
-                        )
-                    )
-                ).quantize(Decimal("0.01"))
-                logger.debug(
-                    f"[EOD] Conversion ingredient={ingredient_id} {inventory_unit}->{supplier_unit} qty={converted_qty}"
-                )
-            except Exception as e:
-                logger.warning(f"[EOD] Unit conversion failed ingredient={ingredient_id} error={e}")
-                converted_qty = decision["final_quantity"]
-                unit_conversion_fallback = True
-
-            quantity_per_pack = (
-                Decimal(str(pack_size or 1)) * quantity_per_pack_item
-            ).quantize(Decimal("0.01"))
-            if quantity_per_pack <= 0:
-                logger.warning(f"[EOD] Invalid pack config ingredient={ingredient_id}")
-                continue
-
-            packs_to_order = math.ceil(converted_qty / quantity_per_pack)
-            total_quantity_ordered = (Decimal(packs_to_order) * quantity_per_pack).quantize(
-                Decimal("0.01")
-            )
-
-            logger.debug(
-                f"[EOD] Packs ingredient={ingredient_id} packs={packs_to_order} total_qty={total_quantity_ordered}"
-            )
 
             ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
             ingredient_name = ingredient.name if ingredient else f"Ingredient {ingredient_id}"
@@ -1177,10 +1032,18 @@ class EODService:
                 },
             )
 
+            explanation["review_required"] = packed["review_required"]
+            explanation.setdefault("warnings", []).extend(packed["warnings"])
+            explanation.setdefault("assumption_flags", {}).setdefault("warnings", []).extend(packed["warnings"])
+
             purchase_orders.append(
                 {
                     "ingredient_id": ingredient_id,
                     "ingredient_name": ingredient_name,
+                    "pack_quantity": float(quantity_per_pack),
+                    "review_required": packed["review_required"],
+                    "next_order_date": decision.get("next_order_date"),
+                    "expected_delivery_date": decision.get("next_delivery_date"),
                     "ingredient_supplier_id": ingredient_supplier_id,
                     "supplier_id": supplier_id,
                     "supplier_name": supplier_name,
@@ -1211,6 +1074,15 @@ class EODService:
         logger.info(f"[EOD] Generated {len(purchase_orders)} purchase order suggestions")
 
         if run_date is not None:
+            forecast_ledger = await self.forecast_run_ledger_repo.get_one_by({"run_date": run_date})
+            snapshot = getattr(forecast_ledger, "result_snapshot", None)
+            quality = restore(snapshot).get("history_quality", {}) if isinstance(snapshot, dict) else {}
+            plan_review = restore(snapshot).get("material_plan", {}).get("review_required", False) if isinstance(snapshot, dict) else False
+            if quality.get("review_required") or plan_review:
+                for suggestion in purchase_orders:
+                    suggestion["review_required"] = True
+                    suggestion.setdefault("explanation", {})["review_required"] = True
+                    suggestion["explanation"].setdefault("warnings", []).append("Sales history or incomplete/excess prep requires review")
             await self._persist_purchase_order_suggestions(run_date, purchase_orders)
         else:
             self._set_purchase_order_suggestions(purchase_orders)
@@ -1226,6 +1098,8 @@ class EODService:
 
         orders_by_supplier = defaultdict(list)
         for suggestion in self.purchase_order_suggestions:
+            if suggestion.get("review_required") or (suggestion.get("explanation") or {}).get("review_required"):
+                continue
             supplier_id = suggestion["supplier_id"]
             orders_by_supplier[supplier_id].append(suggestion)
 
@@ -1249,8 +1123,8 @@ class EODService:
                 continue
 
             lead_time = items[0]["lead_time_days"] or 0
-            order_date = effective_run_date
-            expected_delivery_date = order_date + timedelta(days=lead_time)
+            order_date = max((self.reorder_engine._normalize_date_value(item.get("next_order_date")) or effective_run_date + timedelta(days=1) for item in items))
+            expected_delivery_date = max((self.reorder_engine._normalize_date_value(item.get("expected_delivery_date")) or order_date + timedelta(days=item["lead_time_days"] or 0) for item in items))
             notes = self._build_eod_auto_po_note(effective_run_date, supplier_id)
             review_context = build_purchase_order_review_context(
                 source_type="eod_auto",
@@ -1303,6 +1177,8 @@ class EODService:
                         "ingredient_id": ingredient_id,
                         "ingredient_supplier_id": ingredient_supplier_id,
                         "quantity_ordered": quantity_ordered,
+                        "pack_quantity": item.get("pack_quantity"),
+                        "pack_count": item.get("suggested_packs_to_order"),
                         "unit": unit,
                         "unit_price": Decimal(unit_price),
                         "total_item_price": total_item_price,
@@ -1321,6 +1197,7 @@ class EODService:
 
 
     @log_method("Finalize End Of Day Summary")
+    @serialized_job("eod")
     async def finalize_end_of_day_summary(
         self,
         date: date,
@@ -1350,6 +1227,8 @@ class EODService:
                     normalized_trigger_source,
                 )
                 await self.ledger_repo.reset(ledger)
+            ledger.running = False
+            ledger.errors = []
             await self.ledger_repo.mark_running(ledger)
 
             usage_count = 0
@@ -1363,12 +1242,19 @@ class EODService:
                 logger.info('[EOD] Basic tier run - minimal processing')
                 try:
                     self.basic_forecasting_engine = ForecastingEngineBasic(self.db, self.restaurant_id)
-                    await self.basic_forecasting_engine.run(date)
+                    basic_forecast = await self.basic_forecasting_engine.run(date)
+                    forecast_count = len(basic_forecast or {})
+                    await self.ledger_repo.mark_stage_complete(ledger, "forecast_completed", 0)
                 except Exception as e:
                     logger.error('[EOD] Basic engine failure error=%s', e, exc_info=True)
+                    raise
             elif normalized_tier == 'full':
                 # Sales & deduction
                 usage_count = await self._stage_sales_deduction(date, ledger)
+                if not ledger.sales_deducted:
+                    if commit:
+                        await self.db.commit()  # retain per-item successes and discrepancies for retry
+                    raise ValueError("Sales deduction is incomplete; resolve inventory shortfalls and retry")
                 await self._stage_spoilage(date, ledger)
                 if commit:
                     await self.db.commit()
@@ -1418,6 +1304,13 @@ class EODService:
             if commit and hasattr(self.db, "rollback"):
                 with contextlib.suppress(Exception):
                     await self.db.rollback()
+            if commit:
+                with contextlib.suppress(Exception):
+                    failed_ledger = await self.ledger_repo.get_or_create(run_date=date)
+                    failed_ledger.running = False
+                    failed_ledger.finalized = False
+                    await self.ledger_repo.append_error(failed_ledger, "pipeline", str(e))
+                    await self.db.commit()
             raise
     @log_method("Check if Sales data exists")
     async def check_sales_data_exists(self, date: date) -> int:

@@ -151,8 +151,16 @@ class PrepScheduleCreate(PrepScheduleBase):
     prep_date: date
 
 
+class PrepScheduleCreate(BaseModel):
+    batch_recipe_id: int
+    prep_date: date
+    quantity_needed: Decimal
+    prep_batch_count: Optional[Decimal] = None
+    assigned_employee_id: Optional[int] = None
+
+
 class PrepScheduleUpdate(BaseModel):
-    status: Optional[str] = None
+    status: Optional[Literal['scheduled', 'in_progress', 'completed', 'cancelled']] = None
     prep_time_minutes_actual: Optional[int] = None
     prep_batch_count: Optional[Decimal] = None
 
@@ -185,7 +193,7 @@ class WasteLogResponse(BaseModel):
     """Response model for waste/spoilage logs."""
     usage_id: int
     waste_date: date
-    ingredient_id: int
+    ingredient_id: Optional[int] = None
     ingredient_name: str
     batch_recipe_id: Optional[int] = None
     batch_recipe_name: Optional[str] = None
@@ -201,6 +209,7 @@ class WasteLogResponse(BaseModel):
 
 
 class CreateWasteLogRequest(BaseModel):
+    request_key: Optional[str] = None
     """Request to manually log waste."""
     ingredient_id: Optional[int] = None
     batch_recipe_id: Optional[int] = None

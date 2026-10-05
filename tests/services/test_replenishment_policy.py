@@ -45,9 +45,10 @@ def test_resolve_cadence_for_every_n_days_uses_review_period() -> None:
         lead_time_days=2,
         review_period_days=3,
         order_schedule_type="every_n_days",
+        order_schedule_anchor_date=date(2026, 1, 2),
     )
 
-    assert resolution.next_order_date == date(2026, 1, 8)
-    assert resolution.next_delivery_date == date(2026, 1, 10)
+    assert resolution.next_order_date == date(2026, 1, 5)
+    assert resolution.next_delivery_date == date(2026, 1, 7)
     assert resolution.review_period_days == 3
-    assert resolution.protection_window_days == 8
+    assert resolution.protection_window_days == 5

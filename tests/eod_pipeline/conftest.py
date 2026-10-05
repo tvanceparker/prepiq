@@ -79,6 +79,8 @@ def test_date():
 async def mock_db_session():
     """Mock async database session."""
     session = AsyncMock(spec=AsyncSession)
+    session.bind = None
+    session.begin_nested = MagicMock(return_value=AsyncMock())
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
     session.close = AsyncMock()

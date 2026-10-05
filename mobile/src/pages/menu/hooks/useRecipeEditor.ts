@@ -85,19 +85,13 @@ export function useRecipeEditor() {
 
   // Handle save
   const handleSave = useCallback(
-    async (data: {
-      name: string;
-      description?: string;
-      ingredients: { ingredient_id: number; quantity: number; unit: string }[];
-    }) => {
+    async (data: RecipeCreate) => {
       setSaving(true);
       try {
         const payload = {
-          recipe_name: data.name, // API expects recipe_name
+          name: data.name,
           description: data.description,
           ingredients: data.ingredients,
-          yield_quantity: 1,
-          yield_unit: 'batch',
         };
 
         if (editingRecipe) {

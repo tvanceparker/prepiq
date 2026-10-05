@@ -15,6 +15,7 @@ def inventory_service(mock_db):
     transaction.__aenter__.return_value = transaction
     transaction.__aexit__.return_value = None
     mock_db.begin = MagicMock(return_value=transaction)
+    mock_db.begin_nested = MagicMock(return_value=transaction)
     mock_db.in_transaction = MagicMock(return_value=False)
 
     service = InventoryService(mock_db, 1, 'full', employee_id=7)
@@ -68,7 +69,7 @@ async def test_receive_purchase_order_creates_lots_updates_inventory_and_marks_d
     lot_payload = inventory_service.inventory_lot_repo.create.await_args.args[0]
     assert lot_payload['inventory_id'] == 301
     assert lot_payload['ingredient_id'] == 101
-    assert float(lot_payload['quantity']) == 30.0
+    assert float(lot_payload['quantity']) == 3.0
     assert lot_payload['total_received'] == 3
     assert lot_payload['receipt_source'] == 'purchase_order'
     assert lot_payload['purchase_order_id'] == 55
@@ -77,7 +78,7 @@ async def test_receive_purchase_order_creates_lots_updates_inventory_and_marks_d
     inventory_service.inventory_repo.update.assert_awaited_once()
     update_args = inventory_service.inventory_repo.update.await_args.args
     assert update_args[0] == 301
-    assert float(update_args[1]['quantity_on_hand']) == 40.0
+    assert float(update_args[1]['quantity_on_hand']) == 13.0
     assert update_args[1]['last_delivery_date'] == date(2026, 3, 28)
 
     inventory_service.purchase_order_repo.update.assert_awaited_once_with(
@@ -509,6 +510,7 @@ async def test_receive_purchase_order_reuses_existing_transaction(inventory_serv
         order_item_id=11,
         ingredient_id=101,
         ingredient_supplier_id=201,
+        unit="lb",
         quantity_ordered=3,
     )
     ingredient_supplier = MagicMock(

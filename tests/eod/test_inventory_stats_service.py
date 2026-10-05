@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from decimal import Decimal
-from datetime import date
+from datetime import date, timedelta
 from types import SimpleNamespace
 from app.services.inventory_stats_service import InventoryStatsService
 
@@ -29,6 +29,8 @@ async def service():
     service.ingredient_supplier_repo = AsyncMock()
     service.ingredient_repo = AsyncMock()
     service.forecasting_engine = AsyncMock()
+    service.as_of_date = date(2026, 10, 5)
+    service.forecasting_engine.derive_ingredient_usage_from_sales.return_value = {}
 
     return service
 
@@ -37,16 +39,16 @@ async def service():
 async def test_get_average_daily_usage_with_sufficient_logs(service):
     # Arrange
     ingredient_id = 1
-    usage_data = [(1, 10), (2, 20), (3, 30)] * 5  # 15+ entries
+    usage_data = [(service.as_of_date - timedelta(days=i), [10, 20, 30][i % 3]) for i in range(15)]
     service.inventory_usage_log_repo.get_daily_usage.return_value = usage_data
 
     # Act
-    avg_usage = await service.get_average_daily_usage(ingredient_id)
+    avg_usage = await service.get_average_daily_usage(ingredient_id, days=15)
 
     # Assert
     expected_avg = Decimal(
         sum(usage for _, usage in usage_data) / len(usage_data)
-    ).quantize(Decimal("0.01"))
+    ).quantize(Decimal("0.000001"))
     assert avg_usage == expected_avg
     service.forecasting_engine.derive_ingredient_usage_from_sales.assert_not_called()
 
@@ -57,16 +59,16 @@ async def test_get_average_daily_usage_with_fallback(service):
     # Insufficient usage logs (less than 14)
     service.inventory_usage_log_repo.get_daily_usage.return_value = [(1, 10), (2, 20)]
 
-    fallback_usage = {1: {1: 5, 2: 15, 3: 25}}
+    fallback_usage = {1: {service.as_of_date - timedelta(days=i): value for i, value in enumerate([5, 15, 25])}}
     service.forecasting_engine.derive_ingredient_usage_from_sales.return_value = (
         fallback_usage
     )
 
-    avg_usage = await service.get_average_daily_usage(ingredient_id)
+    avg_usage = await service.get_average_daily_usage(ingredient_id, days=3)
 
     expected_avg = Decimal(
         sum(fallback_usage[ingredient_id].values()) / len(fallback_usage[ingredient_id])
-    ).quantize(Decimal("0.01"))
+    ).quantize(Decimal("0.000001"))
     assert avg_usage == expected_avg
 
 
@@ -84,15 +86,15 @@ async def test_get_average_daily_usage_no_data_returns_zero(service):
 @pytest.mark.asyncio
 async def test_get_std_dev_usage_with_sufficient_logs(service):
     ingredient_id = 1
-    usage_data = [(1, 10), (2, 20), (3, 30), (4, 25), (5, 15)] * 3  # 15+ entries
+    usage_data = [(service.as_of_date - timedelta(days=i), [10, 20, 30, 25, 15][i % 5]) for i in range(15)]
     service.inventory_usage_log_repo.get_daily_usage.return_value = usage_data
 
-    std_dev = await service.get_std_dev_usage(ingredient_id)
+    std_dev = await service.get_std_dev_usage(ingredient_id, days=15)
 
     from statistics import pstdev
 
     expected_std_dev = Decimal(pstdev([usage for _, usage in usage_data])).quantize(
-        Decimal("0.01")
+        Decimal("0.000001")
     )
     assert std_dev == expected_std_dev
     service.forecasting_engine.derive_ingredient_usage_from_sales.assert_not_called()
@@ -105,17 +107,17 @@ async def test_get_std_dev_usage_with_fallback(service):
         (1, 10)
     ] * 10  # Less than 14 unique days
 
-    fallback_usage = {1: {1: 10, 2: 20, 3: 15, 4: 25}}
+    fallback_usage = {1: {service.as_of_date - timedelta(days=i): value for i, value in enumerate([10, 20, 15, 25])}}
     service.forecasting_engine.derive_ingredient_usage_from_sales.return_value = (
         fallback_usage
     )
 
-    std_dev = await service.get_std_dev_usage(ingredient_id)
+    std_dev = await service.get_std_dev_usage(ingredient_id, days=4)
 
     from statistics import pstdev
 
     expected_std_dev = Decimal(pstdev(fallback_usage[ingredient_id].values())).quantize(
-        Decimal("0.01")
+        Decimal("0.000001")
     )
     assert std_dev == expected_std_dev
 
@@ -150,7 +152,7 @@ async def test_get_current_inventory_returns_quantity_and_unit(service):
 
     qty, unit = await service.get_current_inventory(ingredient_id)
 
-    assert qty == Decimal("10.12")
+    assert qty == Decimal("10.1234")
     assert unit == "kg"
 
 
@@ -463,7 +465,7 @@ async def test_get_usable_inventory_falls_back_to_summary_when_lots_missing(serv
 async def test_get_usable_inventory_conversion_failure_sets_conversion_fallback(service):
     ingredient_id = 1
     inventory_mock = MagicMock()
-    inventory_mock.quantity_on_hand = Decimal("4.00")
+    inventory_mock.quantity_on_hand = Decimal("0.00")
     inventory_mock.unit = "kg"
 
     converted_lot = SimpleNamespace(
@@ -481,7 +483,7 @@ async def test_get_usable_inventory_conversion_failure_sets_conversion_fallback(
 
     with patch(
         "app.services.inventory_stats_service.convert_unit",
-        side_effect=RuntimeError("conversion unavailable"),
+        side_effect=ValueError("conversion unavailable"),
     ):
         result = await service.get_usable_inventory(
             ingredient_id,
@@ -491,10 +493,10 @@ async def test_get_usable_inventory_conversion_failure_sets_conversion_fallback(
         )
 
     assert result["conversion_fallback"] is True
-    assert result["source"] == "usable_lot_projection"
-    assert result["fallback_used"] is False
-    assert result["quantity"] == Decimal("4.00")
-    assert result["total_quantity"] == Decimal("4.00")
+    assert result["source"] == "degraded_summary_fallback"
+    assert result["reconciliation_required"] is True
+    assert result["quantity"] == Decimal("0.00")
+    assert result["total_quantity"] == Decimal("0.00")
 
 
 @pytest.mark.asyncio
@@ -591,7 +593,7 @@ async def test_get_total_usage_last_n_days_returns_sum(service):
 
     total_usage = await service.get_total_usage_last_n_days(ingredient_id, days=90)
     expected_total = Decimal(sum(usage for _, usage in usage_data)).quantize(
-        Decimal("0.01")
+        Decimal("0.000001")
     )
 
     assert total_usage == expected_total

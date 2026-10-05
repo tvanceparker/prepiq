@@ -24,7 +24,7 @@ class IngredientForecastBreakdown(Base):
     restaurant_id = Column(
         Integer, ForeignKey("restaurants.restaurant_id"), nullable=True
     )
-    quantity = Column(DECIMAL(10, 2), nullable=False)
+    quantity = Column(DECIMAL(16, 6), nullable=False)
     source_type = Column(Enum(ForecastSourceType), nullable=False)
     source_id = Column(Integer, nullable=False)  # menu_item_id or batch_recipe_id
     created_at = Column(DateTime, server_default=func.now())

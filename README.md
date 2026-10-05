@@ -234,3 +234,9 @@ This repository is private and under active development. The product direction i
 ## Usage
 
 This software is proprietary and confidential. All rights reserved.
+
+## Planning contracts and validation
+
+The active EOD, forecasting, net prep, inventory and reorder workflow is described in [the reorder engine guide](notes/reorder-engine-guide.md), including formulas, worked examples and pack/expiry review behavior. Basic and Full share the canonical forecast date and feature contract. Alternative replenishment policies remain offline until representative evaluation and an explicit product decision.
+
+See [launch sign-off](notes/launch-signoff.md) for the demo dataset, migration, test commands, customer stock reconciliation and operator release gates. Apply [migration 0016](scripts/migrations/0016_food_waste_pipeline_contracts.sql) before running this version against an existing database. It does not repair historical quantities or reinterpret legacy business dates automatically.

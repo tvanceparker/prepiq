@@ -1,3 +1,5 @@
+from app.services.utils.forecast_snapshot import restore
+from app.services.reorder.pack_contract import pack_order
 # core/services/inventory_service.py
 
 from typing import Any, Dict, List, Optional, Union
@@ -66,7 +68,7 @@ class InventoryService:
 
         if po_status == "delivered":
             existing_lot = await self.inventory_lot_repo.get_by_purchase_order_item_id(
-                item.order_item_id
+                item.order_item_id, for_update=True
             )
             if existing_lot and getattr(existing_lot, "total_received", None) is not None:
                 return float(existing_lot.total_received)
@@ -88,6 +90,8 @@ class InventoryService:
             "ingredient_name": ingredient.name if ingredient else "Unknown",
             "ingredient_supplier_id": item.ingredient_supplier_id,
             "quantity_ordered": float(item.quantity_ordered),
+            "pack_quantity": float(item.pack_quantity) if isinstance(item.pack_quantity, (int, float, Decimal)) else None,
+            "pack_count": item.pack_count if isinstance(item.pack_count, int) else None,
             "quantity_received": quantity_received,
             "variance_quantity": variance_quantity,
             "variance_status": variance_status,
@@ -112,7 +116,7 @@ class InventoryService:
                 )
 
             quantity_received = float(received_item["quantity_received"])
-            if quantity_received <= 0:
+            if not Decimal(str(quantity_received)).is_finite() or quantity_received <= 0:
                 raise ValueError(
                     f"Received quantity for purchase order item {order_item_id} must be greater than 0."
                 )
@@ -124,6 +128,7 @@ class InventoryService:
     def _serialize_supplier_cadence(self, supplier_mapping) -> dict:
         return {
             "review_period_days": getattr(supplier_mapping, "review_period_days", None),
+            "order_schedule_anchor_date": getattr(supplier_mapping, "order_schedule_anchor_date", None),
             "order_schedule_type": getattr(supplier_mapping, "order_schedule_type", None),
             "allowed_order_days": getattr(supplier_mapping, "allowed_order_days", None),
             "allowed_delivery_days": getattr(
@@ -209,6 +214,8 @@ class InventoryService:
                     "ingredient_id": item["ingredient_id"],
                     "ingredient_supplier_id": item.get("ingredient_supplier_id"),
                     "quantity_ordered": item["quantity_ordered"],
+                    "pack_quantity": item.get("pack_quantity"),
+                    "pack_count": item.get("pack_count"),
                     "unit": item["unit"],
                     "unit_price": item["unit_price"],
                     "total_item_price": float(item["quantity_ordered"]) * float(item["unit_price"]),
@@ -365,44 +372,31 @@ class InventoryService:
         A receipt creates inventory lots first, then rolls the received quantity
         into the aggregate inventory row and stamps the PO as delivered.
         """
-        purchase_order = await self.purchase_order_repo.get_by_id(order_id)
-        if not purchase_order:
-            raise ValueError(f"Purchase order {order_id} not found.")
+        async with self.db.begin_nested():
+            purchase_order = await self.purchase_order_repo.get_by_id(order_id, for_update=True)
+            if not purchase_order:
+                raise ValueError(f"Purchase order {order_id} not found.")
 
-        if (
-            purchase_order.actual_delivery_date
-            and actual_delivery_date
-            and purchase_order.actual_delivery_date != actual_delivery_date
-        ):
-            raise ValueError(
-                f"Purchase order {order_id} was already received on "
-                f"{purchase_order.actual_delivery_date.isoformat()}; delivery date cannot be changed."
-            )
+            if (
+                purchase_order.actual_delivery_date
+                and actual_delivery_date
+                and purchase_order.actual_delivery_date != actual_delivery_date
+            ):
+                raise ValueError(
+                    f"Purchase order {order_id} was already received on "
+                    f"{purchase_order.actual_delivery_date.isoformat()}; delivery date cannot be changed."
+                )
 
-        items = await self.purchase_order_item_repo.get_by_field("order_id", order_id)
-        if not items:
-            raise ValueError(f"Purchase order {order_id} has no items to receive.")
+            items = await self.purchase_order_item_repo.get_by_field("order_id", order_id)
+            if not items:
+                raise ValueError(f"Purchase order {order_id} has no items to receive.")
 
-        received_quantity_map = self._build_received_quantity_map(items, received_items)
+            received_quantity_map = self._build_received_quantity_map(items, received_items)
 
-        delivery_date = actual_delivery_date or purchase_order.actual_delivery_date or date.today()
-        if self.db.in_transaction():
+            delivery_date = actual_delivery_date or purchase_order.actual_delivery_date or date.today()
             return await self._finalize_purchase_order_receipt(
-                order_id=order_id,
-                items=items,
-                delivery_date=delivery_date,
-                purchase_order=purchase_order,
-                received_quantity_map=received_quantity_map,
-            )
-
-        async with self.db.begin():
-            return await self._finalize_purchase_order_receipt(
-                order_id=order_id,
-                items=items,
-                delivery_date=delivery_date,
-                purchase_order=purchase_order,
-                received_quantity_map=received_quantity_map,
-            )
+                order_id=order_id, items=items, delivery_date=delivery_date,
+                purchase_order=purchase_order, received_quantity_map=received_quantity_map)
 
     async def _finalize_purchase_order_receipt(
         self,
@@ -471,6 +465,7 @@ class InventoryService:
                 total_received=requested_received_quantity,
                 delivery_date=delivery_date,
                 receipt_source="purchase_order",
+                receipt_unit=item.unit,
                 purchase_order_id=order_id,
                 purchase_order_item_id=item.order_item_id,
             )
@@ -661,6 +656,8 @@ class InventoryService:
         reorder_engine = ReorderForecastEngine(self.db, self.restaurant_id, self.subscription_tier)
 
         restaurant = await restaurant_repo.get_by_id(self.restaurant_id)
+        from app.utils.business_date import trading_date
+        self.planning_date = trading_date(datetime.utcnow(), restaurant)
         last_eod_run_date = getattr(restaurant, 'last_eod_run_date', None)
         resolved_cached_run_date = await self._resolve_cached_forecast_run_date(last_eod_run_date)
 
@@ -736,12 +733,14 @@ class InventoryService:
                 ingredient_forecast = await forecasting_engine.run_forecasting_pipeline(
                     horizon_days=horizon_days,
                     reorder_horizon_days=horizon_days,
+                    forecast_date=self.planning_date - timedelta(days=1),
                 )
+                self.forecast_history_quality = {"review_required": bool(getattr(forecasting_engine, "latest_material_plan", {}).get("review_required", False)) or any((menu.get("forecast_strategy") or {}).get("history_quality", {}).get("review_required", False) for menu in forecasting_engine.latest_menu_item_forecasts.values())}
                 forecast_state["forecast_generated_at"] = self._serialize_forecast_timestamp(
                     datetime.utcnow()
                 )
                 forecast_state["forecast_reused"] = False
-                forecast_state.update(await self._get_forecast_batch_metadata(date.today()))
+                forecast_state.update(await self._get_forecast_batch_metadata(self.planning_date - timedelta(days=1)))
                 forecast_state["forecast_status_message"] = (
                     "Using a fresh on-demand forecast preview for reorder suggestions."
                 )
@@ -814,6 +813,14 @@ class InventoryService:
                         "Fresh forecast failed and no finalized EOD forecast was available."
                     )
 
+        if getattr(self, "forecast_history_quality", {}).get("review_required"):
+            forecast_state.update(self._build_forecast_state(
+                forecast_source=forecast_state["forecast_source"],
+                forecast_source_type=forecast_state["forecast_source_type"],
+                forecast_run_date=forecast_state.get("forecast_run_date"),
+                forecast_generated_at=forecast_state.get("forecast_generated_at"),
+                forecast_reused=forecast_state["forecast_reused"], forecast_stale=forecast_state["forecast_stale"],
+                forecast_status="degraded", forecast_status_message="Import completeness or demand censoring requires review"))
         if not ingredient_forecast:
             return {
                 "suggestions": [],
@@ -850,7 +857,7 @@ class InventoryService:
             }
 
             if suppliers:
-                supplier_selection = await reorder_engine.choose_supplier_option(suppliers)
+                supplier_selection = await reorder_engine.choose_supplier_option(suppliers, as_of_date=self.planning_date)
                 if not supplier_selection:
                     continue
 
@@ -860,11 +867,11 @@ class InventoryService:
                 lead_time = supplier.lead_time_days or 0
                 supplier_unit = supplier.unit or supplier_unit
                 min_order_quantity = Decimal(str(supplier.min_order_quantity or 0)).quantize(
-                    Decimal("0.01")
+                    Decimal("0.000001")
                 )
                 pack_size = supplier.pack_size or 1
                 quantity_per_pack_item = Decimal(str(supplier.quantity_per_pack_item or 1)).quantize(
-                    Decimal("0.01")
+                    Decimal("0.000001")
                 )
 
                 supplier_obj = await self.supplier_repo.get_by_id(supplier_id)
@@ -891,7 +898,7 @@ class InventoryService:
                     shelf_life_source = "missing_assumed_zero"
                 inventory_unit = inventory.unit
                 current_stock = Decimal(str(inventory.quantity_on_hand or 0)).quantize(
-                    Decimal("0.01")
+                    Decimal("0.000001")
                 )
                 inventory_source = "inventory_summary"
             else:
@@ -908,7 +915,7 @@ class InventoryService:
             daily_forecast = ingredient_forecast[ingredient_id].get("daily_breakdown", [])
             unit = ingredient_forecast[ingredient_id].get("unit", "?")
 
-            today = date.today()
+            today = self.planning_date
 
             try:
                 decision = await reorder_engine.build_reorder_decision(
@@ -936,33 +943,15 @@ class InventoryService:
                 continue
 
             # Convert units
+            packed = pack_order(decision, stock_unit=inventory_unit,
+                supplier_unit=supplier_unit, pack_size=pack_size,
+                quantity_per_pack_item=quantity_per_pack_item,
+                minimum_quantity=min_order_quantity)
+            converted_qty = convert_unit(decision["final_quantity"], inventory_unit, supplier_unit)
+            quantity_per_pack = packed["pack_quantity"]
+            packs_to_order = packed["pack_count"]
+            total_quantity_ordered = packed["quantity"]
             unit_conversion_fallback = False
-            try:
-                converted_qty = Decimal(
-                    str(
-                        convert_unit(
-                            float(decision["final_quantity"]),
-                            from_unit=inventory_unit,
-                            to_unit=supplier_unit,
-                        )
-                    )
-                ).quantize(Decimal("0.01"))
-            except Exception as e:
-                logger.warning(f"[PO_SUGGEST] Unit conversion failed ingredient={ingredient_id} error={e}")
-                converted_qty = decision["final_quantity"]
-                unit_conversion_fallback = True
-
-            # Round up to pack sizes
-            quantity_per_pack = (
-                Decimal(str(pack_size or 1)) * quantity_per_pack_item
-            ).quantize(Decimal("0.01"))
-            if quantity_per_pack <= 0:
-                continue
-
-            packs_to_order = math.ceil(float(converted_qty / quantity_per_pack))
-            total_quantity_ordered = (quantity_per_pack * Decimal(packs_to_order)).quantize(
-                Decimal("0.01")
-            )
 
             # Get ingredient and supplier names
             explanation = reorder_engine.build_explanation_payload(
@@ -994,9 +983,17 @@ class InventoryService:
                 },
             )
 
+            explanation["review_required"] = packed["review_required"]
+            explanation.setdefault("warnings", []).extend(packed["warnings"])
+            explanation.setdefault("assumption_flags", {}).setdefault("warnings", []).extend(packed["warnings"])
+
             suggestion = {
                 "ingredient_id": ingredient_id,
                 "ingredient_name": ingredient_name,
+                "pack_quantity": float(quantity_per_pack),
+                "review_required": packed["review_required"],
+                "next_order_date": decision.get("next_order_date"),
+                "expected_delivery_date": decision.get("next_delivery_date"),
                 "ingredient_supplier_id": ingredient_supplier_id,
                 "supplier_id": supplier_id,
                 "supplier_name": supplier_name,
@@ -1174,13 +1171,13 @@ class InventoryService:
 
             supplier = None
             if suppliers:
-                supplier_selection = await reorder_engine.choose_supplier_option(suppliers)
+                supplier_selection = await reorder_engine.choose_supplier_option(suppliers, as_of_date=date.today())
                 supplier = supplier_selection["supplier"] if supplier_selection else None
 
             lead_time = getattr(supplier, "lead_time_days", 0) or 0
             min_order_quantity = Decimal(
                 str(getattr(supplier, "min_order_quantity", 0) or 0)
-            ).quantize(Decimal("0.01"))
+            ).quantize(Decimal("0.000001"))
 
             if inventory and getattr(inventory, "shelf_life_days", None) is not None:
                 shelf_life = inventory.shelf_life_days
@@ -1207,7 +1204,7 @@ class InventoryService:
                         supplier=supplier,
                         as_of_date=today,
                         shelf_life_days=shelf_life,
-                        current_stock=Decimal(str(current_stock)).quantize(Decimal("0.01")),
+                        current_stock=Decimal(str(current_stock)).quantize(Decimal("0.000001")),
                         current_unit=unit,
                         moq=min_order_quantity,
                         manage_alerts=False,
@@ -1326,9 +1323,9 @@ class InventoryService:
                 continue
             supplier_id = supplier_identity.get(group_key, {}).get("supplier_id")
             
-            # Calculate expected delivery date based on max lead time
-            max_lead_time = max(item.get("lead_time_days", 0) for item in items)
-            expected_delivery = date.today() + timedelta(days=max_lead_time) if max_lead_time > 0 else None
+            delivery_dates = [(date.fromisoformat(item["expected_delivery_date"]) if isinstance(item.get("expected_delivery_date"), str) else item.get("expected_delivery_date")) for item in items]
+            known_dates = [day for day in delivery_dates if day is not None]
+            expected_delivery = max(known_dates) if known_dates else None
             
             # Prepare items for create_purchase_order
             po_items = []
@@ -1336,7 +1333,9 @@ class InventoryService:
                 po_items.append({
                     "ingredient_id": item["ingredient_id"],
                     "ingredient_supplier_id": item.get("ingredient_supplier_id"),
-                    "quantity_ordered": item.get("quantity_to_order", item.get("packs_to_order", 1)),
+                    "quantity_ordered": item["quantity_to_order"],
+                    "pack_quantity": item.get("pack_quantity"),
+                    "pack_count": item.get("packs_to_order"),
                     "unit": item.get("unit", "unit"),
                     "unit_price": item.get("unit_price", 0),
                 })
@@ -1439,6 +1438,16 @@ class InventoryService:
                 "forecast_version": None,
             }
 
+        ledger = await self.forecast_run_ledger_repo.get_one_by({"run_date": run_date})
+        snapshot = getattr(ledger, "result_snapshot", None)
+        if isinstance(snapshot, dict) and snapshot.get("version") == 1:
+            stored = restore(snapshot)
+            self.forecast_history_quality = {**stored.get("history_quality", {}), "review_required": bool(stored.get("history_quality", {}).get("review_required") or stored.get("material_plan", {}).get("review_required"))}
+            menus = stored.get("menus", {})
+            scores = [float(menu["confidence_score"]) for menu in menus.values() if menu.get("confidence_score") is not None]
+            versions = [menu.get("forecast_version", 1) for menu in menus.values()]
+            return {"forecast_confidence_score": sum(scores) / len(scores) if scores else None,
+                    "forecast_version": max(versions) if versions else None}
         start_dt = datetime.combine(run_date, datetime.min.time())
         end_dt = datetime.combine(run_date, datetime.max.time())
         forecasts = await self.forecast_repo.get_forecasts_created_between(start_dt, end_dt)
@@ -1490,6 +1499,17 @@ class InventoryService:
         ledger_finished_at: Optional[datetime],
         forecast_run_date: Optional[date],
     ) -> Dict[int, Dict[str, Any]]:
+        ledger = await self.forecast_run_ledger_repo.get_one_by({"run_date": forecast_run_date})
+        snapshot = getattr(ledger, "result_snapshot", None)
+        if isinstance(snapshot, dict) and snapshot.get("version") == 1:
+            stored = restore(snapshot)
+            self.forecast_history_quality = {**stored.get("history_quality", {}), "review_required": bool(stored.get("history_quality", {}).get("review_required") or stored.get("material_plan", {}).get("review_required"))}
+            decoded = stored["aggregated"]
+            today = getattr(self, "planning_date", None) or date.today()
+            cutoff = today + timedelta(days=horizon_days)
+            return {item_id: {**payload, "daily_breakdown": [(day, qty) for day, qty in payload["daily_breakdown"] if today <= day < cutoff]}
+                    for item_id, payload in decoded.items()}
+        self.forecast_history_quality = {"review_required": True, "warnings": ["Legacy forecast lacks a canonical snapshot; regenerate before ordering"]}
         today = date.today()
         end_date = today + timedelta(days=horizon_days)
         breakdowns = await self.ingredient_forecast_breakdown_repo.get_latest_by_date_range_before(
@@ -1516,7 +1536,8 @@ class InventoryService:
                     ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
                     ingredient_units[ingredient_id] = getattr(ingredient, "unit", "unit")
 
-            unit = inventory_units.get(ingredient_id) or ingredient_units.get(ingredient_id) or "unit"
+            ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+            unit = ingredient.unit if ingredient else ingredient_units.get(ingredient_id) or "unit"
             ingredient_forecast.setdefault(
                 ingredient_id,
                 {
@@ -2460,9 +2481,9 @@ class InventoryService:
         Lot quantities remain untouched.
         """
         try:
-            async with self.db.begin():
+            async with self.db.begin_nested():
                 # Step 1: Fetch inventory item
-                inventory_item = await self.inventory_repo.get_by_id(inventory_id)
+                inventory_item = await self.inventory_repo.get_by_id(inventory_id, for_update=True)
                 if not inventory_item:
                     raise Exception(
                         f"Inventory item not found for inventory_id={inventory_id}"
@@ -2470,8 +2491,8 @@ class InventoryService:
 
                 # Step 2: Validate lot existence
                 lot = await self.inventory_lot_repo.get_by_id(lot_id)
-                if not lot:
-                    raise Exception(f"Lot not found for lot_id={lot_id}")
+                if not lot or lot.inventory_id != inventory_id:
+                    raise Exception(f"Lot {lot_id} does not belong to inventory {inventory_id}")
 
                 # Step 3: Compute current remaining across lots (convert to inventory unit)
                 available_lots, lot_remaining_map, total_remaining = await self._get_inventory_remaining_snapshot(
@@ -2493,6 +2514,8 @@ class InventoryService:
                 add_types = ["manual_addition"]
 
                 requested_qty = Decimal(str(adjustment_quantity))
+                if not requested_qty.is_finite() or requested_qty <= 0:
+                    raise ValueError("Adjustment quantity must be finite and positive")
 
                 if usage_type in subtract_types:
                     if selected_lot_remaining < requested_qty:
@@ -2572,11 +2595,11 @@ class InventoryService:
         """
         try:
             counted_qty = Decimal(str(counted_quantity))
-            if counted_qty < 0:
+            if not counted_qty.is_finite() or counted_qty < 0:
                 raise Exception("Counted quantity cannot be negative.")
 
-            async with self.db.begin():
-                inventory_item = await self.inventory_repo.get_by_id(inventory_id)
+            async with self.db.begin_nested():
+                inventory_item = await self.inventory_repo.get_by_id(inventory_id, for_update=True)
                 if not inventory_item:
                     raise Exception(f"Inventory item not found for inventory_id={inventory_id}")
 
@@ -2590,8 +2613,7 @@ class InventoryService:
 
                 delta = counted_qty - total_remaining
                 log_ingredient_id = getattr(inventory_item, "ingredient_id", None) or getattr(available_lots[0], "ingredient_id", None)
-                if not log_ingredient_id:
-                    raise Exception("This inventory item cannot be reconciled because it is missing an ingredient reference.")
+
 
                 reconciliation_notes = self._build_count_reconciliation_note(
                     previous_quantity=total_remaining,
@@ -2985,6 +3007,7 @@ class InventoryService:
         receipt_source: str = "manual_receipt",
         purchase_order_id: Optional[int] = None,
         purchase_order_item_id: Optional[int] = None,
+        receipt_unit: Optional[str] = None,
     ) -> dict:
         """
         Add a new inventory lot and update inventory accordingly.
@@ -2998,7 +3021,7 @@ class InventoryService:
             )
 
         ingredient_id = ingredient_supplier.ingredient_id
-        supplier_unit = ingredient_supplier.unit
+        supplier_unit = receipt_unit or ingredient_supplier.unit
         pack_size = ingredient_supplier.pack_size or 1
         quantity_per_pack_item = (
             ingredient_supplier.quantity_per_pack_item or Decimal("1.00")
@@ -3006,11 +3029,12 @@ class InventoryService:
         shelf_life_days = ingredient_supplier.shelf_life_days or 0
         spoilage_expected_date = delivery_date + timedelta(days=shelf_life_days)
 
-        inventory = await self.inventory_repo.get_inventory_by_ingredient(ingredient_id)
-
-        ingredient = await self.ingredient_repo.get_by_id(ingredient_id)
+        # Lock the stable ingredient identity before finding or creating stock.
+        # Different PO receipts for a previously unstocked ingredient serialize.
+        ingredient = await self.ingredient_repo.get_by_id(ingredient_id, for_update=True)
         if not ingredient:
             raise ValueError(f"Ingredient ID {ingredient_id} not found.")
+        inventory = await self.inventory_repo.get_inventory_by_ingredient(ingredient_id, for_update=True)
 
         inventory_unit = inventory.unit if inventory else ingredient.unit
         average_weight_per_unit = ingredient.average_weight_per_unit
@@ -3027,9 +3051,13 @@ class InventoryService:
             }
             inventory = await self.inventory_repo.create(inventory_data)
 
-        raw_total_quantity = (
-            Decimal(total_received) * Decimal(pack_size) * quantity_per_pack_item
-        )
+        # PO lines and their receipts are physical quantities in the frozen line
+        # unit. Manual lot entry remains an explicitly pack-count input.
+        raw_total_quantity = Decimal(str(total_received))
+        if receipt_source != "purchase_order":
+            raw_total_quantity *= Decimal(str(pack_size)) * Decimal(str(quantity_per_pack_item))
+        if not raw_total_quantity.is_finite() or raw_total_quantity <= 0:
+            raise ValueError("Received quantity must be positive and finite")
 
         if inventory_unit == "count" and supplier_unit != "count":
             quantity_in_grams = convert_unit(raw_total_quantity, supplier_unit, "g")

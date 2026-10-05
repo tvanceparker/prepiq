@@ -1,3 +1,5 @@
+import json
+from datetime import date
 import os
 from pathlib import Path
 import joblib
@@ -24,8 +26,11 @@ def _is_h2o_model(model) -> bool:
     return isinstance(model, H2OGradientBoostingEstimator) or hasattr(model, "save_model")
 
 
-def save_model(restaurant_id: int, menu_item_id: int, model):
+def save_model(restaurant_id: int, menu_item_id: int, model, *, trained_through=None, feature_version=None):
     path = get_model_path(restaurant_id, menu_item_id)
+    manifest = path.parent / (path.name + "_manifest.json")
+    manifest.unlink(missing_ok=True)
+
 
     if _is_h2o_model(model):
         save_dir = path.parent / path.name
@@ -77,13 +82,26 @@ def save_model(restaurant_id: int, menu_item_id: int, model):
             file_path,
         )
 
+    manifest.write_text(json.dumps({"trained_through": trained_through.isoformat() if trained_through else None,
+                                    "feature_version": feature_version}))
 
 
 
 import traceback
 
-def load_model(restaurant_id: int, menu_item_id: int):
+def load_model(restaurant_id: int, menu_item_id: int, *, as_of_date=None, feature_version=None):
     path = get_model_path(restaurant_id, menu_item_id)
+    if as_of_date is not None or feature_version is not None:
+        manifest_path = path.parent / (path.name + "_manifest.json")
+        if not manifest_path.exists():
+            return None
+        try:
+            manifest = json.loads(manifest_path.read_text())
+            trained = date.fromisoformat(manifest["trained_through"])
+            if (as_of_date and trained > as_of_date) or manifest.get("feature_version") != feature_version:
+                return None
+        except (KeyError, ValueError, TypeError):
+            return None
     logger.info(
         "[FORECAST] Loading model restaurant=%s menu_item=%s base_path=%s",
         restaurant_id,

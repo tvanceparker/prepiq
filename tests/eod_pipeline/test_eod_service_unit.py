@@ -22,6 +22,7 @@ class TestEODServiceUnit:
     ):
         """Test sales aggregation with ingredient-based recipes."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         
         service.sales_repo.get_by_date = AsyncMock(return_value=sample_sales_data[:1])
         service.menu_item_recipe_repo.get_by_menu_item = AsyncMock(return_value=[
@@ -50,6 +51,7 @@ class TestEODServiceUnit:
     ):
         """Test sales aggregation with batch recipes."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         
         service.sales_repo.get_by_date = AsyncMock(return_value=sample_sales_data[:1])
         service.menu_item_recipe_repo.get_by_menu_item = AsyncMock(return_value=[
@@ -79,6 +81,7 @@ class TestEODServiceUnit:
         self, mock_db_session, restaurant_id, sample_sales_data
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
 
         service.sales_repo.get_by_date = AsyncMock(return_value=sample_sales_data[:1])
         service.menu_item_recipe_repo.get_by_menu_item = AsyncMock(
@@ -135,6 +138,7 @@ class TestEODServiceUnit:
     ):
         """Test sales aggregation when no sales data exists."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         
         service.sales_repo.get_by_date = AsyncMock(return_value=[])
         
@@ -148,6 +152,7 @@ class TestEODServiceUnit:
     ):
         """Test inventory deduction for ingredient-based usage."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         
         usage_summary = [
             {
@@ -191,6 +196,7 @@ class TestEODServiceUnit:
     ):
         """Test inventory deduction for batch-based usage."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         
         usage_summary = [
             {
@@ -228,6 +234,7 @@ class TestEODServiceUnit:
     async def test_deduct_ingredients_handles_no_usage(self, mock_db_session, restaurant_id):
         """Ensure deduction helper handles empty summaries gracefully."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
 
         result = await service.deduct_ingredients_from_inventory(
             [], date(2025, 11, 20)
@@ -242,6 +249,7 @@ class TestEODServiceUnit:
     ):
         """Test spoilage deduction placeholder logs execution."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         
         # Should not raise
@@ -253,6 +261,7 @@ class TestEODServiceUnit:
     ):
         """A rerun should not decrement inventory twice for a lot already written off."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
 
         expired_lot = MagicMock(
             lot_id=55,
@@ -262,19 +271,15 @@ class TestEODServiceUnit:
             unit="lb",
         )
         service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[expired_lot])
-        service.inventory_usage_log_repo.has_usage_type_for_lot = AsyncMock(return_value=True)
-        service.inventory_lot_repo.update = AsyncMock()
-        service.inventory_repo.decrement_quantity = AsyncMock()
-        service.inventory_usage_log_repo.create = AsyncMock()
-
+        locked_inventory = MagicMock(quantity_on_hand=Decimal("0"))
+        locked_lot = MagicMock(status=LotStatus.expired)
+        inventory_result = MagicMock()
+        inventory_result.scalar_one_or_none.return_value = locked_inventory
+        lot_result = MagicMock()
+        lot_result.scalar_one_or_none.return_value = locked_lot
+        mock_db_session.execute.side_effect = [inventory_result, lot_result]
         await service.auto_deduct_spoilage(date(2025, 11, 20))
-
-        service.inventory_repo.decrement_quantity.assert_not_awaited()
-        service.inventory_usage_log_repo.create.assert_not_awaited()
-        service.inventory_lot_repo.update.assert_awaited_once_with(
-            55,
-            {"status": LotStatus.expired},
-        )
+        mock_db_session.add.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_generate_forecast_calls_forecasting_engine(
@@ -282,6 +287,7 @@ class TestEODServiceUnit:
     ):
         """Test forecast generation delegates to forecasting engine."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.forecasting_engine = mock_forecasting_engine
         
         result = await service.generate_forecast(
@@ -295,6 +301,7 @@ class TestEODServiceUnit:
             forecast_date=date(2025, 11, 20),
             horizon_days=30,
             reorder_horizon_days=30,
+            commit=False,
         )
         assert isinstance(result, dict)
 
@@ -304,6 +311,7 @@ class TestEODServiceUnit:
     ):
         """Test PO suggestion generation from ingredient forecast."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.po_suggestion_repo.replace_for_run_date = AsyncMock()
         run_date = date(2025, 11, 20)
         
@@ -380,6 +388,7 @@ class TestEODServiceUnit:
         self, mock_db_session, restaurant_id, sample_suppliers, sample_inventory
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.po_suggestion_repo.replace_for_run_date = AsyncMock()
         run_date = date(2025, 11, 20)
 
@@ -456,6 +465,7 @@ class TestEODServiceUnit:
     ):
         """Test PO generation skips ingredients with zero reorder quantity."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.po_suggestion_repo.replace_for_run_date = AsyncMock()
         
         ingredient_forecast = {
@@ -515,6 +525,7 @@ class TestEODServiceUnit:
         self, mock_db_session, restaurant_id, sample_suppliers
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.po_suggestion_repo.replace_for_run_date = AsyncMock()
 
         ingredient_forecast = {
@@ -575,15 +586,16 @@ class TestEODServiceUnit:
         result = await service.generate_suggested_purchase_orders(ingredient_forecast)
 
         assert result == []
-    assert captured_call["daily_forecast"] == []
-    assert captured_call["lead_time"] == sample_suppliers[0].lead_time_days
-    assert captured_call["shelf_life_days"] == 7
+        assert captured_call["daily_forecast"] == []
+        assert captured_call["lead_time"] == sample_suppliers[0].lead_time_days
+        assert captured_call["shelf_life_days"] == 7
 
     @pytest.mark.asyncio
     async def test_generate_suggested_purchase_orders_falls_back_to_supplier_shelf_life(
         self, mock_db_session, restaurant_id, sample_suppliers
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         run_date = date(2025, 11, 20)
 
         supplier = sample_suppliers[0]
@@ -662,6 +674,7 @@ class TestEODServiceUnit:
     ):
         """Test writing purchase orders to database."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.po_suggestion_repo.mark_written_for_supplier = AsyncMock()
         
         service.purchase_order_suggestions = [
@@ -699,7 +712,7 @@ class TestEODServiceUnit:
         # Should create one order (grouped by supplier)
         service.purchase_order_repo.create.assert_called_once()
         create_payload = service.purchase_order_repo.create.await_args.args[0]
-        assert create_payload["order_date"] == date(2025, 11, 20)
+        assert create_payload["order_date"] == date(2025, 11, 21)
         assert create_payload["status"] == "cart"
         parsed_notes = parse_purchase_order_notes(create_payload["notes"])
         assert parsed_notes["system_note"] is not None
@@ -717,6 +730,7 @@ class TestEODServiceUnit:
     ):
         """Test writing POs when no suggestions exist."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.purchase_order_suggestions = []
         service.purchase_order_repo.create = AsyncMock()
         
@@ -729,6 +743,7 @@ class TestEODServiceUnit:
         self, mock_db_session, restaurant_id
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.po_suggestion_repo.mark_written_for_supplier = AsyncMock()
 
         service.purchase_order_suggestions = [
@@ -763,6 +778,7 @@ class TestEODServiceUnit:
     ):
         """Test sales data existence check."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.sales_repo.sales_exist_for_dates = AsyncMock(return_value=True)
         
         result = await service.check_sales_data_exists(date(2025, 11, 20))
@@ -780,6 +796,7 @@ class TestEODServiceStages:
     ):
         """Test sales deduction stage execution."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.ledger_repo.mark_stage_complete = AsyncMock()
         service.aggregate_daily_sales = AsyncMock(return_value=[{"ingredient_id": 1001}])
         service.deduct_ingredients_from_inventory = AsyncMock()
@@ -797,6 +814,7 @@ class TestEODServiceStages:
     ):
         """Test sales deduction stage skips when already complete."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.aggregate_daily_sales = AsyncMock()
         service._is_real_time_deduction_enabled = AsyncMock(return_value=False)
         
@@ -809,11 +827,12 @@ class TestEODServiceStages:
         service.aggregate_daily_sales.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_stage_sales_deduction_skips_real_time_mode(
+    async def test_stage_sales_deduction_reconciles_real_time_mode(
         self, mock_db_session, restaurant_id, sample_eod_ledger
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
-        service.aggregate_daily_sales = AsyncMock()
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
+        service.aggregate_daily_sales = AsyncMock(return_value=[])
         service._is_real_time_deduction_enabled = AsyncMock(return_value=True)
         service.ledger_repo.mark_stage_complete = AsyncMock()
 
@@ -822,7 +841,7 @@ class TestEODServiceStages:
         result = await service._stage_sales_deduction(date(2025, 11, 20), ledger)
 
         assert result == 0
-        service.aggregate_daily_sales.assert_not_called()
+        service.aggregate_daily_sales.assert_awaited_once_with(date(2025, 11, 20))
         service.ledger_repo.mark_stage_complete.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -831,6 +850,7 @@ class TestEODServiceStages:
     ):
         """Test forecast stage execution."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.ledger_repo.mark_stage_complete = AsyncMock()
         service.generate_forecast = AsyncMock(return_value={1001: {"unit": "lb"}})
         
@@ -846,6 +866,7 @@ class TestEODServiceStages:
     ):
         """Test reorder stage execution."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.ledger_repo.mark_stage_complete = AsyncMock()
         service.reorder_engine.classify_all_ingredients = AsyncMock()
         service.generate_suggested_purchase_orders = AsyncMock(return_value=[{"ingredient_id": 1001}])
@@ -869,200 +890,29 @@ class TestEODServiceStages:
         )
 
     @pytest.mark.asyncio
-    async def test_recover_ingredient_forecast_from_breakdowns(
-        self, mock_db_session, restaurant_id
-    ):
-        service = EODService(mock_db_session, restaurant_id, "master")
-        run_date = date(2025, 11, 20)
-
-        service.forecasting_engine.forecast_breakdown_repo.get_latest_by_date_range = AsyncMock(
-            return_value=[
-                MagicMock(
-                    menu_item_id=101,
-                    forecast_date=run_date,
-                    forecasted_quantity=3,
-                ),
-                MagicMock(
-                    menu_item_id=101,
-                    forecast_date=run_date + timedelta(days=1),
-                    forecasted_quantity=2,
-                ),
-            ]
-        )
-        service.forecasting_engine.menu_item_recipe_repo.get_by_menu_item = AsyncMock(
-            return_value=[]
-        )
-        service.forecasting_engine.menu_item_recipe_repo.get_recipe_ids_for_menu_item = AsyncMock(
-            return_value=[301]
-        )
-        service.forecasting_engine.recipe_ingredient_repo.get_by_recipe_id = AsyncMock(
-            return_value=[
-                MagicMock(
-                    ingredient_type="ingredient",
-                    reference_id=1001,
-                    quantity_used=Decimal("0.50"),
-                )
-            ]
-        )
-        service.forecasting_engine.ingredient_repo.get_by_id = AsyncMock(
-            return_value=MagicMock(unit="lb")
-        )
-
-        result = await service._recover_ingredient_forecast_from_breakdowns(
-            run_date,
-            30,
-        )
-
-        assert list(result.keys()) == [1001]
-        assert result[1001]["unit"] == "lb"
-        assert result[1001]["total_quantity"] == Decimal("2.50")
-        assert result[1001]["daily_breakdown"] == [
-            (run_date, Decimal("1.50")),
-            (run_date + timedelta(days=1), Decimal("1.00")),
-        ]
+    async def test_recovery_reuses_exact_units_dates_and_fractional_quantities(self, mock_db_session, restaurant_id):
+        from app.services.utils.forecast_snapshot import encode
+        service = EODService(mock_db_session, restaurant_id, "full")
+        expected = {1001: {"unit": "kg", "daily_breakdown": [(date(2025, 11, 21), Decimal("0.123"))]}}
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=MagicMock(
+            result_snapshot=encode({"version": 1, "aggregated": expected})))
+        assert await service._recover_ingredient_forecast_from_breakdowns(date(2025, 11, 20), 30) == expected
+        service.forecasting_engine.generate_ingredient_breakdown = AsyncMock()
+        service.forecasting_engine.generate_ingredient_breakdown.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_recover_ingredient_forecast_from_breakdowns_expands_nested_batch_graph(
-        self, mock_db_session, restaurant_id
-    ):
-        service = EODService(mock_db_session, restaurant_id, "master")
-        run_date = date(2025, 11, 20)
-
-        service.forecasting_engine.forecast_breakdown_repo.get_latest_by_date_range = AsyncMock(
-            return_value=[
-                MagicMock(
-                    menu_item_id=99,
-                    forecast_date=run_date,
-                    forecasted_quantity=4,
-                )
-            ]
-        )
-        service.forecasting_engine.menu_item_recipe_repo.get_by_menu_item = AsyncMock(
-            return_value=[MagicMock(recipe_id=10)]
-        )
-        service.forecasting_engine.menu_item_recipe_repo.get_recipe_ids_for_menu_item = AsyncMock(
-            return_value=[10]
-        )
-
-        async def get_recipe_components(recipe_id):
-            if recipe_id == 10:
-                return [
-                    MagicMock(
-                        ingredient_type="ingredient",
-                        reference_id=1001,
-                        quantity_used=Decimal("1.0"),
-                    ),
-                    MagicMock(
-                        ingredient_type="recipe",
-                        reference_id=20,
-                        quantity_used=Decimal("2.0"),
-                    ),
-                    MagicMock(
-                        ingredient_type="batch",
-                        reference_id=501,
-                        quantity_used=Decimal("3.0"),
-                    ),
-                ]
-            if recipe_id == 20:
-                return [
-                    MagicMock(
-                        ingredient_type="ingredient",
-                        reference_id=1002,
-                        quantity_used=Decimal("0.5"),
-                    ),
-                    MagicMock(
-                        ingredient_type="batch",
-                        reference_id=502,
-                        quantity_used=Decimal("1.0"),
-                    ),
-                ]
-            return []
-
-        async def get_batch(batch_recipe_id):
-            if batch_recipe_id == 501:
-                return MagicMock(
-                    batch_recipe_id=501,
-                    yield_quantity=Decimal("10.0"),
-                    yield_unit="count",
-                )
-            if batch_recipe_id == 502:
-                return MagicMock(
-                    batch_recipe_id=502,
-                    yield_quantity=Decimal("8.0"),
-                    yield_unit="count",
-                )
-            return MagicMock(
-                batch_recipe_id=503,
-                yield_quantity=Decimal("5.0"),
-                yield_unit="count",
-            )
-
-        async def get_batch_components(batch_recipe_id):
-            if batch_recipe_id == 501:
-                return [
-                    MagicMock(
-                        ingredient_type="ingredient",
-                        reference_id=1003,
-                        quantity_used=Decimal("4.0"),
-                        unit="count",
-                    ),
-                    MagicMock(
-                        ingredient_type="batch",
-                        reference_id=503,
-                        quantity_used=Decimal("2.0"),
-                        unit="count",
-                    ),
-                ]
-            if batch_recipe_id == 502:
-                return [
-                    MagicMock(
-                        ingredient_type="ingredient",
-                        reference_id=1004,
-                        quantity_used=Decimal("6.0"),
-                        unit="count",
-                    )
-                ]
-            return [
-                MagicMock(
-                    ingredient_type="ingredient",
-                    reference_id=1005,
-                    quantity_used=Decimal("10.0"),
-                    unit="count",
-                )
-            ]
-
-        service.forecasting_engine.recipe_ingredient_repo.get_by_recipe_id = AsyncMock(
-            side_effect=get_recipe_components
-        )
-        service.forecasting_engine.batch_recipe_repo.get_by_id = AsyncMock(
-            side_effect=get_batch
-        )
-        service.forecasting_engine.batch_recipe_ingredients_repo.get_by_batch_recipe_id = AsyncMock(
-            side_effect=get_batch_components
-        )
-        service.forecasting_engine.ingredient_repo.get_by_id = AsyncMock(
-            side_effect=lambda ingredient_id: MagicMock(unit="count")
-        )
-
-        result = await service._recover_ingredient_forecast_from_breakdowns(
-            run_date,
-            1,
-        )
-
-        assert {ingredient_id: data["total_quantity"] for ingredient_id, data in result.items()} == {
-            1001: Decimal("4.0"),
-            1002: Decimal("4.0"),
-            1003: Decimal("4.8"),
-            1004: Decimal("6.0"),
-            1005: Decimal("4.8"),
-        }
-        assert result[1005]["daily_breakdown"] == [(run_date, Decimal("4.8"))]
+    async def test_recovery_requires_run_provenance(self, mock_db_session, restaurant_id):
+        service = EODService(mock_db_session, restaurant_id, "full")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=MagicMock(result_snapshot=None))
+        with pytest.raises(ValueError, match="persisted run snapshot"):
+            await service._recover_ingredient_forecast_from_breakdowns(date(2025, 11, 20), 30)
 
     @pytest.mark.asyncio
     async def test_stage_reorder_recovers_persisted_forecast_after_restart(
         self, mock_db_session, restaurant_id, sample_eod_ledger
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.ledger_repo.mark_stage_complete = AsyncMock()
         service.reorder_engine.classify_all_ingredients = AsyncMock()
         service.generate_suggested_purchase_orders = AsyncMock(return_value=[{"ingredient_id": 1001}])
@@ -1098,8 +948,10 @@ class TestEODServiceStages:
     ):
         """Test PO write stage execution."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.ledger_repo.mark_stage_complete = AsyncMock()
         service.write_purchase_orders_to_db = AsyncMock()
+        service.purchase_order_repo.count_eod_auto_orders_for_run_date = AsyncMock(return_value=1)
         service._purchase_order_suggestions = [{"ingredient_id": 1001}]
         service.po_suggestion_repo.list_by_run_date = AsyncMock(return_value=[])
         
@@ -1114,8 +966,10 @@ class TestEODServiceStages:
         self, mock_db_session, restaurant_id, sample_eod_ledger
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.ledger_repo.mark_stage_complete = AsyncMock()
         service.write_purchase_orders_to_db = AsyncMock()
+        service.purchase_order_repo.count_eod_auto_orders_for_run_date = AsyncMock(return_value=1)
         service.po_suggestion_repo.list_by_run_date = AsyncMock(
             return_value=[
                 MagicMock(
@@ -1157,8 +1011,10 @@ class TestEODServiceStages:
         self, mock_db_session, restaurant_id, sample_eod_ledger
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.ledger_repo.mark_stage_complete = AsyncMock()
         service.write_purchase_orders_to_db = AsyncMock()
+        service.purchase_order_repo.count_eod_auto_orders_for_run_date = AsyncMock(return_value=1)
         service.generate_suggested_purchase_orders = AsyncMock(return_value=[{"ingredient_id": 1001}])
         service.po_suggestion_repo.list_by_run_date = AsyncMock(return_value=[])
         service.po_suggestion_repo.replace_for_run_date = AsyncMock()

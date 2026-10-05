@@ -10,6 +10,8 @@ from app.db.models.inventory_usage_log_orm import InventoryUsageLog
 from app.repositories.base_repository import BaseRepository
 from typing import List, Optional
 from collections import namedtuple
+from app.services.utils.unit_conversion import convert_unit
+from app.db.models.ingredients_orm import Ingredient
 
 
 DailyUsage = namedtuple("DailyUsage", ["used_date", "usage_quantity"])
@@ -33,32 +35,33 @@ class InventoryUsageLogRepository(BaseRepository):
         return rows
 
     async def get_daily_usage(
-        self, ingredient_id: int, trailing_days: int = 30
+        self, ingredient_id: int, trailing_days: int = 30, as_of_date: Optional[date] = None
     ) -> List[DailyUsage]:
         """
         Return list of (usage_date, total_usage_quantity) over the last `trailing_days` days for the given ingredient.
         """
-        start_date = date.today() - timedelta(days=trailing_days)
-
+        end_date = as_of_date or date.today()
+        start_date = end_date - timedelta(days=max(trailing_days - 1, 0))
+        usage_day = func.coalesce(InventoryUsageLog.business_date, func.date(InventoryUsageLog.used_date))
         result = await self.db.execute(
-            select(
-                InventoryUsageLog.used_date,
-                func.sum(InventoryUsageLog.used_quantity).label("usage_quantity"),
-            )
+            select(usage_day.label("usage_date"), InventoryUsageLog.unit, func.sum(InventoryUsageLog.used_quantity).label("usage_quantity"))
             .where(
                 InventoryUsageLog.restaurant_id == self.restaurant_id,
                 InventoryUsageLog.ingredient_id == ingredient_id,
-                InventoryUsageLog.used_date >= start_date,
+                usage_day >= start_date,
+                usage_day <= end_date,
+                InventoryUsageLog.usage_type.in_(["sale", "batch_production"]),
             )
-            .group_by(InventoryUsageLog.used_date)
-            .order_by(InventoryUsageLog.used_date.desc())
+            .group_by(usage_day, InventoryUsageLog.unit).order_by(usage_day)
         )
-
-        rows = result.all()
-        return [
-            DailyUsage(row.used_date.date(), Decimal(row.usage_quantity))
-            for row in rows
-        ]
+        ingredient_unit = (await self.db.execute(select(Ingredient.unit).where(
+            Ingredient.restaurant_id == self.restaurant_id, Ingredient.ingredient_id == ingredient_id))).scalar_one_or_none()
+        totals = {}
+        for row in result.all():
+            day = date.fromisoformat(row.usage_date) if isinstance(row.usage_date, str) else row.usage_date
+            quantity = convert_unit(Decimal(row.usage_quantity), row.unit, ingredient_unit)
+            totals[day] = totals.get(day, Decimal("0")) + quantity
+        return [DailyUsage(day, quantity) for day, quantity in sorted(totals.items())]
 
     async def get_by_lot_id_and_usage_types(
         self,

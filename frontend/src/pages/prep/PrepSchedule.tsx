@@ -27,12 +27,15 @@ import {
 
 import {
   usePrepSchedules,
+  usePrepRecommendations,
   useCreatePrepSchedule,
   useUpdatePrepSchedule,
   useBatchRecipes,
 } from './hooks/usePrepSchedule';
 
 export default function PrepSchedule() {
+  const { data: recommendations, error: recommendationError } = usePrepRecommendations();
+  const [createDate, setCreateDate] = useState(new Date().toISOString().split('T')[0]);
   // Load batch recipes and prep schedules with hooks
   const {
     data: batchRecipes,
@@ -76,6 +79,7 @@ export default function PrepSchedule() {
   const handleOpenCreateDialog = batchRecipe => {
     setSelectedBatchRecipe(batchRecipe);
     setCreateQuantity('');
+    setCreateDate(recommendations?.as_of_date || new Date().toISOString().split('T')[0]);
     setCreateDialogOpen(true);
   };
   const handleCloseCreateDialog = () => setCreateDialogOpen(false);
@@ -94,7 +98,7 @@ export default function PrepSchedule() {
       await createPrep({
         batch_recipe_id: selectedBatchRecipe.batch_recipe_id,
         quantity_needed: Number(createQuantity),
-        prep_date: new Date().toISOString().split('T')[0], // today
+        prep_date: createDate,
       });
       setSnackbar({
         open: true,
@@ -190,6 +194,26 @@ export default function PrepSchedule() {
       <Typography variant="h3" gutterBottom>
         Prep Schedule Management
       </Typography>
+
+      <Typography variant="h5" sx={{ mt: 3, mb: 1 }}>Forecast prep plan</Typography>
+      {recommendationError ? <Alert severity="warning">Prep recommendations need review. Reconcile batch stock and rerun the forecast.</Alert> : (
+        <>
+          <Typography variant="body2" sx={{ mb: 1 }}>Usable stock and scheduled production are already included. Child batches appear before their parents.</Typography>
+          {recommendations?.review_required && <Alert severity="warning">Review sales history, overdue prep, or excess scheduled output before scheduling from this plan.</Alert>}
+          {recommendations?.warnings?.map(message => <Alert key={message} severity="warning">{message}</Alert>)}
+          {recommendations?.incomplete_preps?.map(item => <Alert key={item.prep_id} severity="warning">Prep #{item.prep_id}: {item.message}</Alert>)}
+          {!recommendations?.batches?.length && <Typography color="text.secondary">No current forecast prep plan. Run EOD to generate one.</Typography>}
+          {recommendations?.batches?.filter(row => row.additional_quantity > 0).map(row => (
+            <Box key={`${row.forecast_date}-${row.batch_recipe_id}`} sx={{ my: 1, display: 'flex', gap: 2, alignItems: 'center' }}>
+              <Typography>{row.forecast_date}: {batchRecipes.find(batch => batch.batch_recipe_id === row.batch_recipe_id)?.name || `Batch #${row.batch_recipe_id}`} — {Number(row.additional_quantity).toFixed(3)} {row.unit} additional ({Number(row.additional_batch_count).toFixed(3)} batches)</Typography>
+              <Button disabled={recommendations.review_required || row.review_required || loadingCreate} onClick={() => {
+                const batch = batchRecipes.find(batch => batch.batch_recipe_id === row.batch_recipe_id);
+                if (batch) { handleOpenCreateDialog(batch); setCreateQuantity(String(row.additional_quantity)); setCreateDate(row.forecast_date); }
+              }}>Plan prep</Button>
+            </Box>
+          ))}
+        </>
+      )}
 
       {/* Batch Recipes */}
       <Typography variant="h5" sx={{ mt: 4, mb: 2 }}>
@@ -299,6 +323,8 @@ export default function PrepSchedule() {
           <Typography variant="body2" gutterBottom>
             Yield: {selectedBatchRecipe?.yield_quantity} {selectedBatchRecipe?.yield_unit}
           </Typography>
+          <TextField label="Prep Date" type="date" value={createDate}
+            onChange={event => setCreateDate(event.target.value)} fullWidth InputLabelProps={{ shrink: true }} sx={{ mt: 2 }} />
           <TextField
             label="Quantity Needed"
             type="number"

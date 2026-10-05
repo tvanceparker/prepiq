@@ -20,9 +20,9 @@ class DailyForecastAccuracy(Base):
         Integer, ForeignKey("restaurants.restaurant_id"), nullable=False
     )
     forecast_date = Column(Date, nullable=False)
-    predicted_quantity = Column(Integer, nullable=False)
+    predicted_quantity = Column(DECIMAL(16, 6), nullable=False)
     actual_quantity = Column(Integer, nullable=False)
-    forecast_error = Column(Integer, nullable=False)
+    forecast_error = Column(DECIMAL(16, 6), nullable=False)
     error_percentage = Column(DECIMAL(5, 2), nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 

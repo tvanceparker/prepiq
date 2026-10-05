@@ -23,14 +23,14 @@ class Inventory(Base):
         Integer, ForeignKey("restaurants.restaurant_id"), nullable=False
     )
     ingredient_id = Column(Integer, nullable=True)
-    quantity_on_hand = Column(Float, default=0)
+    quantity_on_hand = Column(DECIMAL(16, 6), default=0)
     min_stock_level = Column(Float, default=0)
     last_delivery_date = Column(Date)
     spoilage_expected_date = Column(Date)
     shelf_life_days = Column(Integer)
     spoilage_rate = Column(DECIMAL(4, 3))  # Using DECIMAL for precision/scale
     last_audit_timestamp = Column(DateTime)
-    last_audit_quantity = Column(Float, default=0)
+    last_audit_quantity = Column(DECIMAL(16, 6), default=0)
     unit = Column(String(20), nullable=False)
 
     # Relationships

@@ -14,6 +14,13 @@ class IngredientRepository(BaseRepository):
         self.restaurant_id = restaurant_id
         super().__init__(db, Ingredient, restaurant_id, pk_field="ingredient_id")
 
+    async def get_by_id(self, obj_id, *, for_update=False):
+        stmt = select(Ingredient).where(Ingredient.ingredient_id == obj_id,
+                                    Ingredient.restaurant_id == self.restaurant_id)
+        if for_update:
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
+        return (await self.db.execute(stmt)).scalars().first()
+
     async def get_all(self, skip: int = 0, limit: int = 100) -> List[Ingredient]:
         """Return active ingredients only."""
         result = await self.db.execute(

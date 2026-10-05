@@ -20,13 +20,16 @@ export const getPrepSchedule = async (
   params: PrepScheduleParams = {}
 ): Promise<PrepScheduleItem[]> => {
   const query = new URLSearchParams(params as any).toString();
-  return get<PrepScheduleItem[]>(`/prep/schedule${query ? `?${query}` : ''}`);
+  const rows = await get<any[]>(`/prep/schedule${query ? `?${query}` : ''}`);
+  return rows.map(row => ({ ...row, scheduled_date: row.prep_date, quantity_to_prep: row.quantity_needed }));
 };
 
 export const createPrepSchedule = async (
   prepData: PrepScheduleCreate
 ): Promise<PrepScheduleItem> => {
-  return post<PrepScheduleItem>('/prep/schedule', prepData);
+  return post<PrepScheduleItem>('/prep/schedule', { batch_recipe_id: prepData.batch_recipe_id,
+    prep_date: prepData.scheduled_date, quantity_needed: prepData.quantity_to_prep,
+    assigned_employee_id: prepData.assigned_employee_id });
 };
 
 export const updatePrepSchedule = async (
@@ -107,9 +110,14 @@ export const getIngredients = async (): Promise<any[]> => {
 
 export const getWasteLogs = async (params: WasteLogParams = {}): Promise<WasteLog[]> => {
   const query = new URLSearchParams(params as any).toString();
-  return get<WasteLog[]>(`/prep/waste-logs${query ? `?${query}` : ''}`);
+  const rows = await get<WasteLog[]>(`/prep/waste-logs${query ? `?${query}` : ''}`);
+  return rows.map(row => ({ ...row, waste_log_id: row.usage_id, created_at: row.waste_date }));
 };
 
-export const createWasteLog = async (wasteData: WasteLogCreate): Promise<WasteLog> => {
-  return post<WasteLog>('/prep/waste-logs', wasteData);
+export const createWasteLog = async (wasteData: WasteLogCreate): Promise<{report_id: number; request_key: string; message: string}> => {
+  return post<{report_id: number; request_key: string; message: string}>('/prep/waste-logs', wasteData);
 };
+
+
+export const getPrepRecommendations = async (): Promise<import('../interfaces/prep').PrepRecommendations> =>
+  get<import('../interfaces/prep').PrepRecommendations>('/prep/recommendations');

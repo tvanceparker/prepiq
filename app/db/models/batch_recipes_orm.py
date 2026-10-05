@@ -14,7 +14,7 @@ class BatchRecipe(Base):
     )
     name = Column(String(100), nullable=False)
     description = Column(Text)
-    yield_quantity = Column(DECIMAL(10, 2))
+    yield_quantity = Column(DECIMAL(16, 6))
     yield_unit = Column(String(20))
     estimated_prep_time_minutes = Column(Integer)
     shelf_life_days = Column(Integer)

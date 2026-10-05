@@ -1,3 +1,4 @@
+from app.utils.business_date import trading_date
 # app/services/helpers/pos_integration_service.py
 """
 POS Integration Service - orchestrates external POS provider connections,
@@ -578,12 +579,14 @@ class POSIntegrationService:
         else:
             order_timestamp = datetime.utcnow()
         
+        business_day = trading_date(order_timestamp, await self._get_restaurant())
         for item in items:
             await self.sales_repo.create({
                 "restaurant_id": self.restaurant_id,
                 "menu_item_id": item.menu_item_id,
                 "quantity_sold": item.quantity,
                 "sale_timestamp": order_timestamp,
+                "business_date": business_day,
                 "sales_channel": order_data.get("sales_channel", "in-house"),
             })
 
@@ -598,7 +601,8 @@ class POSIntegrationService:
                     helper_result = await self.inventory_helper.deduct_for_menu_items(
                         menu_items=menu_items_payload,
                         reference_id=order_id,
-                        reference_type="sale",
+                        reference_type="order",
+                        business_date=business_day,
                     )
                 except Exception as exc:  # pragma: no cover - defensive logging
                     logger.error(

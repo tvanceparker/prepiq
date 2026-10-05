@@ -11,6 +11,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.eod_service import EODService
 
 
+async def complete_stage(ledger, stage, duration_ms):
+    setattr(ledger, stage, True)
+
+
 class TestEODPipelineE2E:
     """End-to-end tests for complete EOD pipeline execution."""
 
@@ -41,13 +45,18 @@ class TestEODPipelineE2E:
         8. Finalize ledger
         """
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.supplier_repo.get_by_id = AsyncMock(return_value=None)
+        service.po_suggestion_repo.list_by_run_date = AsyncMock(return_value=[])
+        service.purchase_order_repo.count_eod_auto_orders_for_run_date = AsyncMock(return_value=0)
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         
+        service.purchase_order_repo.count_eod_auto_orders_for_run_date = AsyncMock(return_value=2)
         # ===== Setup Ledger =====
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=MagicMock(result_snapshot={"version": 1, "aggregated": {}}))
         service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
         service.ledger_repo.mark_running = AsyncMock()
-        service.ledger_repo.mark_stage_complete = AsyncMock()
+        service.ledger_repo.mark_stage_complete = AsyncMock(side_effect=complete_stage)
         service.ledger_repo.finalize = AsyncMock()
         
         # ===== Stage 1: Sales Aggregation =====
@@ -217,12 +226,16 @@ class TestEODPipelineE2E:
     ):
         """Test EOD pipeline handles gracefully when no sales data exists."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.supplier_repo.get_by_id = AsyncMock(return_value=None)
+        service.po_suggestion_repo.list_by_run_date = AsyncMock(return_value=[])
+        service.purchase_order_repo.count_eod_auto_orders_for_run_date = AsyncMock(return_value=0)
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=MagicMock(result_snapshot={"version": 1, "aggregated": {}}))
         service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
         service.ledger_repo.mark_running = AsyncMock()
-        service.ledger_repo.mark_stage_complete = AsyncMock()
+        service.ledger_repo.mark_stage_complete = AsyncMock(side_effect=complete_stage)
         service.ledger_repo.finalize = AsyncMock()
         
         # No sales data
@@ -258,6 +271,9 @@ class TestEODPipelineE2E:
     ):
         """Test EOD pipeline skips already-completed stages on re-run."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.supplier_repo.get_by_id = AsyncMock(return_value=None)
+        service.po_suggestion_repo.list_by_run_date = AsyncMock(return_value=[])
+        service.purchase_order_repo.count_eod_auto_orders_for_run_date = AsyncMock(return_value=0)
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         
@@ -300,14 +316,18 @@ class TestEODPipelineE2E:
         sample_eod_ledger,
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.supplier_repo.get_by_id = AsyncMock(return_value=None)
+        service.po_suggestion_repo.list_by_run_date = AsyncMock(return_value=[])
+        service.purchase_order_repo.count_eod_auto_orders_for_run_date = AsyncMock(return_value=0)
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
 
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=MagicMock(result_snapshot={"version": 1, "aggregated": {}}))
         service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
         service.ledger_repo.reset = AsyncMock()
         service.ledger_repo.mark_running = AsyncMock()
         service.ledger_repo.finalize = AsyncMock()
-        service._stage_sales_deduction = AsyncMock(return_value=0)
+        service._stage_sales_deduction = AsyncMock(side_effect=lambda *_: setattr(sample_eod_ledger, "sales_deducted", True) or 0)
         service._stage_spoilage = AsyncMock()
         service._stage_forecast = AsyncMock(return_value={})
         service._stage_reorder = AsyncMock(return_value=0)
@@ -354,8 +374,12 @@ class TestEODPipelineE2E:
     ):
         """Test EOD pipeline handles errors and triggers rollback."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.supplier_repo.get_by_id = AsyncMock(return_value=None)
+        service.po_suggestion_repo.list_by_run_date = AsyncMock(return_value=[])
+        service.purchase_order_repo.count_eod_auto_orders_for_run_date = AsyncMock(return_value=0)
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=MagicMock(result_snapshot={"version": 1, "aggregated": {}}))
         service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
         service.ledger_repo.mark_running = AsyncMock()
         
@@ -387,12 +411,16 @@ class TestEODPipelineE2E:
     ):
         """Test EOD pipeline tracks timing for each stage."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.supplier_repo.get_by_id = AsyncMock(return_value=None)
+        service.po_suggestion_repo.list_by_run_date = AsyncMock(return_value=[])
+        service.purchase_order_repo.count_eod_auto_orders_for_run_date = AsyncMock(return_value=0)
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         service.inventory_lot_repo.get_expired_available_lots = AsyncMock(return_value=[])
         
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=MagicMock(result_snapshot={"version": 1, "aggregated": {}}))
         service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
         service.ledger_repo.mark_running = AsyncMock()
-        service.ledger_repo.mark_stage_complete = AsyncMock()
+        service.ledger_repo.mark_stage_complete = AsyncMock(side_effect=complete_stage)
         service.ledger_repo.finalize = AsyncMock()
         
         # Minimal mocks
@@ -439,6 +467,7 @@ class TestEODPipelineBasicTier:
         """Test EOD pipeline for Basic tier runs minimal forecasting only."""
         service = EODService(mock_db_session, restaurant_id, "basic")
         
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=MagicMock(result_snapshot={"version": 1, "aggregated": {}}))
         service.ledger_repo.get_or_create = AsyncMock(return_value=sample_eod_ledger)
         service.ledger_repo.mark_running = AsyncMock()
         service.ledger_repo.finalize = AsyncMock()

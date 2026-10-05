@@ -124,7 +124,7 @@ export function usePrepLogs(params: PrepLogParams = {}) {
 
   // Group by date
   const logsByDate = (logsQuery.data ?? []).reduce((acc, log) => {
-    const date = log.prepped_at.split('T')[0];
+    const date = (log.prepped_at || log.prep_date).split('T')[0];
     if (!acc[date]) acc[date] = [];
     acc[date].push(log);
     return acc;

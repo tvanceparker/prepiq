@@ -7,6 +7,7 @@ All related Pydantic models are defined here to align with the route filename `m
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from typing import Optional, List, Literal
 from decimal import Decimal
+from datetime import date
 
 
 RecipeComponentType = Literal["ingredient", "batch", "recipe"]
@@ -217,6 +218,7 @@ class IngredientSupplierBase(BaseModel):
     cost_per_unit: float
     lead_time_days: int
     review_period_days: Optional[int] = None
+    order_schedule_anchor_date: Optional[date] = None
     order_schedule_type: Optional[OrderScheduleType] = None
     allowed_order_days: Optional[List[WeekdayCode]] = None
     allowed_delivery_days: Optional[List[WeekdayCode]] = None
@@ -227,7 +229,7 @@ class IngredientSupplierBase(BaseModel):
     preferred: Optional[bool] = False
     contract_start_date: Optional[str] = None
     contract_end_date: Optional[str] = None
-    min_order_quantity: Optional[int] = None
+    min_order_quantity: Optional[Decimal] = None
     supplier_priority: Optional[int] = None
     pack_size: Optional[int] = None
     quantity_per_pack_item: Optional[float] = None

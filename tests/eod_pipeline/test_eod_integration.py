@@ -25,6 +25,7 @@ class TestEODPipelineIntegration:
         restaurant_id,
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         ledger = SimpleNamespace(reorder_completed=False, forecast_completed=True)
         ingredient_forecast = {
             1001: {
@@ -92,6 +93,7 @@ class TestEODPipelineIntegration:
         restaurant_id,
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         ledger = SimpleNamespace(reorder_completed=False, forecast_completed=True)
         ingredient_forecast = {
             1002: {
@@ -140,6 +142,7 @@ class TestEODPipelineIntegration:
     ):
         """Test EOD service properly invokes forecasting engine."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
         service.inventory_helper.is_real_time_enabled = AsyncMock(return_value=False)
@@ -242,6 +245,7 @@ class TestEODPipelineIntegration:
         self, mock_db_session, restaurant_id, sample_suppliers
     ):
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         supplier = sample_suppliers[0]
         ingredient_forecast = {
             1001: {
@@ -327,7 +331,7 @@ class TestEODPipelineIntegration:
             "manage_alerts",
         }
         service.reorder_engine.build_explanation_payload.assert_called_once()
-        assert result[0]["explanation"] == {"summary": "ok"}
+        assert result[0]["explanation"]["summary"] == "ok"
 
     @pytest.mark.asyncio
     async def test_inventory_stats_to_reorder_engine_integration(
@@ -336,6 +340,7 @@ class TestEODPipelineIntegration:
         """Test inventory stats service provides data to reorder engine."""
         stats_service = InventoryStatsService(mock_db_session, restaurant_id, "master")
         reorder_engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        reorder_engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
         reorder_engine.stats_service = stats_service
         
         # Mock inventory stats data
@@ -357,6 +362,7 @@ class TestEODPipelineIntegration:
             return_value=MagicMock(
                 abc_class="A",
                 name="Test Ingredient",
+                unit="lb",
                 policy_type="stable_stocked",
                 policy_assignment_mode="manual",
                 target_service_level=0.95,
@@ -398,6 +404,7 @@ class TestEODPipelineIntegration:
     ):
         """Test sales aggregation output feeds into inventory deduction."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         
         # Mock sales aggregation
         service.sales_repo.get_by_date = AsyncMock(return_value=sample_sales_data[:1])
@@ -444,6 +451,7 @@ class TestEODPipelineIntegration:
     ):
         """Test PO suggestions flow through to database writes."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         
         # Setup PO suggestions
         service._purchase_order_suggestions = [
@@ -491,6 +499,7 @@ class TestEODPipelineDataFlow:
     ):
         """Test complete flow from forecast generation to PO creation."""
         service = EODService(mock_db_session, restaurant_id, "master")
+        service.forecast_run_ledger_repo.get_one_by = AsyncMock(return_value=None)
         service.reorder_engine.stats_service = mock_inventory_stats
         
         # Step 1: Generate forecast
@@ -578,6 +587,7 @@ class TestEODPipelineDataFlow:
     ):
         """Test ABC classification remains visible without hardcoded quantity buffers."""
         reorder_engine = ReorderForecastEngine(mock_db_session, restaurant_id, "master")
+        reorder_engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
         reorder_engine.stats_service = mock_inventory_stats
         reorder_engine.alert_repo = AsyncMock()
         

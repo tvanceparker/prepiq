@@ -1,3 +1,4 @@
+import type { Recipe } from '../interfaces/menu';
 import { get, post, put, patch, del } from './index';
 
 export const getMenuItems = () => get('/menu/get_menu_items');
@@ -12,8 +13,8 @@ export const getAllIngredients = () => get('/menu/ingredients/get_all_ingredient
 export const getIngredientsWithSuppliers = () => get('/menu/ingredients/with-suppliers');
 export const upsertIngredient = (data: any) => post('/menu/ingredients/upsert', data);
 
-export const getRecipes = () => get('/menu/recipes/get_recipes');
-export const getRecipesWithIngredients = () => get('/menu/recipes_with_ingredients');
+export const getRecipes = (): Promise<Recipe[]> => get('/menu/recipes/get_recipes');
+export const getRecipesWithIngredients = (): Promise<Recipe[]> => get('/menu/recipes_with_ingredients');
 export const createRecipeWithIngredients = (data: any) => post('/menu/recipes', data);
 export const updateRecipeWithIngredients = (recipeId: number | string, data: any) =>
   patch(`/menu/recipes/${recipeId}`, data);

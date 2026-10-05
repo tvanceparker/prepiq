@@ -17,9 +17,9 @@ class PrepSchedule(Base):
         Integer, ForeignKey("batch_recipes.batch_recipe_id"), nullable=False
     )
     prep_date = Column(Date, nullable=False)
-    quantity_needed = Column(DECIMAL(10, 2))
-    quantity_prepped = Column(DECIMAL(10, 2))
-    prep_batch_count = Column(DECIMAL(10, 2))
+    quantity_needed = Column(DECIMAL(16, 6))
+    quantity_prepped = Column(DECIMAL(16, 6))
+    prep_batch_count = Column(DECIMAL(16, 6))
     prep_time_minutes_estimated = Column(Integer)
     prep_time_minutes_actual = Column(Integer)
     assigned_employee_id = Column(Integer, ForeignKey("employees.employee_id"))

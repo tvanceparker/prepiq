@@ -1,6 +1,12 @@
 export type InventoryDeductionMode = 'eod' | 'real_time';
 
+export type SalesObservationStatus = 'complete' | 'closed' | 'missing' | 'stockout' | 'unavailable';
 export interface RestaurantSettings {
+  settings?: {
+    sales_history_coverage?: { start_date: string; end_date: string };
+    sales_observations?: Record<string, SalesObservationStatus>;
+    [key: string]: unknown;
+  };
   forecast_length: number;
   timezone?: string | null;
   eod_run_when_closed: boolean;

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -35,7 +35,7 @@ class ReorderPolicyMathHelper:
         effective_shelf_life_days = demand_context.get("effective_shelf_life_days")
         if not effective_shelf_life_days:
             return 0
-        protection_window_days = int(demand_context.get("uncapped_coverage_days") or 0)
+        protection_window_days = int(demand_context.get("post_delivery_days") or demand_context.get("uncapped_coverage_days") or 0)
         if protection_window_days <= 0:
             protection_window_days = int(effective_shelf_life_days)
         return max(
@@ -56,9 +56,9 @@ class ReorderPolicyMathHelper:
         if forecast_use <= 0 or usable_window_days <= 0:
             return Decimal("0.00")
         average_daily_demand = (forecast_use / Decimal(str(usable_window_days))).quantize(
-            Decimal("0.01")
+            Decimal("0.000001")
         )
-        return min(average_daily_demand, forecast_use).quantize(Decimal("0.01"))
+        return min(average_daily_demand, forecast_use).quantize(Decimal("0.000001"))
 
     def resolve_fresh_spoilage_cap(
         self,
@@ -80,14 +80,14 @@ class ReorderPolicyMathHelper:
         freshness_buffer = max(
             base_freshness_buffer - min(historical_spoilage_rate, base_freshness_buffer),
             Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
         shelf_life_demand = self.engine._sum_forecast_window(
             daily_forecast,
             start_date=as_of_date,
             window_days=int(effective_shelf_life_days),
         )
         return (shelf_life_demand * (Decimal("1.00") + freshness_buffer)).quantize(
-            Decimal("0.01")
+            Decimal("0.000001")
         )
 
     def build_fresh_perishable_decision(
@@ -112,7 +112,7 @@ class ReorderPolicyMathHelper:
 
         forecast_use = self.engine._sum_forecast_window(
             daily_forecast,
-            start_date=as_of_date,
+            start_date=demand_context.get("arrival_date", as_of_date),
             window_days=usable_window_days,
         )
         perishable_reserve = self.compute_perishable_reserve(
@@ -120,19 +120,20 @@ class ReorderPolicyMathHelper:
             usable_window_days=usable_window_days,
         )
         inventory_position = inventory_position_context["inventory_position"]
-        target_stock = (forecast_use + perishable_reserve).quantize(Decimal("0.01"))
+        target_stock = (self.engine._to_decimal(demand_context.get("lead_demand")) + forecast_use + perishable_reserve).quantize(Decimal("0.000001"))
         raw_order_quantity = max(
             target_stock - inventory_position,
             Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
         spoilage_cap_quantity = self.resolve_fresh_spoilage_cap(
             daily_forecast=daily_forecast,
             effective_shelf_life_days=demand_context.get("effective_shelf_life_days"),
             supplier=supplier,
-            as_of_date=as_of_date,
+            as_of_date=demand_context.get("arrival_date", as_of_date),
         )
+        raw_order_quantity = max(raw_order_quantity, demand_context.get("post_delivery_shortfall", Decimal("0")))
         policy_capped_quantity = min(raw_order_quantity, spoilage_cap_quantity).quantize(
-            Decimal("0.01")
+            Decimal("0.000001")
         )
         protection_window_days = int(demand_context.get("uncapped_coverage_days") or 0)
         return {
@@ -149,7 +150,7 @@ class ReorderPolicyMathHelper:
             "forecast_use": forecast_use,
             "spoilage_cap_quantity": spoilage_cap_quantity,
             "reserve_type": "perishable_reserve",
-            "coverage_days": usable_window_days,
+            "coverage_days": int(demand_context.get("effective_lead_days") or 0) + usable_window_days,
             "coverage_capped_by_shelf_life": bool(
                 protection_window_days and usable_window_days < protection_window_days
             ),
@@ -188,9 +189,9 @@ class ReorderPolicyMathHelper:
             lead_time=int(demand_context.get("effective_lead_days") or 0),
             service_level_z=service_level_z,
         )
-        reorder_point = (lead_demand + safety_stock).quantize(Decimal("0.01"))
+        reorder_point = (lead_demand + safety_stock).quantize(Decimal("0.000001"))
         reorder_target = (protection_window_demand + safety_stock).quantize(
-            Decimal("0.01")
+            Decimal("0.000001")
         )
         inventory_position = inventory_position_context["inventory_position"]
         trigger_met = inventory_position <= reorder_point
@@ -198,15 +199,15 @@ class ReorderPolicyMathHelper:
             max(reorder_target - inventory_position, Decimal("0.00"))
             if trigger_met
             else Decimal("0.00")
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
         return {
             "reorder_point": reorder_point,
             "reorder_target": reorder_target,
             "raw_order_quantity": raw_order_quantity,
             "policy_capped_quantity": raw_order_quantity,
             "policy_safe_quantity": raw_order_quantity,
-            "policy_buffer_quantity": safety_stock.quantize(Decimal("0.01")),
-            "safety_stock": safety_stock.quantize(Decimal("0.01")),
+            "policy_buffer_quantity": safety_stock.quantize(Decimal("0.000001")),
+            "safety_stock": safety_stock.quantize(Decimal("0.000001")),
             "trigger_met": trigger_met,
             "reorder_method": "continuous_review",
             "reserve_type": "stable_safety_stock",
@@ -273,9 +274,9 @@ class ReorderPolicyMathHelper:
         average_daily_demand = self.engine._to_decimal(demand_context.get("average_daily_demand"))
         daily_peak_quantity = self.engine._to_decimal(demand_context.get("max_daily_demand"))
         menu_guard_quantity = min(average_daily_demand, daily_peak_quantity).quantize(
-            Decimal("0.01")
+            Decimal("0.000001")
         )
-        batch_guard_quantity = daily_peak_quantity.quantize(Decimal("0.01"))
+        batch_guard_quantity = daily_peak_quantity.quantize(Decimal("0.000001"))
         dependency_mode = dependency_context.get("dependency_mode")
 
         if dependency_mode == "batch_only":
@@ -284,7 +285,7 @@ class ReorderPolicyMathHelper:
             recipe_guard_quantity = max(
                 menu_guard_quantity,
                 batch_guard_quantity,
-            ).quantize(Decimal("0.01"))
+            ).quantize(Decimal("0.000001"))
         else:
             recipe_guard_quantity = menu_guard_quantity
 
@@ -330,12 +331,12 @@ class ReorderPolicyMathHelper:
 
         inventory_position = inventory_position_context["inventory_position"]
         target_stock = (net_requirement_quantity + recipe_guard_quantity).quantize(
-            Decimal("0.01")
+            Decimal("0.000001")
         )
         raw_order_quantity = max(
             target_stock - inventory_position,
             Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
 
         return {
             "reorder_point": net_requirement_quantity,
@@ -379,7 +380,7 @@ class ReorderPolicyMathHelper:
             start_date=as_of_date,
             window_days=protection_window_days,
         )
-        positive_points = [(day, qty) for day, qty in forecast_points if qty > 0]
+        positive_points = [(day, qty) for day, qty in forecast_points if qty > 0 and day >= demand_context.get("arrival_date", as_of_date)]
         event_spacing_days = [
             (positive_points[index][0] - positive_points[index - 1][0]).days
             for index in range(1, len(positive_points))
@@ -414,7 +415,7 @@ class ReorderPolicyMathHelper:
         return min(
             average_daily_demand,
             peak_delta if peak_delta > 0 else average_daily_demand,
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
 
     def build_intermittent_review_flags(
         self,
@@ -433,7 +434,7 @@ class ReorderPolicyMathHelper:
             else:
                 materially_inflated = (
                     final_quantity >= (policy_safe_quantity * Decimal("1.50")).quantize(
-                        Decimal("0.01")
+                        Decimal("0.000001")
                     )
                     or (final_quantity - policy_safe_quantity) >= Decimal("1.00")
                 )
@@ -483,12 +484,12 @@ class ReorderPolicyMathHelper:
         )
         inventory_position = inventory_position_context["inventory_position"]
         target_stock = (trigger_quantity + sparse_guard_quantity).quantize(
-            Decimal("0.01")
+            Decimal("0.000001")
         )
         raw_order_quantity = max(
             target_stock - inventory_position,
             Decimal("0.00"),
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.000001"))
 
         return {
             "reorder_point": trigger_quantity,

@@ -15,6 +15,7 @@ async def test_calculate_safety_stock():
     stats_service_mock.get_std_dev_usage = AsyncMock(return_value=Decimal("2.5"))
 
     engine = ReorderForecastEngine(db=None, restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.stats_service = stats_service_mock
 
     result = await engine.calculate_safety_stock(
@@ -32,6 +33,7 @@ async def test_classify_abc_item_defaults_to_c():
     )
 
     engine = ReorderForecastEngine(db=None, restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.ingredient_repo = ingredient_repo_mock
 
     result = await engine.classify_abc_item(ingredient_id=1)
@@ -41,6 +43,7 @@ async def test_classify_abc_item_defaults_to_c():
 @pytest.mark.asyncio
 async def test_build_reorder_decision_recipe_dependent_keeps_eod_facing_entrypoint_compatible():
     engine = ReorderForecastEngine(db=None, restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=type(

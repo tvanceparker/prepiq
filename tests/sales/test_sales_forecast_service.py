@@ -166,10 +166,10 @@ class TestSalesForecastService:
 
         result = await service.get_forecast_state()
 
-    assert result["forecast_status"] == "ready"
-    assert result["forecast_stale"] is False
+        assert result["forecast_status"] == "ready"
+        assert result["forecast_stale"] is False
         assert result["forecast_authority"] == "finalized_eod"
-    assert result["forecast_usage_action"] == "allow"
+        assert result["forecast_usage_action"] == "allow"
 
     async def test_get_forecast_state_degraded(self, service):
         service.restaurant_repo.get_by_id = AsyncMock(

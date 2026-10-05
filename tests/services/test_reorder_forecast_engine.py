@@ -23,6 +23,7 @@ class DummyIngredient:
     ):
         self.ingredient_id = ingredient_id
         self.unit_cost = unit_cost
+        self.unit = "lb"
         self.abc_class = abc_class
         self.name = f"Ingredient {ingredient_id}"
         self.category = category
@@ -37,6 +38,7 @@ class DummyIngredient:
 @pytest.mark.asyncio
 async def test_classify_abc_item_uses_cache(monkeypatch):
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
 
     ingredient = DummyIngredient(ingredient_id=42, unit_cost=Decimal("1.00"), abc_class="B")
     engine.ingredient_repo.get_by_id = AsyncMock(return_value=ingredient)
@@ -54,6 +56,7 @@ async def test_classify_abc_item_uses_cache(monkeypatch):
 @pytest.mark.asyncio
 async def test_classify_all_updates_only_changed_items(monkeypatch):
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
 
     ingredients = [
         DummyIngredient(ingredient_id=1, unit_cost=Decimal("2.00"), abc_class="B"),
@@ -70,6 +73,7 @@ async def test_classify_all_updates_only_changed_items(monkeypatch):
         ]
     )
     engine.ingredient_repo.update = AsyncMock()
+    engine.ingredient_supplier_repo.get_preferred_or_lowest_priority_supplier = AsyncMock(return_value=SimpleNamespace(cost_per_unit=Decimal("2"), unit="lb"))
 
     await engine.classify_all_ingredients(days=30)
 
@@ -90,6 +94,7 @@ async def test_classify_all_updates_only_changed_items(monkeypatch):
 @pytest.mark.asyncio
 async def test_choose_supplier_option_prefers_best_cadence_when_configured():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
 
     slower_preferred = SimpleNamespace(
         supplier_id=10,
@@ -109,7 +114,7 @@ async def test_choose_supplier_option_prefers_best_cadence_when_configured():
         preferred=True,
         supplier_priority=5,
         cost_per_unit=Decimal("3.50"),
-        lead_time_days=2,
+        lead_time_days=1,
         review_period_days=7,
         order_schedule_type="fixed_days_of_week",
         allowed_order_days=["thu"],
@@ -132,6 +137,7 @@ async def test_choose_supplier_option_prefers_best_cadence_when_configured():
 @pytest.mark.asyncio
 async def test_build_reorder_decision_from_forecast_uses_cadence_window_and_shelf_life_cap():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=DummyIngredient(
@@ -167,6 +173,7 @@ async def test_build_reorder_decision_from_forecast_uses_cadence_window_and_shel
     )
 
     supplier = SimpleNamespace(
+        unit="lb",
         supplier_id=501,
         preferred=True,
         supplier_priority=1,
@@ -174,6 +181,7 @@ async def test_build_reorder_decision_from_forecast_uses_cadence_window_and_shel
         lead_time_days=2,
         review_period_days=4,
         order_schedule_type="every_n_days",
+        order_schedule_anchor_date=date(2026, 4, 13),
         allowed_order_days=None,
         allowed_delivery_days=None,
         cadence_source="manual",
@@ -204,18 +212,18 @@ async def test_build_reorder_decision_from_forecast_uses_cadence_window_and_shel
     assert decision["policy_type"] == "fresh_perishable"
     assert decision["policy_assignment_mode"] == "manual"
     assert decision["service_level_source"] == "ingredient_target"
-    assert decision["effective_lead_days"] == 6
-    assert decision["protection_window_days"] == 10
-    assert decision["coverage_days"] == 3
+    assert decision["effective_lead_days"] == 4
+    assert decision["protection_window_days"] == 8
+    assert decision["coverage_days"] == 7
     assert decision["coverage_capped_by_shelf_life"] is True
     assert decision["inventory_source"] == "usable_lot_projection"
     assert decision["total_stock"] == Decimal("2.50")
     assert decision["excluded_expiring_stock"] == Decimal("1.50")
     assert decision["projected_waste_quantity"] == Decimal("1.50")
     assert decision["fefo_applied"] is True
-    assert decision["lead_demand"] == Decimal("3.00")
-    assert decision["shelf_demand"] == Decimal("0.00")
-    assert decision["reorder_point"] == Decimal("4.00")
+    assert decision["lead_demand"] == Decimal("1.00")
+    assert decision["shelf_demand"] == Decimal("3.00")
+    assert decision["reorder_point"] == Decimal("5.00")
     assert decision["demand_source"] == "forecast_daily_breakdown"
     assert decision["reorder_method"] == "perishable_window"
     assert decision["policy_buffer_quantity"] == Decimal("1.00")
@@ -224,29 +232,30 @@ async def test_build_reorder_decision_from_forecast_uses_cadence_window_and_shel
     assert decision["inventory_position"] == Decimal("1.00")
     assert decision["inbound_quantity"] == Decimal("0.00")
     assert decision["backorder_quantity"] == Decimal("0.00")
-    assert "inbound quantity unavailable; assumed zero" in decision["assumption_warnings"]
+    assert "inbound quantity unavailable; assumed zero" not in decision["assumption_warnings"]
     assert "backorders unavailable; assumed zero" in decision["assumption_warnings"]
-    assert decision["spoilage_cap_quantity"] == Decimal("3.00")
-    assert decision["max_target_stock"] == Decimal("3.00")
-    assert decision["max_order_cap"] == Decimal("2.00")
-    assert decision["policy_safe_quantity"] == Decimal("2.00")
-    assert decision["buffered_quantity"] == Decimal("2.00")
+    assert decision["spoilage_cap_quantity"] == Decimal("3.30")
+    assert decision["max_target_stock"] == Decimal("5.00")
+    assert decision["max_order_cap"] == Decimal("4.00")
+    assert decision["policy_safe_quantity"] == Decimal("3.30")
+    assert decision["buffered_quantity"] == Decimal("3.30")
     assert decision["abc_multiplier"] is None
-    assert decision["final_quantity"] == Decimal("2.00")
+    assert decision["final_quantity"] == Decimal("3.30")
 
     usable_inventory_kwargs = engine.stats_service.get_usable_inventory.await_args.kwargs
     assert usable_inventory_kwargs["projection_start_date"] == date(2026, 4, 15)
-    assert usable_inventory_kwargs["usable_until_date"] == date(2026, 4, 17)
+    assert usable_inventory_kwargs["usable_until_date"] == date(2026, 4, 21)
     assert usable_inventory_kwargs["daily_demand_points"] == [
         (date(2026, 4, 15), Decimal("1.00")),
         (date(2026, 4, 16), Decimal("1.00")),
-        (date(2026, 4, 17), Decimal("1.00")),
+        *[(date(2026, 4, 15) + timedelta(days=i), Decimal("1.00")) for i in range(2, 7)],
     ]
 
 
 @pytest.mark.asyncio
 async def test_build_reorder_decision_preserves_public_payload_contract():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=DummyIngredient(
@@ -359,6 +368,7 @@ async def test_build_reorder_decision_preserves_public_payload_contract():
 @pytest.mark.asyncio
 async def test_bootstrap_missing_policy_config_assigns_fresh_perishable_for_short_shelf_life():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     ingredient = DummyIngredient(
         ingredient_id=2001,
         unit_cost=Decimal("1.00"),
@@ -410,6 +420,7 @@ async def test_bootstrap_missing_policy_config_assigns_fresh_perishable_for_shor
 @pytest.mark.asyncio
 async def test_bootstrap_missing_policy_config_preserves_existing_manual_policy_type_when_filling_service_level():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     ingredient = DummyIngredient(
         ingredient_id=2002,
         unit_cost=Decimal("1.00"),
@@ -452,6 +463,7 @@ async def test_bootstrap_missing_policy_config_preserves_existing_manual_policy_
 @pytest.mark.asyncio
 async def test_bootstrap_missing_policy_config_skips_complete_manual_policy():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     ingredient = DummyIngredient(
         ingredient_id=2003,
         unit_cost=Decimal("1.00"),
@@ -477,6 +489,7 @@ async def test_bootstrap_missing_policy_config_skips_complete_manual_policy():
 @pytest.mark.asyncio
 async def test_bootstrap_missing_policy_config_prefers_fresh_over_recipe_dependency():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     ingredient = DummyIngredient(
         ingredient_id=2004,
         unit_cost=Decimal("1.00"),
@@ -519,6 +532,7 @@ async def test_bootstrap_missing_policy_config_prefers_fresh_over_recipe_depende
 @pytest.mark.asyncio
 async def test_bootstrap_missing_policy_config_assigns_intermittent_for_sparse_demand():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     ingredient = DummyIngredient(
         ingredient_id=2005,
         unit_cost=Decimal("1.00"),
@@ -560,6 +574,7 @@ async def test_bootstrap_missing_policy_config_assigns_intermittent_for_sparse_d
 @pytest.mark.asyncio
 async def test_build_reorder_decision_without_supplier_uses_shelf_life_window():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=DummyIngredient(
@@ -611,6 +626,7 @@ async def test_build_reorder_decision_without_supplier_uses_shelf_life_window():
 @pytest.mark.asyncio
 async def test_stable_stocked_does_not_reorder_when_inventory_above_reorder_point():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=DummyIngredient(
@@ -664,6 +680,7 @@ async def test_stable_stocked_does_not_reorder_when_inventory_above_reorder_poin
 @pytest.mark.asyncio
 async def test_fresh_perishable_applies_spoilage_cap_before_moq():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=DummyIngredient(
@@ -697,7 +714,7 @@ async def test_fresh_perishable_applies_spoilage_cap_before_moq():
             unit="lb",
             lead_time=0,
             daily_forecast=daily_forecast,
-            supplier=SimpleNamespace(spoilage_rate=None),
+            supplier=SimpleNamespace(unit="lb", spoilage_rate=None),
             as_of_date=date(2026, 4, 15),
             shelf_life_days=3,
             current_stock=Decimal("0.00"),
@@ -706,13 +723,13 @@ async def test_fresh_perishable_applies_spoilage_cap_before_moq():
             manage_alerts=False,
         )
 
-    assert decision["raw_order_quantity"] == Decimal("4.00")
-    assert decision["spoilage_cap_quantity"] == Decimal("3.00")
-    assert decision["max_target_stock"] == Decimal("3.00")
-    assert decision["max_order_cap"] == Decimal("3.00")
-    assert decision["policy_safe_quantity"] == Decimal("3.00")
-    assert decision["buffered_quantity"] == Decimal("3.00")
-    assert decision["final_quantity"] == Decimal("3.00")
+    assert decision["raw_order_quantity"] == Decimal("2.00")
+    assert decision["spoilage_cap_quantity"] == Decimal("3.30")
+    assert decision["max_target_stock"] == Decimal("2.00")
+    assert decision["max_order_cap"] == Decimal("2.00")
+    assert decision["policy_safe_quantity"] == Decimal("2.00")
+    assert decision["buffered_quantity"] == Decimal("2.00")
+    assert decision["final_quantity"] == Decimal("2.00")
     assert decision["moq_review_required"] is True
     assert decision["review_required"] is True
     assert decision["policy_review_warnings"] == [
@@ -723,6 +740,7 @@ async def test_fresh_perishable_applies_spoilage_cap_before_moq():
 @pytest.mark.asyncio
 async def test_recipe_dependent_uses_minimal_topology_guard_without_recomputing_forecast():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=DummyIngredient(
@@ -778,13 +796,13 @@ async def test_recipe_dependent_uses_minimal_topology_guard_without_recomputing_
     assert decision["policy_type"] == "recipe_dependent"
     assert decision["reorder_method"] == "recipe_net_requirement_order_up_to"
     assert decision["recipe_dependency_mode"] == "mixed"
-    assert decision["net_requirement_quantity"] == Decimal("6.00")
-    assert decision["menu_guard_quantity"] == Decimal("3.00")
+    assert decision["net_requirement_quantity"] == Decimal("2.00")
+    assert decision["menu_guard_quantity"] == Decimal("0.583333")
     assert decision["batch_guard_quantity"] == Decimal("4.00")
     assert decision["policy_buffer_quantity"] == Decimal("4.00")
-    assert decision["reorder_point"] == Decimal("6.00")
-    assert decision["reorder_target"] == Decimal("10.00")
-    assert decision["raw_order_quantity"] == Decimal("9.00")
+    assert decision["reorder_point"] == Decimal("2.00")
+    assert decision["reorder_target"] == Decimal("6.00")
+    assert decision["raw_order_quantity"] == Decimal("5.00")
     assert decision["max_target_stock"] == Decimal("6.00")
     assert decision["max_order_cap"] == Decimal("5.00")
     assert decision["policy_safe_quantity"] == Decimal("5.00")
@@ -795,6 +813,7 @@ async def test_recipe_dependent_uses_minimal_topology_guard_without_recomputing_
 @pytest.mark.asyncio
 async def test_build_reorder_decision_dispatches_intermittent_policy_method():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=DummyIngredient(
@@ -856,6 +875,7 @@ async def test_build_reorder_decision_dispatches_intermittent_policy_method():
 @pytest.mark.asyncio
 async def test_intermittent_low_turn_flags_moq_inflation_review():
     engine = ReorderForecastEngine(db=MagicMock(), restaurant_id=1)
+    engine.purchase_order_item_repo.get_confirmed_inbound = AsyncMock(return_value=[])
     engine.alert_repo = AsyncMock()
     engine.ingredient_repo.get_by_id = AsyncMock(
         return_value=DummyIngredient(
@@ -904,11 +924,11 @@ async def test_intermittent_low_turn_flags_moq_inflation_review():
 
     assert decision["demand_sparsity_classification"] == "repeated_sparse"
     assert decision["event_spacing_days"] == [2]
-    assert decision["policy_buffer_quantity"] == Decimal("0.40")
-    assert decision["max_target_stock"] == Decimal("4.00")
-    assert decision["max_order_cap"] == Decimal("4.00")
-    assert decision["policy_safe_quantity"] == Decimal("2.40")
-    assert decision["final_quantity"] == Decimal("4.00")
+    assert decision["policy_buffer_quantity"] == Decimal("0.80")
+    assert decision["max_target_stock"] == Decimal("4.80")
+    assert decision["max_order_cap"] == Decimal("4.80")
+    assert decision["policy_safe_quantity"] == Decimal("2.80")
+    assert decision["final_quantity"] == Decimal("4.80")
     assert decision["moq_review_required"] is True
     assert decision["review_required"] is True
     assert "configured MOQ exceeds stock-position cap; review required" in decision[

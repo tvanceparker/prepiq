@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, useTheme, Card, Button, FAB, Snackbar, ActivityIndicator } from 'react-native-paper';
 import { useRecipes, useIngredients } from '../../hooks/useMenu';
-import { Recipe } from '../../interfaces/menu';
+import { Recipe, RecipeCreate } from '../../interfaces/menu';
 import RecipeCard from './components/RecipeCard';
 import RecipeDialog from './components/RecipeDialog';
 
@@ -33,11 +33,7 @@ export default function RecipeEditor() {
     setDialogOpen(true);
   };
 
-  const handleSave = async (data: {
-    name: string;
-    description?: string;
-    ingredients: { ingredient_id: number; quantity: number; unit: string }[];
-  }) => {
+  const handleSave = async (data: RecipeCreate) => {
     setSaving(true);
     try {
       const payload = {

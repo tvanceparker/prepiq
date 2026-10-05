@@ -30,7 +30,7 @@ class RecipeIngredient(Base):
         Enum(IngredientType), nullable=False, default=IngredientType.ingredient
     )
 
-    quantity_used = Column(DECIMAL(10, 2), nullable=False)
+    quantity_used = Column(DECIMAL(16, 6), nullable=False)
     unit = Column(String(20))
     fallback_ingredient_id = Column(Integer)
 

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, Date, DateTime, Boolean, JSON, String, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, Date, DateTime, Boolean, JSON, String, UniqueConstraint
 from datetime import datetime
 from app.db.session import Base
 
@@ -10,7 +10,7 @@ class EODRunLedger(Base):
         UniqueConstraint("restaurant_id", "run_date", name="uq_eod_run_ledger_restaurant_date"),
     )
 
-    eod_ledger_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    eod_ledger_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     restaurant_id = Column(BigInteger, index=True, nullable=False)
     run_date = Column(Date, index=True, nullable=False)
 

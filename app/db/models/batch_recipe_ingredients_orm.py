@@ -27,7 +27,7 @@ class BatchRecipeIngredient(Base):
     ingredient_type = Column(
         Enum(BatchIngredientType), nullable=False, default=BatchIngredientType.ingredient
     )
-    quantity_used = Column(DECIMAL(10, 2))
+    quantity_used = Column(DECIMAL(16, 6))
     unit = Column(String(20))
 
     # Relationships

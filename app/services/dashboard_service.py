@@ -640,6 +640,7 @@ class DashboardService:
         menu_item_cache_by_id = {}
         menu_item_cache_by_name = {}
 
+        restaurant = None
         for parsed in parsed_rows:
             row_number = parsed["row_number"]
             row = parsed["row"]
@@ -764,7 +765,15 @@ class DashboardService:
                 continue
 
             seen_rows.add(duplicate_key)
-            sale_date = sale_time.date()
+            if sale_time.tzinfo is not None:
+                from app.utils.business_date import trading_date
+                from datetime import timezone
+                if restaurant is None:
+                    restaurant = await self.restaurant_repo.get_by_id(self.restaurant_id)
+                sale_date = trading_date(sale_time, restaurant)
+                sale_time = sale_time.astimezone(timezone.utc).replace(tzinfo=None)
+            else:
+                sale_date = sale_time.date()
             date_channels.setdefault(sale_date, set()).add(sales_channel)
             valid_sales_rows.append(
                 {
@@ -772,6 +781,7 @@ class DashboardService:
                     "quantity_sold": quantity,
                     "sales_channel": sales_channel,
                     "sale_timestamp": sale_time,
+                    "business_date": sale_date,
                 }
             )
 

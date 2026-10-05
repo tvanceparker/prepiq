@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Box,
   Paper,
@@ -36,6 +36,7 @@ const wasteTypeColors: Record<string, 'error' | 'warning'> = {
 };
 
 export default function PrepWasteLogs() {
+  const wasteRequestKey = useRef<string | null>(null);
   const qc = useQueryClient();
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -90,6 +91,7 @@ export default function PrepWasteLogs() {
   });
 
   const resetForm = () => {
+    wasteRequestKey.current = null;
     setSelectedIngredient(null);
     setSelectedBatch(null);
     setQuantity('');
@@ -106,6 +108,7 @@ export default function PrepWasteLogs() {
     }
 
     const data: CreateWasteLogRequest = {
+      request_key: wasteRequestKey.current || (wasteRequestKey.current = crypto.randomUUID()),
       quantity_wasted: Number(quantity),
       unit: unit || selectedIngredient?.unit || selectedBatch?.yield_unit || 'unit',
       waste_type: wasteType,

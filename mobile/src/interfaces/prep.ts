@@ -154,15 +154,18 @@ export interface WasteLogParams {
 }
 
 export interface WasteLog {
+  usage_id: number;
+  waste_date: string;
+  cost_impact?: number | null;
   waste_log_id: number;
   restaurant_id: number;
-  ingredient_id?: number;
+  ingredient_id?: number | null;
   ingredient_name?: string;
-  batch_recipe_id?: number;
+  batch_recipe_id?: number | null;
   batch_recipe_name?: string;
   quantity_wasted: number;
   unit: string;
-  waste_type: 'expired' | 'spoiled' | 'overproduction' | 'damage' | 'other';
+  waste_type: 'waste' | 'spoilage';
   reason: string;
   logged_by_employee_id: number;
   logged_by_employee_name?: string;
@@ -171,11 +174,33 @@ export interface WasteLog {
 }
 
 export interface WasteLogCreate {
+  request_key?: string;
   ingredient_id?: number;
   batch_recipe_id?: number;
   quantity_wasted: number;
   unit: string;
-  waste_type: 'expired' | 'spoiled' | 'overproduction' | 'damage' | 'other';
+  waste_type: 'waste' | 'spoilage';
   reason: string;
   notes?: string;
+}
+
+
+export interface PrepRecommendations {
+  run_date: string | null;
+  as_of_date?: string;
+  status: 'ready' | 'review' | 'missing';
+  review_required?: boolean;
+  warnings?: string[];
+  incomplete_preps?: { prep_id: number; message: string }[];
+  batches: {
+    forecast_date: string;
+    batch_recipe_id: number;
+    gross_quantity: number;
+    usable_stock: number;
+    scheduled_quantity: number;
+    additional_quantity: number;
+    additional_batch_count: number;
+    unit: string;
+    review_required: boolean;
+  }[];
 }

@@ -71,6 +71,8 @@ UNIT_CONVERSIONS = {
 
 
 def normalize_unit(unit: str) -> str:
+    if not isinstance(unit, str) or not unit.strip():
+        raise ValueError("A nonempty unit is required")
     unit = unit.strip().lower()
     return UNIT_ALIASES.get(unit, unit)
 
@@ -82,7 +84,6 @@ def convert_unit(
     Converts quantity from one unit to another using predefined conversion rates.
     Raises ValueError if conversion is unsupported.
     """
-    print(f"convert_unit() called with quantity={quantity}, from_unit={from_unit}, to_unit={to_unit}")
     quantity = Decimal(str(quantity))
     from_unit = normalize_unit(from_unit)
     to_unit = normalize_unit(to_unit)
@@ -94,7 +95,18 @@ def convert_unit(
     if key in UNIT_CONVERSIONS:
         return quantity * UNIT_CONVERSIONS[key]
 
-    # print(f"Unsupported unit conversion attempt: {from_unit} → {to_unit} (quantity: {quantity})")
+    # Convert through a canonical physical dimension; never cross mass/volume
+    # without an ingredient-specific density.
+    dimensions = {
+        "g": ("mass", Decimal("1")), "kg": ("mass", Decimal("1000")),
+        "lb": ("mass", Decimal("453.592")), "oz": ("mass", Decimal("28.3495")),
+        "ml": ("volume", Decimal("1")), "liter": ("volume", Decimal("1000")),
+        "gallon": ("volume", Decimal("3785.41")), "cup": ("volume", Decimal("240")),
+        "tbsp": ("volume", Decimal("15")), "tsp": ("volume", Decimal("5")),
+    }
+    source, target = dimensions.get(from_unit), dimensions.get(to_unit)
+    if source and target and source[0] == target[0]:
+        return quantity * source[1] / target[1]
     raise ValueError(f"Unsupported unit conversion: {from_unit} → {to_unit}")
 
 

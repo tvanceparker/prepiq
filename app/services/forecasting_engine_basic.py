@@ -826,68 +826,14 @@ class ForecastingEngineBasic:
         df = df.asfreq("D", fill_value=0)
         return df.to_frame()  # Ensure DataFrame format, not Series
     @log_method("Run Forecasting Engine (Basic)")
-    async def run(
-        self,
-        forecast_date: date,
-        horizon_days: Optional[int] = None,
-        threshold_mape: float = 0.20,
-        threshold_r2: float = 0.7
-    ) -> Dict[str, Any]:
-        """
-        Main pipeline:
-        - Ensure sales data exists
-        - Evaluate and record forecast accuracy
-        - Loop through active menu items
-        - Check model accuracy
-        - Retrain if necessary
-        - Forecast next N days based on forecast_length
-        - Save to DB
-        """
-        # 0. Get forecast_length from restaurant settings if not passed
+    async def run(self, forecast_date: date, horizon_days=None,
+                  threshold_mape=0.20, threshold_r2=0.7):
+        """Basic shares the canonical date/feature/snapshot contract without ordering."""
+        from app.services.forecasting_engine import ForecastingEngine
         if horizon_days is None:
             settings = await self.restaurant_repo.get_settings()
-            forecast_length = settings.get("forecast_length") or 14
-            horizon_days = forecast_length
-
-       # ✅ Use optimized existence check
-        sales_exist = await self.sales_repo.sales_exist_for_dates([forecast_date])
-        if not sales_exist:
-            msg = f"No sales data found for {forecast_date} for restaurant {self.restaurant_id}"
-            await self._raise_alert(
-                alert_type="MissingSalesData",
-                message=msg,
-                severity="urgent"
-            )
-            logger.error(f"[EOD] {msg}")
-            return
-
-        logger.info(f"Starting Forecasting Pipeline for {forecast_date} for {self.restaurant_id}")
-
-        # 2. Evaluate accuracy of previous forecasts
-        await self.evaluate_and_record_accuracy(forecast_date)
-        await self.evaluate_and_record_daily_forecast_accuracy(forecast_date)
-
-        # 3. Get active menu items
-        menu_items = await self.menu_item_repo.get_active_menu_items()
-
-        for item in menu_items:
-            menu_item_id = item.menu_item_id
-
-            # Decide whether to retrain
-            retrain = await self.should_retrain_model(menu_item_id, threshold_mape, threshold_r2)
-
-            if retrain:
-                model, metrics = await self.train_model(menu_item_id)
-                self.accuracy_metrics[menu_item_id] = metrics
-            else:
-                model = load_model(self.restaurant_id, menu_item_id)
-                if model is None:
-                    continue 
-
-            # Forecast
-            forecast_data = await self.generate_forecast(menu_item_id, horizon_days)
-
-            # Save forecast
-            confidence_score = self.accuracy_metrics.get(menu_item_id, {}).get("r2", 0.0)
-            await self.write_forecast_results(menu_item_id, forecast_data, confidence_score)
-
+            horizon_days = int(settings.get("forecast_length") or 14)
+        engine = ForecastingEngine(self.db, self.restaurant_id, "basic")
+        return await engine.run_forecasting_pipeline(forecast_date=forecast_date,
+            horizon_days=horizon_days, reorder_horizon_days=horizon_days,
+            threshold_mape=threshold_mape, threshold_r2=threshold_r2, commit=False)

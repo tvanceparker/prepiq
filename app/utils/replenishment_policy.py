@@ -253,6 +253,9 @@ def normalize_ingredient_policy_settings(payload: dict) -> dict:
 def normalize_supplier_cadence_settings(payload: dict) -> dict:
     normalized: dict = {}
 
+    if "order_schedule_anchor_date" in payload:
+        anchor = payload.get("order_schedule_anchor_date")
+        normalized["order_schedule_anchor_date"] = date.fromisoformat(anchor) if isinstance(anchor, str) else anchor
     if "review_period_days" in payload:
         normalized["review_period_days"] = _coerce_optional_int(
             payload.get("review_period_days"),
@@ -331,6 +334,7 @@ def resolve_cadence(
     order_schedule_type: Optional[str] = None,
     allowed_order_days: Optional[Sequence[str] | str] = None,
     allowed_delivery_days: Optional[Sequence[str] | str] = None,
+    order_schedule_anchor_date: Optional[date] = None,
 ) -> CadenceResolution:
     today = as_of_date or date.today()
     warnings: list[str] = []
@@ -342,7 +346,7 @@ def resolve_cadence(
     normalized_review_period = _coerce_optional_int(
         review_period_days,
         field_name="review_period_days",
-    ) or 0
+    ) or 1
     normalized_lead_time = max(int(lead_time_days or 0), 0)
 
     if normalized_order_schedule_type is None:
@@ -374,7 +378,15 @@ def resolve_cadence(
             normalized_review_period = max(normalized_review_period, 7)
     elif normalized_order_schedule_type == "every_n_days":
         normalized_review_period = max(normalized_review_period, 1)
-        next_order_date = today + timedelta(days=normalized_review_period)
+        anchor = order_schedule_anchor_date
+        if isinstance(anchor, str):
+            anchor = date.fromisoformat(anchor)
+        if not isinstance(anchor, date):
+            anchor = date(1970, 1, 1)
+            warnings.append("every_n_days uses the fixed 1970-01-01 anchor until an explicit anchor is configured")
+        elapsed = max((today - anchor).days, 0)
+        periods = (elapsed + normalized_review_period - 1) // normalized_review_period
+        next_order_date = anchor + timedelta(days=periods * normalized_review_period)
     else:
         next_order_date = today
 
@@ -384,9 +396,13 @@ def resolve_cadence(
 
     days_until_next_order = max((next_order_date - today).days, 0)
     delivery_gap_days = max((next_delivery_date - next_order_date).days, normalized_lead_time)
-    protection_window_days = (
-        days_until_next_order + delivery_gap_days + normalized_review_period
-    )
+    following_order = (next_order_date + timedelta(days=normalized_review_period))
+    if normalized_order_schedule_type == "fixed_days_of_week":
+        following_order = _next_matching_date(next_order_date + timedelta(days=1), normalized_order_days)
+    following_delivery = following_order + timedelta(days=normalized_lead_time)
+    if normalized_delivery_days:
+        following_delivery = _next_matching_date(following_delivery, normalized_delivery_days)
+    protection_window_days = (following_delivery - today).days
 
     return CadenceResolution(
         order_schedule_type=normalized_order_schedule_type,

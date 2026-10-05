@@ -1,6 +1,8 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useCallback } from "react";
 import {
     getPrepSchedule,
+    getPrepRecommendations,
     createPrepSchedule,
     deletePrepSchedule,
     updatePrepSchedule,
@@ -37,6 +39,7 @@ export function usePrepSchedules(params) {
 
 // Hook to create a prep schedule
 export function useCreatePrepSchedule() {
+    const queryClient = useQueryClient();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
@@ -45,6 +48,7 @@ export function useCreatePrepSchedule() {
         setError(null);
         try {
             const res = await createPrepSchedule(prepData);
+            queryClient.invalidateQueries({ queryKey: ["prep", "recommendations"] });
             return res;
         } catch (err) {
             setError(err);
@@ -59,6 +63,7 @@ export function useCreatePrepSchedule() {
 
 // Hook to update a prep schedule
 export function useUpdatePrepSchedule() {
+    const queryClient = useQueryClient();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
@@ -67,6 +72,7 @@ export function useUpdatePrepSchedule() {
         setError(null);
         try {
             const res = await updatePrepSchedule(prepData);
+            queryClient.invalidateQueries({ queryKey: ["prep", "recommendations"] });
             return res;
         } catch (err) {
             setError(err);
@@ -81,6 +87,7 @@ export function useUpdatePrepSchedule() {
 
 // Hook to delete a prep schedule
 export function useDeletePrepSchedule() {
+    const queryClient = useQueryClient();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
@@ -89,6 +96,7 @@ export function useDeletePrepSchedule() {
         setError(null);
         try {
             const res = await deletePrepSchedule(prep_id);
+            queryClient.invalidateQueries({ queryKey: ["prep", "recommendations"] });
             return res;
         } catch (err) {
             setError(err);
@@ -125,4 +133,9 @@ export function useBatchRecipes() {
     }, [fetchBatchRecipes]);
 
     return { data, loading, error, refetch: fetchBatchRecipes };
+}
+
+
+export function usePrepRecommendations() {
+    return useQuery({ queryKey: ["prep", "recommendations"], queryFn: getPrepRecommendations });
 }

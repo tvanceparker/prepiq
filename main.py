@@ -21,7 +21,6 @@ from app.api.v1 import (
     admin_routes,
     settings_routes,
     alert_routes,
-    orders_routes,
     pos_webhooks,
 )
 from app.api.v1 import pos_mappings_routes
@@ -71,7 +70,8 @@ app.add_middleware(AuthExtractionMiddleware)
 # Include routers after app creation
 app.include_router(pos_webhooks.router, prefix="/api/v1")  # POS webhook routes
 app.include_router(pos_mappings_routes.router, prefix="/api/v1")  # POS mappings routes
-app.include_router(orders_routes.router, prefix="/api/v1")
+# Internal order-entry routes are dormant. External POS ingestion calls the
+# tenant-scoped OrderService directly; v1 does not expose native POS operations.
 # app.include_router(websocket_routes.router)
 app.include_router(dashboard_routes.router, prefix="/api/v1")
 app.include_router(profit_analytic_routes.router, prefix="/api/v1")

@@ -375,7 +375,7 @@ async def test_resolve_manual_inventory_review_flags_clears_all_open_rows_for_it
 @pytest.mark.asyncio
 async def test_set_inventory_current_stock_adds_delta_to_selected_lot(mock_db):
     service = InventoryService(mock_db, 1, 'full', employee_id=7)
-    service.db.begin = MagicMock(return_value=_AsyncBegin())
+    service.db.begin_nested = MagicMock(return_value=_AsyncBegin())
     service.inventory_repo = AsyncMock()
     service.inventory_lot_repo = AsyncMock()
     service.inventory_usage_log_repo = AsyncMock()
@@ -418,7 +418,7 @@ async def test_set_inventory_current_stock_adds_delta_to_selected_lot(mock_db):
 @pytest.mark.asyncio
 async def test_handle_inventory_adjustment_normalizes_manual_addition_to_signed_adjustment(mock_db):
     service = InventoryService(mock_db, 1, 'full', employee_id=7)
-    service.db.begin = MagicMock(return_value=_AsyncBegin())
+    service.db.begin_nested = MagicMock(return_value=_AsyncBegin())
     service.inventory_repo = AsyncMock()
     service.inventory_lot_repo = AsyncMock()
     service.inventory_usage_log_repo = AsyncMock()
@@ -430,12 +430,14 @@ async def test_handle_inventory_adjustment_normalizes_manual_addition_to_signed_
     inventory_item = SimpleNamespace(inventory_id=12, ingredient_id=101, unit='lb')
     lot = SimpleNamespace(
         lot_id=500,
+        inventory_id=12,
         ingredient_id=101,
         unit='lb',
         delivery_date=datetime(2026, 3, 30).date(),
         status=SimpleNamespace(value='available'),
     )
     service.inventory_repo.get_by_id.return_value = inventory_item
+    service.inventory_lot_repo.get_by_id.return_value = lot
     service.inventory_lot_repo.get_inventory_lots_by_inventory_and_restaurant.return_value = [lot]
 
     result = await service.handle_inventory_adjustment(
@@ -458,7 +460,7 @@ async def test_handle_inventory_adjustment_normalizes_manual_addition_to_signed_
 @pytest.mark.asyncio
 async def test_set_inventory_current_stock_removes_delta_fifo(mock_db):
     service = InventoryService(mock_db, 1, 'full', employee_id=7)
-    service.db.begin = MagicMock(return_value=_AsyncBegin())
+    service.db.begin_nested = MagicMock(return_value=_AsyncBegin())
     service.inventory_repo = AsyncMock()
     service.inventory_lot_repo = AsyncMock()
     service.inventory_usage_log_repo = AsyncMock()

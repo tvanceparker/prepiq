@@ -53,7 +53,7 @@ prepiq/
 
 - **Entry**: `main.py` initializes the FastAPI app, loads environment variables (`dotenv.load_dotenv()`), configures logging, CORS, and installs the `AuthExtractionMiddleware`.
 - **Routers**: All REST endpoints live under `app/api/v1/*_routes.py` and are included with prefix `/api/v1`.
-- **WebSockets**: `app.sockets.kitchen_ws` and `app.sockets.waiter_ws` are registered for realtime kitchen/waiter rooms.
+- **WebSockets**: Kitchen/waiter websocket modules remain dormant source; the v1 `main.py` does not register these internal-operations surfaces.
 - **Scheduler**: During the FastAPI lifespan, an `AsyncIOScheduler` schedules `app.utils.eod_runner.run_eod_jobs` every 60 minutes to evaluate End-of-Day tasks.
 
 ### 2.2 Request Flow & Auth
@@ -80,7 +80,7 @@ prepiq/
 
 ### 2.5 Background Processing & Realtime
 
-- **End-of-Day Runner**: `app/utils/eod_runner.py` walks active restaurants, evaluates time zone & operating hours, and ensures `EODService.finalize_end_of_day_summary()` runs exactly once per restaurant per day. Keeps `last_eod_run_date` in sync.
+- **End-of-Day Runner**: `app/utils/eod_runner.py` walks active restaurants, evaluates time zone & operating hours, and retries `EODService.finalize_end_of_day_summary()` by business date. A tenant planning lock serializes runs and committed movement identities prevent duplicate deductions; this is retry-safe orchestration, not an exactly-once delivery promise. Keeps `last_eod_run_date` in sync.
 - **Realtime**: `app/sockets/connection_manager.py` manages connections. Kitchen/waiter rooms follow `kitchen_{restaurant_id}`/`waiter_{restaurant_id}` naming. These realtime/internal-ops surfaces still exist in the repo, but they should not be treated as the default pattern for new v1 product work unless the task explicitly targets them.
 
 ### 2.6 Logging & Monitoring
@@ -92,7 +92,7 @@ prepiq/
 
 - External integrations (e.g., weather) live under `app/integrations/`.
 - Shared utilities (security helpers, conversions, metrics) live in `app/utils/`.
-- Machine learning/forecast logic is inside `app/services/forecasting_engine.py` and related repositories/services. `ForecastingEngine` tracks accuracy, writes predictions, and provides ingredient breakdowns to reorder systems.
+- Machine learning/forecast logic is inside `app/services/forecasting_engine.py` and related repositories/services. `ForecastingEngine` uses the calendar_v1 feature schema, observable-outcome scoring and frozen forecast snapshots. Basic delegates to that canonical pipeline. Shared recipe expansion and `PrepPlanningService` produce date-aware net material demand; reorder projections use FEFO lots and confirmed inbound. See `notes/reorder-engine-guide.md` for quantity contracts and policy formulas.
 
 ### 2.8 Testing & Scripts
 
@@ -271,7 +271,7 @@ mobile/src/
 | FastAPI entry      | `main.py`                                     | Registers middleware, routers, scheduler                          |
 | Auth middleware    | `app/core/middleware.py`                      | Extracts JWT, populates `request.state`                           |
 | Services & repos   | `app/services/`, `app/repositories/`          | Always inject via `build_service`; enforce `restaurant_id` scope  |
-| Forecasting engine | `app/services/forecasting_engine.py`          | Weather-aware ML forecasts, accuracy tracking                     |
+| Forecasting engine | `app/services/forecasting_engine.py`          | Calendar features, frozen run snapshots, observable-outcome accuracy                     |
 | EOD automation     | `app/utils/eod_runner.py`                     | Runs hourly via APScheduler                                       |
 | Web layout         | `frontend/src/components/Layout.jsx`          | Header/sidebar shell (planned TS refactor)                        |
 | Tier navigation    | `frontend/src/components/data/sidebarData.js` | Still contains older tier and surface assumptions; cleanup target |
